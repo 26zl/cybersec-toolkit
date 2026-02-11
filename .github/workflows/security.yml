@@ -1,0 +1,163 @@
+name: Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: "0 2 * * 0" # Sunday 2am UTC
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Secret Detection (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  custom-security-scan:
+    name: Custom Security Scanner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run security checks on shell scripts
+        run: |
+          errors=0
+          warnings=0
+
+          echo "=== Cybersec Tools Installer — Security Scan ==="
+          echo ""
+
+          for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do
+            # ---------------------------------------------------
+            # 1. Hardcoded IPs (allowlist: loopback, RFC 5737)
+            # ---------------------------------------------------
+            while IFS= read -r match; do
+              ip=$(echo "$match" | grep -oP '\d+\.\d+\.\d+\.\d+')
+              # Allowlist
+              case "$ip" in
+                127.0.0.1|0.0.0.0) continue ;;
+                192.0.2.*|198.51.100.*|203.0.113.*) continue ;; # RFC 5737
+              esac
+              echo "::error file=$f::Hardcoded IP found: $ip"
+              ((errors++))
+            done < <(grep -nP '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b' "$f" \
+              | grep -v '^\s*#' | grep -v '127\.0\.0\.1' | grep -v '0\.0\.0\.0' \
+              | grep -v '192\.0\.2\.' | grep -v '198\.51\.100\.' | grep -v '203\.0\.113\.' || true)
+
+            # ---------------------------------------------------
+            # 2. Potential hardcoded secrets
+            # ---------------------------------------------------
+            while IFS= read -r match; do
+              echo "::error file=$f::Potential hardcoded secret: $match"
+              ((errors++))
+            done < <(grep -nPi '(API_KEY|TOKEN|PASSWORD|SECRET)\s*=\s*["\x27][^"\x27$]{8,}' "$f" \
+              | grep -v '^\s*#' || true)
+
+            # ---------------------------------------------------
+            # 3. HTTP URLs (non-HTTPS)
+            # ---------------------------------------------------
+            while IFS= read -r match; do
+              echo "::error file=$f::Non-HTTPS URL: $match"
+              ((errors++))
+            done < <(grep -nP 'http://' "$f" \
+              | grep -v '^\s*#' \
+              | grep -v 'localhost' \
+              | grep -v 'example\.com' \
+              | grep -v '127\.0\.0\.1' \
+              | grep -v 'http://\$' \
+              | grep -v 'https\?://' || true)
+
+            # ---------------------------------------------------
+            # 4. Unsafe eval usage
+            # ---------------------------------------------------
+            while IFS= read -r match; do
+              # Allowlist: eval "$build_cmd" in lib/installers.sh
+              if [[ "$f" == "lib/installers.sh" ]] && echo "$match" | grep -q 'eval "\$build_cmd"'; then
+                continue
+              fi
+              echo "::error file=$f::Unsafe eval: $match"
+              ((errors++))
+            done < <(grep -nP '\beval\b' "$f" | grep -v '^\s*#' || true)
+
+            # ---------------------------------------------------
+            # 5. Predictable temp files (warning, not error)
+            # ---------------------------------------------------
+            while IFS= read -r match; do
+              echo "::warning file=$f::Predictable temp file (consider mktemp): $match"
+              ((warnings++))
+            done < <(grep -nP '/tmp/\w+' "$f" \
+              | grep -v '^\s*#' \
+              | grep -v 'mktemp' || true)
+
+            # ---------------------------------------------------
+            # 6. Overly permissive chmod
+            # ---------------------------------------------------
+            while IFS= read -r match; do
+              echo "::error file=$f::Overly permissive chmod: $match"
+              ((errors++))
+            done < <(grep -nP 'chmod\s+(777|666)' "$f" | grep -v '^\s*#' || true)
+
+            # ---------------------------------------------------
+            # 7. curl|bash / wget|bash patterns
+            # ---------------------------------------------------
+            while IFS= read -r match; do
+              # Allowlist: rustup uses TLS pinning
+              if echo "$match" | grep -q 'rustup'; then
+                continue
+              fi
+              echo "::warning file=$f::curl-pipe-bash pattern: $match"
+              ((warnings++))
+            done < <(grep -nP 'curl.*\|\s*(ba)?sh|wget.*\|\s*(ba)?sh' "$f" \
+              | grep -v '^\s*#' || true)
+          done
+
+          echo ""
+          echo "=== Scan Complete ==="
+          echo "Errors:   $errors"
+          echo "Warnings: $warnings"
+          echo ""
+
+          if [[ $errors -gt 0 ]]; then
+            echo "::error::Security scan found $errors error(s) — failing build"
+            exit 1
+          fi
+
+          if [[ $warnings -gt 0 ]]; then
+            echo "Security scan passed with $warnings warning(s)"
+          else
+            echo "Security scan passed — no issues found"
+          fi
+
+  scorecard:
+    name: OSSF Scorecard
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

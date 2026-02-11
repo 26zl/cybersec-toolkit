@@ -1,0 +1,9 @@
+// Markdownlint configuration for cybersec-tools-installer
+{
+  // Disable line length — tool lists and tables exceed 80 chars
+  "MD013": false,
+  // Allow inline HTML — used in README badges and formatting
+  "MD033": false,
+  // Allow non-H1 first heading — some docs start with badges or metadata
+  "MD041": false
+}

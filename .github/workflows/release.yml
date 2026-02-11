@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Pre-release Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        run: |
+          shopt -s globstar
+          shellcheck --severity=warning \
+            install.sh lib/*.sh modules/*.sh scripts/*.sh
+
+      - name: Validate tools_config.json
+        run: |
+          python3 <<'PYEOF'
+          import json, sys
+
+          with open("tools_config.json") as f:
+              data = json.load(f)
+
+          errors = []
+          for mod_name, mod_data in data.get("modules", {}).items():
+              tools = mod_data.get("tools", {})
+              for tool_name, tool_info in tools.items():
+                  if not isinstance(tool_info, dict):
+                      errors.append(f"{mod_name}.{tool_name}: expected dict")
+                      continue
+                  if "description" not in tool_info:
+                      errors.append(f"{mod_name}.{tool_name}: missing description")
+                  if "install_method" not in tool_info:
+                      errors.append(f"{mod_name}.{tool_name}: missing install_method")
+
+          if errors:
+              for e in errors:
+                  print(f"ERROR: {e}", file=sys.stderr)
+              sys.exit(1)
+
+          total = sum(len(m.get("tools", {})) for m in data["modules"].values())
+          print(f"Validated {total} tools across {len(data['modules'])} modules")
+          PYEOF
+
+      - name: Validate bash syntax
+        run: |
+          for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do
+            bash -n "$f"
+          done
+
+  release:
+    name: Create Release
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1 || echo "")
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            if [[ -n "$PREV_TAG" && "$PREV_TAG" != "$CURRENT_TAG" ]]; then
+              echo "## Changes since $PREV_TAG"
+              echo ""
+              git log "$PREV_TAG".."$CURRENT_TAG" --pretty=format:"- %s (%h)" --no-merges
+            else
+              echo "## Initial Release"
+              echo ""
+              git log --pretty=format:"- %s (%h)" --no-merges -20
+            fi
+            echo ""
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate verification summary
+        run: |
+          {
+            echo "# Verification Summary"
+            echo ""
+            echo "## Tools"
+            python3 -c "
+          import json
+          with open('tools_config.json') as f:
+              data = json.load(f)
+          total = 0
+          for mod, mod_data in data['modules'].items():
+              tools = mod_data.get('tools', {})
+              count = len(tools)
+              total += count
+              print(f'- **{mod}**: {count} tools')
+          print(f'\n**Total: {total} tools across {len(data[\"modules\"])} modules**')
+          "
+            echo ""
+            echo "## Profiles"
+            for conf in profiles/*.conf; do
+              name=$(basename "$conf" .conf)
+              modules=$(grep '^MODULES=' "$conf" | sed 's/MODULES="//' | sed 's/"//')
+              count=$(echo "$modules" | wc -w)
+              echo "- **$name**: $count modules"
+            done
+            echo ""
+            echo "## Install Methods"
+            echo "apt, pipx, go install, cargo, gem, git clone, binary release, Docker, snap, build-from-source"
+          } > verification-summary.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+
+            ---
+
+            See [README.md](README.md) for installation instructions.
+          files: verification-summary.md
+          generate_release_notes: true

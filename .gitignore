@@ -1,0 +1,41 @@
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/
+CLAUDE.md
+nul
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temp files from install
+msfinstall
+burpsuite.sh
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Go
+/go/
+
+# Runtime artifacts
+.versions
+*.bak
+*.backup
+*.tar.gz
+*.enc
+
+# CI/CD local artifacts
+verification-summary.md
+results.sarif
