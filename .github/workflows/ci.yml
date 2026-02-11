@@ -38,6 +38,7 @@ jobs:
             modules/stego.sh \
             modules/web.sh \
             modules/wireless.sh \
+            modules/blueteam.sh \
             scripts/verify.sh \
             scripts/update.sh \
             scripts/remove.sh \
@@ -139,7 +140,7 @@ jobs:
 
       - name: Validate profile configs
         run: |
-          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers"
+          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam"
           exit_code=0
 
           for conf in profiles/*.conf; do
