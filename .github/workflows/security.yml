@@ -147,6 +147,8 @@ jobs:
       contents: read
       security-events: write
       id-token: write
+      actions: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:

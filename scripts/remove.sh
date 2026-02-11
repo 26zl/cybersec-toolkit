@@ -337,8 +337,8 @@ if should_remove "web" && snap_available && snap list zaproxy &>/dev/null; then
     log_success "OWASP ZAP removed"
 fi
 
-# Burp Suite installer
-rm -f /tmp/burpsuite.sh 2>/dev/null
+# Burp Suite installer (clean up any mktemp leftovers matching the pattern)
+find /tmp -maxdepth 1 -name 'tmp*.sh' -user root -newer "$SCRIPT_DIR/install.sh" -delete 2>/dev/null || true
 
 # Docker images (only on full removal)
 if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
