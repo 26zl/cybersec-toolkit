@@ -21,6 +21,8 @@ The most comprehensive automated installer for cybersecurity tools on Linux. __6
 
 The installer does __not__ install runtimes for you. Install everything below __before__ running `install.sh`. The installer checks on startup and tells you exactly what is missing.
 
+> **Already have git, python3, pipx, go, cargo, ruby, and java installed?** Skip to [Step 2: Install](#step-2-install).
+
 ### Debian / Ubuntu / Kali
 
 ```bash
