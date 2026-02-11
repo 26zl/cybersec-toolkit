@@ -537,6 +537,7 @@ for asset in data.get('assets', []):
             sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1
             # Fix missing dependencies left by dpkg
             if [[ "$PKG_MANAGER" == "apt" ]]; then
+                # shellcheck disable=SC2024  # Script runs as root; redirect is fine
                 sudo apt-get install -f -y >> "$LOG_FILE" 2>&1
             fi
             rm -rf "$tmp_dir"
