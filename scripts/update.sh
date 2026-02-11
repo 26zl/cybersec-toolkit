@@ -294,8 +294,8 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     }
 
     # misc
-    local pspy_pattern="pspy64$"
-    local gophish_pattern="linux-64bit"
+    pspy_pattern="pspy64$"
+    gophish_pattern="linux-64bit"
     if [[ "$SYS_ARCH" != "amd64" ]]; then
         pspy_pattern="pspy_${SYS_ARCH}$"
         gophish_pattern="linux-${SYS_ARCH}"
@@ -325,7 +325,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     update_binary "Velocidex/velociraptor" "velociraptor" "linux-amd64$"
     update_binary "threathunters-io/laurel" "laurel" "x86_64-glibc"
     # containers
-    local trivy_pattern="Linux-64bit\\.tar\\.gz"
+    trivy_pattern="Linux-64bit\\.tar\\.gz"
     [[ "$SYS_ARCH" != "amd64" ]] && trivy_pattern="Linux-ARM64\\.tar\\.gz"
     update_binary "aquasecurity/trivy" "trivy" "$trivy_pattern"
     update_binary "anchore/grype" "grype" "linux_amd64\\.tar\\.gz"

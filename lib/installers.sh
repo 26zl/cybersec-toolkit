@@ -183,6 +183,7 @@ install_apt_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_apt_batch: '$label' completed in ${_batch_elapsed}s"
+    [[ "$failed" -gt 0 ]] && return 1
 }
 
 # ----- Batch pipx install ---------------------------------------------------
@@ -191,6 +192,9 @@ install_pipx_batch() {
     local -a tools=("$@")
     local total=${#tools[@]}
     [[ "$total" -eq 0 ]] && return 0
+
+    # pipx uses shared venv state — parallel installs cause lock conflicts
+    local _jobs=1
 
     log_debug "install_pipx_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
@@ -204,7 +208,7 @@ install_pipx_batch() {
 
     log_info "Installing ${label} ($total pipx tools)..."
 
-    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+    if [[ "$_jobs" -gt 1 ]]; then
         # --- Parallel mode ---
         local _results_dir; _results_dir=$(mktemp -d)
 
@@ -256,6 +260,7 @@ install_pipx_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_pipx_batch: '$label' completed in ${_batch_elapsed}s"
+    [[ "$failed" -gt 0 ]] && return 1
 }
 
 # ----- Batch Go install -----------------------------------------------------
@@ -333,6 +338,7 @@ install_go_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_go_batch: '$label' completed in ${_batch_elapsed}s"
+    [[ "$failed" -gt 0 ]] && return 1
 }
 
 # ----- Batch cargo install --------------------------------------------------
@@ -349,12 +355,15 @@ install_cargo_batch() {
     fi
     export PATH="$HOME/.cargo/bin:$PATH"
 
+    # cargo uses a shared registry lock — parallel installs cause conflicts
+    local _jobs=1
+
     log_debug "install_cargo_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
     log_info "Installing ${label} ($total Rust tools)..."
 
-    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+    if [[ "$_jobs" -gt 1 ]]; then
         # --- Parallel mode ---
         local _results_dir; _results_dir=$(mktemp -d)
 
@@ -414,6 +423,7 @@ install_cargo_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_cargo_batch: '$label' completed in ${_batch_elapsed}s"
+    [[ "$failed" -gt 0 ]] && return 1
 }
 
 # ----- Batch gem install ----------------------------------------------------
@@ -428,6 +438,9 @@ install_gem_batch() {
         return 0
     fi
 
+    # gem uses a shared gem dir — parallel installs cause conflicts
+    local _jobs=1
+
     log_debug "install_gem_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
@@ -437,7 +450,7 @@ install_gem_batch() {
 
     log_info "Installing ${label} ($total Ruby gems)..."
 
-    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+    if [[ "$_jobs" -gt 1 ]]; then
         # --- Parallel mode ---
         local _results_dir; _results_dir=$(mktemp -d)
 
@@ -489,6 +502,7 @@ install_gem_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_gem_batch: '$label' completed in ${_batch_elapsed}s"
+    [[ "$failed" -gt 0 ]] && return 1
 }
 
 # ----- Post-clone setup for git repos ---------------------------------------
@@ -613,6 +627,7 @@ install_git_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_git_batch: '$label' completed in ${_batch_elapsed}s"
+    [[ "$failed" -gt 0 ]] && return 1
 }
 
 # ----- GitHub API curl options (with optional token auth) -------------------

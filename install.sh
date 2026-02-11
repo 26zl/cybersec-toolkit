@@ -478,16 +478,16 @@ main() {
         prereq_fail=1
     fi
 
-    if [[ "$prereq_fail" -eq 1 ]]; then
-        echo ""
-        log_error "Aborting: install the missing prerequisites above and re-run."
-        exit 1
-    fi
-
     if ! command_exists pipx; then
         log_error "MISSING: pipx — required for ~157 Python security tools"
         log_error "Install pipx: https://pipx.pypa.io/stable/installation/"
         prereq_fail=1
+    fi
+
+    if [[ "$prereq_fail" -eq 1 ]]; then
+        echo ""
+        log_error "Aborting: install the missing prerequisites above and re-run."
+        exit 1
     fi
 
     log_success "All prerequisites found"

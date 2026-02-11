@@ -331,6 +331,7 @@ git_clone_or_pull() {
         log_info "Updating $(basename "$dest")..."
         git -C "$dest" pull -q 2>>"$LOG_FILE" || true
     else
+        mkdir -p "$(dirname "$dest")" 2>/dev/null || true
         log_info "Cloning $(basename "$dest")..."
         git clone --depth 1 -q "$repo_url" "$dest" 2>>"$LOG_FILE"
     fi

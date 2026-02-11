@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # CyberSec Tools — Config Backup/Restore Script
-# Backs up and restores tool configurations with AES-256-CBC encryption.
+# Backs up and restores tool configurations with ChaCha20-Poly1305 encryption.
 # Supports scheduling via cron (Linux/macOS).
 # =============================================================================
 set -uo pipefail
@@ -68,7 +68,7 @@ encrypt_archive() {
     printf '%s' "$_PASSPHRASE" > "$pass_file"
     unset _PASSPHRASE
 
-    if openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 \
+    if openssl enc -chacha20 -salt -pbkdf2 -iter 600000 \
         -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null; then
         rm -f "$pass_file" "$archive_path"
         log_success "Archive encrypted: ${archive_path}.enc"
@@ -94,7 +94,7 @@ decrypt_archive() {
     chmod 600 "$pass_file"
     printf '%s' "$passphrase" > "$pass_file"
 
-    if openssl enc -aes-256-cbc -d -pbkdf2 -iter 600000 \
+    if openssl enc -chacha20 -d -pbkdf2 -iter 600000 \
         -in "$encrypted_path" -out "$output_path" -pass file:"$pass_file" 2>/dev/null; then
         rm -f "$pass_file"
         log_success "Archive decrypted: $output_path"
