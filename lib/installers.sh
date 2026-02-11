@@ -676,16 +676,29 @@ for asset in data.get('assets', []):
         *.zip)
             unzip -qo "$tmp_dir/$asset_name" -d "$tmp_dir" 2>>"$LOG_FILE" ;;
         *.deb)
+            if [[ "$PKG_MANAGER" != "apt" ]]; then
+                log_error "$binary is a .deb package — not supported on $PKG_MANAGER"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
             # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-            sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1
-            # Fix missing dependencies left by dpkg
-            if [[ "$PKG_MANAGER" == "apt" ]]; then
+            if ! sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1; then
+                # Fix missing dependencies left by dpkg
                 # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-                sudo apt-get install -f -y >> "$LOG_FILE" 2>&1
+                if ! sudo apt-get install -f -y >> "$LOG_FILE" 2>&1; then
+                    log_error "Failed to install $binary (.deb) — dpkg and dependency fix both failed"
+                    rm -rf "$tmp_dir"
+                    return 1
+                fi
             fi
             rm -rf "$tmp_dir"
-            log_success "Installed: $binary (.deb)"
-            track_version "$binary" "binary" "latest"
+            if command_exists "$binary"; then
+                log_success "Installed: $binary (.deb)"
+                track_version "$binary" "binary" "latest"
+            else
+                log_error "Install failed: $binary (.deb) — binary not found after dpkg"
+                return 1
+            fi
             return 0 ;;
         *.jar)
             sudo mkdir -p "$dest_dir"

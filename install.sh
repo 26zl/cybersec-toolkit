@@ -50,15 +50,15 @@ Options:
                          crackstation, lightweight, blueteam
   --module <name>      Install specific module(s). Can be repeated.
                          Modules: misc, networking, recon, web, crypto,
-                         pwn, reversing, forensics, malware, ad,
+                         pwn, reversing, forensics, malware, enterprise,
                          wireless, password, stego, cloud, containers,
-                         blueteam, mobile, blockchain, enterprise
+                         blueteam, mobile, blockchain
   --tool <name>        Install a single tool by name. Can be repeated.
                          Searches all modules for a matching package,
                          pipx tool, Go binary, cargo crate, gem, or repo.
   --upgrade-system     Upgrade all system packages before installing
                          (apt upgrade / dnf upgrade / pacman -Syu)
-  --skip-heavy         Skip large packages (sagemath, gnuradio, etc.)
+  --skip-heavy         Skip large packages (sagemath, gimp, audacity, gnuradio, etc.)
   --enable-docker      Pull Docker images (C2 frameworks, IR platforms, MobSF, etc.)
   --include-c2         Enable C2 frameworks (requires --enable-docker)
   --dry-run            Show what would be installed without installing
@@ -442,9 +442,9 @@ main() {
 
     for mod in "${MODULES_TO_INSTALL[@]}"; do
         case "$mod" in
-            misc|networking|recon|web|pwn|ad|cloud) need_go=true ;;&
-            networking|web|pwn)                      need_cargo=true ;;&
-            web|pwn|reversing|stego|ad)              need_gem=true ;;&
+            misc|networking|recon|web|pwn|enterprise|cloud) need_go=true ;;&
+            networking|web|pwn)                              need_cargo=true ;;&
+            web|pwn|reversing|stego|enterprise)              need_gem=true ;;&
             recon|crypto|pwn|reversing|password)     need_build=true ;;&
         esac
     done

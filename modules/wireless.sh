@@ -8,12 +8,15 @@
 WIRELESS_PACKAGES=(
     aircrack-ng reaver kismet pixiewps bully
     iw wireless-tools rfkill
-    horst bluez spooftooph gnuradio gqrx-sdr
+    horst bluez spooftooph
     mdk4 hcxtools cowpatty crackle asleap
     fern-wifi-cracker
     hackrf hcxdumptool mfcuk mfoc rtl-433
     libnfc-dev avrdude
 )
+
+# --- Heavy packages (skipped with --skip-heavy) ---
+WIRELESS_HEAVY_PACKAGES=(gnuradio gqrx-sdr)
 
 WIRELESS_PIPX=(sipvicious)
 
@@ -39,6 +42,14 @@ WIRELESS_GIT_NAMES=(wifite2 fluxion airgeddon hostapd-mana wifiphisher PSKracker
 
 install_module_wireless() {
     install_apt_batch "Wireless - Packages" "${WIRELESS_PACKAGES[@]}"
+
+    # Heavy packages (optional)
+    if [[ "${SKIP_HEAVY:-false}" != "true" ]]; then
+        install_apt_batch "Wireless - Heavy" "${WIRELESS_HEAVY_PACKAGES[@]}"
+    else
+        log_warn "Skipping heavy wireless packages (gnuradio, gqrx-sdr)"
+    fi
+
     install_pipx_batch "Wireless - Python" "${WIRELESS_PIPX[@]}"
     install_git_batch "Wireless - Git" "${WIRELESS_GIT[@]}"
 }

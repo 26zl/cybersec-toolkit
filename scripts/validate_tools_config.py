@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MODULES_DIR = ROOT / "modules"
+INSTALLERS_PATH = ROOT / "lib" / "installers.sh"
 CONFIG_PATH = ROOT / "tools_config.json"
 
 ALL_MODULES = [
@@ -31,6 +32,7 @@ MODULE_PREFIX = {
 }
 
 APT_SUFFIXES = {"PACKAGES", "BASE_PACKAGES", "SECURITY_PACKAGES", "HEAVY_PACKAGES"}
+BINARY_RELEASE_SUFFIXES = {"BINARY_RELEASES"}
 GIT_SUFFIXES = {"GIT", "RESOURCES", "POSTEXPLOIT", "SOCIAL", "CTF"}
 SKIP_SUFFIXES = {"GO_BINS", "GIT_NAMES", "GO", "DOCKER"}
 
@@ -82,6 +84,44 @@ def go_github_url(import_path):
     if len(parts) >= 3 and parts[0] == "github.com":
         return f"https://github.com/{parts[1]}/{parts[2]}"
     return ""
+
+
+# Map BINARY_RELEASES_* suffix → module name
+BINARY_RELEASE_MODULE = {
+    "MISC": "misc", "NETWORKING": "networking", "RECON": "recon",
+    "WEB": "web", "REVERSING": "reversing", "FORENSICS": "forensics",
+    "ENTERPRISE": "enterprise", "BLUETEAM": "blueteam",
+    "CONTAINERS": "containers", "MALWARE": "malware", "STEGO": "stego",
+}
+
+
+# ---------------------------------------------------------------------------
+# Binary release extraction from installers.sh
+# ---------------------------------------------------------------------------
+
+def extract_binary_releases():
+    """Parse BINARY_RELEASES_* arrays from lib/installers.sh.
+
+    Returns list of {name, method, url, module}.
+    """
+    text = INSTALLERS_PATH.read_text(encoding="utf-8", errors="replace")
+    arrays = parse_arrays(text)
+    tools = []
+    for arr_name, entries in arrays.items():
+        if not arr_name.startswith("BINARY_RELEASES_"):
+            continue
+        suffix = arr_name[len("BINARY_RELEASES_"):]
+        module = BINARY_RELEASE_MODULE.get(suffix)
+        if module is None:
+            continue
+        for entry in entries:
+            parts = entry.split("|")
+            if len(parts) < 2:
+                continue
+            repo, binary = parts[0], parts[1]
+            url = f"https://github.com/{repo}"
+            tools.append({"name": binary, "method": "binary", "url": url, "module": module})
+    return tools
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +253,7 @@ def extract_module_tools(module_name):
             "name": "zaproxy", "method": "snap",
             "url": "https://github.com/zaproxy/zaproxy",
         })
-    if "install_foundry" in clean:
+    if "foundryup" in clean:
         tools.append({
             "name": "foundry", "method": "special",
             "url": "https://github.com/foundry-rs/foundry",
@@ -267,6 +307,10 @@ def validate():
         for t in extract_module_tools(mod):
             module_tools[(t["name"], t["method"])] = mod
 
+    # Merge binary releases from lib/installers.sh
+    for t in extract_binary_releases():
+        module_tools[(t["name"], t["method"])] = t["module"]
+
     # Build lookup from JSON: (name, method) → module
     config_tools = {}
     for entry in config:
@@ -314,6 +358,10 @@ def sync():
         for t in extract_module_tools(mod):
             if t["url"]:
                 url_map[t["name"]] = t["url"]
+    # Merge binary releases from lib/installers.sh
+    for t in extract_binary_releases():
+        if t["url"]:
+            url_map.setdefault(t["name"], t["url"])
 
     # Merge URLs into config
     for entry in config:

@@ -128,10 +128,10 @@ for _mod in "${REMOVE_MODULES[@]}"; do
             log_info "Preserving base dependencies (--remove-deps not set)"
         fi
         _append_module_array PKGS_TO_REMOVE "MISC_SECURITY_PACKAGES"
-        _append_module_array PKGS_TO_REMOVE "MISC_HEAVY_PACKAGES"
     else
         _append_module_array PKGS_TO_REMOVE "${_pfx}_PACKAGES"
     fi
+    _append_module_array PKGS_TO_REMOVE "${_pfx}_HEAVY_PACKAGES"
 
     _append_module_array PIPX_TO_REMOVE      "${_pfx}_PIPX"
     _append_module_array GO_BINS_TO_REMOVE   "${_pfx}_GO_BINS"
@@ -241,7 +241,20 @@ echo ""
 
 # --- 7) Binary releases ------------------------------------------------------
 log_info "Removing binary releases from /usr/local/bin..."
-BINARY_TOOLS=(findomain ligolo-proxy ligolo-agent frp chainsaw kerbrute trivy grype kubeaudit cdk syft kubescape floss capa pspy gophish trufflehog gitleaks stegseek rp-lin d2j-dex2jar velociraptor laurel)
+# Build BINARY_TOOLS dynamically from BINARY_RELEASES_* arrays in installers.sh
+# (single source of truth — no hardcoded list to maintain)
+_extract_binary_names() {
+    local -n _br_ref="$1"
+    for _br_entry in "${_br_ref[@]}"; do
+        IFS='|' read -r _br_repo _br_binary _br_rest <<< "$_br_entry"
+        BINARY_TOOLS+=("$_br_binary")
+    done
+}
+BINARY_TOOLS=()
+for _br_arr in BINARY_RELEASES_MISC BINARY_RELEASES_NETWORKING BINARY_RELEASES_RECON BINARY_RELEASES_WEB BINARY_RELEASES_REVERSING BINARY_RELEASES_FORENSICS BINARY_RELEASES_ENTERPRISE BINARY_RELEASES_BLUETEAM BINARY_RELEASES_CONTAINERS BINARY_RELEASES_MALWARE BINARY_RELEASES_STEGO; do
+    declare -p "$_br_arr" &>/dev/null || continue
+    _extract_binary_names "$_br_arr"
+done
 for bin in "${BINARY_TOOLS[@]}"; do
     if [[ -f "/usr/local/bin/$bin" ]]; then
         sudo rm -f "/usr/local/bin/$bin"
