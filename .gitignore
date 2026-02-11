@@ -7,6 +7,7 @@
 .claude/
 CLAUDE.md
 nul
+instructions/
 
 # Logs
 *.log
