@@ -40,6 +40,10 @@ fixup_package_names() {
                     upx-ucl)            pkg="upx" ;;
                     gqrx-sdr)           pkg="gqrx" ;;
                     spooftooph|cewl|hashid|wapiti|zmap|rizin) continue ;;
+                    sentrypeer|chaosreader|apparmor-utils) continue ;;
+                    smali|apksigner|zipalign) continue ;;
+                    hcxdumptool|mfcuk|mfoc|rtl-433|libnfc-dev|avrdude) continue ;;
+                    scrcpy)             continue ;;
                     auditd)             pkg="audit" ;;
                     checksec)           pkg="checksec" ;;
                     sonic-visualiser)   pkg="sonic-visualiser" ;;
@@ -74,6 +78,10 @@ fixup_package_names() {
                     bulk-extractor)     pkg="bulk_extractor" ;;
                     snmp)               pkg="net-snmp" ;;
                     spooftooph|cewl|hashid|wapiti) continue ;;
+                    sentrypeer|chaosreader|apparmor-utils) continue ;;
+                    smali|apksigner|zipalign) continue ;;
+                    mfcuk|mfoc|libnfc-dev) continue ;;
+                    rtl-433)            pkg="rtl_433" ;;
                     auditd)             pkg="audit" ;;
                     upx-ucl)            pkg="upx" ;;
                     qemu-user-static)   pkg="qemu-user-static" ;;
@@ -109,6 +117,9 @@ fixup_package_names() {
                     imagemagick)        pkg="ImageMagick" ;;
                     upx-ucl)            pkg="upx" ;;
                     spooftooph|cewl|hashid|wapiti|zmap|checksec|rizin|sagemath|sonic-visualiser) continue ;;
+                    sentrypeer|chaosreader|apparmor-utils) continue ;;
+                    smali|apksigner|zipalign|scrcpy) continue ;;
+                    hackrf|hcxdumptool|mfcuk|mfoc|rtl-433|libnfc-dev|avrdude) continue ;;
                     auditd)             pkg="audit" ;;
                     qemu-user-static)   pkg="qemu-linux-user" ;;
                     qemu-system-x86)    pkg="qemu-x86" ;;
@@ -165,7 +176,7 @@ install_pipx_batch() {
     # Cache the installed list once to avoid calling pipx list per tool
     local installed_pipx=""
     if command_exists pipx; then
-        installed_pipx=$(run_as_user pipx list --short 2>/dev/null || true)
+        installed_pipx=$(pipx list --short 2>/dev/null || true)
     fi
 
     log_info "Installing ${label} ($total pipx tools)..."
@@ -200,8 +211,7 @@ install_go_batch() {
         log_warn "Go not found — skipping ${label}"
         return 0
     fi
-    export GOPATH="${GOPATH:-$REAL_HOME/go}"
-    export PATH="$GOPATH/bin:$PATH"
+    # GOPATH and GOBIN are set in common.sh (system-wide: /opt/go, /usr/local/bin)
 
     local current=0 failed=0 skipped=0
     log_info "Installing ${label} ($total Go tools)..."
@@ -210,13 +220,13 @@ install_go_batch() {
         local name
         name=$(echo "$tool" | rev | cut -d/ -f1 | rev | cut -d@ -f1)
         show_progress "$current" "$total" "$name"
-        # Skip if binary already exists
-        if [[ -f "$GOPATH/bin/$name" ]] || command_exists "$name"; then
+        # Skip if binary already exists (GOBIN=/usr/local/bin, so command_exists suffices)
+        if command_exists "$name"; then
             skipped=$((skipped + 1))
             track_version "$name" "go" "existing"
             continue
         fi
-        if ! run_as_user env GOPATH="$GOPATH" PATH="$PATH" go install "$tool" >> "$LOG_FILE" 2>&1; then
+        if ! go install "$tool" >> "$LOG_FILE" 2>&1; then
             log_error "Failed go: $name"
             failed=$((failed + 1))
         else
@@ -237,31 +247,35 @@ install_cargo_batch() {
     if ! command_exists cargo; then
         log_warn "Cargo not found — installing Rust toolchain..."
         # shellcheck disable=SC2016  # Single quotes intentional — expanded by the subshell
-        if run_as_user bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y' >> "$LOG_FILE" 2>&1; then
-            export PATH="$REAL_HOME/.cargo/bin:$PATH"
+        if bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y' >> "$LOG_FILE" 2>&1; then
+            export PATH="$HOME/.cargo/bin:$PATH"
             log_success "Rust toolchain installed"
         else
             log_error "Failed to install Rust — skipping ${label}"
             return 1
         fi
     fi
-    export PATH="$REAL_HOME/.cargo/bin:$PATH"
+    export PATH="$HOME/.cargo/bin:$PATH"
 
     local current=0 failed=0 skipped=0
     log_info "Installing ${label} ($total Rust tools)..."
     for crate in "${crates[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$crate"
-        # Skip if binary already exists
-        if [[ -f "$REAL_HOME/.cargo/bin/$crate" ]] || command_exists "$crate"; then
+        # Skip if binary already exists in /usr/local/bin or cargo bin
+        if command_exists "$crate"; then
             skipped=$((skipped + 1))
             track_version "$crate" "cargo" "existing"
             continue
         fi
-        if ! run_as_user env PATH="$PATH" cargo install "$crate" >> "$LOG_FILE" 2>&1; then
+        if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
             log_error "Failed cargo: $crate"
             failed=$((failed + 1))
         else
+            # Symlink cargo binary to /usr/local/bin for system-wide access
+            if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
+                ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
+            fi
             track_version "$crate" "cargo" "latest"
         fi
     done
@@ -305,7 +319,56 @@ install_gem_batch() {
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
 }
 
-# ----- Batch git clone ------------------------------------------------------
+# ----- Post-clone setup for git repos ---------------------------------------
+# Creates isolated venvs for Python repos with requirements.txt.
+# Does NOT execute setup.py/pyproject.toml (supply-chain risk: arbitrary code as root).
+# Only installs pinned dependencies from requirements.txt into the venv.
+setup_git_repo() {
+    local dest="$1"
+    local name
+    name=$(basename "$dest")
+
+    # Python project with requirements.txt: create isolated venv + install deps
+    # NOTE: Only requirements.txt is installed — setup.py is NOT executed.
+    # This avoids running arbitrary code from cloned repos as root.
+    if [[ -f "$dest/requirements.txt" ]]; then
+        if [[ ! -d "$dest/venv" ]]; then
+            python3 -m venv "$dest/venv" 2>/dev/null || return 0
+        fi
+        "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
+        "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1 || true
+    fi
+
+    # Create wrapper scripts in /usr/local/bin for discoverable entry points
+    # Look for executable scripts the venv created, or standalone .py scripts
+    if [[ -d "$dest/venv/bin" ]]; then
+        for candidate in "$dest/venv/bin/$name" "$dest/venv/bin/${name,,}" "$dest/venv/bin/${name//-/_}"; do
+            if [[ -f "$candidate" ]] && [[ -x "$candidate" ]]; then
+                ln -sf "$candidate" "/usr/local/bin/$(basename "$candidate")" 2>/dev/null || true
+                break
+            fi
+        done
+    fi
+
+    # Standalone Python script: make executable
+    if [[ -f "$dest/$name.py" ]] && [[ ! -d "$dest/venv" ]]; then
+        chmod +x "$dest/$name.py" 2>/dev/null || true
+        # Create a wrapper in PATH
+        cat > "/usr/local/bin/$name" 2>/dev/null << PYWRAP || true
+#!/bin/bash
+exec python3 "$dest/$name.py" "\$@"
+PYWRAP
+        chmod +x "/usr/local/bin/$name" 2>/dev/null || true
+    fi
+
+    # Standalone shell script: symlink to PATH
+    if [[ -f "$dest/$name.sh" ]] && [[ ! -L "/usr/local/bin/$name" ]]; then
+        chmod +x "$dest/$name.sh" 2>/dev/null || true
+        ln -sf "$dest/$name.sh" "/usr/local/bin/$name" 2>/dev/null || true
+    fi
+}
+
+# ----- Batch git clone with auto-setup -------------------------------------
 # Usage: install_git_batch "Label" name1=url1 name2=url2 ...
 install_git_batch() {
     local label="$1"; shift
@@ -322,13 +385,14 @@ install_git_batch() {
         local url="${entry#*=}"
         local dest="$base_dir/$name"
         show_progress "$current" "$total" "$name"
-        # Existing repos get a pull instead of clone (handled by git_clone_or_pull)
         local is_existing=false
         [[ -d "$dest/.git" ]] && is_existing=true
         if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
             log_error "Failed git: $name"
             failed=$((failed + 1))
         else
+            # Auto-setup: venv, requirements, symlinks
+            setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
             [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
             track_version "$name" "git" "HEAD"
         fi
@@ -383,6 +447,8 @@ for asset in data.get('assets', []):
         return 0
     else
         log_error "Checksum MISMATCH for $file_name (expected: ${expected_hash:0:16}…, got: ${actual_hash:0:16}…)"
+        # Signal hard failure — caller checks this marker file
+        touch "$(dirname "$file_path")/.checksum_mismatch"
         return 1
     fi
 }
@@ -443,8 +509,16 @@ for asset in data.get('assets', []):
         return 1
     fi
 
-    # Verify checksum if available (non-blocking — warns on failure)
-    verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name" || true
+    # Verify checksum — fail-closed on mismatch, warn-only if no checksums available
+    if ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
+        # Check if it was a real mismatch (exit code 2) vs missing checksums (exit code 1)
+        if [[ -f "$tmp_dir/.checksum_mismatch" ]]; then
+            log_error "Aborting install of $binary due to checksum mismatch"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+        # No checksum file available — warn but continue
+    fi
 
     # Handle archive types
     case "$download_url" in
@@ -488,15 +562,47 @@ WRAPPER
         found="$tmp_dir/$asset_name"
     fi
 
-    sudo install -m 755 "$found" "$dest_dir/$binary" 2>/dev/null
+    if [[ "$dest_dir" != "/usr/local/bin" ]]; then
+        # Custom dest_dir (e.g. /opt/jadx): copy entire extracted tree there
+        sudo mkdir -p "$dest_dir"
+        sudo cp -a "$tmp_dir"/* "$dest_dir/" 2>/dev/null || true
+        # Find the binary in dest_dir (NOT tmp_dir — it's about to be deleted)
+        # Some tools ship with .sh extension (e.g. d2j-dex2jar.sh), so try both
+        local dest_bin=""
+        for candidate in \
+            "$dest_dir/bin/$binary" \
+            "$dest_dir/bin/${binary}.sh" \
+            "$dest_dir/$binary" \
+            "$dest_dir/${binary}.sh"; do
+            if [[ -f "$candidate" ]]; then
+                dest_bin="$candidate"
+                break
+            fi
+        done
+        if [[ -z "$dest_bin" ]]; then
+            dest_bin=$(find "$dest_dir" \( -name "$binary" -o -name "${binary}.sh" \) -type f 2>/dev/null | head -1)
+        fi
+        if [[ -n "$dest_bin" ]]; then
+            sudo chmod +x "$dest_bin" 2>/dev/null || true
+            sudo ln -sf "$dest_bin" "/usr/local/bin/$binary" 2>/dev/null || true
+        fi
+    else
+        sudo install -m 755 "$found" "$dest_dir/$binary" 2>/dev/null
+    fi
     rm -rf "$tmp_dir"
 
     if command_exists "$binary"; then
         log_success "Installed: $binary"
         track_version "$binary" "binary" "latest"
     else
-        log_error "Install failed: $binary (binary not in PATH)"
-        return 1
+        # Binary may be in dest_dir but not in PATH — still a success if file exists
+        if [[ -f "$dest_dir/$binary" ]] || [[ -f "$dest_dir/bin/$binary" ]]; then
+            log_success "Installed: $binary (in $dest_dir)"
+            track_version "$binary" "binary" "latest"
+        else
+            log_error "Install failed: $binary"
+            return 1
+        fi
     fi
 }
 
@@ -571,31 +677,72 @@ install_metasploit() {
         log_success "Metasploit already installed"
         return 0
     fi
+
+    # Prefer system package (available on Debian/Kali/Parrot with their repos)
     log_info "Installing Metasploit Framework..."
+    if [[ "$PKG_MANAGER" == "apt" ]]; then
+        if pkg_install metasploit-framework >> "$LOG_FILE" 2>&1; then
+            log_success "Metasploit installed via apt"
+            track_version "metasploit" "apt" "system"
+            return 0
+        fi
+        log_warn "metasploit-framework not in apt repos — trying official installer"
+    fi
+
+    # Fallback: official Rapid7 installer script (with basic verification)
     local tmp_installer
     tmp_installer=$(mktemp)
-    curl -fsSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > "$tmp_installer" 2>> "$LOG_FILE"
+    local msf_url="https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb"
+    if ! curl -fsSL "$msf_url" -o "$tmp_installer" 2>> "$LOG_FILE"; then
+        log_error "Failed to download Metasploit installer"
+        rm -f "$tmp_installer"
+        return 1
+    fi
+
+    # Basic content verification — ensure the script is from Rapid7
+    if ! grep -q "rapid7" "$tmp_installer" 2>/dev/null; then
+        log_error "Metasploit installer content verification failed — aborting"
+        rm -f "$tmp_installer"
+        return 1
+    fi
+
     chmod 755 "$tmp_installer"
-    "$tmp_installer" >> "$LOG_FILE" 2>&1
+    if "$tmp_installer" >> "$LOG_FILE" 2>&1; then
+        log_success "Metasploit installed"
+        track_version "metasploit" "special" "latest"
+    else
+        log_error "Metasploit installation failed"
+        rm -f "$tmp_installer"
+        return 1
+    fi
     rm -f "$tmp_installer"
-    log_success "Metasploit installed"
-    track_version "metasploit" "special" "latest"
 }
 
 # ----- Burp Suite -----------------------------------------------------------
+# NOTE: Burp Suite requires a GUI installer and cannot be fully automated.
+# This downloads the installer and provides instructions for manual completion.
 install_burpsuite() {
     if command_exists burpsuite; then
         log_success "Burp Suite already installed"
         return 0
     fi
     local version="${BURP_VERSION:-2024.10.1}"
+    local dest_dir="/opt/burpsuite-installer"
+    local installer="$dest_dir/burpsuite_community_v${version}_install.sh"
+
     log_info "Downloading Burp Suite Community v${version}..."
-    local tmp_installer
-    tmp_installer=$(mktemp --suffix=.sh)
-    wget -q -O "$tmp_installer" "https://portswigger.net/burp/releases/download?product=community&version=${version}&type=Linux" 2>> "$LOG_FILE"
-    chmod +x "$tmp_installer"
-    log_warn "Burp Suite downloaded to $tmp_installer — run to complete GUI install"
-    track_version "burpsuite" "special" "$version"
+    mkdir -p "$dest_dir"
+    if ! wget -q -O "$installer" "https://portswigger.net/burp/releases/download?product=community&version=${version}&type=Linux" 2>> "$LOG_FILE"; then
+        log_error "Failed to download Burp Suite"
+        return 1
+    fi
+    chmod +x "$installer"
+
+    log_warn "============================================="
+    log_warn "Burp Suite requires MANUAL GUI installation:"
+    log_warn "  Run: $installer"
+    log_warn "============================================="
+    track_version "burpsuite" "special" "$version (downloaded, needs manual install)"
 }
 
 # ----- OWASP ZAP ------------------------------------------------------------

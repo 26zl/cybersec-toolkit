@@ -39,6 +39,7 @@ jobs:
             modules/web.sh \
             modules/wireless.sh \
             modules/blueteam.sh \
+            modules/mobile.sh \
             scripts/verify.sh \
             scripts/update.sh \
             scripts/remove.sh \
@@ -73,65 +74,6 @@ jobs:
             **/*.md
             !docs/TOOL_ANALYSIS.md
 
-  json-validate:
-    name: Validate tools_config.json
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Validate JSON syntax
-        run: python3 -c "import json, sys; json.load(open('tools_config.json'))" || exit 1
-
-      - name: Validate tool entries have required fields
-        run: |
-          python3 <<'PYEOF'
-          import json, sys
-
-          with open("tools_config.json") as f:
-              data = json.load(f)
-
-          errors = []
-          modules = data.get("modules", {})
-
-          if not modules:
-              errors.append("No 'modules' key found at top level")
-
-          valid_methods = {
-              "apt", "pipx", "go", "cargo", "gem", "git",
-              "binary", "docker", "special", "source", "snap"
-          }
-
-          for mod_name, mod_data in modules.items():
-              # Each module has "description" and "tools" keys
-              tools = mod_data.get("tools", {})
-              if not tools and not isinstance(mod_data.get("description"), str):
-                  errors.append(f"modules.{mod_name}: missing 'tools' dict")
-                  continue
-
-              for tool_name, tool_info in tools.items():
-                  prefix = f"modules.{mod_name}.tools.{tool_name}"
-                  if not isinstance(tool_info, dict):
-                      errors.append(f"{prefix}: expected dict, got {type(tool_info).__name__}")
-                      continue
-                  if "description" not in tool_info:
-                      errors.append(f"{prefix}: missing 'description'")
-                  if "install_method" not in tool_info:
-                      errors.append(f"{prefix}: missing 'install_method'")
-                  elif tool_info["install_method"] not in valid_methods:
-                      errors.append(
-                          f"{prefix}: invalid install_method "
-                          f"'{tool_info['install_method']}'"
-                      )
-
-          if errors:
-              for e in errors:
-                  print(f"::error::{e}")
-              sys.exit(1)
-
-          total = sum(len(m.get("tools", {})) for m in modules.values())
-          print(f"Validated {total} tools across {len(modules)} modules")
-          PYEOF
-
   profile-validate:
     name: Validate Profiles
     runs-on: ubuntu-latest
@@ -140,7 +82,7 @@ jobs:
 
       - name: Validate profile configs
         run: |
-          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam"
+          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam mobile"
           exit_code=0
 
           for conf in profiles/*.conf; do

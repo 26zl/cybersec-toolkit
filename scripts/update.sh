@@ -14,6 +14,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/installers.sh"
 
 # Source all modules to get tool arrays (ALL_MODULES defined in lib/common.sh)
 for mod in "${ALL_MODULES[@]}"; do
@@ -33,7 +34,9 @@ Options:
   --skip-git       Skip Git repo update
   --skip-gems      Skip Ruby gem update
   --skip-cargo     Skip Cargo tool update
+  --skip-binary    Skip binary release update
   --skip-special   Skip Metasploit/ZAP update
+  --skip-docker    Skip Docker image update
   -h, --help       Show this help and exit
 EOF
     exit 0
@@ -46,7 +49,9 @@ SKIP_GO=false
 SKIP_GIT=false
 SKIP_GEMS=false
 SKIP_CARGO=false
+SKIP_BINARY=false
 SKIP_SPECIAL=false
+SKIP_DOCKER=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -56,7 +61,9 @@ while [[ $# -gt 0 ]]; do
         --skip-git)     SKIP_GIT=true; shift ;;
         --skip-gems)    SKIP_GEMS=true; shift ;;
         --skip-cargo)   SKIP_CARGO=true; shift ;;
+        --skip-binary)  SKIP_BINARY=true; shift ;;
         --skip-special) SKIP_SPECIAL=true; shift ;;
+        --skip-docker)  SKIP_DOCKER=true; shift ;;
         -h|--help)      exec "$0" --help ;;
         *)              shift ;;
     esac
@@ -89,7 +96,7 @@ echo ""
 if [[ "$SKIP_PIPX" == "false" ]]; then
     if command_exists pipx; then
         log_info "Updating pipx packages..."
-        run_as_user pipx upgrade-all >> "$LOG_FILE" 2>&1 || true
+        pipx upgrade-all >> "$LOG_FILE" 2>&1 || true
         log_success "pipx packages updated"
     else
         log_warn "pipx not found — skipping Python tool updates"
@@ -104,8 +111,7 @@ echo ""
 # =============================================================================
 if [[ "$SKIP_GO" == "false" ]]; then
     if command_exists go; then
-        export GOPATH="${GOPATH:-$REAL_HOME/go}"
-        export PATH="$GOPATH/bin:$PATH"
+        # GOPATH and GOBIN are set in common.sh (system-wide: /opt/go, /usr/local/bin)
         log_info "Updating Go tools..."
 
         # Aggregate all Go install paths from all modules
@@ -126,6 +132,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
         [[ ${#STEGO_GO[@]} -gt 0 ]]     && ALL_GO_TOOLS+=("${STEGO_GO[@]}")
         [[ ${#CONTAINER_GO[@]} -gt 0 ]] && ALL_GO_TOOLS+=("${CONTAINER_GO[@]}")
         [[ ${#BLUETEAM_GO[@]} -gt 0 ]]   && ALL_GO_TOOLS+=("${BLUETEAM_GO[@]}")
+        [[ ${#MOBILE_GO[@]} -gt 0 ]]    && ALL_GO_TOOLS+=("${MOBILE_GO[@]}")
 
         GO_TOTAL=${#ALL_GO_TOOLS[@]}
         GO_CURRENT=0
@@ -139,7 +146,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
             GO_CURRENT=$((GO_CURRENT + 1))
             tool_name=$(echo "$tool" | rev | cut -d/ -f1 | rev | cut -d@ -f1)
             show_progress "$GO_CURRENT" "$GO_TOTAL" "$tool_name"
-            if run_as_user env GOPATH="$GOPATH" PATH="$PATH" go install "$tool" >> "$LOG_FILE" 2>&1; then
+            if go install "$tool" >> "$LOG_FILE" 2>&1; then
                 log_success "Updated: $tool_name"
             else
                 log_warn "Failed: $tool_name"
@@ -226,7 +233,7 @@ echo ""
 # =============================================================================
 if [[ "$SKIP_CARGO" == "false" ]]; then
     if command_exists cargo; then
-        export PATH="$REAL_HOME/.cargo/bin:$PATH"
+        export PATH="$HOME/.cargo/bin:$PATH"
         ALL_CARGO=()
         [[ ${#WEB_CARGO[@]} -gt 0 ]] && ALL_CARGO+=("${WEB_CARGO[@]}")
         # RustScan from networking module (installed via cargo)
@@ -238,7 +245,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
             for crate in "${ALL_CARGO[@]}"; do
-                run_as_user env PATH="$PATH" cargo install "$crate" >> "$LOG_FILE" 2>&1 && \
+                cargo install "$crate" >> "$LOG_FILE" 2>&1 && \
                     log_success "Updated cargo: $crate" || \
                     log_warn "Failed cargo: $crate"
             done
@@ -252,7 +259,71 @@ fi
 echo ""
 
 # =============================================================================
-# 7) Special tools
+# 7) Binary releases (GitHub release assets)
+# =============================================================================
+if [[ "$SKIP_BINARY" == "false" ]]; then
+    log_info "Updating binary releases..."
+    BIN_TOTAL=0
+    BIN_UPDATED=0
+
+    # Re-download only if the binary is already installed
+    update_binary() {
+        local repo="$1" binary="$2" pattern="$3" dest="${4:-/usr/local/bin}"
+        if command_exists "$binary" || [[ -f "$dest/$binary" ]] || [[ -f "$dest/bin/$binary" ]]; then
+            BIN_TOTAL=$((BIN_TOTAL + 1))
+            if download_github_release "$repo" "$binary" "$pattern" "$dest" >> "$LOG_FILE" 2>&1; then
+                log_success "Updated: $binary"
+                BIN_UPDATED=$((BIN_UPDATED + 1))
+            else
+                log_warn "Failed: $binary"
+            fi
+        fi
+    }
+
+    # misc
+    update_binary "DominicBreuker/pspy" "pspy" "pspy64"
+    update_binary "gophish/gophish" "gophish" "linux-64bit"
+    update_binary "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx"
+    update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar"
+    update_binary "trufflesecurity/trufflehog" "trufflehog" "linux_amd64\\.tar\\.gz"
+    # networking
+    update_binary "nicocha30/ligolo-ng" "ligolo-proxy" "linux_amd64"
+    update_binary "nicocha30/ligolo-ng" "ligolo-agent" "agent.*linux_amd64"
+    update_binary "fatedier/frp" "frp" "linux_amd64\\.tar\\.gz"
+    # recon
+    update_binary "Findomain/Findomain" "findomain" "linux"
+    # web
+    update_binary "frohoff/ysoserial" "ysoserial" "ysoserial-all.jar" "/opt/cybersec-jars"
+    # reversing
+    update_binary "0vercl0k/rp" "rp-lin" "rp-lin"
+    update_binary "java-decompiler/jd-gui" "jd-gui" "jd-gui.*\\.jar" "/opt/cybersec-jars"
+    # forensics
+    update_binary "WithSecureLabs/chainsaw" "chainsaw" "x86_64.*linux"
+    # ad
+    update_binary "ropnop/kerbrute" "kerbrute" "linux_amd64"
+    # blueteam
+    update_binary "Velocidex/velociraptor" "velociraptor" "linux-amd64$"
+    update_binary "threathunters-io/laurel" "laurel" "x86_64-glibc"
+    # containers
+    update_binary "aquasecurity/trivy" "trivy" "Linux-64bit\\.tar\\.gz"
+    update_binary "anchore/grype" "grype" "linux_amd64\\.tar\\.gz"
+    update_binary "Shopify/kubeaudit" "kubeaudit" "linux_amd64\\.tar\\.gz"
+    update_binary "cdk-team/CDK" "cdk" "cdk_linux_amd64"
+    # stego
+    update_binary "RickdeJager/stegseek" "stegseek" "\\.deb"
+
+    if [[ "$BIN_TOTAL" -gt 0 ]]; then
+        log_success "Binary releases: $BIN_UPDATED/$BIN_TOTAL updated"
+    else
+        log_info "No binary releases found to update"
+    fi
+else
+    log_warn "Skipping binary release update"
+fi
+echo ""
+
+# =============================================================================
+# 8) Special tools
 # =============================================================================
 if [[ "$SKIP_SPECIAL" == "false" ]]; then
     log_info "Updating special tools..."
@@ -277,6 +348,30 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
 else
     log_warn "Skipping special tool updates"
 fi
+
+# =============================================================================
+# 9) Docker images
+# =============================================================================
+if [[ "$SKIP_DOCKER" == "false" ]]; then
+    if command_exists docker; then
+        log_info "Updating Docker images..."
+        DOCKER_UPDATED=0
+        for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound" "strangebee/thehive:latest" "thehiveproject/cortex:latest"; do
+            if docker images "${img%%:*}" -q 2>/dev/null | grep -q .; then
+                if docker pull "$img" >> "$LOG_FILE" 2>&1; then
+                    log_success "Updated Docker: $img"
+                    DOCKER_UPDATED=$((DOCKER_UPDATED + 1))
+                else
+                    log_warn "Failed Docker: $img"
+                fi
+            fi
+        done
+        [[ "$DOCKER_UPDATED" -gt 0 ]] && log_success "Docker images: $DOCKER_UPDATED updated"
+    fi
+else
+    log_warn "Skipping Docker image update"
+fi
+echo ""
 
 # =============================================================================
 # Done

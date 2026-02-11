@@ -11,6 +11,8 @@ WEB_PIPX=(
     sqlmap wfuzz wafw00f sslyze dirsearch arjun paramspider
     droopescan wapiti3 tinja mitmproxy2swagger commix
     raccoon-scanner git-dumper cmseek
+    byp4xx corscanner drupwn fuxploider httpmethods
+    moodlescan xsrfprobe wpprobe
 )
 
 WEB_GO=(
@@ -29,11 +31,12 @@ WEB_GO=(
     "github.com/jaeles-project/jaeles@latest"
     "github.com/projectdiscovery/proxify/cmd/proxify@latest"
     "github.com/projectdiscovery/tlsx/cmd/tlsx@latest"
+    "github.com/BishopFox/jsluice/cmd/jsluice@latest"
 )
 
 WEB_CARGO=(feroxbuster)
 
-WEB_GEMS=(wpscan)
+WEB_GEMS=(wpscan xspear)
 
 WEB_GIT=(
     "XSStrike=https://github.com/s0md3v/XSStrike.git"
@@ -58,13 +61,20 @@ WEB_GIT=(
     "WPSploit=https://github.com/PentestStation/WPSploit.git"
     "phpggc=https://github.com/ambionics/phpggc.git"
     "PadBuster=https://github.com/AonCyberLabs/PadBuster.git"
+    "h2csmuggler=https://github.com/BishopFox/h2csmuggler.git"
+    "joomscan=https://github.com/rezasp/joomscan.git"
+    "bolt=https://github.com/s0md3v/bolt.git"
+    "pp-finder=https://github.com/yeswehack/pp-finder.git"
+    "symfony-exploits=https://github.com/ambionics/symfony-exploits.git"
+    "tomcatwardeployer=https://github.com/mgeeky/tomcatwardeployer.git"
+    "XXEinjector=https://github.com/enjoiz/XXEinjector.git"
 )
 
 WEB_DOCKER=("beefproject/beef:BeEF")
 
 # Binary names for verify/remove
-WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss getJS cariddi Gxss webanalyze subjack jaeles proxify tlsx)
-WEB_GIT_NAMES=(XSStrike xsser Corsy LinkFinder jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap tplmap weevely3 DotDotPwn PhpSploit Kadimus LFISuite WPSploit phpggc PadBuster)
+WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss getJS cariddi Gxss webanalyze subjack jaeles proxify tlsx jsluice)
+WEB_GIT_NAMES=(XSStrike xsser Corsy LinkFinder jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap tplmap weevely3 DotDotPwn PhpSploit Kadimus LFISuite WPSploit phpggc PadBuster h2csmuggler joomscan bolt pp-finder symfony-exploits tomcatwardeployer XXEinjector)
 
 install_module_web() {
     install_apt_batch "Web - Packages" "${WEB_PACKAGES[@]}"

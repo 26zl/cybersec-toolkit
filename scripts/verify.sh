@@ -33,7 +33,8 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, ad, wireless, password, stego, cloud, containers, blueteam
+         malware, ad, wireless, password, stego, cloud, containers, blueteam,
+         mobile
 EOF
     exit 0
 fi
@@ -111,7 +112,7 @@ check_pipx() {
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
         [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed (pipx/PATH)"
         return 0
-    elif command_exists pipx && pipx list 2>/dev/null | grep -q "$tool"; then
+    elif command_exists pipx && pipx list --short 2>/dev/null | grep -qi "^${tool} "; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
         [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed (pipx)"
         return 0
@@ -124,10 +125,10 @@ check_pipx() {
 
 check_go_bin() {
     local bin="$1"
-    local gopath="${GOPATH:-$HOME/go}"
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
 
-    if [[ -f "$gopath/bin/$bin" ]] || command_exists "$bin"; then
+    # Go binaries install to GOBIN=/usr/local/bin (system-wide)
+    if command_exists "$bin"; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
         [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$bin — installed (Go)"
         return 0
@@ -194,7 +195,7 @@ if should_verify "misc"; then
     echo ""
     log_info "========== Module: misc =========="
     log_info "Base Dependencies:"
-    check_cmds git curl wget openssl python3 pip3 ruby go java cmake dos2unix rlwrap adb
+    check_cmds git curl wget openssl python3 pip3 ruby go java cmake dos2unix rlwrap
     check_cmd_any "imagemagick" convert magick || true
     log_info "Security Tools:"
     check_cmds lynis rkhunter chkrootkit
@@ -339,6 +340,8 @@ if should_verify "ad"; then
     log_info "========== Module: ad =========="
     log_info "AD (pipx):"
     check_pipx_arr "${AD_PIPX[@]}"
+    log_info "AD (Go):"
+    check_go_bins "${AD_GO_BINS[@]}"
     log_info "AD (Gems):"
     check_gems "${AD_GEMS[@]}"
     log_info "AD (Git):"
@@ -353,6 +356,8 @@ if should_verify "wireless"; then
     log_info "Wireless (packages):"
     check_cmds aircrack-ng reaver kismet pixiewps bully iw horst gnuradio-companion gqrx
     check_cmd_any "bluetooth" hciconfig bluetoothctl || true
+    log_info "Wireless (pipx):"
+    check_pipx_arr "${WIRELESS_PIPX[@]}"
     log_info "Wireless (Git):"
     check_git_repos "${WIRELESS_GIT_NAMES[@]}"
 fi
@@ -402,6 +407,17 @@ if should_verify "containers"; then
     check_git_repos "${CONTAINER_GIT_NAMES[@]}"
     log_info "Containers (Binary):"
     check_cmds trivy grype kubeaudit cdk
+fi
+
+if should_verify "mobile"; then
+    echo ""
+    log_info "========== Module: mobile =========="
+    log_info "Mobile (packages):"
+    check_cmds adb smali scrcpy apksigner zipalign
+    log_info "Mobile (pipx):"
+    check_pipx_arr "${MOBILE_PIPX[@]}"
+    log_info "Mobile (Git):"
+    check_git_repos "${MOBILE_GIT_NAMES[@]}"
 fi
 
 if should_verify "blueteam"; then

@@ -35,7 +35,8 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, ad, wireless, password, stego, cloud, containers, blueteam
+         malware, ad, wireless, password, stego, cloud, containers, blueteam,
+         mobile
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems).
@@ -180,6 +181,7 @@ fi
 # --- AD ---
 if should_remove "ad"; then
     [[ ${#AD_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${AD_PIPX[@]}")
+    [[ ${#AD_GO_BINS[@]} -gt 0 ]]     && GO_BINS_TO_REMOVE+=("${AD_GO_BINS[@]}")
     [[ ${#AD_GEMS[@]} -gt 0 ]]        && GEMS_TO_REMOVE+=("${AD_GEMS[@]}")
     [[ ${#AD_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${AD_GIT_NAMES[@]}")
 fi
@@ -187,6 +189,7 @@ fi
 # --- Wireless ---
 if should_remove "wireless"; then
     [[ ${#WIRELESS_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${WIRELESS_PACKAGES[@]}")
+    [[ ${#WIRELESS_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${WIRELESS_PIPX[@]}")
     [[ ${#WIRELESS_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${WIRELESS_GIT_NAMES[@]}")
 fi
 
@@ -215,6 +218,13 @@ fi
 # --- Containers ---
 if should_remove "containers"; then
     [[ ${#CONTAINER_GIT_NAMES[@]} -gt 0 ]] && GIT_NAMES_TO_REMOVE+=("${CONTAINER_GIT_NAMES[@]}")
+fi
+
+# --- Mobile ---
+if should_remove "mobile"; then
+    [[ ${#MOBILE_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${MOBILE_PACKAGES[@]}")
+    [[ ${#MOBILE_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${MOBILE_PIPX[@]}")
+    [[ ${#MOBILE_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${MOBILE_GIT_NAMES[@]}")
 fi
 
 # --- Blue Team ---
@@ -256,13 +266,13 @@ fi
 echo ""
 
 # --- 3) Go binaries ----------------------------------------------------------
-GOPATH="${GOPATH:-$HOME/go}"
-if [[ ${#GO_BINS_TO_REMOVE[@]} -gt 0 ]] && [[ -d "$GOPATH/bin" ]]; then
+# Go binaries are installed to /usr/local/bin (GOBIN) system-wide
+if [[ ${#GO_BINS_TO_REMOVE[@]} -gt 0 ]]; then
     log_info "Removing ${#GO_BINS_TO_REMOVE[@]} Go binaries..."
     for bin in "${GO_BINS_TO_REMOVE[@]}"; do
-        if [[ -f "$GOPATH/bin/$bin" ]]; then
-            rm -f "$GOPATH/bin/$bin"
-            log_success "Removed: $GOPATH/bin/$bin"
+        if [[ -f "/usr/local/bin/$bin" ]]; then
+            rm -f "/usr/local/bin/$bin"
+            log_success "Removed: /usr/local/bin/$bin"
         fi
     done
 fi
@@ -346,8 +356,11 @@ if should_remove "web" && snap_available && snap list zaproxy &>/dev/null; then
     log_success "OWASP ZAP removed"
 fi
 
-# Burp Suite installer (clean up any mktemp leftovers matching the pattern)
-find /tmp -maxdepth 1 -name 'tmp*.sh' -user root -newer "$SCRIPT_DIR/install.sh" -delete 2>/dev/null || true
+# Burp Suite installer cleanup (deterministic path only)
+if [[ -d "/opt/burpsuite-installer" ]]; then
+    rm -rf "/opt/burpsuite-installer"
+    log_success "Removed Burp Suite installer directory"
+fi
 
 # Docker images (only on full removal)
 if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then

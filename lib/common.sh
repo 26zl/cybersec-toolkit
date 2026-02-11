@@ -166,41 +166,32 @@ check_root() {
 # ----- pipx ------------------------------------------------------------------
 ensure_pipx() {
     if ! command_exists pipx; then
-        log_info "Installing pipx..."
-        pkg_install pipx 2>/dev/null || {
-            # Fallback: install via pip as the real user (not root)
-            if command_exists pip3; then
-                run_as_user pip3 install --user pipx 2>/dev/null
-                run_as_user python3 -m pipx ensurepath 2>/dev/null
-            elif command_exists pip; then
-                run_as_user pip install --user pipx 2>/dev/null
-                run_as_user python3 -m pipx ensurepath 2>/dev/null
-            fi
-        }
-        # Ensure PATH includes pipx bin dir for the real user
-        export PATH="$REAL_HOME/.local/bin:$PATH"
+        log_info "Installing pipx via package manager..."
+        if ! pkg_install pipx >> "$LOG_FILE" 2>&1; then
+            log_error "Failed to install pipx — Python tools will NOT be installed"
+            log_error "Install pipx manually: https://pipx.pypa.io/stable/installation/"
+            return 1
+        fi
     fi
 }
 
 pipx_install() {
     local pkg="$1"
-    ensure_pipx
-    if command_exists pipx; then
-        # Check if already installed — skip to avoid unnecessary reinstalls
-        if run_as_user pipx list --short 2>/dev/null | grep -qi "^${pkg} "; then
-            return 0
-        fi
-        run_as_user pipx install "$pkg" 2>/dev/null || run_as_user pipx install "$pkg" --force 2>/dev/null
-    else
-        log_warn "pipx unavailable, falling back to pip3 install --user for $pkg"
-        run_as_user pip3 install --user "$pkg" 2>/dev/null
+    ensure_pipx || return 1
+    if ! command_exists pipx; then
+        log_error "pipx unavailable — cannot install $pkg (install pipx first)"
+        return 1
     fi
+    if pipx list --short 2>/dev/null | grep -qi "^${pkg} "; then
+        return 0
+    fi
+    pipx install "$pkg" 2>/dev/null || pipx install "$pkg" --force 2>/dev/null
 }
 
 pipx_remove() {
     local pkg="$1"
     if command_exists pipx; then
-        run_as_user pipx uninstall "$pkg" 2>/dev/null || true
+        pipx uninstall "$pkg" 2>/dev/null || true
     fi
 }
 
@@ -213,7 +204,7 @@ git_clone_or_pull() {
         git -C "$dest" pull -q 2>/dev/null || true
     else
         log_info "Cloning $(basename "$dest")..."
-        sudo git clone --depth 1 -q "$repo_url" "$dest" 2>/dev/null
+        git clone --depth 1 -q "$repo_url" "$dest" 2>/dev/null
     fi
 }
 
@@ -259,29 +250,17 @@ BANNER
 
 # ----- Module registry (single source of truth) -----------------------------
 # shellcheck disable=SC2034  # Used by all scripts that source this file
-ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam)
+ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam mobile)
 
 # ----- Auto-init on source ---------------------------------------------------
 detect_pkg_manager
 
-# ----- User detection (privilege splitting) ----------------------------------
-# When running under sudo, detect the real (non-root) user for tools that
-# should install to user-space (pipx, go, cargo).  Root is only needed for
-# system packages, /usr/local/bin binaries, and Docker.
-if [[ $EUID -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]]; then
-    REAL_USER="$SUDO_USER"
-    REAL_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-else
-    REAL_USER="${USER:-root}"
-    REAL_HOME="$HOME"
-fi
-export REAL_USER REAL_HOME
-
-# Run a command as the real (non-root) user
-run_as_user() {
-    if [[ $EUID -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]]; then
-        sudo -u "$SUDO_USER" -H "$@"
-    else
-        "$@"
-    fi
-}
+# ----- Tool paths (system-wide install) --------------------------------------
+# Go: GOBIN puts binaries directly in /usr/local/bin (accessible to all users)
+export GOPATH="${GOPATH:-/opt/go}"
+export GOBIN="/usr/local/bin"
+# pipx: install venvs to /opt/pipx, binaries to /usr/local/bin
+export PIPX_HOME="/opt/pipx"
+export PIPX_BIN_DIR="/usr/local/bin"
+# Cargo: keep in root's home but symlink to /usr/local/bin after install
+export PATH="/usr/local/bin:$HOME/.cargo/bin:$PATH"

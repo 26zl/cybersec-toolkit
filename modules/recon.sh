@@ -15,6 +15,7 @@ RECON_PIPX=(
     ssh-audit sn0int pagodo
     autorecon finalrecon hosthunter inspy photon parsero
     emailharvester maryam osrframework
+    censys ignorant instaloader pwnedornot zehef pymeta
 )
 
 RECON_GO=(
@@ -68,11 +69,17 @@ RECON_GIT=(
     "WitnessMe=https://github.com/byt3bl33d3r/WitnessMe.git"
     "Gato=https://github.com/praetorian-inc/gato.git"
     "subbrute=https://github.com/TheRook/subbrute.git"
+    "carbon14=https://github.com/Lazza/carbon14.git"
+    "GeoPincer=https://github.com/tloja/GeoPincer.git"
+    "pwndb=https://github.com/davidtavarez/pwndb.git"
+    "SimplyEmail=https://github.com/SimplySecurity/SimplyEmail.git"
+    "Yalis=https://github.com/EatonChips/yalis.git"
+    "EyeWitness=https://github.com/FortyNorthSecurity/EyeWitness.git"
 )
 
 # Binary names for verify/remove
 RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx phoneinfoga commit-stream subzy metabigor)
-RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy Infoga spoofcheck certSniff AWSBucketDump linkedin2username dnscan LinkedInt AttackSurfaceMapper WitnessMe Gato subbrute)
+RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy Infoga spoofcheck certSniff AWSBucketDump linkedin2username dnscan LinkedInt AttackSurfaceMapper WitnessMe Gato subbrute carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness)
 
 install_module_recon() {
     install_apt_batch "Recon / OSINT - Packages" "${RECON_PACKAGES[@]}"

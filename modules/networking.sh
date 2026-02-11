@@ -13,7 +13,7 @@ NET_PACKAGES=(
     ettercap-graphical mitmproxy dsniff
     wireshark-common tshark sslsplit
     tor proxychains4 macchanger
-    snort yersinia zeek
+    snort yersinia
     fping ngrep dns2tcp tcpflow tcpreplay
     netsniff-ng cryptcat arping sslstrip
 )

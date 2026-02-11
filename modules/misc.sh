@@ -13,7 +13,7 @@ MISC_BASE_PACKAGES=(
     ruby ruby-dev golang-go default-jdk
     libpcap-dev libssl-dev libffi-dev
     zlib1g-dev libxml2-dev libxslt1-dev
-    dos2unix rlwrap adb imagemagick
+    dos2unix rlwrap imagemagick
 )
 
 # --- Security / detection tools ---
@@ -23,7 +23,7 @@ MISC_SECURITY_PACKAGES=(lynis rkhunter chkrootkit)
 MISC_HEAVY_PACKAGES=(gimp audacity sagemath)
 
 MISC_PIPX=(
-    arsenal-cli gittools objection androguard apkleaks
+    arsenal-cli gittools
     sploitscan changeme dumpsterdiver faraday-cli
 )
 
@@ -64,7 +64,6 @@ MISC_POSTEXPLOIT=(
     "Cloakify=https://github.com/TryCatchHCF/Cloakify.git"
     "PyExfil=https://github.com/ytisf/PyExfil.git"
     "GD-Thief=https://github.com/antman1p/GD-Thief.git"
-    "moonwalk=https://github.com/mufeedvh/moonwalk.git"
     "usbkill=https://github.com/hephaest0s/usbkill.git"
     "LinEnum=https://github.com/rebootuser/LinEnum.git"
     "Hwacha=https://github.com/n00py/Hwacha.git"
@@ -87,11 +86,6 @@ MISC_SOCIAL=(
     "Catphish=https://github.com/ring0lab/catphish.git"
 )
 
-# --- Mobile ---
-MISC_MOBILE=(
-    "apktool=https://github.com/iBotPeaches/Apktool.git"
-)
-
 # --- CTF / General ---
 MISC_CTF=(
     "CyberChef=https://github.com/gchq/CyberChef.git"
@@ -104,23 +98,10 @@ MISC_CTF=(
     "powercat=https://github.com/besimorhino/powercat.git"
 )
 
-# --- C2 Frameworks (Docker only, optional) ---
-MISC_C2_DOCKER=(
-    "bcsecurity/empire:Empire"
-)
-MISC_C2_GIT=(
-    "Sliver=https://github.com/BishopFox/sliver.git"
-    "Havoc=https://github.com/HavocFramework/Havoc.git"
-    "Villain=https://github.com/t3l3machus/Villain.git"
-    "PoshC2=https://github.com/nettitude/PoshC2.git"
-    "Mythic=https://github.com/its-a-feature/Mythic.git"
-    "Pupy=https://github.com/n1nj4sec/pupy.git"
-    "Covenant=https://github.com/cobbr/Covenant.git"
-    "NimPlant=https://github.com/chvancooten/NimPlant.git"
-    "Merlin=https://github.com/Ne0nd0g/merlin.git"
-    "Koadic=https://github.com/zerosum0x0/koadic.git"
-    "SILENTTRINITY=https://github.com/byt3bl33d3r/SILENTTRINITY.git"
-)
+# --- C2 Frameworks (Docker ONLY — these require complex multi-service setup) ---
+# C2 frameworks are not runnable from a simple git clone; they need databases,
+# listeners, agents, and service orchestration.  Docker is the only supported
+# install method to ensure they work out-of-the-box.
 
 # All git repo names for verify/remove
 MISC_GIT_NAMES=(
@@ -128,14 +109,13 @@ MISC_GIT_NAMES=(
     InternalAllTheThings GTFOBins.github.io WADComs BlueTeam-Tools
     PEASS-ng linux-exploit-suggester linux-smart-enumeration SUDO_KILLER
     BeRoot PrivescCheck LaZagne mimipenguin PowerSploit
-    Cloakify PyExfil GD-Thief moonwalk usbkill
+    Cloakify PyExfil GD-Thief usbkill
     LinEnum Hwacha pivotsuite unix-privesc-check LOLBAS
     SET Zphisher SocialFish EvilGoPhish SquarePhish CredMaster king-phisher
     Modlishka ReelPhish Catphish
-    apktool CyberChef ctf-tools CTF-Katana
+    CyberChef ctf-tools CTF-Katana
     Caldera atomic-red-team RedEye
     ibombshell powercat
-    Sliver Havoc Villain PoshC2 Mythic Pupy Covenant NimPlant Merlin Koadic SILENTTRINITY
 )
 MISC_GO_BINS=(gf anew qsreplace gitleaks notify evilginx2)
 
@@ -166,9 +146,6 @@ install_module_misc() {
     # Social engineering
     install_git_batch "Social Engineering" "${MISC_SOCIAL[@]}"
 
-    # Mobile
-    install_git_batch "Mobile" "${MISC_MOBILE[@]}"
-
     # CTF general
     install_git_batch "CTF Tools" "${MISC_CTF[@]}"
 
@@ -180,21 +157,17 @@ install_module_misc() {
     download_github_release "trufflesecurity/trufflehog" "trufflehog" "linux_amd64\\.tar\\.gz" || true
     # stegseek is installed by the stego module
 
-    # Docker: C2 frameworks (only if enabled)
+    # Docker: C2 frameworks and OSINT (only if enabled — no git clone fallback)
+    # C2 frameworks require Docker for full functionality (databases, listeners, etc.)
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
-        log_info "Installing C2 frameworks via Docker..."
-        for entry in "${MISC_C2_DOCKER[@]}"; do
-            local image="${entry%%:*}"
-            local name="${entry#*:}"
-            docker_pull "$image" "$name" || true
-        done
-
-        docker_pull "opensecurity/mobile-security-framework-mobsf" "MobSF" || true
         docker_pull "spiderfoot/spiderfoot" "SpiderFoot" || true
-    fi
-
-    # C2 Git clones (fallback when Docker not available)
-    if [[ "${ENABLE_DOCKER:-false}" != "true" && "${INCLUDE_C2:-false}" == "true" ]]; then
-        install_git_batch "C2 Frameworks" "${MISC_C2_GIT[@]}"
+        if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+            log_info "Installing C2 frameworks via Docker..."
+            docker_pull "bcsecurity/empire" "Empire" || true
+        fi
+    else
+        if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+            log_warn "C2 frameworks require --enable-docker. Skipping."
+        fi
     fi
 }
