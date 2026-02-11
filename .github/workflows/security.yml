@@ -142,13 +142,16 @@ jobs:
   scorecard:
     name: OSSF Scorecard
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    # Scorecard requires public repo access for GraphQL queries.
+    # Skips on PRs and private repos — runs automatically once the repo is public.
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.event.repository.visibility == 'public'
     permissions:
       contents: read
       security-events: write
       id-token: write
       actions: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
