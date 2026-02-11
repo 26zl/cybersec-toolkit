@@ -131,12 +131,14 @@ install_apt_batch() {
 
     local total=${#packages[@]}
     [[ "$total" -eq 0 ]] && return 0
-    local current=0 failed=0
+    local current=0 failed=0 skipped=0
 
     log_info "Installing ${label} ($total packages)..."
     for pkg in "${packages[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$pkg"
+        # apt/dnf/pacman handle already-installed packages gracefully (no-op),
+        # but we still track the outcome consistently.
         if ! pkg_install "$pkg" >> "$LOG_FILE" 2>&1; then
             log_error "Failed: $pkg"
             failed=$((failed + 1))
@@ -145,7 +147,7 @@ install_apt_batch() {
         fi
     done
     echo ""
-    log_success "${label}: $((total - failed))/$total installed"
+    log_success "${label}: $((total - failed))/$total installed ($failed failed)"
 }
 
 # ----- Batch pipx install ---------------------------------------------------
@@ -154,13 +156,25 @@ install_pipx_batch() {
     local -a tools=("$@")
     local total=${#tools[@]}
     [[ "$total" -eq 0 ]] && return 0
-    local current=0 failed=0
+    local current=0 failed=0 skipped=0
 
     ensure_pipx
+    # Cache the installed list once to avoid calling pipx list per tool
+    local installed_pipx=""
+    if command_exists pipx; then
+        installed_pipx=$(run_as_user pipx list --short 2>/dev/null || true)
+    fi
+
     log_info "Installing ${label} ($total pipx tools)..."
     for tool in "${tools[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$tool"
+        # Skip if already installed
+        if echo "$installed_pipx" | grep -qi "^${tool} "; then
+            skipped=$((skipped + 1))
+            track_version "$tool" "pipx" "existing"
+            continue
+        fi
         if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
             log_error "Failed pipx: $tool"
             failed=$((failed + 1))
@@ -169,7 +183,7 @@ install_pipx_batch() {
         fi
     done
     echo ""
-    log_success "${label}: $((total - failed))/$total installed"
+    log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
 }
 
 # ----- Batch Go install -----------------------------------------------------
@@ -186,13 +200,19 @@ install_go_batch() {
     export GOPATH="${GOPATH:-$REAL_HOME/go}"
     export PATH="$GOPATH/bin:$PATH"
 
-    local current=0 failed=0
+    local current=0 failed=0 skipped=0
     log_info "Installing ${label} ($total Go tools)..."
     for tool in "${tools[@]}"; do
         current=$((current + 1))
         local name
         name=$(echo "$tool" | rev | cut -d/ -f1 | rev | cut -d@ -f1)
         show_progress "$current" "$total" "$name"
+        # Skip if binary already exists
+        if [[ -f "$GOPATH/bin/$name" ]] || command_exists "$name"; then
+            skipped=$((skipped + 1))
+            track_version "$name" "go" "existing"
+            continue
+        fi
         if ! run_as_user env GOPATH="$GOPATH" PATH="$PATH" go install "$tool" >> "$LOG_FILE" 2>&1; then
             log_error "Failed go: $name"
             failed=$((failed + 1))
@@ -201,7 +221,7 @@ install_go_batch() {
         fi
     done
     echo ""
-    log_success "${label}: $((total - failed))/$total installed"
+    log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
 }
 
 # ----- Batch cargo install --------------------------------------------------
@@ -224,11 +244,17 @@ install_cargo_batch() {
     fi
     export PATH="$REAL_HOME/.cargo/bin:$PATH"
 
-    local current=0 failed=0
+    local current=0 failed=0 skipped=0
     log_info "Installing ${label} ($total Rust tools)..."
     for crate in "${crates[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$crate"
+        # Skip if binary already exists
+        if [[ -f "$REAL_HOME/.cargo/bin/$crate" ]] || command_exists "$crate"; then
+            skipped=$((skipped + 1))
+            track_version "$crate" "cargo" "existing"
+            continue
+        fi
         if ! run_as_user env PATH="$PATH" cargo install "$crate" >> "$LOG_FILE" 2>&1; then
             log_error "Failed cargo: $crate"
             failed=$((failed + 1))
@@ -237,7 +263,7 @@ install_cargo_batch() {
         fi
     done
     echo ""
-    log_success "${label}: $((total - failed))/$total installed"
+    log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
 }
 
 # ----- Batch gem install ----------------------------------------------------
@@ -252,11 +278,19 @@ install_gem_batch() {
         return 0
     fi
 
-    local current=0 failed=0
+    local current=0 failed=0 skipped=0
     log_info "Installing ${label} ($total Ruby gems)..."
+    local installed_gems=""
+    installed_gems=$(gem list --no-details 2>/dev/null || true)
     for gem_name in "${gems[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$gem_name"
+        # Skip if already installed
+        if echo "$installed_gems" | grep -q "^${gem_name} "; then
+            skipped=$((skipped + 1))
+            track_version "$gem_name" "gem" "existing"
+            continue
+        fi
         if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
             track_version "$gem_name" "gem" "latest"
         else
@@ -265,7 +299,7 @@ install_gem_batch() {
         fi
     done
     echo ""
-    log_success "${label}: $((total - failed))/$total installed"
+    log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
 }
 
 # ----- Batch git clone ------------------------------------------------------
@@ -275,7 +309,7 @@ install_git_batch() {
     local -a repos=("$@")
     local total=${#repos[@]}
     [[ "$total" -eq 0 ]] && return 0
-    local current=0 failed=0
+    local current=0 failed=0 skipped=0
 
     local base_dir="$GITHUB_TOOL_DIR"
     log_info "Installing ${label} ($total repos)..."
@@ -285,15 +319,19 @@ install_git_batch() {
         local url="${entry#*=}"
         local dest="$base_dir/$name"
         show_progress "$current" "$total" "$name"
+        # Existing repos get a pull instead of clone (handled by git_clone_or_pull)
+        local is_existing=false
+        [[ -d "$dest/.git" ]] && is_existing=true
         if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
             log_error "Failed git: $name"
             failed=$((failed + 1))
         else
+            [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
             track_version "$name" "git" "HEAD"
         fi
     done
     echo ""
-    log_success "${label}: $((total - failed))/$total cloned"
+    log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} updated, ${failed} failed"
 }
 
 # ----- Verify download against release checksum file ------------------------

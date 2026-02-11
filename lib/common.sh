@@ -186,6 +186,10 @@ pipx_install() {
     local pkg="$1"
     ensure_pipx
     if command_exists pipx; then
+        # Check if already installed — skip to avoid unnecessary reinstalls
+        if run_as_user pipx list --short 2>/dev/null | grep -qi "^${pkg} "; then
+            return 0
+        fi
         run_as_user pipx install "$pkg" 2>/dev/null || run_as_user pipx install "$pkg" --force 2>/dev/null
     else
         log_warn "pipx unavailable, falling back to pip3 install --user for $pkg"
