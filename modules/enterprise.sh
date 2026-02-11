@@ -1,13 +1,14 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # =============================================================================
-# Module: Active Directory
-# AD attacks, Kerberos, LDAP, Windows network pentesting
+# Module: Enterprise
+# Active Directory, Kerberos, LDAP, Azure AD, Windows network pentesting,
+# credential harvesting, lateral movement
 # =============================================================================
 
-AD_PACKAGES=()
+ENTERPRISE_PACKAGES=()
 
-AD_PIPX=(
+ENTERPRISE_PIPX=(
     impacket certipy-ad coercer bloodhound mitm6
     lsassy sprayhound ldapdomaindump pypykatz
     adidnsdump dploot bloodyad hekatomb
@@ -16,14 +17,14 @@ AD_PIPX=(
     netexec ldeep smbclientng ldapsearchad
 )
 
-AD_GO=(
+ENTERPRISE_GO=(
     "github.com/Macmod/godap@latest"
     "github.com/RedTeamPentesting/pretender@latest"
 )
 
-AD_GEMS=(evil-winrm)
+ENTERPRISE_GEMS=(evil-winrm)
 
-AD_GIT=(
+ENTERPRISE_GIT=(
     "Responder=https://github.com/lgandx/Responder.git"
     "Rubeus=https://github.com/GhostPack/Rubeus.git"
     "ADRecon=https://github.com/adrecon/ADRecon.git"
@@ -83,18 +84,18 @@ AD_GIT=(
     "gosecretsdump=https://github.com/c-sto/gosecretsdump.git"
 )
 
-AD_GO_BINS=(godap pretender)
-AD_GIT_NAMES=(Responder Rubeus ADRecon enum4linux-ng linWinPwn PCredz WMIOps MailSniper Invoke-Obfuscation Snaffler GraphRunner TokenTactics Invoke-TheHash SCShell krbrelayx nishang redsnarf spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bloodhound-quickwin bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
+ENTERPRISE_GO_BINS=(godap pretender)
+ENTERPRISE_GIT_NAMES=(Responder Rubeus ADRecon enum4linux-ng linWinPwn PCredz WMIOps MailSniper Invoke-Obfuscation Snaffler GraphRunner TokenTactics Invoke-TheHash SCShell krbrelayx nishang redsnarf spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bloodhound-quickwin bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
 
-install_module_ad() {
-    [[ ${#AD_PACKAGES[@]} -gt 0 ]] && install_apt_batch "AD - Packages" "${AD_PACKAGES[@]}"
-    install_pipx_batch "AD - Python" "${AD_PIPX[@]}"
-    install_go_batch "AD - Go" "${AD_GO[@]}"
-    install_gem_batch "AD - Ruby" "${AD_GEMS[@]}"
-    install_git_batch "AD - Git" "${AD_GIT[@]}"
+install_module_enterprise() {
+    [[ ${#ENTERPRISE_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Enterprise - Packages" "${ENTERPRISE_PACKAGES[@]}"
+    install_pipx_batch "Enterprise - Python" "${ENTERPRISE_PIPX[@]}"
+    install_go_batch "Enterprise - Go" "${ENTERPRISE_GO[@]}"
+    install_gem_batch "Enterprise - Ruby" "${ENTERPRISE_GEMS[@]}"
+    install_git_batch "Enterprise - Git" "${ENTERPRISE_GIT[@]}"
 
     # Binary releases
-    download_github_release "ropnop/kerbrute" "kerbrute" "linux_amd64" || true
+    install_binary_releases "${BINARY_RELEASES_ENTERPRISE[@]}"
 
     # Docker: BloodHound (optional)
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then

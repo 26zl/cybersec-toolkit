@@ -10,7 +10,7 @@ STEGO_PACKAGES=(
     sonic-visualiser exiv2 pngtools
 )
 
-STEGO_PIPX=(stegoveritas)
+STEGO_PIPX=(stegoveritas stegcracker)
 
 STEGO_GO=()
 
@@ -32,5 +32,5 @@ install_module_stego() {
     install_git_batch "Stego - Git" "${STEGO_GIT[@]}"
 
     # Binary releases
-    download_github_release "RickdeJager/stegseek" "stegseek" "\\.deb" || true
+    install_binary_releases "${BINARY_RELEASES_STEGO[@]}"
 }

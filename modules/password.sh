@@ -28,7 +28,8 @@ PASSWORD_GIT=(
     "gpp-decrypt=https://github.com/t0thkr1s/gpp-decrypt.git"
 )
 
-PASSWORD_GIT_NAMES=(DefaultCreds-cheat-sheet cupp pipal duplicut Hob0Rules Pantagrule OneRuleToRuleThemStill username-anarchy gpp-decrypt)
+PASSWORD_GIT_NAMES=(DefaultCreds-cheat-sheet cupp pipal Hob0Rules Pantagrule OneRuleToRuleThemStill username-anarchy gpp-decrypt)
+PASSWORD_BUILD_NAMES=(duplicut)
 
 install_module_password() {
     install_apt_batch "Password - Packages" "${PASSWORD_PACKAGES[@]}"

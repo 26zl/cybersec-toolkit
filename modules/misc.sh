@@ -145,19 +145,10 @@ install_module_misc() {
     # CTF general
     install_git_batch "CTF Tools" "${MISC_CTF[@]}"
 
-    # Binary releases (ARM-aware patterns)
-    local pspy_pattern="pspy64$"
-    local gophish_pattern="linux-64bit"
-    if [[ "$SYS_ARCH" != "amd64" ]]; then
-        pspy_pattern="pspy_${SYS_ARCH}$"
-        gophish_pattern="linux-${SYS_ARCH}"
-    fi
-    download_github_release "DominicBreuker/pspy" "pspy" "$pspy_pattern" || true
-    download_github_release "gophish/gophish" "gophish" "$gophish_pattern" || true
+    # Binary releases
+    install_binary_releases "${BINARY_RELEASES_MISC[@]}"
     download_github_release "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx" || true
     download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar" || true
-    download_github_release "gitleaks/gitleaks" "gitleaks" "linux_amd64\\.tar\\.gz" || true
-    download_github_release "trufflesecurity/trufflehog" "trufflehog" "linux_amd64\\.tar\\.gz" || true
     # stegseek is installed by the stego module
 
     # Docker: C2 frameworks and OSINT (only if enabled — no git clone fallback)

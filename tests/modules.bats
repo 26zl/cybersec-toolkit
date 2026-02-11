@@ -16,7 +16,7 @@ setup() {
 
 # ---------- Module files exist -----------------------------------------------
 
-@test "all 17 module files exist" {
+@test "all 18 module files exist" {
     for mod in "${ALL_MODULES[@]}"; do
         [[ -f "$PROJECT_ROOT/modules/${mod}.sh" ]] || { echo "Missing: modules/${mod}.sh"; return 1; }
     done
@@ -45,7 +45,7 @@ _get_prefix() {
         reversing)  echo "RE" ;;
         forensics)  echo "FORENSICS" ;;
         malware)    echo "MALWARE" ;;
-        ad)         echo "AD" ;;
+        enterprise) echo "ENTERPRISE" ;;
         wireless)   echo "WIRELESS" ;;
         password)   echo "PASSWORD" ;;
         stego)      echo "STEGO" ;;
@@ -53,6 +53,7 @@ _get_prefix() {
         containers) echo "CONTAINER" ;;
         blueteam)   echo "BLUETEAM" ;;
         mobile)     echo "MOBILE" ;;
+        blockchain) echo "BLOCKCHAIN" ;;
     esac
 }
 
@@ -83,7 +84,7 @@ _get_prefix() {
     local git_arrays=(
         MISC_RESOURCES MISC_POSTEXPLOIT MISC_SOCIAL MISC_CTF
         NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
-        FORENSICS_GIT AD_GIT WIRELESS_GIT PASSWORD_GIT STEGO_GIT
+        FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT PASSWORD_GIT STEGO_GIT
         CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
     )
 
@@ -107,7 +108,7 @@ _get_prefix() {
 @test "all Go tool paths end with @latest" {
     local go_arrays=(
         MISC_GO NET_GO RECON_GO WEB_GO CRYPTO_GO PWN_GO RE_GO
-        FORENSICS_GO AD_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
+        FORENSICS_GO ENTERPRISE_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
         MALWARE_GO WIRELESS_GO PASSWORD_GO STEGO_GO
     )
 
@@ -129,7 +130,7 @@ _get_prefix() {
         [RECON_GO]=RECON_GO_BINS
         [WEB_GO]=WEB_GO_BINS
         [NET_GO]=NET_GO_BINS
-        [AD_GO]=AD_GO_BINS
+        [ENTERPRISE_GO]=ENTERPRISE_GO_BINS
     )
 
     for go_arr in "${!go_to_bins[@]}"; do
@@ -151,7 +152,7 @@ _get_prefix() {
         [RECON_GIT]=RECON_GIT_NAMES
         [WEB_GIT]=WEB_GIT_NAMES
         [NET_GIT]=NET_GIT_NAMES
-        [AD_GIT]=AD_GIT_NAMES
+        [ENTERPRISE_GIT]=ENTERPRISE_GIT_NAMES
     )
 
     for git_arr in "${!git_to_names[@]}"; do
@@ -171,7 +172,7 @@ _get_prefix() {
 @test "no duplicate entries in pipx arrays" {
     local pipx_arrays=(
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX MALWARE_PIPX AD_PIPX WIRELESS_PIPX PASSWORD_PIPX
+        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX PASSWORD_PIPX
         STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX
     )
 

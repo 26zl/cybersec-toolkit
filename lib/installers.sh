@@ -193,9 +193,6 @@ install_pipx_batch() {
     local total=${#tools[@]}
     [[ "$total" -eq 0 ]] && return 0
 
-    # pipx uses shared venv state — parallel installs cause lock conflicts
-    local _jobs=1
-
     log_debug "install_pipx_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
@@ -208,52 +205,23 @@ install_pipx_batch() {
 
     log_info "Installing ${label} ($total pipx tools)..."
 
-    if [[ "$_jobs" -gt 1 ]]; then
-        # --- Parallel mode ---
-        local _results_dir; _results_dir=$(mktemp -d)
-
-        for tool in "${tools[@]}"; do
-            # Skip-check in main process (no fork needed)
-            if echo "$installed_pipx" | grep -qi "^${tool} "; then
-                printf 'skip\nexisting\n' > "$_results_dir/$tool"
-                continue
-            fi
-
-            _wait_for_job_slot
-
-            (
-                if pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
-                    printf 'ok\nlatest\n' > "$_results_dir/$tool"
-                else
-                    printf 'fail\n\n' > "$_results_dir/$tool"
-                fi
-            ) &
-        done
-        wait
-
-        _collect_parallel_results "$_results_dir" "pipx"
-        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
-        local failed=$_par_failed skipped=$_par_skipped
-    else
-        # --- Sequential mode (original) ---
-        local current=0 failed=0 skipped=0
-        for tool in "${tools[@]}"; do
-            current=$((current + 1))
-            show_progress "$current" "$total" "$tool"
-            # Skip if already installed
-            if echo "$installed_pipx" | grep -qi "^${tool} "; then
-                skipped=$((skipped + 1))
-                track_version "$tool" "pipx" "existing"
-                continue
-            fi
-            if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
-                log_error "Failed pipx: $tool"
-                failed=$((failed + 1))
-            else
-                track_version "$tool" "pipx" "latest"
-            fi
-        done
-    fi
+    # pipx uses shared venv state — always sequential to avoid lock conflicts
+    local current=0 failed=0 skipped=0
+    for tool in "${tools[@]}"; do
+        current=$((current + 1))
+        show_progress "$current" "$total" "$tool"
+        if echo "$installed_pipx" | grep -qi "^${tool} "; then
+            skipped=$((skipped + 1))
+            track_version "$tool" "pipx" "existing"
+            continue
+        fi
+        if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
+            log_error "Failed pipx: $tool"
+            failed=$((failed + 1))
+        else
+            track_version "$tool" "pipx" "latest"
+        fi
+    done
 
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
@@ -355,68 +323,31 @@ install_cargo_batch() {
     fi
     export PATH="$HOME/.cargo/bin:$PATH"
 
-    # cargo uses a shared registry lock — parallel installs cause conflicts
-    local _jobs=1
-
     log_debug "install_cargo_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
     log_info "Installing ${label} ($total Rust tools)..."
 
-    if [[ "$_jobs" -gt 1 ]]; then
-        # --- Parallel mode ---
-        local _results_dir; _results_dir=$(mktemp -d)
-
-        for crate in "${crates[@]}"; do
-            # Skip-check in main process
-            if command_exists "$crate"; then
-                printf 'skip\nexisting\n' > "$_results_dir/$crate"
-                continue
+    # cargo uses a shared registry lock — always sequential to avoid conflicts
+    local current=0 failed=0 skipped=0
+    for crate in "${crates[@]}"; do
+        current=$((current + 1))
+        show_progress "$current" "$total" "$crate"
+        if command_exists "$crate"; then
+            skipped=$((skipped + 1))
+            track_version "$crate" "cargo" "existing"
+            continue
+        fi
+        if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
+            log_error "Failed cargo: $crate"
+            failed=$((failed + 1))
+        else
+            if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
+                ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
             fi
-
-            _wait_for_job_slot
-
-            (
-                if cargo install "$crate" >> "$LOG_FILE" 2>&1; then
-                    # Symlink cargo binary to /usr/local/bin for system-wide access
-                    if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-                        ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
-                    fi
-                    printf 'ok\nlatest\n' > "$_results_dir/$crate"
-                else
-                    printf 'fail\n\n' > "$_results_dir/$crate"
-                fi
-            ) &
-        done
-        wait
-
-        _collect_parallel_results "$_results_dir" "cargo"
-        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
-        local failed=$_par_failed skipped=$_par_skipped
-    else
-        # --- Sequential mode (original) ---
-        local current=0 failed=0 skipped=0
-        for crate in "${crates[@]}"; do
-            current=$((current + 1))
-            show_progress "$current" "$total" "$crate"
-            # Skip if binary already exists in /usr/local/bin or cargo bin
-            if command_exists "$crate"; then
-                skipped=$((skipped + 1))
-                track_version "$crate" "cargo" "existing"
-                continue
-            fi
-            if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
-                log_error "Failed cargo: $crate"
-                failed=$((failed + 1))
-            else
-                # Symlink cargo binary to /usr/local/bin for system-wide access
-                if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-                    ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
-                fi
-                track_version "$crate" "cargo" "latest"
-            fi
-        done
-    fi
+            track_version "$crate" "cargo" "latest"
+        fi
+    done
 
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
@@ -438,9 +369,6 @@ install_gem_batch() {
         return 0
     fi
 
-    # gem uses a shared gem dir — parallel installs cause conflicts
-    local _jobs=1
-
     log_debug "install_gem_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
@@ -450,52 +378,23 @@ install_gem_batch() {
 
     log_info "Installing ${label} ($total Ruby gems)..."
 
-    if [[ "$_jobs" -gt 1 ]]; then
-        # --- Parallel mode ---
-        local _results_dir; _results_dir=$(mktemp -d)
-
-        for gem_name in "${gems[@]}"; do
-            # Skip-check in main process
-            if echo "$installed_gems" | grep -q "^${gem_name} "; then
-                printf 'skip\nexisting\n' > "$_results_dir/$gem_name"
-                continue
-            fi
-
-            _wait_for_job_slot
-
-            (
-                if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
-                    printf 'ok\nlatest\n' > "$_results_dir/$gem_name"
-                else
-                    printf 'fail\n\n' > "$_results_dir/$gem_name"
-                fi
-            ) &
-        done
-        wait
-
-        _collect_parallel_results "$_results_dir" "gem"
-        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
-        local failed=$_par_failed skipped=$_par_skipped
-    else
-        # --- Sequential mode (original) ---
-        local current=0 failed=0 skipped=0
-        for gem_name in "${gems[@]}"; do
-            current=$((current + 1))
-            show_progress "$current" "$total" "$gem_name"
-            # Skip if already installed
-            if echo "$installed_gems" | grep -q "^${gem_name} "; then
-                skipped=$((skipped + 1))
-                track_version "$gem_name" "gem" "existing"
-                continue
-            fi
-            if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
-                track_version "$gem_name" "gem" "latest"
-            else
-                log_error "Failed gem: $gem_name"
-                failed=$((failed + 1))
-            fi
-        done
-    fi
+    # gem uses a shared gem dir — always sequential to avoid conflicts
+    local current=0 failed=0 skipped=0
+    for gem_name in "${gems[@]}"; do
+        current=$((current + 1))
+        show_progress "$current" "$total" "$gem_name"
+        if echo "$installed_gems" | grep -q "^${gem_name} "; then
+            skipped=$((skipped + 1))
+            track_version "$gem_name" "gem" "existing"
+            continue
+        fi
+        if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
+            track_version "$gem_name" "gem" "latest"
+        else
+            log_error "Failed gem: $gem_name"
+            failed=$((failed + 1))
+        fi
+    done
 
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
@@ -917,6 +816,66 @@ build_from_source() {
         log_error "Build failed: $name"
         return 1
     fi
+}
+
+# ----- Binary release registry (single source of truth) --------------------
+# Format: "repo|binary|pattern|dest_dir" (dest_dir optional, defaults to /usr/local/bin)
+# Used by modules for install and scripts/update.sh for updates.
+# shellcheck disable=SC2034  # Consumed by modules and update.sh
+BINARY_RELEASES_MISC=(
+    "DominicBreuker/pspy|pspy|pspy64$"
+    "gophish/gophish|gophish|linux-64bit"
+    "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz"
+    "gitleaks/gitleaks|gitleaks|linux_amd64\\.tar\\.gz"
+)
+BINARY_RELEASES_NETWORKING=(
+    "nicocha30/ligolo-ng|ligolo-proxy|linux_amd64"
+    "nicocha30/ligolo-ng|ligolo-agent|agent.*linux_amd64"
+    "fatedier/frp|frp|linux_amd64\\.tar\\.gz"
+)
+BINARY_RELEASES_RECON=(
+    "Findomain/Findomain|findomain|linux"
+)
+BINARY_RELEASES_WEB=(
+    "frohoff/ysoserial|ysoserial|ysoserial-all.jar|/opt/cybersec-jars"
+)
+BINARY_RELEASES_REVERSING=(
+    "0vercl0k/rp|rp-lin|rp-lin"
+    "java-decompiler/jd-gui|jd-gui|jd-gui.*\\.jar|/opt/cybersec-jars"
+)
+BINARY_RELEASES_FORENSICS=(
+    "WithSecureLabs/chainsaw|chainsaw|x86_64.*linux"
+)
+BINARY_RELEASES_ENTERPRISE=(
+    "ropnop/kerbrute|kerbrute|linux_amd64"
+)
+BINARY_RELEASES_BLUETEAM=(
+    "Velocidex/velociraptor|velociraptor|linux-amd64$"
+    "threathunters-io/laurel|laurel|x86_64-glibc"
+)
+BINARY_RELEASES_CONTAINERS=(
+    "aquasecurity/trivy|trivy|Linux-64bit\\.tar\\.gz"
+    "anchore/grype|grype|linux_amd64\\.tar\\.gz"
+    "anchore/syft|syft|linux_amd64\\.tar\\.gz"
+    "Shopify/kubeaudit|kubeaudit|linux_amd64\\.tar\\.gz"
+    "kubescape/kubescape|kubescape|ubuntu-latest"
+    "cdk-team/CDK|cdk|cdk_linux_amd64"
+)
+BINARY_RELEASES_MALWARE=(
+    "mandiant/flare-floss|floss|linux\\.zip"
+    "mandiant/capa|capa|linux\\.zip"
+)
+BINARY_RELEASES_STEGO=(
+    "RickdeJager/stegseek|stegseek|\\.deb"
+)
+
+# install_binary_releases — install all binary releases from a registry array.
+# Usage: install_binary_releases "${BINARY_RELEASES_MISC[@]}"
+install_binary_releases() {
+    for _entry in "$@"; do
+        IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+        download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-/usr/local/bin}" || true
+    done
 }
 
 # ----- Install searchsploit symlink ----------------------------------------

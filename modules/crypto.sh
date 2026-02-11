@@ -20,7 +20,8 @@ CRYPTO_GIT=(
     "nonce-disrespect=https://github.com/nonce-disrespect/nonce-disrespect.git"
 )
 
-CRYPTO_GIT_NAMES=(RsaCtfTool rsatool featherduster cribdrag foresight nonce-disrespect hash_extender PkCrack yafu fastcoll msieve pemcrack)
+CRYPTO_GIT_NAMES=(RsaCtfTool rsatool featherduster cribdrag foresight nonce-disrespect)
+CRYPTO_BUILD_NAMES=(hash_extender PkCrack yafu fastcoll msieve pemcrack)
 
 install_module_crypto() {
     [[ ${#CRYPTO_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Crypto - Packages" "${CRYPTO_PACKAGES[@]}"

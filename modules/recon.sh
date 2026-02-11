@@ -60,8 +60,6 @@ RECON_GIT=(
     "certSniff=https://github.com/A-poc/certSniff.git"
     "AWSBucketDump=https://github.com/jordanpotti/AWSBucketDump.git"
     "linkedin2username=https://github.com/initstring/linkedin2username.git"
-    "linkedin2username=https://github.com/initstring/linkedin2username.git"
-    "LinkedInt=https://github.com/vysecurity/LinkedInt.git"
     "LinkedInt=https://github.com/vysecurity/LinkedInt.git"
     "AttackSurfaceMapper=https://github.com/superhedgy/AttackSurfaceMapper.git"
     "WitnessMe=https://github.com/byt3bl33d3r/WitnessMe.git"
@@ -77,7 +75,8 @@ RECON_GIT=(
 
 # Binary names for verify/remove
 RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor phoneinfoga subzy subjack)
-RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username LinkedInt AttackSurfaceMapper WitnessMe Gato carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness osmedeus)
+RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username LinkedInt AttackSurfaceMapper WitnessMe Gato carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness osmedeus)
+RECON_BUILD_NAMES=(massdns)
 
 install_module_recon() {
     install_apt_batch "Recon / OSINT - Packages" "${RECON_PACKAGES[@]}"
@@ -90,5 +89,5 @@ install_module_recon() {
     build_from_source "massdns" "https://github.com/blechschmidt/massdns.git" "make" || true
 
     # Binary releases
-    download_github_release "Findomain/Findomain" "findomain" "linux" || true
+    install_binary_releases "${BINARY_RELEASES_RECON[@]}"
 }

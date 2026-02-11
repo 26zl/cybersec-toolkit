@@ -130,23 +130,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
 
         # Aggregate all Go install paths from all modules
         ALL_GO_TOOLS=()
-        [[ ${#RECON_GO[@]} -gt 0 ]]     && ALL_GO_TOOLS+=("${RECON_GO[@]}")
-        [[ ${#WEB_GO[@]} -gt 0 ]]       && ALL_GO_TOOLS+=("${WEB_GO[@]}")
-        [[ ${#PWN_GO[@]} -gt 0 ]]       && ALL_GO_TOOLS+=("${PWN_GO[@]}")
-        [[ ${#NET_GO[@]} -gt 0 ]]       && ALL_GO_TOOLS+=("${NET_GO[@]}")
-        [[ ${#CLOUD_GO[@]} -gt 0 ]]     && ALL_GO_TOOLS+=("${CLOUD_GO[@]}")
-        [[ ${#MISC_GO[@]} -gt 0 ]]      && ALL_GO_TOOLS+=("${MISC_GO[@]}")
-        [[ ${#CRYPTO_GO[@]} -gt 0 ]]    && ALL_GO_TOOLS+=("${CRYPTO_GO[@]}")
-        [[ ${#RE_GO[@]} -gt 0 ]]        && ALL_GO_TOOLS+=("${RE_GO[@]}")
-        [[ ${#FORENSICS_GO[@]} -gt 0 ]] && ALL_GO_TOOLS+=("${FORENSICS_GO[@]}")
-        [[ ${#MALWARE_GO[@]} -gt 0 ]]   && ALL_GO_TOOLS+=("${MALWARE_GO[@]}")
-        [[ ${#AD_GO[@]} -gt 0 ]]        && ALL_GO_TOOLS+=("${AD_GO[@]}")
-        [[ ${#WIRELESS_GO[@]} -gt 0 ]]  && ALL_GO_TOOLS+=("${WIRELESS_GO[@]}")
-        [[ ${#PASSWORD_GO[@]} -gt 0 ]]  && ALL_GO_TOOLS+=("${PASSWORD_GO[@]}")
-        [[ ${#STEGO_GO[@]} -gt 0 ]]     && ALL_GO_TOOLS+=("${STEGO_GO[@]}")
-        [[ ${#CONTAINER_GO[@]} -gt 0 ]] && ALL_GO_TOOLS+=("${CONTAINER_GO[@]}")
-        [[ ${#BLUETEAM_GO[@]} -gt 0 ]]   && ALL_GO_TOOLS+=("${BLUETEAM_GO[@]}")
-        [[ ${#MOBILE_GO[@]} -gt 0 ]]    && ALL_GO_TOOLS+=("${MOBILE_GO[@]}")
+        _collect_module_arrays "GO" ALL_GO_TOOLS
 
         GO_TOTAL=${#ALL_GO_TOOLS[@]}
         GO_CURRENT=0
@@ -223,10 +207,7 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
     if command_exists gem; then
         # Aggregate all gems from modules
         ALL_GEMS=()
-        [[ ${#PWN_GEMS[@]} -gt 0 ]]   && ALL_GEMS+=("${PWN_GEMS[@]}")
-        [[ ${#WEB_GEMS[@]} -gt 0 ]]   && ALL_GEMS+=("${WEB_GEMS[@]}")
-        [[ ${#STEGO_GEMS[@]} -gt 0 ]] && ALL_GEMS+=("${STEGO_GEMS[@]}")
-        [[ ${#AD_GEMS[@]} -gt 0 ]]    && ALL_GEMS+=("${AD_GEMS[@]}")
+        _collect_module_arrays "GEMS" ALL_GEMS
 
         if [[ ${#ALL_GEMS[@]} -gt 0 ]]; then
             log_info "Updating Ruby gems (${ALL_GEMS[*]})..."
@@ -249,11 +230,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
     if command_exists cargo; then
         export PATH="$HOME/.cargo/bin:$PATH"
         ALL_CARGO=()
-        [[ ${#WEB_CARGO[@]} -gt 0 ]] && ALL_CARGO+=("${WEB_CARGO[@]}")
-        # RustScan from networking module (installed via cargo)
-        command_exists rustscan && ALL_CARGO+=(rustscan)
-        # Pwn module cargo tools
-        command_exists pwninit && ALL_CARGO+=(pwninit)
+        _collect_module_arrays "CARGO" ALL_CARGO
 
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
@@ -293,46 +270,19 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         fi
     }
 
-    # misc
-    pspy_pattern="pspy64$"
-    gophish_pattern="linux-64bit"
-    if [[ "$SYS_ARCH" != "amd64" ]]; then
-        pspy_pattern="pspy_${SYS_ARCH}$"
-        gophish_pattern="linux-${SYS_ARCH}"
-    fi
-    update_binary "DominicBreuker/pspy" "pspy" "$pspy_pattern"
-    update_binary "gophish/gophish" "gophish" "$gophish_pattern"
+    # Iterate all BINARY_RELEASES_* registry arrays (defined in lib/installers.sh)
+    _ALL_BIN_RELEASES=()
+    for _arr_name in BINARY_RELEASES_{MISC,NETWORKING,RECON,WEB,REVERSING,FORENSICS,ENTERPRISE,BLUETEAM,CONTAINERS,MALWARE,STEGO}; do
+        _append_module_array _ALL_BIN_RELEASES "$_arr_name"
+    done
+    for _entry in "${_ALL_BIN_RELEASES[@]}"; do
+        IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+        update_binary "$_repo" "$_binary" "$_pattern" "${_dest:-/usr/local/bin}"
+    done
+
+    # Non-registry binaries (custom destinations not suited for registry)
     update_binary "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx"
     update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar"
-    update_binary "trufflesecurity/trufflehog" "trufflehog" "linux_amd64\\.tar\\.gz"
-    update_binary "gitleaks/gitleaks" "gitleaks" "linux_amd64\\.tar\\.gz"
-    # networking
-    update_binary "nicocha30/ligolo-ng" "ligolo-proxy" "linux_amd64"
-    update_binary "nicocha30/ligolo-ng" "ligolo-agent" "agent.*linux_amd64"
-    update_binary "fatedier/frp" "frp" "linux_amd64\\.tar\\.gz"
-    # recon
-    update_binary "Findomain/Findomain" "findomain" "linux"
-    # web
-    update_binary "frohoff/ysoserial" "ysoserial" "ysoserial-all.jar" "/opt/cybersec-jars"
-    # reversing
-    update_binary "0vercl0k/rp" "rp-lin" "rp-lin"
-    update_binary "java-decompiler/jd-gui" "jd-gui" "jd-gui.*\\.jar" "/opt/cybersec-jars"
-    # forensics
-    update_binary "WithSecureLabs/chainsaw" "chainsaw" "x86_64.*linux"
-    # ad
-    update_binary "ropnop/kerbrute" "kerbrute" "linux_amd64"
-    # blueteam
-    update_binary "Velocidex/velociraptor" "velociraptor" "linux-amd64$"
-    update_binary "threathunters-io/laurel" "laurel" "x86_64-glibc"
-    # containers
-    trivy_pattern="Linux-64bit\\.tar\\.gz"
-    [[ "$SYS_ARCH" != "amd64" ]] && trivy_pattern="Linux-ARM64\\.tar\\.gz"
-    update_binary "aquasecurity/trivy" "trivy" "$trivy_pattern"
-    update_binary "anchore/grype" "grype" "linux_amd64\\.tar\\.gz"
-    update_binary "Shopify/kubeaudit" "kubeaudit" "linux_amd64\\.tar\\.gz"
-    update_binary "cdk-team/CDK" "cdk" "cdk_linux_amd64"
-    # stego
-    update_binary "RickdeJager/stegseek" "stegseek" "\\.deb"
 
     if [[ "$BIN_TOTAL" -gt 0 ]]; then
         log_success "Binary releases: $BIN_UPDATED/$BIN_TOTAL updated"
@@ -378,7 +328,7 @@ if [[ "$SKIP_DOCKER" == "false" ]]; then
     if command_exists docker; then
         log_info "Updating Docker images..."
         DOCKER_UPDATED=0
-        for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound" "strangebee/thehive:latest" "thehiveproject/cortex:latest"; do
+        for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound" "strangebee/thehive:latest" "thehiveproject/cortex:latest" "trailofbits/echidna"; do
             if docker images "${img%%:*}" -q 2>/dev/null | grep -q .; then
                 if docker pull "$img" >> "$LOG_FILE" 2>&1; then
                     log_success "Updated Docker: $img"

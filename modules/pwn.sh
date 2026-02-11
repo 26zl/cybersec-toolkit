@@ -47,8 +47,10 @@ PWN_GIT=(
     "villoc=https://github.com/wapiflapi/villoc.git"
 )
 
+PWN_CARGO=(pwninit)
 PWN_GO_BINS=(interactsh-client)
-PWN_GIT_NAMES=(exploitdb Veil RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow vulscan v0lt Freeze nanodump eviltree Hoaxshell Chimera demiguise ShellPop TrevorC2 DET QueenSono ISF DNSExfiltrator Egress-Assess Ivy macro_pack EvilClippy inceptor villoc preeny AFLplusplus honggfuzz radamsa)
+PWN_GIT_NAMES=(exploitdb Veil RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow vulscan v0lt Freeze nanodump eviltree Hoaxshell Chimera demiguise ShellPop TrevorC2 DET QueenSono ISF DNSExfiltrator Egress-Assess Ivy macro_pack EvilClippy inceptor villoc)
+PWN_BUILD_NAMES=(preeny AFLplusplus honggfuzz radamsa)
 
 install_module_pwn() {
     install_apt_batch "Pwn - Packages" "${PWN_PACKAGES[@]}"
@@ -58,7 +60,7 @@ install_module_pwn() {
     install_git_batch "Pwn - Git" "${PWN_GIT[@]}"
 
     # Rust tools
-    install_cargo_batch "Pwn - Rust" pwninit || true
+    install_cargo_batch "Pwn - Rust" "${PWN_CARGO[@]}" || true
 
     # Build from source
     log_info "Building pwn tools from source..."

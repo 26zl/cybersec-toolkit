@@ -36,6 +36,7 @@ NET_GIT=(
     "dnschef=https://github.com/iphelix/dnschef.git"
 )
 
+NET_CARGO=(rustscan)
 NET_GO_BINS=(chisel)
 NET_GIT_NAMES=(bettercap dnscat2 nipe PRET pwnat MITMf evilgrade SigPloit dnschef)
 
@@ -46,12 +47,10 @@ install_module_networking() {
     install_git_batch "Networking - Git" "${NET_GIT[@]}"
 
     # Binary releases
-    download_github_release "nicocha30/ligolo-ng" "ligolo-proxy" "linux_amd64" || true
-    download_github_release "nicocha30/ligolo-ng" "ligolo-agent" "agent.*linux_amd64" || true
-    download_github_release "fatedier/frp" "frp" "linux_amd64\\.tar\\.gz" || true
+    install_binary_releases "${BINARY_RELEASES_NETWORKING[@]}"
 
     # RustScan (Rust-based port scanner)
-    install_cargo_batch "Networking - Rust" rustscan || true
+    install_cargo_batch "Networking - Rust" "${NET_CARGO[@]}" || true
 
     # Wireshark non-interactive config (Debian)
     if [[ "$PKG_MANAGER" == "apt" ]]; then

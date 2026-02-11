@@ -379,7 +379,41 @@ BANNER
 
 # ----- Module registry (single source of truth) -----------------------------
 # shellcheck disable=SC2034  # Used by all scripts that source this file
-ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam mobile)
+ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless password stego cloud containers blueteam mobile blockchain)
+
+# Module name → array prefix mapping
+_module_prefix() {
+    case "$1" in
+        networking) echo "NET" ;;
+        reversing)  echo "RE" ;;
+        containers) echo "CONTAINER" ;;
+        *)          echo "${1^^}" ;;
+    esac
+}
+
+# _append_module_array — append contents of a named array to a destination array.
+# Usage: _append_module_array DEST_ARRAY "SOURCE_ARRAY_NAME"
+# No-op if SOURCE_ARRAY_NAME doesn't exist or is empty.
+_append_module_array() {
+    local -n _ama_dest="$1"
+    local _arr_name="$2"
+    declare -p "$_arr_name" &>/dev/null || return 0
+    local -n _ama_src="$_arr_name"
+    [[ ${#_ama_src[@]} -gt 0 ]] && _ama_dest+=("${_ama_src[@]}")
+}
+
+# _collect_module_arrays — aggregate arrays from all modules by suffix.
+# Usage: _collect_module_arrays "GO" dest_array
+# Iterates all module prefixes and appends PREFIX_SUFFIX to dest_array.
+_collect_module_arrays() {
+    local _suffix="$1"
+    local -n _cma_dest="$2"
+    local _mod _prefix
+    for _mod in "${ALL_MODULES[@]}"; do
+        _prefix=$(_module_prefix "$_mod")
+        _append_module_array _cma_dest "${_prefix}_${_suffix}"
+    done
+}
 
 # ----- Architecture detection ------------------------------------------------
 detect_arch() {

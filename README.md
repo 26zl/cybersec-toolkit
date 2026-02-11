@@ -13,7 +13,7 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux. __665+ tools__, __17 modules__, __10 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux. __665+ tools__, __18 modules__, __10 install methods__, one command.
 
 ---
 
@@ -139,9 +139,9 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 | Profile | Modules | Description |
 | ------- | ------- | ----------- |
-| `full` | All 17 | Complete security toolkit |
-| `ctf` | misc, crypto, pwn, reversing, stego, forensics, password, web, mobile | CTF competitions |
-| `redteam` | misc, networking, recon, web, ad, pwn, mobile | Offensive security |
+| `full` | All 18 | Complete security toolkit |
+| `ctf` | misc, crypto, pwn, reversing, stego, forensics, password, web, mobile, blockchain | CTF competitions |
+| `redteam` | misc, networking, recon, web, enterprise, pwn, mobile | Offensive security |
 | `web` | misc, networking, recon, web | Web application testing |
 | `malware` | misc, malware, forensics, reversing, mobile | Malware analysis |
 | `osint` | misc, recon | OSINT gathering |
@@ -162,7 +162,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 | `reversing` | ~31 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
 | `malware` | ~5 | YARA, ClamAV, inetsim, quark-engine |
-| `ad` | ~102 | Active Directory, Kerberos, credential harvesting, lateral movement, Azure AD |
+| `enterprise` | ~102 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | ~41 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `password` | ~32 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | ~14 | Image/audio steganography, detection |
@@ -170,6 +170,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 | `containers` | ~7 | Docker/Kubernetes security (Trivy, Grype, kubeaudit) |
 | `blueteam` | ~21 | IDS/IPS, SIEM, incident response, threat intelligence, hardening |
 | `mobile` | ~10 | Android/iOS app testing, APK analysis, MobSF (Docker) |
+| `blockchain` | ~7 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
 
 ## Install Methods
 
@@ -196,7 +197,7 @@ All scripts require root and support `--help`.
 | ------ | ------- | ------- |
 | `scripts/verify.sh` | Check which tools are installed | `sudo ./scripts/verify.sh --module web` |
 | `scripts/update.sh` | Update all installed tools | `sudo ./scripts/update.sh --skip-system` |
-| `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module ad --yes` |
+| `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module enterprise --yes` |
 | `scripts/backup.sh` | Backup/restore tool configs | `sudo ./scripts/backup.sh --encrypt` |
 
 ## Tool Locations
@@ -221,7 +222,8 @@ Only used with `--enable-docker`. If Docker is not installed, these are skipped 
 | `spiderfoot/spiderfoot` | misc | `--enable-docker` | SpiderFoot OSINT |
 | `beefproject/beef` | web | `--enable-docker` | BeEF browser exploitation |
 | `opensecurity/mobile-security-framework-mobsf` | mobile | `--enable-docker` | MobSF |
-| `specterops/bloodhound` | ad | `--enable-docker` | BloodHound CE |
+| `specterops/bloodhound` | enterprise | `--enable-docker` | BloodHound CE |
+| `trailofbits/echidna` | blockchain | `--enable-docker` | Echidna smart contract fuzzer |
 | `strangebee/thehive:latest` | blueteam | `--enable-docker` | TheHive IR platform |
 | `thehiveproject/cortex:latest` | blueteam | `--enable-docker` | Cortex analysis |
 

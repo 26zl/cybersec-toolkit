@@ -29,8 +29,7 @@ install_module_blueteam() {
     install_git_batch "Blue Team - Git" "${BLUETEAM_GIT[@]}"
 
     # Binary releases
-    download_github_release "Velocidex/velociraptor" "velociraptor" "linux-amd64$" || true
-    download_github_release "threathunters-io/laurel" "laurel" "x86_64-glibc" || true
+    install_binary_releases "${BINARY_RELEASES_BLUETEAM[@]}"
 
     # Docker: IR platforms (only if enabled)
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then

@@ -8,7 +8,7 @@
 # Usage:
 #   sudo ./scripts/verify.sh                      # Full verification
 #   sudo ./scripts/verify.sh --module web          # Verify web module only
-#   sudo ./scripts/verify.sh --module recon --module ad  # Multiple modules
+#   sudo ./scripts/verify.sh --module recon --module enterprise  # Multiple modules
 #   sudo ./scripts/verify.sh --summary             # Summary only (no per-tool)
 # =============================================================================
 set -uo pipefail
@@ -34,8 +34,8 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, ad, wireless, password, stego, cloud, containers, blueteam,
-         mobile
+         malware, enterprise, wireless, password, stego, cloud, containers,
+         blueteam, mobile, blockchain
 EOF
     exit 0
 fi
@@ -125,22 +125,6 @@ check_pipx() {
     fi
 }
 
-check_go_bin() {
-    local bin="$1"
-    TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
-
-    # Go binaries install to GOBIN=/usr/local/bin (system-wide)
-    if command_exists "$bin"; then
-        TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$bin — installed (Go)"
-        return 0
-    else
-        TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$bin — NOT installed"
-        return 1
-    fi
-}
-
 # Check any-of: passes if any of the given binary names exist (for distro-varying names)
 check_cmd_any() {
     local label="$1"; shift
@@ -160,10 +144,7 @@ check_cmd_any() {
 # Batch check helpers
 check_cmds()      { for t in "$@"; do check_cmd "$t" || true; done; }
 check_pipx_arr()  { for t in "$@"; do check_pipx "$t" || true; done; }
-check_go_bins()   { for t in "$@"; do check_go_bin "$t" || true; done; }
 check_git_repos() { for n in "$@"; do check_dir "$n" "$GITHUB_TOOL_DIR/$n" || true; done; }
-check_gems()      { for g in "$@"; do check_cmd "$g" || true; done; }
-check_cargo()     { for c in "$@"; do check_cmd "$c" || true; done; }
 
 # shellcheck disable=SC2076  # Intentional literal match, not regex
 should_verify() { [[ " ${VERIFY_MODULES[*]} " =~ " $1 " ]]; }
@@ -220,7 +201,7 @@ if should_verify "misc"; then
     log_info "Misc (pipx):"
     check_pipx_arr "${MISC_PIPX[@]}"
     log_info "Misc (Go):"
-    check_go_bins "${MISC_GO_BINS[@]}"
+    check_cmds "${MISC_GO_BINS[@]}"
     log_info "Misc (Git repos):"
     check_git_repos "${MISC_GIT_NAMES[@]}"
     log_info "Misc (Special):"
@@ -242,11 +223,12 @@ if should_verify "networking"; then
     log_info "Networking (pipx):"
     check_pipx_arr "${NET_PIPX[@]}"
     log_info "Networking (Go):"
-    check_go_bins "${NET_GO_BINS[@]}"
+    check_cmds "${NET_GO_BINS[@]}"
     log_info "Networking (Git):"
     check_git_repos "${NET_GIT_NAMES[@]}"
-    log_info "Networking (Binary/Cargo):"
-    check_cmd "rustscan" || true
+    log_info "Networking (Cargo):"
+    check_cmds "${NET_CARGO[@]}"
+    log_info "Networking (Binary):"
     check_cmd "ligolo-proxy" || true
 fi
 
@@ -258,9 +240,11 @@ if should_verify "recon"; then
     log_info "Recon (pipx):"
     check_pipx_arr "${RECON_PIPX[@]}"
     log_info "Recon (Go):"
-    check_go_bins "${RECON_GO_BINS[@]}"
+    check_cmds "${RECON_GO_BINS[@]}"
     log_info "Recon (Git):"
     check_git_repos "${RECON_GIT_NAMES[@]}"
+    log_info "Recon (Build from source):"
+    check_git_repos "${RECON_BUILD_NAMES[@]}"
     log_info "Recon (Binary):"
     check_cmd "findomain" || true
 fi
@@ -273,11 +257,11 @@ if should_verify "web"; then
     log_info "Web (pipx):"
     check_pipx_arr "${WEB_PIPX[@]}"
     log_info "Web (Go):"
-    check_go_bins "${WEB_GO_BINS[@]}"
+    check_cmds "${WEB_GO_BINS[@]}"
     log_info "Web (Cargo):"
-    check_cargo "${WEB_CARGO[@]}"
+    check_cmds "${WEB_CARGO[@]}"
     log_info "Web (Gems):"
-    check_gems "${WEB_GEMS[@]}"
+    check_cmds "${WEB_GEMS[@]}"
     log_info "Web (Git):"
     check_git_repos "${WEB_GIT_NAMES[@]}"
     log_info "Web (Special):"
@@ -292,6 +276,8 @@ if should_verify "crypto"; then
     check_pipx_arr "${CRYPTO_PIPX[@]}"
     log_info "Crypto (Git):"
     check_git_repos "${CRYPTO_GIT_NAMES[@]}"
+    log_info "Crypto (Build from source):"
+    check_git_repos "${CRYPTO_BUILD_NAMES[@]}"
 fi
 
 if should_verify "pwn"; then
@@ -302,13 +288,15 @@ if should_verify "pwn"; then
     log_info "Pwn (pipx):"
     check_pipx_arr "${PWN_PIPX[@]}"
     log_info "Pwn (Go):"
-    check_go_bins "${PWN_GO_BINS[@]}"
+    check_cmds "${PWN_GO_BINS[@]}"
     log_info "Pwn (Gems):"
-    check_gems "${PWN_GEMS[@]}"
+    check_cmds "${PWN_GEMS[@]}"
     log_info "Pwn (Cargo):"
-    check_cargo pwninit
+    check_cmds "${PWN_CARGO[@]}"
     log_info "Pwn (Git):"
     check_git_repos "${PWN_GIT_NAMES[@]}"
+    log_info "Pwn (Build from source):"
+    check_git_repos "${PWN_BUILD_NAMES[@]}"
     log_info "Pwn (Special):"
     check_cmd "msfconsole" || true
 fi
@@ -327,6 +315,8 @@ if should_verify "reversing"; then
     check_pipx_arr "${RE_PIPX[@]}"
     log_info "RE (Git):"
     check_git_repos "${RE_GIT_NAMES[@]}"
+    log_info "RE (Build from source):"
+    check_git_repos "${RE_BUILD_NAMES[@]}"
     log_info "RE (Binary):"
     check_cmd "rp-lin" || true
     check_cmd "jd-gui" || true
@@ -353,20 +343,23 @@ if should_verify "malware"; then
     check_cmds yara clamscan
     log_info "Malware (pipx):"
     check_pipx_arr "${MALWARE_PIPX[@]}"
+    log_info "Malware (Binary):"
+    check_cmd "floss" || true
+    check_cmd "capa" || true
 fi
 
-if should_verify "ad"; then
+if should_verify "enterprise"; then
     echo ""
-    log_info "========== Module: ad =========="
-    log_info "AD (pipx):"
-    check_pipx_arr "${AD_PIPX[@]}"
-    log_info "AD (Go):"
-    check_go_bins "${AD_GO_BINS[@]}"
-    log_info "AD (Gems):"
-    check_gems "${AD_GEMS[@]}"
-    log_info "AD (Git):"
-    check_git_repos "${AD_GIT_NAMES[@]}"
-    log_info "AD (Binary):"
+    log_info "========== Module: enterprise =========="
+    log_info "Enterprise (pipx):"
+    check_pipx_arr "${ENTERPRISE_PIPX[@]}"
+    log_info "Enterprise (Go):"
+    check_cmds "${ENTERPRISE_GO_BINS[@]}"
+    log_info "Enterprise (Gems):"
+    check_cmds "${ENTERPRISE_GEMS[@]}"
+    log_info "Enterprise (Git):"
+    check_git_repos "${ENTERPRISE_GIT_NAMES[@]}"
+    log_info "Enterprise (Binary):"
     check_cmd "kerbrute" || true
 fi
 
@@ -393,6 +386,8 @@ if should_verify "password"; then
     check_pipx_arr "${PASSWORD_PIPX[@]}"
     log_info "Password (Git):"
     check_git_repos "${PASSWORD_GIT_NAMES[@]}"
+    log_info "Password (Build from source):"
+    check_git_repos "${PASSWORD_BUILD_NAMES[@]}"
 fi
 
 if should_verify "stego"; then
@@ -404,7 +399,7 @@ if should_verify "stego"; then
     log_info "Stego (pipx):"
     check_pipx_arr "${STEGO_PIPX[@]}"
     log_info "Stego (Gems):"
-    check_gems "${STEGO_GEMS[@]}"
+    check_cmds "${STEGO_GEMS[@]}"
     log_info "Stego (Git):"
     check_git_repos "${STEGO_GIT_NAMES[@]}"
     log_info "Stego (Binary):"
@@ -417,7 +412,7 @@ if should_verify "cloud"; then
     log_info "Cloud (pipx):"
     check_pipx_arr "${CLOUD_PIPX[@]}"
     log_info "Cloud (Go):"
-    check_go_bins "${CLOUD_GO_BINS[@]}"
+    check_cmds "${CLOUD_GO_BINS[@]}"
     log_info "Cloud (Git):"
     check_git_repos "${CLOUD_GIT_NAMES[@]}"
 fi
@@ -428,7 +423,7 @@ if should_verify "containers"; then
     log_info "Containers (Git):"
     check_git_repos "${CONTAINER_GIT_NAMES[@]}"
     log_info "Containers (Binary):"
-    check_cmds trivy grype kubeaudit cdk
+    check_cmds trivy grype kubeaudit cdk syft kubescape
 fi
 
 if should_verify "mobile"; then
@@ -468,6 +463,17 @@ if should_verify "blueteam"; then
             fi
         done
     fi
+fi
+
+if should_verify "blockchain"; then
+    echo ""
+    log_info "========== Module: blockchain =========="
+    log_info "Blockchain (pipx):"
+    check_pipx_arr "${BLOCKCHAIN_PIPX[@]}"
+    log_info "Blockchain (Git):"
+    check_git_repos "${BLOCKCHAIN_GIT_NAMES[@]}"
+    log_info "Blockchain (Special):"
+    check_cmd "foundryup" || true
 fi
 
 # --- Summary -----------------------------------------------------------------

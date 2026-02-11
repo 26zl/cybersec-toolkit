@@ -17,17 +17,17 @@ CONFIG_PATH = ROOT / "tools_config.json"
 
 ALL_MODULES = [
     "misc", "networking", "recon", "web", "crypto", "pwn", "reversing",
-    "forensics", "malware", "ad", "wireless", "password", "stego",
-    "cloud", "containers", "blueteam", "mobile",
+    "forensics", "malware", "enterprise", "wireless", "password", "stego",
+    "cloud", "containers", "blueteam", "mobile", "blockchain",
 ]
 
 MODULE_PREFIX = {
     "misc": "MISC", "networking": "NET", "recon": "RECON", "web": "WEB",
     "crypto": "CRYPTO", "pwn": "PWN", "reversing": "RE",
-    "forensics": "FORENSICS", "malware": "MALWARE", "ad": "AD",
+    "forensics": "FORENSICS", "malware": "MALWARE", "enterprise": "ENTERPRISE",
     "wireless": "WIRELESS", "password": "PASSWORD", "stego": "STEGO",
     "cloud": "CLOUD", "containers": "CONTAINER", "blueteam": "BLUETEAM",
-    "mobile": "MOBILE",
+    "mobile": "MOBILE", "blockchain": "BLOCKCHAIN",
 }
 
 APT_SUFFIXES = {"PACKAGES", "BASE_PACKAGES", "SECURITY_PACKAGES", "HEAVY_PACKAGES"}
@@ -212,6 +212,11 @@ def extract_module_tools(module_name):
         tools.append({
             "name": "zaproxy", "method": "snap",
             "url": "https://github.com/zaproxy/zaproxy",
+        })
+    if "install_foundry" in clean:
+        tools.append({
+            "name": "foundry", "method": "special",
+            "url": "https://github.com/foundry-rs/foundry",
         })
 
     return tools

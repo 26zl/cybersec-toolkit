@@ -37,8 +37,8 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, ad, wireless, password, stego, cloud, containers, blueteam,
-         mobile
+         malware, enterprise, wireless, password, stego, cloud, containers,
+         blueteam, mobile, blockchain
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems).
@@ -116,138 +116,30 @@ GIT_NAMES_TO_REMOVE=()
 GEMS_TO_REMOVE=()
 CARGO_TO_REMOVE=()
 
-# --- Misc ---
-if should_remove "misc"; then
-    if [[ "$REMOVE_DEPS" == "true" ]]; then
-        [[ ${#MISC_BASE_PACKAGES[@]} -gt 0 ]]     && PKGS_TO_REMOVE+=("${MISC_BASE_PACKAGES[@]}")
+for _mod in "${REMOVE_MODULES[@]}"; do
+    should_remove "$_mod" || continue
+    _pfx=$(_module_prefix "$_mod")
+
+    # Special handling: misc base deps require --remove-deps
+    if [[ "$_mod" == "misc" ]]; then
+        if [[ "$REMOVE_DEPS" == "true" ]]; then
+            _append_module_array PKGS_TO_REMOVE "MISC_BASE_PACKAGES"
+        else
+            log_info "Preserving base dependencies (--remove-deps not set)"
+        fi
+        _append_module_array PKGS_TO_REMOVE "MISC_SECURITY_PACKAGES"
+        _append_module_array PKGS_TO_REMOVE "MISC_HEAVY_PACKAGES"
     else
-        log_info "Preserving base dependencies (--remove-deps not set)"
+        _append_module_array PKGS_TO_REMOVE "${_pfx}_PACKAGES"
     fi
-    [[ ${#MISC_SECURITY_PACKAGES[@]} -gt 0 ]] && PKGS_TO_REMOVE+=("${MISC_SECURITY_PACKAGES[@]}")
-    [[ ${#MISC_HEAVY_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${MISC_HEAVY_PACKAGES[@]}")
-    [[ ${#MISC_PIPX[@]} -gt 0 ]]      && PIPX_TO_REMOVE+=("${MISC_PIPX[@]}")
-    [[ ${#MISC_GO_BINS[@]} -gt 0 ]]   && GO_BINS_TO_REMOVE+=("${MISC_GO_BINS[@]}")
-    [[ ${#MISC_GIT_NAMES[@]} -gt 0 ]] && GIT_NAMES_TO_REMOVE+=("${MISC_GIT_NAMES[@]}")
-fi
 
-# --- Networking ---
-if should_remove "networking"; then
-    [[ ${#NET_PACKAGES[@]} -gt 0 ]]   && PKGS_TO_REMOVE+=("${NET_PACKAGES[@]}")
-    [[ ${#NET_PIPX[@]} -gt 0 ]]      && PIPX_TO_REMOVE+=("${NET_PIPX[@]}")
-    [[ ${#NET_GO_BINS[@]} -gt 0 ]]   && GO_BINS_TO_REMOVE+=("${NET_GO_BINS[@]}")
-    [[ ${#NET_GIT_NAMES[@]} -gt 0 ]] && GIT_NAMES_TO_REMOVE+=("${NET_GIT_NAMES[@]}")
-    CARGO_TO_REMOVE+=(rustscan)
-fi
-
-# --- Recon ---
-if should_remove "recon"; then
-    [[ ${#RECON_PACKAGES[@]} -gt 0 ]]   && PKGS_TO_REMOVE+=("${RECON_PACKAGES[@]}")
-    [[ ${#RECON_PIPX[@]} -gt 0 ]]       && PIPX_TO_REMOVE+=("${RECON_PIPX[@]}")
-    [[ ${#RECON_GO_BINS[@]} -gt 0 ]]    && GO_BINS_TO_REMOVE+=("${RECON_GO_BINS[@]}")
-    [[ ${#RECON_GIT_NAMES[@]} -gt 0 ]]  && GIT_NAMES_TO_REMOVE+=("${RECON_GIT_NAMES[@]}")
-fi
-
-# --- Web ---
-if should_remove "web"; then
-    [[ ${#WEB_PACKAGES[@]} -gt 0 ]]   && PKGS_TO_REMOVE+=("${WEB_PACKAGES[@]}")
-    [[ ${#WEB_PIPX[@]} -gt 0 ]]       && PIPX_TO_REMOVE+=("${WEB_PIPX[@]}")
-    [[ ${#WEB_GO_BINS[@]} -gt 0 ]]    && GO_BINS_TO_REMOVE+=("${WEB_GO_BINS[@]}")
-    [[ ${#WEB_GIT_NAMES[@]} -gt 0 ]]  && GIT_NAMES_TO_REMOVE+=("${WEB_GIT_NAMES[@]}")
-    [[ ${#WEB_GEMS[@]} -gt 0 ]]       && GEMS_TO_REMOVE+=("${WEB_GEMS[@]}")
-    [[ ${#WEB_CARGO[@]} -gt 0 ]]      && CARGO_TO_REMOVE+=("${WEB_CARGO[@]}")
-fi
-
-# --- Crypto ---
-if should_remove "crypto"; then
-    [[ ${#CRYPTO_PIPX[@]} -gt 0 ]]       && PIPX_TO_REMOVE+=("${CRYPTO_PIPX[@]}")
-    [[ ${#CRYPTO_GIT_NAMES[@]} -gt 0 ]]  && GIT_NAMES_TO_REMOVE+=("${CRYPTO_GIT_NAMES[@]}")
-fi
-
-# --- Pwn ---
-if should_remove "pwn"; then
-    [[ ${#PWN_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${PWN_PACKAGES[@]}")
-    [[ ${#PWN_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${PWN_PIPX[@]}")
-    [[ ${#PWN_GO_BINS[@]} -gt 0 ]]     && GO_BINS_TO_REMOVE+=("${PWN_GO_BINS[@]}")
-    [[ ${#PWN_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${PWN_GIT_NAMES[@]}")
-    [[ ${#PWN_GEMS[@]} -gt 0 ]]        && GEMS_TO_REMOVE+=("${PWN_GEMS[@]}")
-    CARGO_TO_REMOVE+=(pwninit)
-fi
-
-# --- Reversing ---
-if should_remove "reversing"; then
-    [[ ${#RE_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${RE_PACKAGES[@]}")
-    [[ ${#RE_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${RE_PIPX[@]}")
-    [[ ${#RE_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${RE_GIT_NAMES[@]}")
-fi
-
-# --- Forensics ---
-if should_remove "forensics"; then
-    [[ ${#FORENSICS_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${FORENSICS_PACKAGES[@]}")
-    [[ ${#FORENSICS_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${FORENSICS_PIPX[@]}")
-    [[ ${#FORENSICS_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${FORENSICS_GIT_NAMES[@]}")
-fi
-
-# --- Malware ---
-if should_remove "malware"; then
-    [[ ${#MALWARE_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${MALWARE_PACKAGES[@]}")
-    [[ ${#MALWARE_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${MALWARE_PIPX[@]}")
-fi
-
-# --- AD ---
-if should_remove "ad"; then
-    [[ ${#AD_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${AD_PIPX[@]}")
-    [[ ${#AD_GO_BINS[@]} -gt 0 ]]     && GO_BINS_TO_REMOVE+=("${AD_GO_BINS[@]}")
-    [[ ${#AD_GEMS[@]} -gt 0 ]]        && GEMS_TO_REMOVE+=("${AD_GEMS[@]}")
-    [[ ${#AD_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${AD_GIT_NAMES[@]}")
-fi
-
-# --- Wireless ---
-if should_remove "wireless"; then
-    [[ ${#WIRELESS_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${WIRELESS_PACKAGES[@]}")
-    [[ ${#WIRELESS_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${WIRELESS_PIPX[@]}")
-    [[ ${#WIRELESS_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${WIRELESS_GIT_NAMES[@]}")
-fi
-
-# --- Password ---
-if should_remove "password"; then
-    [[ ${#PASSWORD_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${PASSWORD_PACKAGES[@]}")
-    [[ ${#PASSWORD_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${PASSWORD_PIPX[@]}")
-    [[ ${#PASSWORD_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${PASSWORD_GIT_NAMES[@]}")
-fi
-
-# --- Stego ---
-if should_remove "stego"; then
-    [[ ${#STEGO_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${STEGO_PACKAGES[@]}")
-    [[ ${#STEGO_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${STEGO_PIPX[@]}")
-    [[ ${#STEGO_GEMS[@]} -gt 0 ]]        && GEMS_TO_REMOVE+=("${STEGO_GEMS[@]}")
-    [[ ${#STEGO_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${STEGO_GIT_NAMES[@]}")
-fi
-
-# --- Cloud ---
-if should_remove "cloud"; then
-    [[ ${#CLOUD_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${CLOUD_PIPX[@]}")
-    [[ ${#CLOUD_GO_BINS[@]} -gt 0 ]]     && GO_BINS_TO_REMOVE+=("${CLOUD_GO_BINS[@]}")
-    [[ ${#CLOUD_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${CLOUD_GIT_NAMES[@]}")
-fi
-
-# --- Containers ---
-if should_remove "containers"; then
-    [[ ${#CONTAINER_GIT_NAMES[@]} -gt 0 ]] && GIT_NAMES_TO_REMOVE+=("${CONTAINER_GIT_NAMES[@]}")
-fi
-
-# --- Mobile ---
-if should_remove "mobile"; then
-    [[ ${#MOBILE_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${MOBILE_PACKAGES[@]}")
-    [[ ${#MOBILE_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${MOBILE_PIPX[@]}")
-    [[ ${#MOBILE_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${MOBILE_GIT_NAMES[@]}")
-fi
-
-# --- Blue Team ---
-if should_remove "blueteam"; then
-    [[ ${#BLUETEAM_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${BLUETEAM_PACKAGES[@]}")
-    [[ ${#BLUETEAM_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${BLUETEAM_PIPX[@]}")
-    [[ ${#BLUETEAM_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${BLUETEAM_GIT_NAMES[@]}")
-fi
+    _append_module_array PIPX_TO_REMOVE      "${_pfx}_PIPX"
+    _append_module_array GO_BINS_TO_REMOVE   "${_pfx}_GO_BINS"
+    _append_module_array GIT_NAMES_TO_REMOVE "${_pfx}_GIT_NAMES"
+    _append_module_array GIT_NAMES_TO_REMOVE "${_pfx}_BUILD_NAMES"
+    _append_module_array GEMS_TO_REMOVE      "${_pfx}_GEMS"
+    _append_module_array CARGO_TO_REMOVE     "${_pfx}_CARGO"
+done
 
 # =============================================================================
 # Execute removal
@@ -349,7 +241,7 @@ echo ""
 
 # --- 7) Binary releases ------------------------------------------------------
 log_info "Removing binary releases from /usr/local/bin..."
-BINARY_TOOLS=(findomain ligolo-proxy ligolo-agent frp chainsaw kerbrute trivy grype kubeaudit cdk pspy gophish trufflehog stegseek rp-lin d2j-dex2jar velociraptor laurel)
+BINARY_TOOLS=(findomain ligolo-proxy ligolo-agent frp chainsaw kerbrute trivy grype kubeaudit cdk syft kubescape floss capa pspy gophish trufflehog gitleaks stegseek rp-lin d2j-dex2jar velociraptor laurel)
 for bin in "${BINARY_TOOLS[@]}"; do
     if [[ -f "/usr/local/bin/$bin" ]]; then
         sudo rm -f "/usr/local/bin/$bin"
@@ -396,7 +288,7 @@ fi
 # Docker images (only on full removal)
 if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
     log_info "Removing Docker images..."
-    for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound" "strangebee/thehive" "thehiveproject/cortex"; do
+    for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound" "strangebee/thehive" "thehiveproject/cortex" "trailofbits/echidna"; do
         if docker images "$img" -q 2>/dev/null | grep -q .; then
             docker rmi "$img" >> "$LOG_FILE" 2>&1 && \
                 log_success "Removed Docker: $img" || true

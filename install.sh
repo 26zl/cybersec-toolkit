@@ -10,7 +10,7 @@
 #   sudo ./install.sh                        # Full install (default)
 #   sudo ./install.sh --profile ctf          # Install CTF tools only
 #   sudo ./install.sh --profile redteam      # Red team tools
-#   sudo ./install.sh --module web --module ad  # Specific modules
+#   sudo ./install.sh --module web --module enterprise  # Specific modules
 #   sudo ./install.sh --upgrade-system        # Also upgrade system packages
 #   sudo ./install.sh --list-profiles        # Show available profiles
 #   sudo ./install.sh --list-modules         # Show available modules
@@ -52,7 +52,7 @@ Options:
                          Modules: misc, networking, recon, web, crypto,
                          pwn, reversing, forensics, malware, ad,
                          wireless, password, stego, cloud, containers,
-                         blueteam, mobile
+                         blueteam, mobile, blockchain, enterprise
   --tool <name>        Install a single tool by name. Can be repeated.
                          Searches all modules for a matching package,
                          pipx tool, Go binary, cargo crate, gem, or repo.
@@ -117,7 +117,7 @@ list_modules() {
     printf "  %-16s %s\n" "reversing"  "Disassembly, debugging, binary analysis"
     printf "  %-16s %s\n" "forensics"  "Disk/memory forensics, file carving"
     printf "  %-16s %s\n" "malware"    "Malware analysis, AV, YARA"
-    printf "  %-16s %s\n" "ad"         "Active Directory attacks, Kerberos"
+    printf "  %-16s %s\n" "enterprise" "AD, Kerberos, LDAP, Azure AD, lateral movement"
     printf "  %-16s %s\n" "wireless"   "WiFi, Bluetooth, SDR"
     printf "  %-16s %s\n" "password"   "Hash cracking, brute force, wordlists"
     printf "  %-16s %s\n" "stego"      "Steganography tools"
@@ -125,6 +125,7 @@ list_modules() {
     printf "  %-16s %s\n" "containers" "Docker/Kubernetes security"
     printf "  %-16s %s\n" "blueteam"   "Defensive security, IDS/IPS, SIEM, IR"
     printf "  %-16s %s\n" "mobile"     "Android/iOS app testing, APK analysis"
+    printf "  %-16s %s\n" "blockchain" "Smart contract auditing, analysis, reversing"
     echo ""
     echo "Usage: sudo ./install.sh --module <name> [--module <name> ...]"
     exit 0
@@ -177,7 +178,7 @@ install_single_tool() {
         MISC_BASE_PACKAGES MISC_SECURITY_PACKAGES MISC_HEAVY_PACKAGES
         NET_PACKAGES RECON_PACKAGES WEB_PACKAGES PWN_PACKAGES RE_PACKAGES
         FORENSICS_PACKAGES MALWARE_PACKAGES WIRELESS_PACKAGES PASSWORD_PACKAGES
-        STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES AD_PACKAGES
+        STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES ENTERPRISE_PACKAGES
         CRYPTO_PACKAGES CLOUD_PACKAGES CONTAINER_PACKAGES
     )
     for a in "${pkg_arrs[@]}"; do
@@ -197,7 +198,7 @@ install_single_tool() {
     # --- pipx ---
     local pipx_arrs=(
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX MALWARE_PIPX AD_PIPX WIRELESS_PIPX PASSWORD_PIPX
+        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX PASSWORD_PIPX
         STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX
     )
     for a in "${pipx_arrs[@]}"; do
@@ -212,7 +213,7 @@ install_single_tool() {
     # --- Go (match binary name from full import path) ---
     local go_arrs=(
         MISC_GO NET_GO RECON_GO WEB_GO CRYPTO_GO PWN_GO RE_GO
-        AD_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
+        ENTERPRISE_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
         FORENSICS_GO MALWARE_GO WIRELESS_GO PASSWORD_GO STEGO_GO
     )
     for a in "${go_arrs[@]}"; do
@@ -244,7 +245,7 @@ install_single_tool() {
     done
 
     # --- Gems ---
-    local gem_arrs=(WEB_GEMS PWN_GEMS STEGO_GEMS AD_GEMS)
+    local gem_arrs=(WEB_GEMS PWN_GEMS STEGO_GEMS ENTERPRISE_GEMS)
     for a in "${gem_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via gem..."
@@ -257,7 +258,7 @@ install_single_tool() {
     local git_arrs=(
         MISC_RESOURCES MISC_POSTEXPLOIT MISC_SOCIAL MISC_CTF
         NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
-        FORENSICS_GIT AD_GIT WIRELESS_GIT PASSWORD_GIT STEGO_GIT
+        FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT PASSWORD_GIT STEGO_GIT
         CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
     )
     for a in "${git_arrs[@]}"; do

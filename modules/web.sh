@@ -79,7 +79,7 @@ install_module_web() {
     install_git_batch "Web - Git" "${WEB_GIT[@]}"
 
     # Binary releases
-    download_github_release "frohoff/ysoserial" "ysoserial" "ysoserial-all.jar" "/opt/cybersec-jars" || true
+    install_binary_releases "${BINARY_RELEASES_WEB[@]}"
     download_github_release "assetnote/kiterunner" "kr" "linux_amd64" || true
 
     # Docker (optional)

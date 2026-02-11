@@ -9,7 +9,7 @@ CLOUD_PACKAGES=()
 
 CLOUD_PIPX=(
     kube-hunter pacu cloudsplaining prowler scoutsuite
-    s3scanner roadrecon
+    s3scanner roadrecon checkov
 )
 
 CLOUD_GO=(

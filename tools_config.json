@@ -2636,541 +2636,541 @@
   {
     "name": "impacket",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "certipy-ad",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "coercer",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "bloodhound",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "mitm6",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "lsassy",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "sprayhound",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "ldapdomaindump",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "pypykatz",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "adidnsdump",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "dploot",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "bloodyad",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "hekatomb",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "donpapi",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "certsync",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "masky",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "pywhisker",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "autobloody",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "krbjack",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "roadtx",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "pywerview",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "pysnaffler",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "powerview",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "aclpwn",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "netexec",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "ldeep",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "smbclientng",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "ldapsearchad",
     "method": "pipx",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "godap",
     "method": "go",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Macmod/godap"
   },
   {
     "name": "pretender",
     "method": "go",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/RedTeamPentesting/pretender"
   },
   {
     "name": "evil-winrm",
     "method": "gem",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
     "name": "Responder",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/lgandx/Responder"
   },
   {
     "name": "Rubeus",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/GhostPack/Rubeus"
   },
   {
     "name": "ADRecon",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/adrecon/ADRecon"
   },
   {
     "name": "enum4linux-ng",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/cddmp/enum4linux-ng"
   },
   {
     "name": "linWinPwn",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/lefayjey/linWinPwn"
   },
   {
     "name": "PCredz",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/lgandx/PCredz"
   },
   {
     "name": "WMIOps",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/FortyNorthSecurity/WMIOps"
   },
   {
     "name": "MailSniper",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/dafthack/MailSniper"
   },
   {
     "name": "Invoke-Obfuscation",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/danielbohannon/Invoke-Obfuscation"
   },
   {
     "name": "Snaffler",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/SnaffCon/Snaffler"
   },
   {
     "name": "GraphRunner",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/dafthack/GraphRunner"
   },
   {
     "name": "TokenTactics",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/rvrsh3ll/TokenTactics"
   },
   {
     "name": "Invoke-TheHash",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Kevin-Robertson/Invoke-TheHash"
   },
   {
     "name": "SCShell",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Mr-Un1k0d3r/SCShell"
   },
   {
     "name": "krbrelayx",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/dirkjanm/krbrelayx"
   },
   {
     "name": "nishang",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/samratashok/nishang"
   },
   {
     "name": "redsnarf",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/nccgroup/redsnarf"
   },
   {
     "name": "spraykatz",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/aas-n/spraykatz"
   },
   {
     "name": "azurehound",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/BloodHoundAD/AzureHound"
   },
   {
     "name": "dfscoerce",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Wh04m1001/dfscoerce"
   },
   {
     "name": "petitpotam",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/topotam/PetitPotam"
   },
   {
     "name": "shadowcoerce",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/ShutdownRepo/shadowcoerce"
   },
   {
     "name": "noPac",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Ridter/noPac"
   },
   {
     "name": "zerologon",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/SecuraBV/CVE-2020-1472"
   },
   {
     "name": "ntlm_theft",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Greenwolf/ntlm_theft"
   },
   {
     "name": "ntlmv1-multi",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/evilmog/ntlmv1-multi"
   },
   {
     "name": "PassTheCert",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/AlmondOffSec/PassTheCert"
   },
   {
     "name": "pkinittools",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/dirkjanm/PKINITtools"
   },
   {
     "name": "privexchange",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/dirkjanm/PrivExchange"
   },
   {
     "name": "GPOddity",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/synacktiv/GPOddity"
   },
   {
     "name": "gmsadumper",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/micahvandeusen/gMSADumper"
   },
   {
     "name": "ExtractBitlockerKeys",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/p0dalirius/ExtractBitlockerKeys"
   },
   {
     "name": "PXEThief",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/blurbdust/PXEThief"
   },
   {
     "name": "sccmsecrets",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/synacktiv/SCCMSecrets"
   },
   {
     "name": "sccmwtf",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/xpn/sccmwtf"
   },
   {
     "name": "cmloot",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/shelltrail/cmloot"
   },
   {
     "name": "pywsus",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/GoSecure/pywsus"
   },
   {
     "name": "RemoteMonologue",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/3lp4tr0n/RemoteMonologue"
   },
   {
     "name": "roastinthemiddle",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Tw1sm/RITM"
   },
   {
     "name": "lnkup",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Plazmaz/lnkUp"
   },
   {
     "name": "ruler",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/sensepost/ruler"
   },
   {
     "name": "bloodhound-quickwin",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/kaluche/bloodhound-quickwin"
   },
   {
     "name": "bqm",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Acceis/bqm"
   },
   {
     "name": "cyperoth",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/seajaysec/cypheroth"
   },
   {
     "name": "abuseACL",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/AetherBlack/abuseACL"
   },
   {
     "name": "asrepcatcher",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Yaxxine7/ASRepCatcher"
   },
   {
     "name": "conpass",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/login-securite/conpass"
   },
   {
     "name": "freeipscanner",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/scrt/freeipscanner"
   },
   {
     "name": "goldencopy",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/Dramelac/GoldenCopy"
   },
   {
     "name": "keytabextract",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/sosdave/KeyTabExtract"
   },
   {
     "name": "ldaprelayscan",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/zyn3rgy/LdapRelayScan"
   },
   {
     "name": "LDAPWordlistHarvester",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/p0dalirius/pyLDAPWordlistHarvester"
   },
   {
     "name": "rusthound",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/NH-RED-TEAM/RustHound"
   },
   {
     "name": "rusthound-ce",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/g0h4n/RustHound-CE"
   },
   {
     "name": "GoExec",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/FalconOpsLLC/goexec"
   },
   {
     "name": "GoMapEnum",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/nodauf/GoMapEnum"
   },
   {
     "name": "gosecretsdump",
     "method": "git",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/c-sto/gosecretsdump"
   },
   {
     "name": "kerbrute",
     "method": "binary",
-    "module": "ad",
+    "module": "enterprise",
     "url": "https://github.com/ropnop/kerbrute"
   },
   {
     "name": "bloodhound-ce",
     "method": "docker",
-    "module": "ad",
+    "module": "enterprise",
     "url": ""
   },
   {
@@ -4006,5 +4006,89 @@
     "method": "docker",
     "module": "mobile",
     "url": ""
+  },
+  {
+    "name": "solc",
+    "method": "apt",
+    "module": "blockchain",
+    "url": ""
+  },
+  {
+    "name": "slither-analyzer",
+    "method": "pipx",
+    "module": "blockchain",
+    "url": ""
+  },
+  {
+    "name": "mythril",
+    "method": "pipx",
+    "module": "blockchain",
+    "url": ""
+  },
+  {
+    "name": "manticore",
+    "method": "pipx",
+    "module": "blockchain",
+    "url": ""
+  },
+  {
+    "name": "smart-contract-sanctuary",
+    "method": "git",
+    "module": "blockchain",
+    "url": "https://github.com/tintinweb/smart-contract-sanctuary"
+  },
+  {
+    "name": "openzeppelin-contracts",
+    "method": "git",
+    "module": "blockchain",
+    "url": "https://github.com/OpenZeppelin/openzeppelin-contracts"
+  },
+  {
+    "name": "echidna",
+    "method": "docker",
+    "module": "blockchain",
+    "url": ""
+  },
+  {
+    "name": "foundry",
+    "method": "special",
+    "module": "blockchain",
+    "url": "https://github.com/foundry-rs/foundry"
+  },
+  {
+    "name": "checkov",
+    "method": "pipx",
+    "module": "cloud",
+    "url": "https://github.com/bridgecrewio/checkov"
+  },
+  {
+    "name": "syft",
+    "method": "binary",
+    "module": "containers",
+    "url": "https://github.com/anchore/syft"
+  },
+  {
+    "name": "kubescape",
+    "method": "binary",
+    "module": "containers",
+    "url": "https://github.com/kubescape/kubescape"
+  },
+  {
+    "name": "floss",
+    "method": "binary",
+    "module": "malware",
+    "url": "https://github.com/mandiant/flare-floss"
+  },
+  {
+    "name": "capa",
+    "method": "binary",
+    "module": "malware",
+    "url": "https://github.com/mandiant/capa"
+  },
+  {
+    "name": "stegcracker",
+    "method": "pipx",
+    "module": "stego",
+    "url": "https://github.com/Paradoxis/StegCracker"
   }
 ]

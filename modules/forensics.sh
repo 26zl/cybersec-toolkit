@@ -36,5 +36,5 @@ install_module_forensics() {
     install_git_batch "Forensics - Git" "${FORENSICS_GIT[@]}"
 
     # Binary releases
-    download_github_release "WithSecureLabs/chainsaw" "chainsaw" "x86_64.*linux" || true
+    install_binary_releases "${BINARY_RELEASES_FORENSICS[@]}"
 }

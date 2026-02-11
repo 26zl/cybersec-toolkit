@@ -175,12 +175,12 @@ setup() {
 
 # ---------- ALL_MODULES ------------------------------------------------------
 
-@test "ALL_MODULES contains exactly 17 entries" {
-    [[ ${#ALL_MODULES[@]} -eq 17 ]]
+@test "ALL_MODULES contains exactly 18 entries" {
+    [[ ${#ALL_MODULES[@]} -eq 18 ]]
 }
 
 @test "ALL_MODULES contains all expected modules" {
-    local expected=(misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam mobile)
+    local expected=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless password stego cloud containers blueteam mobile blockchain)
     for mod in "${expected[@]}"; do
         local found=false
         for m in "${ALL_MODULES[@]}"; do

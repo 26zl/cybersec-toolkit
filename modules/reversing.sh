@@ -26,7 +26,8 @@ RE_GIT=(
     "pyinstxtractor=https://github.com/extremecoders-re/pyinstxtractor.git"
 )
 
-RE_GIT_NAMES=(pwndbg GEF peda decomp2dbg Qiling Krakatau pyinstxtractor ELFkickers rappel xrop)
+RE_GIT_NAMES=(pwndbg GEF peda decomp2dbg Qiling Krakatau pyinstxtractor)
+RE_BUILD_NAMES=(ELFkickers rappel xrop)
 
 install_module_reversing() {
     install_apt_batch "Reversing - Packages" "${RE_PACKAGES[@]}"
@@ -40,8 +41,7 @@ install_module_reversing() {
     build_from_source "xrop" "https://github.com/acama/xrop.git" "make" || true
 
     # Binary releases
-    download_github_release "0vercl0k/rp" "rp-lin" "rp-lin" || true
-    download_github_release "java-decompiler/jd-gui" "jd-gui" "jd-gui.*\\.jar" "/opt/cybersec-jars" || true
+    install_binary_releases "${BINARY_RELEASES_REVERSING[@]}"
 
     # Setup pwndbg (if cloned)
     if [[ -d "$GITHUB_TOOL_DIR/pwndbg" && -f "$GITHUB_TOOL_DIR/pwndbg/setup.sh" ]]; then
