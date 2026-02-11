@@ -15,7 +15,7 @@ WIRELESS_PACKAGES=(
     libnfc-dev avrdude
 )
 
-WIRELESS_PIPX=(jackit sipvicious)
+WIRELESS_PIPX=(sipvicious)
 
 WIRELESS_GO=()
 

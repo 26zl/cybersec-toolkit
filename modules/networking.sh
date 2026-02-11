@@ -15,7 +15,7 @@ NET_PACKAGES=(
     tor proxychains4 macchanger
     snort yersinia
     fping ngrep dns2tcp tcpflow tcpreplay
-    netsniff-ng cryptcat arping sslstrip
+    netsniff-ng arping
 )
 
 NET_PIPX=(sshuttle smbmap)

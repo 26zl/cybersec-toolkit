@@ -110,6 +110,29 @@ setup() {
     assert_output --partial "misc"
 }
 
+# ---------- --verbose / -v ---------------------------------------------------
+
+@test "install.sh --dry-run --verbose shows Verbose: true" {
+    run bash "$INSTALL_SH" --dry-run --verbose
+    assert_success
+    assert_output --partial "Verbose:"
+    assert_output --partial "true"
+}
+
+@test "install.sh --dry-run -v shows Verbose: true" {
+    run bash "$INSTALL_SH" --dry-run -v
+    assert_success
+    assert_output --partial "Verbose:"
+    assert_output --partial "true"
+}
+
+@test "install.sh --dry-run without verbose shows Verbose: false" {
+    run bash "$INSTALL_SH" --dry-run
+    assert_success
+    assert_output --partial "Verbose:"
+    assert_output --partial "false"
+}
+
 # ---------- CLI flags override profile values --------------------------------
 
 @test "install.sh --enable-docker overrides profile default" {
@@ -124,4 +147,31 @@ setup() {
     assert_success
     assert_output --partial "Skip heavy:"
     assert_output --partial "true"
+}
+
+# ---------- -j / --parallel --------------------------------------------------
+
+@test "install.sh --dry-run shows default Parallel jobs: 4" {
+    run bash "$INSTALL_SH" --dry-run
+    assert_success
+    assert_output --partial "Parallel jobs:  4"
+}
+
+@test "install.sh --dry-run -j 8 shows Parallel jobs: 8" {
+    run bash "$INSTALL_SH" --dry-run -j 8
+    assert_success
+    assert_output --partial "Parallel jobs:  8"
+}
+
+@test "install.sh --dry-run --parallel 1 shows Parallel jobs: 1" {
+    run bash "$INSTALL_SH" --dry-run --parallel 1
+    assert_success
+    assert_output --partial "Parallel jobs:  1"
+}
+
+@test "install.sh --help shows -j/--parallel flag" {
+    run bash "$INSTALL_SH" --help
+    assert_success
+    assert_output --partial "--parallel"
+    assert_output --partial "PARALLEL_JOBS"
 }

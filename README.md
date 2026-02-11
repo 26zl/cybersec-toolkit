@@ -8,77 +8,141 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux. __730+ tools__, __17 modules__, __10 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux. __665+ tools__, __17 modules__, __10 install methods__, one command.
 
-## Quick Start
+---
 
-One-liner:
+## Step 1: Install Prerequisites
+
+The installer does __not__ install runtimes for you. Install everything below __before__ running `install.sh`. The installer checks on startup and tells you exactly what is missing.
+
+### Debian / Ubuntu / Kali
 
 ```bash
-git clone https://github.com/26zl/cybersec-tools-installer.git && cd cybersec-tools-installer && sudo ./install.sh
+sudo apt update && sudo apt install -y \
+    git curl wget python3 python3-pip python3-venv python3-dev pipx \
+    ruby ruby-dev golang-go default-jdk \
+    build-essential libpcap-dev libssl-dev libffi-dev \
+    zlib1g-dev libxml2-dev libxslt1-dev cmake
+
+# Rust / Cargo (not in apt — installed via rustup)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
 ```
 
-With a profile:
+### Fedora / RHEL
 
 ```bash
-git clone https://github.com/26zl/cybersec-tools-installer.git && cd cybersec-tools-installer && sudo ./install.sh --profile ctf
+sudo dnf install -y \
+    git curl wget python3 python3-pip python3-devel pipx \
+    ruby ruby-devel golang java-17-openjdk-devel \
+    @development-tools libpcap-devel openssl-devel libffi-devel \
+    zlib-devel libxml2-devel libxslt-devel cmake
+
+# Rust / Cargo
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
 ```
 
-From ZIP download:
+### Arch
 
 ```bash
-# If you downloaded the ZIP instead of using git clone:
+sudo pacman -S --needed \
+    git curl wget python python-pip python-pipx \
+    ruby go jdk-openjdk rust \
+    base-devel libpcap openssl libffi zlib libxml2 libxslt cmake
+```
+
+### What each prerequisite is for
+
+| Prerequisite | Why it is needed |
+| ------------ | ---------------- |
+| git, curl, wget | Cloning repos, downloading releases |
+| Python 3 + pipx | ~157 Python security tools installed in isolated venvs |
+| Go | ~55 Go-based tools (subfinder, nuclei, ffuf, httpx, etc.) |
+| Rust / Cargo | 3 Rust tools (feroxbuster, RustScan, pwninit) |
+| Ruby / gem | 6 Ruby gems (wpscan, evil-winrm, XSpear, etc.) |
+| Java (JDK) | Burp Suite, ysoserial, apktool |
+| build-essential / cmake | ~15 tools built from source (massdns, duplicut, etc.) |
+| libpcap, libssl, libffi, zlib, libxml2, libxslt | C libraries required by Python/Go tools during compilation |
+| Docker __(optional)__ | Only needed with `--enable-docker` for C2, MobSF, BeEF, TheHive |
+
+> Only runtimes needed by your selected modules are required. For example `--profile osint` only needs Python, pipx, Go, and build tools — not Rust or Ruby.
+
+---
+
+## Step 2: Install
+
+```bash
+git clone https://github.com/26zl/cybersec-tools-installer.git
+cd cybersec-tools-installer
+sudo ./install.sh
+```
+
+That installs all 665+ tools. To install a subset, use a profile or pick specific modules:
+
+```bash
+sudo ./install.sh --profile ctf                      # CTF tools only
+sudo ./install.sh --profile redteam --enable-docker   # Red team + Docker C2
+sudo ./install.sh --module web --module recon          # Specific modules
+sudo ./install.sh --tool sqlmap --tool nmap            # Individual tools
+sudo ./install.sh --dry-run --profile ctf              # Preview without installing
+```
+
+From a ZIP download (no git):
+
+```bash
 unzip cybersec-tools-installer-main.zip && cd cybersec-tools-installer-main && sudo bash install.sh
 ```
 
-## Usage
+### All flags
 
 ```bash
-sudo ./install.sh                                    # Full install (all 730+ tools)
-sudo ./install.sh --profile ctf                      # Install a profile
-sudo ./install.sh --module web --module recon         # Specific modules
-sudo ./install.sh --tool sqlmap --tool nmap           # Individual tools
-sudo ./install.sh --enable-docker --include-c2        # Include Docker images + C2
-sudo ./install.sh --profile redteam --enable-docker   # Profile with Docker
-sudo ./install.sh --dry-run --profile ctf             # Preview without installing
-sudo ./install.sh --skip-heavy                        # Skip large packages (sagemath, etc.)
-sudo ./install.sh --upgrade-system                    # Upgrade system packages first
-sudo ./install.sh --list-profiles                     # Show available profiles
-sudo ./install.sh --list-modules                      # Show available modules
+sudo ./install.sh --help                # Full help
+sudo ./install.sh --list-profiles       # Show profiles
+sudo ./install.sh --list-modules        # Show modules
+sudo ./install.sh --skip-heavy          # Skip large packages (sagemath, gnuradio)
+sudo ./install.sh --upgrade-system      # Upgrade system packages before installing
+sudo ./install.sh --enable-docker       # Pull Docker images
+sudo ./install.sh --include-c2          # Include C2 frameworks (needs --enable-docker)
+sudo ./install.sh -j 8                  # 8 parallel install jobs (default: 4)
+sudo ./install.sh -v                    # Verbose / debug output
 ```
 
-`--profile` and `--module` always auto-include the `misc` module (base dependencies and runtimes). `--tool` does not — it installs only the specified tool.
+`--profile` and `--module` always auto-include the `misc` module (base dependencies). `--tool` does not — it installs only the specified tool.
+
+---
 
 ## Profiles
 
 | Profile | Modules | Description |
 | ------- | ------- | ----------- |
-| `full` | All 17 modules | Complete security toolkit (add `--enable-docker` for C2/MobSF/BeEF/TheHive) |
+| `full` | All 17 | Complete security toolkit |
 | `ctf` | misc, crypto, pwn, reversing, stego, forensics, password, web, mobile | CTF competitions |
 | `redteam` | misc, networking, recon, web, ad, pwn, mobile | Offensive security |
 | `web` | misc, networking, recon, web | Web application testing |
 | `malware` | misc, malware, forensics, reversing, mobile | Malware analysis |
 | `osint` | misc, recon | OSINT gathering |
 | `crackstation` | misc, password, crypto | Password cracking |
-| `lightweight` | misc, networking, recon, web | Core tools only |
+| `lightweight` | misc, networking, recon, web | Core tools, minimal footprint |
 | `blueteam` | misc, blueteam, forensics, malware, containers | Defensive security / IR |
 
 ## Modules
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | ~94 | Base dependencies, runtimes, post-exploitation, social engineering, wordlists, C2 (Docker) |
-| `networking` | ~60 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `misc` | ~94 | Base dependencies, post-exploitation, social engineering, wordlists, C2 (Docker) |
+| `networking` | ~58 | Port scanning, packet capture, tunneling, MITM, protocol tools |
 | `recon` | ~103 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
-| `web` | ~79 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
+| `web` | ~78 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | ~17 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | ~54 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `pwn` | ~53 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | ~31 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | ~44 | Disk/memory forensics, file carving, timeline analysis, log analysis |
+| `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
 | `malware` | ~5 | YARA, ClamAV, inetsim, quark-engine |
 | `ad` | ~102 | Active Directory, Kerberos, credential harvesting, lateral movement, Azure AD |
 | `wireless` | ~41 | WiFi cracking, Bluetooth, SDR, rogue AP |
-| `password` | ~33 | Hash cracking (john, hashcat), brute force, wordlist generation |
+| `password` | ~32 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | ~14 | Image/audio steganography, detection |
 | `cloud` | ~17 | AWS/Azure/GCP security auditing |
 | `containers` | ~7 | Docker/Kubernetes security (Trivy, Grype, kubeaudit) |
@@ -87,66 +151,47 @@ sudo ./install.sh --list-modules                      # Show available modules
 
 ## Install Methods
 
-| Method | Count | Used for |
-| ------ | ----- | -------- |
-| System packages (apt/dnf/pacman/zypper) | ~205 | Core tools |
+| Method | Count | Examples |
+| ------ | ----- | ------- |
+| System packages (apt/dnf/pacman/zypper) | ~199 | nmap, wireshark, john, hashcat |
 | Git clone | ~260 | GitHub repos with auto-setup, resources, wordlists |
-| pipx | ~157 | Python tools in isolated venvs |
-| Go install | ~55 | Go-based tools |
-| Binary release | ~21 | GitHub release binaries |
-| Build from source | ~15 | Tools requiring compilation |
-| Docker | ~7 | C2 (`--include-c2`), IR platforms, MobSF, BeEF |
-| Ruby gem | 6 | wpscan, evil-winrm, one_gadget, seccomp-tools, zsteg, xspear |
+| pipx | ~157 | sqlmap, impacket, bloodhound, volatility3 |
+| Go install | ~55 | nuclei, subfinder, ffuf, httpx |
+| Binary release | ~21 | gitleaks, chainsaw, findomain |
+| Build from source | ~15 | massdns, duplicut, yara |
+| Docker | ~7 | C2, MobSF, BeEF, TheHive |
+| Ruby gem | 6 | wpscan, evil-winrm, XSpear |
 | Special | 3 | Metasploit, Burp Suite, OWASP ZAP |
-| Cargo (Rust) | 4 | RustScan, feroxbuster, moonwalk, pwninit |
+| Cargo (Rust) | 3 | feroxbuster, RustScan, pwninit |
 
-## Prerequisites
+---
 
-The `misc` module auto-installs all runtimes (Python 3, Go, Ruby, Java, build-essential) via your package manager. Rust/Cargo is the only runtime __not__ auto-installed. When using `--tool`, the misc module does NOT run — ensure runtimes are already installed.
+## Post-Install Scripts
 
-| Requirement | Details |
-| ----------- | ------- |
-| OS | Debian/Ubuntu/Kali (primary), Fedora/RHEL, Arch, openSUSE |
-| Root | Must run as `sudo` |
-| Disk | ~50 GB full install, ~10-20 GB per profile |
+All scripts require root and support `--help`.
 
-__One-liner prerequisites (Debian/Ubuntu):__
+| Script | Purpose | Example |
+| ------ | ------- | ------- |
+| `scripts/verify.sh` | Check which tools are installed | `sudo ./scripts/verify.sh --module web` |
+| `scripts/update.sh` | Update all installed tools | `sudo ./scripts/update.sh --skip-system` |
+| `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module ad --yes` |
+| `scripts/backup.sh` | Backup/restore tool configs | `sudo ./scripts/backup.sh --encrypt` |
 
-```bash
-sudo apt update && sudo apt install -y \
-    git curl wget python3 python3-pip python3-venv python3-dev \
-    ruby ruby-dev golang-go default-jdk \
-    build-essential libpcap-dev libssl-dev libffi-dev \
-    zlib1g-dev libxml2-dev libxslt1-dev cmake
-```
+## Tool Locations
 
-<details>
-<summary>Fedora / Arch one-liners</summary>
+All binaries end up in `/usr/local/bin/` (in PATH on all Linux distros).
 
-__Fedora:__
+| Method | Binary location | Data location |
+| ------ | --------------- | ------------- |
+| pipx | `/usr/local/bin/` | `/opt/pipx/` |
+| Go | `/usr/local/bin/` | `/opt/go/` |
+| Cargo | `/usr/local/bin/` (symlinked) | `~/.cargo/` |
+| Git repos | `/usr/local/bin/` (symlinked) | `/opt/<repo>/` |
+| Binary releases | `/usr/local/bin/` | -- |
 
-```bash
-sudo dnf install -y \
-    git curl wget python3 python3-pip python3-devel \
-    ruby ruby-devel golang java-17-openjdk-devel \
-    @development-tools libpcap-devel openssl-devel libffi-devel \
-    zlib-devel libxml2-devel libxslt-devel cmake
-```
+## Docker Images (optional)
 
-__Arch:__
-
-```bash
-sudo pacman -S --needed \
-    git curl wget python python-pip \
-    ruby go jdk-openjdk \
-    base-devel libpcap openssl libffi zlib libxml2 libxslt cmake
-```
-
-</details>
-
-## Docker
-
-Docker is __optional__. Only used with `--enable-docker` for tools that need complex multi-service setups. If Docker is missing, those images are skipped — nothing else is affected.
+Only used with `--enable-docker`. If Docker is not installed, these are skipped silently.
 
 | Image | Module | Flag | Description |
 | ----- | ------ | ---- | ----------- |
@@ -158,29 +203,9 @@ Docker is __optional__. Only used with `--enable-docker` for tools that need com
 | `strangebee/thehive:latest` | blueteam | `--enable-docker` | TheHive IR platform |
 | `thehiveproject/cortex:latest` | blueteam | `--enable-docker` | Cortex analysis |
 
-## Scripts
+## Distro Support
 
-| Script | Purpose |
-| ------ | ------- |
-| `install.sh` | Modular installer with profile/module/tool selection, dry-run |
-| `scripts/verify.sh` | Verify installed tools with `--module` and `--summary` |
-| `scripts/update.sh` | Update all methods (`--skip-system`, `--skip-binary`, `--skip-docker`, etc.) |
-| `scripts/remove.sh` | Remove by module with `--module`, `--remove-deps`, `--yes` |
-| `scripts/backup.sh` | Backup/restore tool configs with AES-256-CBC encryption |
-
-All scripts require root and support `--help`.
-
-## Tool Locations
-
-All binaries go to `/usr/local/bin/` (in PATH on all Linux distros).
-
-| Method | Binary location | Data location |
-| ------ | --------------- | ------------- |
-| pipx | `/usr/local/bin/` | `/opt/pipx/` |
-| Go | `/usr/local/bin/` | `/opt/go/` |
-| Cargo | `/usr/local/bin/` (symlinked) | `~/.cargo/` |
-| Git repos | `/usr/local/bin/` (symlinked) | `/opt/<repo>/` |
-| Binary releases | `/usr/local/bin/` | — |
+__Debian/Ubuntu/Kali is the primary target__ -- all 665+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
 
 ## Supply Chain Model
 
@@ -190,17 +215,13 @@ This installer downloads and runs code from the internet as root.
 - __pipx/Go/Cargo/Gem__: Downloads from registries (no signature verification, pipx isolated in venvs)
 - __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
-- __Build from source__: Runs `make` as root — review what you're building
+- __Build from source__: Runs `make` as root -- review what you're building
 
-Git repos and binaries track latest versions. The `.versions` file logs what was installed and when.
-
-## Distro Support
-
-__Debian/Ubuntu/Kali is the primary target__ — all 730+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, cargo, gem, git, and binary installs work identically across all distros.
+The `.versions` file logs what was installed and when.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License -- see [LICENSE](LICENSE) for details.
 
 ## Disclaimer
 

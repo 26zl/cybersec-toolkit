@@ -193,6 +193,39 @@ setup() {
     done
 }
 
+# ---------- VERBOSE / log_debug ----------------------------------------------
+
+@test "VERBOSE defaults to false" {
+    unset VERBOSE
+    source_libs debian apt
+    [[ "$VERBOSE" == "false" ]]
+}
+
+@test "log_debug is silent when VERBOSE is false" {
+    VERBOSE=false
+    run log_debug "should not appear"
+    assert_success
+    assert_output ""
+}
+
+@test "log_debug outputs [D] prefix when VERBOSE is true" {
+    VERBOSE=true
+    run log_debug "debug test message"
+    assert_success
+    assert_output --partial "[D]"
+    assert_output --partial "debug test message"
+}
+
+@test "log_debug writes to LOG_FILE when VERBOSE is true" {
+    make_test_tmpdir
+    local logfile="$TEST_TMPDIR/debug.log"
+    LOG_FILE="$logfile"
+    VERBOSE=true
+    log_debug "logfile debug test"
+    [[ -f "$logfile" ]]
+    grep -q "logfile debug test" "$logfile"
+}
+
 # ---------- Color variables --------------------------------------------------
 
 @test "color variables are defined" {
@@ -203,4 +236,60 @@ setup() {
     [[ -n "$CYAN" ]]
     [[ -n "$BOLD" ]]
     [[ -n "$NC" ]]
+}
+
+# ---------- PARALLEL_JOBS ----------------------------------------------------
+
+@test "PARALLEL_JOBS defaults to 4" {
+    unset PARALLEL_JOBS
+    source_libs debian apt
+    [[ "$PARALLEL_JOBS" == "4" ]]
+}
+
+@test "PARALLEL_JOBS respects environment override" {
+    PARALLEL_JOBS=8
+    source_libs debian apt
+    [[ "$PARALLEL_JOBS" == "8" ]]
+}
+
+# ---------- pkg_is_installed --------------------------------------------------
+
+@test "pkg_is_installed function exists" {
+    run type -t pkg_is_installed
+    assert_success
+    assert_output "function"
+}
+
+# ---------- PARALLEL_JOBS / helpers ------------------------------------------
+
+@test "_wait_for_job_slot returns 0 when under limit" {
+    PARALLEL_JOBS=4
+    run _wait_for_job_slot
+    assert_success
+}
+
+@test "_collect_parallel_results processes ok/skip/fail files" {
+    make_test_tmpdir
+    source_libs --installers debian apt
+
+    local rdir="$TEST_TMPDIR/results"
+    mkdir -p "$rdir"
+
+    # Create result files
+    printf 'ok\nlatest\n' > "$rdir/tool-a"
+    printf 'skip\nexisting\n' > "$rdir/tool-b"
+    printf 'fail\n\n' > "$rdir/tool-c"
+
+    # Set up version file
+    VERSION_FILE="$TEST_TMPDIR/.versions"
+
+    _collect_parallel_results "$rdir" "test"
+
+    [[ "$_par_failed" -eq 1 ]]
+    [[ "$_par_skipped" -eq 1 ]]
+    # Verify version tracking was called for ok and skip
+    grep -q "^tool-a|test|latest|" "$VERSION_FILE"
+    grep -q "^tool-b|test|existing|" "$VERSION_FILE"
+    # fail should not be tracked
+    ! grep -q "^tool-c|" "$VERSION_FILE"
 }

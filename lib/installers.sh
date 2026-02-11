@@ -11,6 +11,21 @@ fixup_package_names() {
     local new_arr=()
     for pkg in "${arr[@]}"; do
         case "$PKG_MANAGER" in
+            apt)
+                # Skip Kali/Parrot-only packages on standard Debian/Ubuntu
+                if [[ "$DISTRO_ID" != "kali" && "$DISTRO_ID" != "parrot" ]]; then
+                    case "$pkg" in
+                        # Kali-only packages not available in standard Ubuntu/Debian repos
+                        spike|enum4linux|bing-ip2hosts) continue ;;
+                        sagemath) continue ;;
+                        ghidra|rizin) continue ;;
+                        bulk-extractor|forensics-extra) continue ;;
+                        kismet|spooftooph|crackle|asleap|fern-wifi-cracker) continue ;;
+                        rsmangler) continue ;;
+                        zeek|sentrypeer|chaosreader) continue ;;
+                    esac
+                fi
+                ;;
             dnf)
                 case "$pkg" in
                     netcat-openbsd)     pkg="nmap-ncat" ;;
@@ -147,6 +162,9 @@ install_apt_batch() {
     [[ "$total" -eq 0 ]] && return 0
     local current=0 failed=0 skipped=0
 
+    log_debug "install_apt_batch: starting '$label' with $total items"
+    local _batch_start; _batch_start=$(date +%s)
+
     log_info "Installing ${label} ($total packages)..."
     for pkg in "${packages[@]}"; do
         current=$((current + 1))
@@ -162,6 +180,9 @@ install_apt_batch() {
     done
     echo ""
     log_success "${label}: $((total - failed))/$total installed ($failed failed)"
+
+    local _batch_elapsed=$(( $(date +%s) - _batch_start ))
+    log_debug "install_apt_batch: '$label' completed in ${_batch_elapsed}s"
 }
 
 # ----- Batch pipx install ---------------------------------------------------
@@ -170,7 +191,9 @@ install_pipx_batch() {
     local -a tools=("$@")
     local total=${#tools[@]}
     [[ "$total" -eq 0 ]] && return 0
-    local current=0 failed=0 skipped=0
+
+    log_debug "install_pipx_batch: starting '$label' with $total items"
+    local _batch_start; _batch_start=$(date +%s)
 
     ensure_pipx
     # Cache the installed list once to avoid calling pipx list per tool
@@ -180,24 +203,59 @@ install_pipx_batch() {
     fi
 
     log_info "Installing ${label} ($total pipx tools)..."
-    for tool in "${tools[@]}"; do
-        current=$((current + 1))
-        show_progress "$current" "$total" "$tool"
-        # Skip if already installed
-        if echo "$installed_pipx" | grep -qi "^${tool} "; then
-            skipped=$((skipped + 1))
-            track_version "$tool" "pipx" "existing"
-            continue
-        fi
-        if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
-            log_error "Failed pipx: $tool"
-            failed=$((failed + 1))
-        else
-            track_version "$tool" "pipx" "latest"
-        fi
-    done
+
+    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+        # --- Parallel mode ---
+        local _results_dir; _results_dir=$(mktemp -d)
+
+        for tool in "${tools[@]}"; do
+            # Skip-check in main process (no fork needed)
+            if echo "$installed_pipx" | grep -qi "^${tool} "; then
+                printf 'skip\nexisting\n' > "$_results_dir/$tool"
+                continue
+            fi
+
+            _wait_for_job_slot
+
+            (
+                if pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
+                    printf 'ok\nlatest\n' > "$_results_dir/$tool"
+                else
+                    printf 'fail\n\n' > "$_results_dir/$tool"
+                fi
+            ) &
+        done
+        wait
+
+        _collect_parallel_results "$_results_dir" "pipx"
+        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
+        local failed=$_par_failed skipped=$_par_skipped
+    else
+        # --- Sequential mode (original) ---
+        local current=0 failed=0 skipped=0
+        for tool in "${tools[@]}"; do
+            current=$((current + 1))
+            show_progress "$current" "$total" "$tool"
+            # Skip if already installed
+            if echo "$installed_pipx" | grep -qi "^${tool} "; then
+                skipped=$((skipped + 1))
+                track_version "$tool" "pipx" "existing"
+                continue
+            fi
+            if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
+                log_error "Failed pipx: $tool"
+                failed=$((failed + 1))
+            else
+                track_version "$tool" "pipx" "latest"
+            fi
+        done
+    fi
+
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
+
+    local _batch_elapsed=$(( $(date +%s) - _batch_start ))
+    log_debug "install_pipx_batch: '$label' completed in ${_batch_elapsed}s"
 }
 
 # ----- Batch Go install -----------------------------------------------------
@@ -213,28 +271,68 @@ install_go_batch() {
     fi
     # GOPATH and GOBIN are set in common.sh (system-wide: /opt/go, /usr/local/bin)
 
-    local current=0 failed=0 skipped=0
+    log_debug "install_go_batch: starting '$label' with $total items"
+    local _batch_start; _batch_start=$(date +%s)
+
     log_info "Installing ${label} ($total Go tools)..."
-    for tool in "${tools[@]}"; do
-        current=$((current + 1))
-        local name
-        name=$(echo "$tool" | rev | cut -d/ -f1 | rev | cut -d@ -f1)
-        show_progress "$current" "$total" "$name"
-        # Skip if binary already exists (GOBIN=/usr/local/bin, so command_exists suffices)
-        if command_exists "$name"; then
-            skipped=$((skipped + 1))
-            track_version "$name" "go" "existing"
-            continue
-        fi
-        if ! go install "$tool" >> "$LOG_FILE" 2>&1; then
-            log_error "Failed go: $name"
-            failed=$((failed + 1))
-        else
-            track_version "$name" "go" "latest"
-        fi
-    done
+
+    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+        # --- Parallel mode ---
+        local _results_dir; _results_dir=$(mktemp -d)
+
+        for tool in "${tools[@]}"; do
+            local name
+            name=$(_go_bin_name "$tool")
+
+            # Skip-check in main process
+            if command_exists "$name"; then
+                printf 'skip\nexisting\n' > "$_results_dir/$name"
+                continue
+            fi
+
+            _wait_for_job_slot
+
+            (
+                if go install "$tool" >> "$LOG_FILE" 2>&1; then
+                    printf 'ok\nlatest\n' > "$_results_dir/$name"
+                else
+                    printf 'fail\n\n' > "$_results_dir/$name"
+                fi
+            ) &
+        done
+        wait
+
+        _collect_parallel_results "$_results_dir" "go"
+        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
+        local failed=$_par_failed skipped=$_par_skipped
+    else
+        # --- Sequential mode (original) ---
+        local current=0 failed=0 skipped=0
+        for tool in "${tools[@]}"; do
+            current=$((current + 1))
+            local name
+            name=$(_go_bin_name "$tool")
+            show_progress "$current" "$total" "$name"
+            # Skip if binary already exists (GOBIN=/usr/local/bin, so command_exists suffices)
+            if command_exists "$name"; then
+                skipped=$((skipped + 1))
+                track_version "$name" "go" "existing"
+                continue
+            fi
+            if ! go install "$tool" >> "$LOG_FILE" 2>&1; then
+                log_error "Failed go: $name"
+                failed=$((failed + 1))
+            else
+                track_version "$name" "go" "latest"
+            fi
+        done
+    fi
+
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
+
+    local _batch_elapsed=$(( $(date +%s) - _batch_start ))
+    log_debug "install_go_batch: '$label' completed in ${_batch_elapsed}s"
 }
 
 # ----- Batch cargo install --------------------------------------------------
@@ -245,42 +343,77 @@ install_cargo_batch() {
     [[ "$total" -eq 0 ]] && return 0
 
     if ! command_exists cargo; then
-        log_warn "Cargo not found — installing Rust toolchain..."
-        # shellcheck disable=SC2016  # Single quotes intentional — expanded by the subshell
-        if bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y' >> "$LOG_FILE" 2>&1; then
-            export PATH="$HOME/.cargo/bin:$PATH"
-            log_success "Rust toolchain installed"
-        else
-            log_error "Failed to install Rust — skipping ${label}"
-            return 1
-        fi
+        log_warn "Cargo not found — skipping ${label}"
+        log_warn "Install Rust first: https://rustup.rs/"
+        return 0
     fi
     export PATH="$HOME/.cargo/bin:$PATH"
 
-    local current=0 failed=0 skipped=0
+    log_debug "install_cargo_batch: starting '$label' with $total items"
+    local _batch_start; _batch_start=$(date +%s)
+
     log_info "Installing ${label} ($total Rust tools)..."
-    for crate in "${crates[@]}"; do
-        current=$((current + 1))
-        show_progress "$current" "$total" "$crate"
-        # Skip if binary already exists in /usr/local/bin or cargo bin
-        if command_exists "$crate"; then
-            skipped=$((skipped + 1))
-            track_version "$crate" "cargo" "existing"
-            continue
-        fi
-        if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
-            log_error "Failed cargo: $crate"
-            failed=$((failed + 1))
-        else
-            # Symlink cargo binary to /usr/local/bin for system-wide access
-            if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-                ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
+
+    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+        # --- Parallel mode ---
+        local _results_dir; _results_dir=$(mktemp -d)
+
+        for crate in "${crates[@]}"; do
+            # Skip-check in main process
+            if command_exists "$crate"; then
+                printf 'skip\nexisting\n' > "$_results_dir/$crate"
+                continue
             fi
-            track_version "$crate" "cargo" "latest"
-        fi
-    done
+
+            _wait_for_job_slot
+
+            (
+                if cargo install "$crate" >> "$LOG_FILE" 2>&1; then
+                    # Symlink cargo binary to /usr/local/bin for system-wide access
+                    if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
+                        ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
+                    fi
+                    printf 'ok\nlatest\n' > "$_results_dir/$crate"
+                else
+                    printf 'fail\n\n' > "$_results_dir/$crate"
+                fi
+            ) &
+        done
+        wait
+
+        _collect_parallel_results "$_results_dir" "cargo"
+        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
+        local failed=$_par_failed skipped=$_par_skipped
+    else
+        # --- Sequential mode (original) ---
+        local current=0 failed=0 skipped=0
+        for crate in "${crates[@]}"; do
+            current=$((current + 1))
+            show_progress "$current" "$total" "$crate"
+            # Skip if binary already exists in /usr/local/bin or cargo bin
+            if command_exists "$crate"; then
+                skipped=$((skipped + 1))
+                track_version "$crate" "cargo" "existing"
+                continue
+            fi
+            if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
+                log_error "Failed cargo: $crate"
+                failed=$((failed + 1))
+            else
+                # Symlink cargo binary to /usr/local/bin for system-wide access
+                if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
+                    ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
+                fi
+                track_version "$crate" "cargo" "latest"
+            fi
+        done
+    fi
+
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
+
+    local _batch_elapsed=$(( $(date +%s) - _batch_start ))
+    log_debug "install_cargo_batch: '$label' completed in ${_batch_elapsed}s"
 }
 
 # ----- Batch gem install ----------------------------------------------------
@@ -295,28 +428,67 @@ install_gem_batch() {
         return 0
     fi
 
-    local current=0 failed=0 skipped=0
-    log_info "Installing ${label} ($total Ruby gems)..."
+    log_debug "install_gem_batch: starting '$label' with $total items"
+    local _batch_start; _batch_start=$(date +%s)
+
+    # Cache the installed list once
     local installed_gems=""
     installed_gems=$(gem list --no-details 2>/dev/null || true)
-    for gem_name in "${gems[@]}"; do
-        current=$((current + 1))
-        show_progress "$current" "$total" "$gem_name"
-        # Skip if already installed
-        if echo "$installed_gems" | grep -q "^${gem_name} "; then
-            skipped=$((skipped + 1))
-            track_version "$gem_name" "gem" "existing"
-            continue
-        fi
-        if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
-            track_version "$gem_name" "gem" "latest"
-        else
-            log_error "Failed gem: $gem_name"
-            failed=$((failed + 1))
-        fi
-    done
+
+    log_info "Installing ${label} ($total Ruby gems)..."
+
+    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+        # --- Parallel mode ---
+        local _results_dir; _results_dir=$(mktemp -d)
+
+        for gem_name in "${gems[@]}"; do
+            # Skip-check in main process
+            if echo "$installed_gems" | grep -q "^${gem_name} "; then
+                printf 'skip\nexisting\n' > "$_results_dir/$gem_name"
+                continue
+            fi
+
+            _wait_for_job_slot
+
+            (
+                if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
+                    printf 'ok\nlatest\n' > "$_results_dir/$gem_name"
+                else
+                    printf 'fail\n\n' > "$_results_dir/$gem_name"
+                fi
+            ) &
+        done
+        wait
+
+        _collect_parallel_results "$_results_dir" "gem"
+        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
+        local failed=$_par_failed skipped=$_par_skipped
+    else
+        # --- Sequential mode (original) ---
+        local current=0 failed=0 skipped=0
+        for gem_name in "${gems[@]}"; do
+            current=$((current + 1))
+            show_progress "$current" "$total" "$gem_name"
+            # Skip if already installed
+            if echo "$installed_gems" | grep -q "^${gem_name} "; then
+                skipped=$((skipped + 1))
+                track_version "$gem_name" "gem" "existing"
+                continue
+            fi
+            if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
+                track_version "$gem_name" "gem" "latest"
+            else
+                log_error "Failed gem: $gem_name"
+                failed=$((failed + 1))
+            fi
+        done
+    fi
+
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
+
+    local _batch_elapsed=$(( $(date +%s) - _batch_start ))
+    log_debug "install_gem_batch: '$label' completed in ${_batch_elapsed}s"
 }
 
 # ----- Post-clone setup for git repos ---------------------------------------
@@ -333,7 +505,7 @@ setup_git_repo() {
     # This avoids running arbitrary code from cloned repos as root.
     if [[ -f "$dest/requirements.txt" ]]; then
         if [[ ! -d "$dest/venv" ]]; then
-            python3 -m venv "$dest/venv" 2>/dev/null || return 0
+            python3 -m venv "$dest/venv" 2>>"$LOG_FILE" || return 0
         fi
         "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
         "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1 || true
@@ -375,30 +547,72 @@ install_git_batch() {
     local -a repos=("$@")
     local total=${#repos[@]}
     [[ "$total" -eq 0 ]] && return 0
-    local current=0 failed=0 skipped=0
+
+    log_debug "install_git_batch: starting '$label' with $total items"
+    local _batch_start; _batch_start=$(date +%s)
 
     local base_dir="$GITHUB_TOOL_DIR"
     log_info "Installing ${label} ($total repos)..."
-    for entry in "${repos[@]}"; do
-        current=$((current + 1))
-        local name="${entry%%=*}"
-        local url="${entry#*=}"
-        local dest="$base_dir/$name"
-        show_progress "$current" "$total" "$name"
-        local is_existing=false
-        [[ -d "$dest/.git" ]] && is_existing=true
-        if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
-            log_error "Failed git: $name"
-            failed=$((failed + 1))
-        else
-            # Auto-setup: venv, requirements, symlinks
-            setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
-            [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
-            track_version "$name" "git" "HEAD"
-        fi
-    done
+
+    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+        # --- Parallel mode ---
+        local _results_dir; _results_dir=$(mktemp -d)
+
+        for entry in "${repos[@]}"; do
+            local name="${entry%%=*}"
+            local url="${entry#*=}"
+            local dest="$base_dir/$name"
+
+            _wait_for_job_slot
+
+            (
+                local is_existing=false
+                [[ -d "$dest/.git" ]] && is_existing=true
+                if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
+                    setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
+                    if [[ "$is_existing" == "true" ]]; then
+                        printf 'skip\nHEAD\n' > "$_results_dir/$name"
+                    else
+                        printf 'ok\nHEAD\n' > "$_results_dir/$name"
+                    fi
+                else
+                    printf 'fail\n\n' > "$_results_dir/$name"
+                fi
+            ) &
+        done
+        wait
+
+        _collect_parallel_results "$_results_dir" "git"
+        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
+        local failed=$_par_failed skipped=$_par_skipped
+    else
+        # --- Sequential mode (original) ---
+        local current=0 failed=0 skipped=0
+        for entry in "${repos[@]}"; do
+            current=$((current + 1))
+            local name="${entry%%=*}"
+            local url="${entry#*=}"
+            local dest="$base_dir/$name"
+            show_progress "$current" "$total" "$name"
+            local is_existing=false
+            [[ -d "$dest/.git" ]] && is_existing=true
+            if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
+                log_error "Failed git: $name"
+                failed=$((failed + 1))
+            else
+                # Auto-setup: venv, requirements, symlinks
+                setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
+                [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
+                track_version "$name" "git" "HEAD"
+            fi
+        done
+    fi
+
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} updated, ${failed} failed"
+
+    local _batch_elapsed=$(( $(date +%s) - _batch_start ))
+    log_debug "install_git_batch: '$label' completed in ${_batch_elapsed}s"
 }
 
 # ----- Verify download against release checksum file ------------------------
@@ -419,7 +633,7 @@ for asset in data.get('assets', []):
     if any(k in name for k in ('checksums', 'sha256sums', 'sha256sum', 'sha256')):
         print(asset['browser_download_url'])
         break
-" 2>/dev/null)
+" 2>>"$LOG_FILE")
 
     if [[ -z "$checksum_url" ]]; then
         log_warn "No checksum file in release for $file_name — skipping verification"
@@ -427,7 +641,7 @@ for asset in data.get('assets', []):
     fi
 
     local checksums
-    checksums=$(curl -sSL "$checksum_url" 2>/dev/null)
+    checksums=$(curl -sSL "$checksum_url" 2>>"$LOG_FILE")
     if [[ -z "$checksums" ]]; then
         log_warn "Failed to download checksums for $file_name"
         return 1
@@ -480,10 +694,11 @@ download_github_release() {
         pattern="${pattern//x86_64/$SYS_ARCH_ALT}"
     fi
 
+    log_debug "download_github_release: repo=$repo binary=$binary pattern=$pattern"
     log_info "Downloading $binary from $repo releases..."
     local api_url="https://api.github.com/repos/$repo/releases/latest"
     local release_json
-    release_json=$(curl -sSL "$api_url" 2>/dev/null)
+    release_json=$(curl -sSL "$api_url" 2>>"$LOG_FILE")
     if [[ -z "$release_json" ]]; then
         log_error "Could not fetch release info for $binary"
         return 1
@@ -498,12 +713,14 @@ for asset in data.get('assets', []):
     if re.search(r'''$pattern''', asset.get('name', '')):
         print(asset['browser_download_url'])
         break
-" 2>/dev/null)
+" 2>>"$LOG_FILE")
 
     if [[ -z "$download_url" ]]; then
         log_error "Could not find release for $binary (pattern: $pattern)"
         return 1
     fi
+
+    log_debug "download_github_release: URL=$download_url"
 
     local tmp_dir
     tmp_dir=$(mktemp -d)
@@ -529,9 +746,9 @@ for asset in data.get('assets', []):
     # Handle archive types
     case "$download_url" in
         *.tar.gz|*.tgz)
-            tar xzf "$tmp_dir/$asset_name" -C "$tmp_dir" 2>/dev/null ;;
+            tar xzf "$tmp_dir/$asset_name" -C "$tmp_dir" 2>>"$LOG_FILE" ;;
         *.zip)
-            unzip -qo "$tmp_dir/$asset_name" -d "$tmp_dir" 2>/dev/null ;;
+            unzip -qo "$tmp_dir/$asset_name" -d "$tmp_dir" 2>>"$LOG_FILE" ;;
         *.deb)
             # shellcheck disable=SC2024  # Script runs as root; redirect is fine
             sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1
@@ -598,7 +815,7 @@ WRAPPER
             sudo ln -sf "$dest_bin" "/usr/local/bin/$binary" 2>/dev/null || true
         fi
     else
-        sudo install -m 755 "$found" "$dest_dir/$binary" 2>/dev/null
+        sudo install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"
     fi
     rm -rf "$tmp_dir"
 

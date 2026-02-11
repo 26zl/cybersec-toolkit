@@ -22,18 +22,13 @@ MISC_SECURITY_PACKAGES=(lynis rkhunter chkrootkit)
 # --- Heavy tools (skipped with --skip-heavy) ---
 MISC_HEAVY_PACKAGES=(gimp audacity sagemath)
 
-MISC_PIPX=(
-    arsenal-cli gittools
-    sploitscan changeme dumpsterdiver faraday-cli
-)
+MISC_PIPX=(arsenal-cli sploitscan faraday-cli)
 
 MISC_GO=(
     "github.com/tomnomnom/gf@latest"
     "github.com/tomnomnom/anew@latest"
     "github.com/tomnomnom/qsreplace@latest"
-    "github.com/gitleaks/gitleaks/v8/cmd/gitleaks@latest"
     "github.com/projectdiscovery/notify/cmd/notify@latest"
-    "github.com/kgretzky/evilginx2@latest"
 )
 
 # --- Reference repos / wordlists ---
@@ -117,7 +112,7 @@ MISC_GIT_NAMES=(
     Caldera atomic-red-team RedEye
     ibombshell powercat
 )
-MISC_GO_BINS=(gf anew qsreplace gitleaks notify evilginx2)
+MISC_GO_BINS=(gf anew qsreplace notify gitleaks)
 
 install_module_misc() {
     # Base dependencies (always first)
@@ -154,6 +149,7 @@ install_module_misc() {
     download_github_release "gophish/gophish" "gophish" "linux-64bit" || true
     download_github_release "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx" || true
     download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar" || true
+    download_github_release "gitleaks/gitleaks" "gitleaks" "linux_amd64\\.tar\\.gz" || true
     download_github_release "trufflesecurity/trufflehog" "trufflehog" "linux_amd64\\.tar\\.gz" || true
     # stegseek is installed by the stego module
 

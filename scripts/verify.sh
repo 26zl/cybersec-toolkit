@@ -30,6 +30,7 @@ Usage: sudo ./scripts/verify.sh [OPTIONS]
 Options:
   --module <name>    Verify specific module only (can be repeated)
   --summary          Show only summary counts (no per-tool output)
+  -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
@@ -47,6 +48,7 @@ while [[ $# -gt 0 ]]; do
         --module)  [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 1; }
                    VERIFY_MODULES+=("$2"); shift 2 ;;
         --summary) SUMMARY_ONLY=true; shift ;;
+        -v|--verbose) VERBOSE=true; shift ;;
         -h|--help) exec "$0" --help ;;
         *)         shift ;;
     esac
@@ -168,6 +170,10 @@ should_verify() { [[ " ${VERIFY_MODULES[*]} " =~ " $1 " ]]; }
 
 # --- System info -------------------------------------------------------------
 print_banner
+if [[ "$VERBOSE" == "true" ]]; then
+    log_info "Verbose mode enabled"
+    log_system_environment
+fi
 log_info "System Information:"
 log_message "  OS: $(uname -a)"
 log_message "  Kernel: $(uname -r)"
@@ -187,6 +193,10 @@ check_cmd "cargo" "cargo --version" || true
 check_cmd "docker" "docker --version" || true
 echo ""
 
+# Kali/Parrot flag — some packages are only available on these distros
+_is_kali=false
+[[ "$DISTRO_ID" == "kali" || "$DISTRO_ID" == "parrot" ]] && _is_kali=true
+
 # =============================================================================
 # Per-module verification
 # =============================================================================
@@ -200,7 +210,8 @@ if should_verify "misc"; then
     log_info "Security Tools:"
     check_cmds lynis rkhunter chkrootkit
     log_info "Heavy Tools:"
-    check_cmds gimp audacity sage
+    check_cmds gimp audacity
+    [[ "$_is_kali" == "true" ]] && { check_cmd "sage" || true; }
     log_info "Misc (pipx):"
     check_pipx_arr "${MISC_PIPX[@]}"
     log_info "Misc (Go):"
@@ -290,7 +301,7 @@ if should_verify "pwn"; then
     log_info "Pwn (Gems):"
     check_gems "${PWN_GEMS[@]}"
     log_info "Pwn (Cargo):"
-    check_cargo moonwalk pwninit
+    check_cargo pwninit
     log_info "Pwn (Git):"
     check_git_repos "${PWN_GIT_NAMES[@]}"
     log_info "Pwn (Special):"
@@ -301,8 +312,11 @@ if should_verify "reversing"; then
     echo ""
     log_info "========== Module: reversing =========="
     log_info "RE (packages):"
-    check_cmds r2 checksec rizin gdb binwalk ltrace strace hexedit upx valgrind
-    check_cmd_any "ghidra" ghidra ghidraRun || true
+    check_cmds r2 checksec gdb binwalk ltrace strace hexedit upx valgrind
+    if [[ "$_is_kali" == "true" ]]; then
+        check_cmd "rizin" || true
+        check_cmd_any "ghidra" ghidra ghidraRun || true
+    fi
     check_cmd_any "qemu-user" qemu-x86_64-static qemu-x86_64 || true
     log_info "RE (pipx):"
     check_pipx_arr "${RE_PIPX[@]}"
@@ -317,7 +331,8 @@ if should_verify "forensics"; then
     echo ""
     log_info "========== Module: forensics =========="
     log_info "Forensics (packages):"
-    check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk bulk_extractor exiftool clamscan
+    check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk exiftool clamscan
+    [[ "$_is_kali" == "true" ]] && { check_cmd "bulk_extractor" || true; }
     log_info "Forensics (pipx):"
     check_pipx_arr "${FORENSICS_PIPX[@]}"
     log_info "Forensics (Git):"
@@ -354,7 +369,8 @@ if should_verify "wireless"; then
     echo ""
     log_info "========== Module: wireless =========="
     log_info "Wireless (packages):"
-    check_cmds aircrack-ng reaver kismet pixiewps bully iw horst gnuradio-companion gqrx
+    check_cmds aircrack-ng reaver pixiewps bully iw horst gnuradio-companion gqrx
+    [[ "$_is_kali" == "true" ]] && { check_cmd "kismet" || true; }
     check_cmd_any "bluetooth" hciconfig bluetoothctl || true
     log_info "Wireless (pipx):"
     check_pipx_arr "${WIRELESS_PIPX[@]}"
@@ -366,7 +382,8 @@ if should_verify "password"; then
     echo ""
     log_info "========== Module: password =========="
     log_info "Password (packages):"
-    check_cmds john hashcat hydra medusa crunch ophcrack fcrackzip pdfcrack cewl hashid chntpw
+    check_cmds john hashcat hydra medusa crunch ophcrack fcrackzip pdfcrack chntpw
+    [[ "$_is_kali" == "true" ]] && { check_cmds cewl hashid || true; }
     log_info "Password (pipx):"
     check_pipx_arr "${PASSWORD_PIPX[@]}"
     log_info "Password (Git):"
@@ -424,7 +441,8 @@ if should_verify "blueteam"; then
     echo ""
     log_info "========== Module: blueteam =========="
     log_info "Blue Team (packages):"
-    check_cmds suricata fail2ban aide auditctl zeek apparmor_parser ufw
+    check_cmds suricata fail2ban-client aide auditctl apparmor_parser ufw
+    [[ "$_is_kali" == "true" ]] && { check_cmd "zeek" || true; }
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"
     log_info "Blue Team (Git):"

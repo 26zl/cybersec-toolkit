@@ -15,6 +15,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/installers.sh"
 
 # Source all modules to get tool arrays (ALL_MODULES defined in lib/common.sh)
 for mod in "${ALL_MODULES[@]}"; do
@@ -32,6 +33,7 @@ Options:
   --remove-deps      Also remove base dependencies (python3, openssl, git,
                        build-essential, etc.) — DANGEROUS, may break system
   --yes              Skip confirmation prompt
+  -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
                        REMOVE_MODULES+=("$2"); shift 2 ;;
         --remove-deps) REMOVE_DEPS=true; shift ;;
         --yes)         AUTO_YES=true; shift ;;
+        -v|--verbose)  VERBOSE=true; shift ;;
         -h|--help)     exec "$0" --help ;;
         *)             shift ;;
     esac
@@ -69,6 +72,12 @@ LOG_FILE="$SCRIPT_DIR/tool_removal.log"
 
 check_root
 print_banner
+
+if [[ "$VERBOSE" == "true" ]]; then
+    log_info "Verbose mode enabled"
+    log_system_environment
+    enable_debug_trace
+fi
 
 # --- Confirmation ------------------------------------------------------------
 if [[ "$AUTO_YES" == "false" ]]; then
@@ -155,7 +164,7 @@ if should_remove "pwn"; then
     [[ ${#PWN_GO_BINS[@]} -gt 0 ]]     && GO_BINS_TO_REMOVE+=("${PWN_GO_BINS[@]}")
     [[ ${#PWN_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${PWN_GIT_NAMES[@]}")
     [[ ${#PWN_GEMS[@]} -gt 0 ]]        && GEMS_TO_REMOVE+=("${PWN_GEMS[@]}")
-    CARGO_TO_REMOVE+=(moonwalk pwninit)
+    CARGO_TO_REMOVE+=(pwninit)
 fi
 
 # --- Reversing ---
@@ -239,15 +248,27 @@ fi
 # =============================================================================
 
 # --- 1) System packages ------------------------------------------------------
+# Apply distro-specific package name translation (same as install path)
+if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
+    fixup_package_names PKGS_TO_REMOVE
+fi
+
 if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
     log_info "Removing ${#PKGS_TO_REMOVE[@]} system packages..."
+    local_skipped=0
     for pkg in "${PKGS_TO_REMOVE[@]}"; do
+        if ! pkg_is_installed "$pkg"; then
+            log_debug "Skipping $pkg (not installed)"
+            local_skipped=$((local_skipped + 1))
+            continue
+        fi
         if pkg_remove "$pkg" >> "$LOG_FILE" 2>&1; then
             log_success "Removed: $pkg"
         else
             log_warn "Not found or failed: $pkg"
         fi
     done
+    [[ "$local_skipped" -gt 0 ]] && log_info "Skipped $local_skipped packages (not installed)"
 else
     log_info "No system packages to remove"
 fi
@@ -305,13 +326,17 @@ echo ""
 if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
     log_info "Removing ${#CARGO_TO_REMOVE[@]} Cargo tools..."
     for crate in "${CARGO_TO_REMOVE[@]}"; do
+        if ! command_exists "$crate" && [[ ! -f "$HOME/.cargo/bin/$crate" ]]; then
+            log_debug "Skipping cargo $crate (not installed)"
+            continue
+        fi
         if command_exists cargo; then
             cargo uninstall "$crate" >> "$LOG_FILE" 2>&1 && \
                 log_success "Removed cargo: $crate" || true
-        elif [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-            rm -f "$HOME/.cargo/bin/$crate"
-            log_success "Removed: $HOME/.cargo/bin/$crate"
         fi
+        # Clean up binary and symlink regardless of cargo uninstall result
+        [[ -f "$HOME/.cargo/bin/$crate" ]] && rm -f "$HOME/.cargo/bin/$crate"
+        [[ -L "/usr/local/bin/$crate" ]] && rm -f "/usr/local/bin/$crate"
     done
 fi
 echo ""
@@ -383,6 +408,8 @@ log_success "System cleaned"
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
     [[ -f "$SCRIPT_DIR/.versions" ]] && rm -f "$SCRIPT_DIR/.versions"
 fi
+
+disable_debug_trace
 
 echo ""
 echo -e "${GREEN}${BOLD}=============================================${NC}"

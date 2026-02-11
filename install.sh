@@ -62,14 +62,21 @@ Options:
   --enable-docker      Pull Docker images (C2 frameworks, IR platforms, MobSF, etc.)
   --include-c2         Enable C2 frameworks (requires --enable-docker)
   --dry-run            Show what would be installed without installing
+  -j, --parallel <N>   Number of parallel install jobs (default: 4, 1=sequential)
+  -v, --verbose        Enable debug logging and system environment dump
   --list-profiles      List available profiles and exit
   --list-modules       List available modules and exit
   -h, --help           Show this help and exit
+
+Prerequisites are validated per-module: only runtimes needed by the
+selected modules are required. E.g. --module web requires go, cargo, gem.
 
 Environment variables:
   INSTALL_DIR          Base install directory (default: /opt)
   GITHUB_TOOL_DIR      Where to clone GitHub repos (default: /opt)
   BURP_VERSION         Burp Suite version (default: 2024.10.1)
+  VERBOSE              Enable verbose/debug output (default: false)
+  PARALLEL_JOBS        Number of parallel install jobs (default: 4)
 
 Examples:
   sudo ./install.sh                              # Full install
@@ -136,6 +143,9 @@ while [[ $# -gt 0 ]]; do
         --enable-docker)   ENABLE_DOCKER=true; shift ;;
         --include-c2)      INCLUDE_C2=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
+        -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
+                           PARALLEL_JOBS="$2"; shift 2 ;;
+        -v|--verbose)      VERBOSE=true; shift ;;
         --list-profiles)   list_profiles ;;
         --list-modules)    list_modules ;;
         *)                 log_error "Unknown option: $1"; usage ;;
@@ -204,7 +214,7 @@ install_single_tool() {
         [[ ${#_goref[@]} -eq 0 ]] && continue
         for gopkg in "${_goref[@]}"; do
             local goname
-            goname=$(echo "$gopkg" | rev | cut -d/ -f1 | rev | cut -d@ -f1)
+            goname=$(_go_bin_name "$gopkg")
             if [[ "$goname" == "$tool" ]]; then
                 log_info "Installing $tool via go install..."
                 go install "$gopkg" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
@@ -214,7 +224,7 @@ install_single_tool() {
     done
 
     # --- Cargo ---
-    local known_cargo=(feroxbuster rustscan moonwalk pwninit)
+    local known_cargo=(feroxbuster rustscan pwninit)
     for crate in "${known_cargo[@]}"; do
         if [[ "$crate" == "$tool" ]]; then
             log_info "Installing $tool via cargo..."
@@ -328,7 +338,7 @@ else
 fi
 
 # Export flags for modules
-export SKIP_HEAVY ENABLE_DOCKER INCLUDE_C2 UPGRADE_SYSTEM
+export SKIP_HEAVY ENABLE_DOCKER INCLUDE_C2 UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
 
 # =============================================================================
 # Source selected modules
@@ -356,6 +366,8 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "Docker:         $ENABLE_DOCKER"
     echo "C2:             $INCLUDE_C2"
     echo "System upgrade: $UPGRADE_SYSTEM"
+    echo "Parallel jobs:  $PARALLEL_JOBS"
+    echo "Verbose:        $VERBOSE"
     echo ""
     echo "The following module install functions would run:"
     for mod in "${MODULES_TO_INSTALL[@]}"; do
@@ -375,6 +387,13 @@ VERSION_FILE="$SCRIPT_DIR/.versions"
 main() {
     check_root
     print_banner
+
+    # Verbose mode: log system environment and enable bash trace
+    if [[ "$VERBOSE" == "true" ]]; then
+        log_info "Verbose mode enabled"
+        log_system_environment
+        enable_debug_trace
+    fi
 
     # =========================================================================
     # Prerequisite check — verify required tools before starting
@@ -401,48 +420,61 @@ main() {
         exit 1
     fi
 
-    # Soft requirements — warn which categories will be skipped
-    local prereq_warns=0
+    # Module-based prerequisite checks — hard-fail for runtimes needed by selected modules
+    local need_go=false need_cargo=false need_gem=false need_build=false
 
-    if ! command_exists pipx && ! command_exists pip3; then
-        log_warn "pipx not found — will attempt to install via package manager"
+    for mod in "${MODULES_TO_INSTALL[@]}"; do
+        case "$mod" in
+            misc|networking|recon|web|pwn|ad|cloud) need_go=true ;;&
+            networking|web|pwn)                      need_cargo=true ;;&
+            web|pwn|reversing|stego|ad)              need_gem=true ;;&
+            recon|crypto|pwn|reversing|password)     need_build=true ;;&
+        esac
+    done
+
+    if [[ "$need_go" == "true" ]] && ! command_exists go; then
+        log_error "MISSING: go — required by selected modules ($(printf '%s ' "${MODULES_TO_INSTALL[@]}"))"
+        log_error "Install Go: https://go.dev/doc/install"
+        prereq_fail=1
     fi
 
-    if ! command_exists go; then
-        log_warn "Go not found — ~55 Go tools will be SKIPPED"
-        prereq_warns=$((prereq_warns + 1))
+    if [[ "$need_cargo" == "true" ]] && ! command_exists cargo; then
+        log_error "MISSING: cargo — required by selected modules"
+        log_error "Install Rust: https://rustup.rs/"
+        prereq_fail=1
     fi
 
-    if ! command_exists cargo; then
-        log_warn "Cargo/Rust not found — 4 Cargo tools will be SKIPPED (feroxbuster, RustScan, moonwalk, pwninit)"
-        prereq_warns=$((prereq_warns + 1))
+    if [[ "$need_gem" == "true" ]] && ! command_exists gem; then
+        log_error "MISSING: gem — required by selected modules"
+        log_error "Install Ruby: apt install ruby-full / dnf install ruby / pacman -S ruby"
+        prereq_fail=1
     fi
 
-    if ! command_exists gem; then
-        log_warn "Ruby/gem not found — 6 Ruby gems will be SKIPPED (wpscan, evil-winrm, etc.)"
-        prereq_warns=$((prereq_warns + 1))
-    fi
-
-    if ! command_exists make && ! command_exists gcc; then
-        log_warn "Build tools (make/gcc) not found — ~15 build-from-source tools will be SKIPPED"
-        prereq_warns=$((prereq_warns + 1))
+    if [[ "$need_build" == "true" ]] && ! command_exists make && ! command_exists gcc; then
+        log_error "MISSING: make/gcc — required by selected modules"
+        log_error "Install build tools: apt install build-essential / dnf groupinstall 'Development Tools'"
+        prereq_fail=1
     fi
 
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]] && ! command_exists docker; then
         log_error "MISSING: docker — --enable-docker was set but Docker is not installed"
-        log_error "Install Docker first: https://docs.docker.com/engine/install/"
-        log_error "All Docker images (C2, IR platforms, MobSF, BeEF) will be SKIPPED"
-        prereq_warns=$((prereq_warns + 1))
+        log_error "Install Docker: https://docs.docker.com/engine/install/"
+        prereq_fail=1
     fi
 
-    if [[ "$prereq_warns" -gt 0 ]]; then
+    if [[ "$prereq_fail" -eq 1 ]]; then
         echo ""
-        log_warn "$prereq_warns optional runtimes missing — some tools will be skipped (see warnings above)"
-        log_info "The misc module will attempt to install runtimes via your package manager."
-        echo ""
-    else
-        log_success "All prerequisites found"
+        log_error "Aborting: install the missing prerequisites above and re-run."
+        exit 1
     fi
+
+    if ! command_exists pipx; then
+        log_error "MISSING: pipx — required for ~157 Python security tools"
+        log_error "Install pipx: https://pipx.pypa.io/stable/installation/"
+        prereq_fail=1
+    fi
+
+    log_success "All prerequisites found"
     echo ""
 
     log_info "Profile: ${PROFILE:-full}"
@@ -468,6 +500,9 @@ main() {
 
     # Stage 2: Install modules
     install_modules
+
+    # Disable debug trace before summary output
+    disable_debug_trace
 
     # Final summary
     local end_time elapsed
@@ -512,10 +547,14 @@ install_modules() {
 
         if declare -f "$func_name" > /dev/null 2>&1; then
             log_info "========== Module: $mod =========="
+            local _mod_start; _mod_start=$(date +%s)
+            log_debug "install_modules: starting module '$mod'"
             if ! "$func_name"; then
                 log_error "Module failed: $mod"
                 TOTAL_MODULE_FAILURES=$((TOTAL_MODULE_FAILURES + 1))
             fi
+            local _mod_elapsed=$(( $(date +%s) - _mod_start ))
+            log_debug "install_modules: module '$mod' completed in ${_mod_elapsed}s"
         else
             log_warn "No install function for module: $mod"
         fi

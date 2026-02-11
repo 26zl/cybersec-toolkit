@@ -12,11 +12,11 @@ FORENSICS_PACKAGES=(
     forensics-extra samdump2 dislocker
     ssdeep unhide hashdeep recoverjpeg
     galleta pasco mac-robber vinetto
-    dumpzilla guymager magicrescue memdump
+    guymager magicrescue memdump
     rifiuti2 scrounge-ntfs ext3grep ext4magic
 )
 
-FORENSICS_PIPX=(volatility3 oletools pdf-parser plaso usbrip mvt imago-forensics peepdf hachoir unblob)
+FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3)
 
 FORENSICS_GO=()
 

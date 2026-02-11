@@ -5,14 +5,12 @@
 # Web application testing, scanning, fuzzing, exploitation
 # =============================================================================
 
-WEB_PACKAGES=(nikto whatweb dirb skipfish)
+WEB_PACKAGES=(nikto whatweb dirb)
 
 WEB_PIPX=(
-    sqlmap wfuzz wafw00f sslyze dirsearch arjun paramspider
-    droopescan wapiti3 tinja mitmproxy2swagger commix
-    raccoon-scanner git-dumper cmseek
-    byp4xx corscanner drupwn fuxploider httpmethods
-    moodlescan xsrfprobe wpprobe
+    sqlmap wafw00f sslyze dirsearch arjun
+    droopescan wapiti3 mitmproxy2swagger commix
+    raccoon-scanner git-dumper corscanner xsrfprobe
 )
 
 WEB_GO=(
@@ -23,26 +21,24 @@ WEB_GO=(
     "github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest"
     "github.com/hahwul/dalfox/v2@latest"
     "github.com/Emoe/kxss@latest"
-    "github.com/003random/getJS@latest"
     "github.com/edoardottt/cariddi/cmd/cariddi@latest"
     "github.com/KathanP19/Gxss@latest"
     "github.com/rverton/webanalyze/cmd/webanalyze@latest"
-    "github.com/haccer/subjack@latest"
     "github.com/jaeles-project/jaeles@latest"
     "github.com/projectdiscovery/proxify/cmd/proxify@latest"
     "github.com/projectdiscovery/tlsx/cmd/tlsx@latest"
     "github.com/BishopFox/jsluice/cmd/jsluice@latest"
+    "github.com/003random/getJS@latest"
 )
 
 WEB_CARGO=(feroxbuster)
 
-WEB_GEMS=(wpscan xspear)
+WEB_GEMS=(wpscan XSpear)
 
 WEB_GIT=(
     "XSStrike=https://github.com/s0md3v/XSStrike.git"
     "xsser=https://github.com/epsylon/xsser.git"
     "Corsy=https://github.com/s0md3v/Corsy.git"
-    "LinkFinder=https://github.com/GerbenJavworski/LinkFinder.git"
     "jwt_tool=https://github.com/ticarpi/jwt_tool.git"
     "SSRFmap=https://github.com/swisskyrepo/SSRFmap.git"
     "GraphQLmap=https://github.com/swisskyrepo/GraphQLmap.git"
@@ -58,7 +54,6 @@ WEB_GIT=(
     "PhpSploit=https://github.com/nil0x42/phpsploit.git"
     "Kadimus=https://github.com/P0cL4bs/Kadimus.git"
     "LFISuite=https://github.com/D35m0nd142/LFISuite.git"
-    "WPSploit=https://github.com/PentestStation/WPSploit.git"
     "phpggc=https://github.com/ambionics/phpggc.git"
     "PadBuster=https://github.com/AonCyberLabs/PadBuster.git"
     "h2csmuggler=https://github.com/BishopFox/h2csmuggler.git"
@@ -73,8 +68,8 @@ WEB_GIT=(
 WEB_DOCKER=("beefproject/beef:BeEF")
 
 # Binary names for verify/remove
-WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss getJS cariddi Gxss webanalyze subjack jaeles proxify tlsx jsluice)
-WEB_GIT_NAMES=(XSStrike xsser Corsy LinkFinder jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap tplmap weevely3 DotDotPwn PhpSploit Kadimus LFISuite WPSploit phpggc PadBuster h2csmuggler joomscan bolt pp-finder symfony-exploits tomcatwardeployer XXEinjector)
+WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice getJS)
+WEB_GIT_NAMES=(XSStrike xsser Corsy jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap tplmap weevely3 DotDotPwn PhpSploit Kadimus LFISuite phpggc PadBuster h2csmuggler joomscan bolt pp-finder symfony-exploits tomcatwardeployer XXEinjector)
 
 install_module_web() {
     install_apt_batch "Web - Packages" "${WEB_PACKAGES[@]}"

@@ -9,13 +9,11 @@ RECON_PACKAGES=(dnsenum dmitry dnsmap dnstracer dnswalk enum4linux bing-ip2hosts
 
 RECON_PIPX=(
     dnstwist fierce holehe h8mail social-analyzer maigret ghunt shodan
-    socialscan metagoofil maltego-trx altdns dnsrecon raccoon-recon
-    theHarvester sherlock-project recon-ng
-    bbot onionsearch crosslinked toutatis opensquat
-    ssh-audit sn0int pagodo
-    autorecon finalrecon hosthunter inspy photon parsero
+    socialscan maltego-trx dnsrecon sherlock-project
+    bbot onionsearch crosslinked toutatis
+    ssh-audit parsero
     emailharvester maryam osrframework
-    censys ignorant instaloader pwnedornot zehef pymeta
+    censys ignorant instaloader
 )
 
 RECON_GO=(
@@ -41,10 +39,11 @@ RECON_GO=(
     "github.com/sensepost/gowitness@latest"
     "github.com/projectdiscovery/naabu/v2/cmd/naabu@latest"
     "github.com/projectdiscovery/httpx/cmd/httpx@latest"
-    "github.com/sundowndev/phoneinfoga/v2@latest"
     "github.com/x1sec/commit-stream@latest"
-    "github.com/LukaSikic/subzy@latest"
     "github.com/j3ssie/metabigor@latest"
+    "github.com/sundowndev/phoneinfoga/v2/cmd/phoneinfoga@latest"
+    "github.com/PentestPad/subzy@latest"
+    "github.com/haccer/subjack@latest"
 )
 
 RECON_GIT=(
@@ -58,8 +57,6 @@ RECON_GIT=(
     "GooFuzz=https://github.com/m3n0sd0n4ld/GooFuzz.git"
     "Telepathy=https://github.com/jordanwildon/Telepathy.git"
     "iKy=https://github.com/kennbroorg/iKy.git"
-    "Infoga=https://github.com/m4ll0k/Infoga.git"
-    "spoofcheck=https://github.com/BishopFox/spoofcheck.git"
     "certSniff=https://github.com/A-poc/certSniff.git"
     "AWSBucketDump=https://github.com/jordanpotti/AWSBucketDump.git"
     "linkedin2username=https://github.com/initstring/linkedin2username.git"
@@ -78,8 +75,8 @@ RECON_GIT=(
 )
 
 # Binary names for verify/remove
-RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx phoneinfoga commit-stream subzy metabigor)
-RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy Infoga spoofcheck certSniff AWSBucketDump linkedin2username dnscan LinkedInt AttackSurfaceMapper WitnessMe Gato subbrute carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness)
+RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor phoneinfoga subzy subjack)
+RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username dnscan LinkedInt AttackSurfaceMapper WitnessMe Gato subbrute carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness)
 
 install_module_recon() {
     install_apt_batch "Recon / OSINT - Packages" "${RECON_PACKAGES[@]}"

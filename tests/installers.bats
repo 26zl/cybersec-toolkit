@@ -108,6 +108,28 @@ setup() {
 
 # ---------- fixup_package_names — skipped packages ---------------------------
 
+# ---------- fixup_package_names — apt Kali-only filtering --------------------
+
+@test "fixup: apt on Ubuntu removes Kali-only spike" {
+    source_libs --installers ubuntu apt
+    local -a pkgs=(curl spike git)
+    fixup_package_names pkgs
+    local joined="${pkgs[*]}"
+    [[ "$joined" != *"spike"* ]]
+    [[ ${#pkgs[@]} -eq 2 ]]
+}
+
+@test "fixup: apt on Kali keeps spike" {
+    source_libs --installers kali apt
+    local -a pkgs=(curl spike git)
+    fixup_package_names pkgs
+    local joined="${pkgs[*]}"
+    [[ "$joined" == *"spike"* ]]
+    [[ ${#pkgs[@]} -eq 3 ]]
+}
+
+# ---------- fixup_package_names — skipped packages ---------------------------
+
 @test "fixup: dnf removes spooftooph" {
     source_libs --installers fedora dnf
     local -a pkgs=(curl spooftooph git)
@@ -226,30 +248,30 @@ setup() {
     [[ -f "$VERSION_FILE" ]]
 }
 
-# ---------- Go binary name extraction ----------------------------------------
+# ---------- Go binary name extraction (_go_bin_name) -------------------------
 
 @test "Go binary name extracted from full import path" {
-    # This tests the pattern used in install.sh for single-tool matching
-    # Uses bash string manipulation (portable) instead of rev+cut
-    local gopkg="github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
-    local last_segment="${gopkg##*/}"   # subfinder@latest
-    local goname="${last_segment%%@*}"  # subfinder
-    [[ "$goname" == "subfinder" ]]
+    source_libs debian apt
+    [[ "$(_go_bin_name "github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest")" == "subfinder" ]]
 }
 
 @test "Go binary name extraction for simple path" {
-    local gopkg="github.com/tomnomnom/assetfinder@latest"
-    local last_segment="${gopkg##*/}"
-    local goname="${last_segment%%@*}"
-    [[ "$goname" == "assetfinder" ]]
+    source_libs debian apt
+    [[ "$(_go_bin_name "github.com/tomnomnom/assetfinder@latest")" == "assetfinder" ]]
 }
 
 @test "Go binary name extraction for versioned path" {
-    local gopkg="github.com/ffuf/ffuf/v2@latest"
-    local last_segment="${gopkg##*/}"
-    local goname="${last_segment%%@*}"
-    # The last path component is v2 for versioned modules — this is expected.
-    # install.sh matches on the last segment, so tools ending in
-    # cmd/<toolname>@latest (like subfinder) work correctly.
-    [[ "$goname" == "v2" ]]
+    source_libs debian apt
+    # /v2 suffix is stripped, returns the actual tool name
+    [[ "$(_go_bin_name "github.com/ffuf/ffuf/v2@latest")" == "ffuf" ]]
+}
+
+@test "Go binary name extraction for /... wildcard path" {
+    source_libs debian apt
+    [[ "$(_go_bin_name "github.com/owasp-amass/amass/v4/...@latest")" == "amass" ]]
+}
+
+@test "Go binary name extraction for v3 module" {
+    source_libs debian apt
+    [[ "$(_go_bin_name "github.com/OJ/gobuster/v3@latest")" == "gobuster" ]]
 }

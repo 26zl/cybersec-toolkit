@@ -7,7 +7,7 @@
 
 CRYPTO_PACKAGES=()
 
-CRYPTO_PIPX=(ciphey codext xortool factordb-python z3-solver)
+CRYPTO_PIPX=(codext xortool factordb-python z3-solver)
 
 CRYPTO_GO=()
 

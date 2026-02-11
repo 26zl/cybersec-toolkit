@@ -18,6 +18,8 @@ GITHUB_TOOL_DIR="${GITHUB_TOOL_DIR:-/opt}"
 BURP_VERSION="${BURP_VERSION:-2024.10.1}"
 VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
 LOG_FILE="${LOG_FILE:-/dev/null}"
+VERBOSE="${VERBOSE:-false}"
+PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
 
 # ----- Logging ---------------------------------------------------------------
 log_message() {
@@ -31,6 +33,118 @@ log_success() { log_message "${GREEN}[+]${NC} $1"; }
 log_info()    { log_message "${BLUE}[*]${NC} $1"; }
 log_warn()    { log_message "${YELLOW}[!]${NC} $1"; }
 log_error()   { log_message "${RED}[-]${NC} $1"; }
+log_debug() {
+    [[ "$VERBOSE" == "true" ]] || return 0
+    log_message "${CYAN}[D]${NC} $1"
+}
+
+# ----- Debug trace (set -x to log file) --------------------------------------
+enable_debug_trace() {
+    [[ "$VERBOSE" == "true" ]] || return 0
+    [[ "$LOG_FILE" == "/dev/null" ]] && return 0
+    exec {BASH_XTRACEFD}>>"$LOG_FILE"
+    export BASH_XTRACEFD
+    PS4='+ ${BASH_SOURCE[0]##*/}:${LINENO} (${FUNCNAME[0]:-main}): '
+    set -x
+}
+
+disable_debug_trace() {
+    [[ "$VERBOSE" == "true" ]] || return 0
+    set +x 2>/dev/null || true
+    if [[ -n "${BASH_XTRACEFD:-}" ]] && [[ "$BASH_XTRACEFD" -gt 2 ]]; then
+        exec {BASH_XTRACEFD}>&- 2>/dev/null || true
+        unset BASH_XTRACEFD
+    fi
+}
+
+# ----- System environment logging --------------------------------------------
+log_system_environment() {
+    log_info "=== System Environment ==="
+    log_info "  Hostname: $(hostname 2>/dev/null || echo unknown)"
+    log_info "  Kernel:   $(uname -r 2>/dev/null || echo unknown)"
+    log_info "  Arch:     $(uname -m 2>/dev/null || echo unknown)"
+    log_info "  Distro:   ${DISTRO_NAME:-unknown} (${DISTRO_ID:-unknown})"
+    log_info "  Shell:    BASH ${BASH_VERSION:-unknown}"
+    log_info "  Disk:     $(df -h / 2>/dev/null | awk 'NR==2{print $4 " free of " $2}' || echo unknown)"
+    log_info "  Memory:   $(free -h 2>/dev/null | awk '/^Mem:/{print $7 " free of " $2}' || echo unknown)"
+    log_info "=== Runtime Versions ==="
+    local -a _cmds=(python3 pipx go cargo ruby gem git docker curl make gcc java)
+    for _cmd in "${_cmds[@]}"; do
+        if command -v "$_cmd" &>/dev/null; then
+            local _ver=""
+            case "$_cmd" in
+                python3) _ver=$(python3 --version 2>&1) ;;
+                pipx)    _ver=$(pipx --version 2>&1) ;;
+                go)      _ver=$(go version 2>&1) ;;
+                cargo)   _ver=$(cargo --version 2>&1) ;;
+                ruby)    _ver=$(ruby --version 2>&1) ;;
+                gem)     _ver=$(gem --version 2>&1) ;;
+                git)     _ver=$(git --version 2>&1) ;;
+                docker)  _ver=$(docker --version 2>&1) ;;
+                curl)    _ver=$(curl --version 2>&1 | head -1) ;;
+                make)    _ver=$(make --version 2>&1 | head -1) ;;
+                gcc)     _ver=$(gcc --version 2>&1 | head -1) ;;
+                java)    _ver=$(java -version 2>&1 | head -1) ;;
+            esac
+            log_info "  $_cmd: $_ver"
+        else
+            log_info "  $_cmd: NOT FOUND"
+        fi
+    done
+    log_info "=========================="
+}
+
+# ----- Go binary name helper --------------------------------------------------
+
+# _go_bin_name — extract the actual binary name from a `go install` path.
+# Handles /v2, /v3 module versions and /... wildcard suffixes.
+# Examples:
+#   github.com/d3mondev/puredns/v2@latest          → puredns
+#   github.com/owasp-amass/amass/v4/...@latest      → amass
+#   github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest → subfinder
+#   github.com/tomnomnom/assetfinder@latest         → assetfinder
+_go_bin_name() {
+    local path="${1%%@*}"    # strip @latest / @version
+    path="${path%/...}"      # strip trailing /...
+    local base="${path##*/}" # last path component
+    # If it's a Go module version (v2, v3, ...), use the parent component
+    if [[ "$base" =~ ^v[0-9]+$ ]]; then
+        path="${path%/*}"
+        base="${path##*/}"
+    fi
+    echo "$base"
+}
+
+# ----- Parallel install helpers -----------------------------------------------
+
+# _wait_for_job_slot — blocks until fewer than PARALLEL_JOBS background jobs are running
+_wait_for_job_slot() {
+    while [[ $(jobs -rp | wc -l) -ge $PARALLEL_JOBS ]]; do
+        wait -n 2>/dev/null || sleep 0.1
+    done
+}
+
+# _collect_parallel_results — reads temp result files, calls track_version,
+# sets _par_failed and _par_skipped for the caller.
+# Result file format: line 1 = "ok"/"skip"/"fail", line 2 = version string
+_collect_parallel_results() {
+    local rdir="$1" method="$2"
+    _par_failed=0; _par_skipped=0
+    for _rf in "$rdir"/*; do
+        [[ -f "$_rf" ]] || continue
+        local _rname _rstatus _rver
+        _rname=$(basename "$_rf")
+        _rstatus=$(head -1 "$_rf")
+        _rver=$(sed -n '2p' "$_rf")
+        case "$_rstatus" in
+            ok)   track_version "$_rname" "$method" "$_rver" ;;
+            skip) _par_skipped=$((_par_skipped + 1))
+                  track_version "$_rname" "$method" "$_rver" ;;
+            fail) _par_failed=$((_par_failed + 1)) ;;
+        esac
+    done
+    rm -rf "$rdir"
+}
 
 # ----- Distro detection -------------------------------------------------------
 detect_distro() {
@@ -142,6 +256,18 @@ pkg_cleanup() {
     esac
 }
 
+# ----- Package installed check ------------------------------------------------
+pkg_is_installed() {
+    local pkg="$1"
+    case "$PKG_MANAGER" in
+        apt)    dpkg -l "$pkg" 2>/dev/null | grep -q "^ii" ;;
+        dnf)    rpm -q "$pkg" &>/dev/null ;;
+        pacman) pacman -Q "$pkg" &>/dev/null ;;
+        zypper) rpm -q "$pkg" &>/dev/null ;;
+        *)      return 1 ;;
+    esac
+}
+
 # ----- Snap support -----------------------------------------------------------
 snap_available() {
     command -v snap &>/dev/null
@@ -171,12 +297,9 @@ check_root() {
 # ----- pipx ------------------------------------------------------------------
 ensure_pipx() {
     if ! command_exists pipx; then
-        log_info "Installing pipx via package manager..."
-        if ! pkg_install pipx >> "$LOG_FILE" 2>&1; then
-            log_error "Failed to install pipx — Python tools will NOT be installed"
-            log_error "Install pipx manually: https://pipx.pypa.io/stable/installation/"
-            return 1
-        fi
+        log_error "pipx not found — Python tools will NOT be installed"
+        log_error "Install pipx first: https://pipx.pypa.io/stable/installation/"
+        return 1
     fi
 }
 
@@ -190,7 +313,7 @@ pipx_install() {
     if pipx list --short 2>/dev/null | grep -qi "^${pkg} "; then
         return 0
     fi
-    pipx install "$pkg" 2>/dev/null || pipx install "$pkg" --force 2>/dev/null
+    pipx install "$pkg" 2>>"$LOG_FILE" || pipx install "$pkg" --force 2>>"$LOG_FILE"
 }
 
 pipx_remove() {
@@ -206,10 +329,10 @@ git_clone_or_pull() {
     local dest="$2"
     if [[ -d "$dest/.git" ]]; then
         log_info "Updating $(basename "$dest")..."
-        git -C "$dest" pull -q 2>/dev/null || true
+        git -C "$dest" pull -q 2>>"$LOG_FILE" || true
     else
         log_info "Cloning $(basename "$dest")..."
-        git clone --depth 1 -q "$repo_url" "$dest" 2>/dev/null
+        git clone --depth 1 -q "$repo_url" "$dest" 2>>"$LOG_FILE"
     fi
 }
 

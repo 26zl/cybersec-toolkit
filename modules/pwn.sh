@@ -5,12 +5,9 @@
 # Binary exploitation, shellcode, fuzzing, exploit frameworks, payload generation
 # =============================================================================
 
-PWN_PACKAGES=(exploitdb patchelf cmake spike)
+PWN_PACKAGES=(patchelf cmake spike)
 
-PWN_PIPX=(
-    pwntools ROPgadget ropper boofuzz pwncat-cs scapy manticore
-    libformatstr
-)
+PWN_PIPX=(pwntools ROPgadget ropper boofuzz pwncat-cs scapy)
 
 PWN_GO=(
     "github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest"
@@ -61,7 +58,7 @@ install_module_pwn() {
     install_git_batch "Pwn - Git" "${PWN_GIT[@]}"
 
     # Rust tools
-    install_cargo_batch "Pwn - Rust" moonwalk pwninit || true
+    install_cargo_batch "Pwn - Rust" pwninit || true
 
     # Build from source
     log_info "Building pwn tools from source..."

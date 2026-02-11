@@ -37,6 +37,7 @@ Options:
   --skip-binary    Skip binary release update
   --skip-special   Skip Metasploit/ZAP update
   --skip-docker    Skip Docker image update
+  -v, --verbose    Enable debug logging and system environment dump
   -h, --help       Show this help and exit
 EOF
     exit 0
@@ -64,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --skip-binary)  SKIP_BINARY=true; shift ;;
         --skip-special) SKIP_SPECIAL=true; shift ;;
         --skip-docker)  SKIP_DOCKER=true; shift ;;
+        -v|--verbose)   VERBOSE=true; shift ;;
         -h|--help)      exec "$0" --help ;;
         *)              shift ;;
     esac
@@ -74,6 +76,12 @@ LOG_FILE="$SCRIPT_DIR/tool_update.log"
 
 check_root
 print_banner
+
+if [[ "$VERBOSE" == "true" ]]; then
+    log_info "Verbose mode enabled"
+    log_system_environment
+    enable_debug_trace
+fi
 
 START_TIME=$(date +%s)
 
@@ -144,7 +152,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
 
         for tool in "${ALL_GO_TOOLS[@]}"; do
             GO_CURRENT=$((GO_CURRENT + 1))
-            tool_name=$(echo "$tool" | rev | cut -d/ -f1 | rev | cut -d@ -f1)
+            tool_name=$(_go_bin_name "$tool")
             show_progress "$GO_CURRENT" "$GO_TOTAL" "$tool_name"
             if go install "$tool" >> "$LOG_FILE" 2>&1; then
                 log_success "Updated: $tool_name"
@@ -239,7 +247,6 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
         # RustScan from networking module (installed via cargo)
         command_exists rustscan && ALL_CARGO+=(rustscan)
         # Pwn module cargo tools
-        command_exists moonwalk && ALL_CARGO+=(moonwalk)
         command_exists pwninit && ALL_CARGO+=(pwninit)
 
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
@@ -286,6 +293,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     update_binary "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx"
     update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar"
     update_binary "trufflesecurity/trufflehog" "trufflehog" "linux_amd64\\.tar\\.gz"
+    update_binary "gitleaks/gitleaks" "gitleaks" "linux_amd64\\.tar\\.gz"
     # networking
     update_binary "nicocha30/ligolo-ng" "ligolo-proxy" "linux_amd64"
     update_binary "nicocha30/ligolo-ng" "ligolo-agent" "agent.*linux_amd64"
@@ -376,6 +384,8 @@ echo ""
 # =============================================================================
 # Done
 # =============================================================================
+disable_debug_trace
+
 echo ""
 END_TIME=$(date +%s)
 ELAPSED=$(( END_TIME - START_TIME ))

@@ -8,20 +8,17 @@
 AD_PACKAGES=()
 
 AD_PIPX=(
-    impacket netexec certipy-ad coercer bloodhound mitm6
+    impacket certipy-ad coercer bloodhound mitm6
     lsassy sprayhound ldapdomaindump pypykatz
-    adidnsdump dploot bloodyad hekatomb ldeep
-    lapsdumper certi polenum
-    donpapi certsync masky pywhisker autobloody smartbrute
-    smbclient-ng targetedkerberoast krbjack pre2k roadtx
-    pygpoabuse pylaps pywerview pysnaffler powerview
-    ldapsearch-ad webclientservicescanner aclpwn ad-miner
+    adidnsdump dploot bloodyad hekatomb
+    donpapi certsync masky pywhisker autobloody
+    krbjack roadtx pywerview pysnaffler powerview aclpwn
+    netexec ldeep smbclientng ldapsearchad
 )
 
 AD_GO=(
     "github.com/Macmod/godap@latest"
     "github.com/RedTeamPentesting/pretender@latest"
-    "github.com/ropnop/go-windapsearch@latest"
 )
 
 AD_GEMS=(evil-winrm)
@@ -86,7 +83,7 @@ AD_GIT=(
     "gosecretsdump=https://github.com/c-sto/gosecretsdump.git"
 )
 
-AD_GO_BINS=(godap pretender go-windapsearch)
+AD_GO_BINS=(godap pretender)
 AD_GIT_NAMES=(Responder Rubeus ADRecon enum4linux-ng linWinPwn PCredz WMIOps MailSniper Invoke-Obfuscation Snaffler GraphRunner TokenTactics Invoke-TheHash SCShell krbrelayx nishang redsnarf spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bloodhound-quickwin bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
 
 install_module_ad() {

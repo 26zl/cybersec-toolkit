@@ -10,10 +10,10 @@ PASSWORD_PACKAGES=(
     ophcrack chntpw fcrackzip pdfcrack
     cewl hashid bruteforce-luks
     maskprocessor princeprocessor statsprocessor
-    rsmangler rainbowcrack sucrack
+    rsmangler sucrack
 )
 
-PASSWORD_PIPX=(search-that-hash name-that-hash patator trevorspray hashonymize haiti)
+PASSWORD_PIPX=(search-that-hash name-that-hash trevorspray patator)
 
 PASSWORD_GO=()
 
