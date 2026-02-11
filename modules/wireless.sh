@@ -9,6 +9,8 @@ WIRELESS_PACKAGES=(
     aircrack-ng reaver kismet pixiewps bully
     iw wireless-tools rfkill
     horst bluez spooftooph gnuradio gqrx-sdr
+    mdk4 hcxtools cowpatty crackle asleap
+    fern-wifi-cracker
 )
 
 WIRELESS_GO=()
@@ -18,9 +20,14 @@ WIRELESS_GIT=(
     "fluxion=https://github.com/FluxionNetwork/fluxion.git"
     "airgeddon=https://github.com/v1s1t0r1sh3r3/airgeddon.git"
     "hostapd-mana=https://github.com/sensepost/hostapd-mana.git"
+    "wifiphisher=https://github.com/wifiphisher/wifiphisher.git"
+    "PSKracker=https://github.com/soxrok2212/PSKracker.git"
+    "pwnagotchi=https://github.com/evilsocket/pwnagotchi.git"
+    "eaphammer=https://github.com/s0lst1c3/eaphammer.git"
+    "wifipumpkin3=https://github.com/P0cL4bs/wifipumpkin3.git"
 )
 
-WIRELESS_GIT_NAMES=(wifite2 fluxion airgeddon hostapd-mana)
+WIRELESS_GIT_NAMES=(wifite2 fluxion airgeddon hostapd-mana wifiphisher PSKracker pwnagotchi eaphammer wifipumpkin3)
 
 install_module_wireless() {
     install_apt_batch "Wireless - Packages" "${WIRELESS_PACKAGES[@]}"

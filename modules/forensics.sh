@@ -9,19 +9,26 @@ FORENSICS_PACKAGES=(
     autopsy sleuthkit foremost scalpel
     dc3dd dcfldd testdisk extundelete
     bulk-extractor libimage-exiftool-perl
-    forensics-extra
+    forensics-extra samdump2 dislocker
+    ssdeep unhide hashdeep recoverjpeg
+    galleta pasco mac-robber vinetto
+    dumpzilla guymager magicrescue memdump
+    rifiuti2 scrounge-ntfs ext3grep ext4magic
 )
 
-FORENSICS_PIPX=(volatility3 oletools pdf-parser plaso)
+FORENSICS_PIPX=(volatility3 oletools pdf-parser plaso usbrip mvt imago-forensics peepdf hachoir unblob)
 
 FORENSICS_GO=()
 
 FORENSICS_GIT=(
     "RegRipper=https://github.com/keydet89/RegRipper3.0.git"
     "Depix=https://github.com/spipm/Depix.git"
+    "dvcs-ripper=https://github.com/kost/dvcs-ripper.git"
+    "firefox_decrypt=https://github.com/unode/firefox_decrypt.git"
+    "firmware-mod-kit=https://github.com/rampageX/firmware-mod-kit.git"
 )
 
-FORENSICS_GIT_NAMES=(RegRipper Depix)
+FORENSICS_GIT_NAMES=(RegRipper Depix dvcs-ripper firefox_decrypt firmware-mod-kit)
 
 install_module_forensics() {
     install_apt_batch "Forensics - Packages" "${FORENSICS_PACKAGES[@]}"

@@ -23,7 +23,8 @@ MISC_SECURITY_PACKAGES=(lynis rkhunter chkrootkit)
 MISC_HEAVY_PACKAGES=(gimp audacity sagemath)
 
 MISC_PIPX=(
-    arsenal-cli gittools objection frida-tools androguard apkleaks
+    arsenal-cli gittools objection androguard apkleaks
+    sploitscan changeme dumpsterdiver faraday-cli
 )
 
 MISC_GO=(
@@ -60,6 +61,16 @@ MISC_POSTEXPLOIT=(
     "LaZagne=https://github.com/AlessandroZ/LaZagne.git"
     "mimipenguin=https://github.com/huntergregal/mimipenguin.git"
     "PowerSploit=https://github.com/PowerShellMafia/PowerSploit.git"
+    "Cloakify=https://github.com/TryCatchHCF/Cloakify.git"
+    "PyExfil=https://github.com/ytisf/PyExfil.git"
+    "GD-Thief=https://github.com/antman1p/GD-Thief.git"
+    "moonwalk=https://github.com/mufeedvh/moonwalk.git"
+    "usbkill=https://github.com/hephaest0s/usbkill.git"
+    "LinEnum=https://github.com/rebootuser/LinEnum.git"
+    "Hwacha=https://github.com/n00py/Hwacha.git"
+    "pivotsuite=https://github.com/RedTeamOperations/PivotSuite.git"
+    "unix-privesc-check=https://github.com/pentestmonkey/unix-privesc-check.git"
+    "LOLBAS=https://github.com/LOLBAS-Project/LOLBAS.git"
 )
 
 # --- Social engineering ---
@@ -67,6 +78,13 @@ MISC_SOCIAL=(
     "SET=https://github.com/trustedsec/social-engineer-toolkit.git"
     "Zphisher=https://github.com/htr-tech/zphisher.git"
     "SocialFish=https://github.com/UndeadSec/SocialFish.git"
+    "EvilGoPhish=https://github.com/fin3ss3g0d/evilgophish.git"
+    "SquarePhish=https://github.com/secureworks/squarephish.git"
+    "CredMaster=https://github.com/knavesec/CredMaster.git"
+    "king-phisher=https://github.com/rsmusllp/king-phisher.git"
+    "Modlishka=https://github.com/drk1wi/Modlishka.git"
+    "ReelPhish=https://github.com/mandiant/ReelPhish.git"
+    "Catphish=https://github.com/ring0lab/catphish.git"
 )
 
 # --- Mobile ---
@@ -79,6 +97,11 @@ MISC_CTF=(
     "CyberChef=https://github.com/gchq/CyberChef.git"
     "ctf-tools=https://github.com/zardus/ctf-tools.git"
     "CTF-Katana=https://github.com/JohnHammond/ctf-katana.git"
+    "Caldera=https://github.com/mitre/caldera.git"
+    "atomic-red-team=https://github.com/redcanaryco/atomic-red-team.git"
+    "RedEye=https://github.com/cisagov/RedEye.git"
+    "ibombshell=https://github.com/Telefonica/ibombshell.git"
+    "powercat=https://github.com/besimorhino/powercat.git"
 )
 
 # --- C2 Frameworks (Docker only, optional) ---
@@ -92,6 +115,11 @@ MISC_C2_GIT=(
     "PoshC2=https://github.com/nettitude/PoshC2.git"
     "Mythic=https://github.com/its-a-feature/Mythic.git"
     "Pupy=https://github.com/n1nj4sec/pupy.git"
+    "Covenant=https://github.com/cobbr/Covenant.git"
+    "NimPlant=https://github.com/chvancooten/NimPlant.git"
+    "Merlin=https://github.com/Ne0nd0g/merlin.git"
+    "Koadic=https://github.com/zerosum0x0/koadic.git"
+    "SILENTTRINITY=https://github.com/byt3bl33d3r/SILENTTRINITY.git"
 )
 
 # All git repo names for verify/remove
@@ -100,8 +128,14 @@ MISC_GIT_NAMES=(
     InternalAllTheThings GTFOBins.github.io WADComs BlueTeam-Tools
     PEASS-ng linux-exploit-suggester linux-smart-enumeration SUDO_KILLER
     BeRoot PrivescCheck LaZagne mimipenguin PowerSploit
-    SET Zphisher SocialFish apktool CyberChef ctf-tools CTF-Katana
-    Sliver Havoc Villain PoshC2 Mythic Pupy
+    Cloakify PyExfil GD-Thief moonwalk usbkill
+    LinEnum Hwacha pivotsuite unix-privesc-check LOLBAS
+    SET Zphisher SocialFish EvilGoPhish SquarePhish CredMaster king-phisher
+    Modlishka ReelPhish Catphish
+    apktool CyberChef ctf-tools CTF-Katana
+    Caldera atomic-red-team RedEye
+    ibombshell powercat
+    Sliver Havoc Villain PoshC2 Mythic Pupy Covenant NimPlant Merlin Koadic SILENTTRINITY
 )
 MISC_GO_BINS=(gf anew qsreplace gitleaks notify evilginx2)
 

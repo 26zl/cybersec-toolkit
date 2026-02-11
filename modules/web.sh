@@ -5,11 +5,12 @@
 # Web application testing, scanning, fuzzing, exploitation
 # =============================================================================
 
-WEB_PACKAGES=(nikto whatweb)
+WEB_PACKAGES=(nikto whatweb dirb skipfish)
 
 WEB_PIPX=(
     sqlmap wfuzz wafw00f sslyze dirsearch arjun paramspider
     droopescan wapiti3 tinja mitmproxy2swagger commix
+    raccoon-scanner git-dumper cmseek
 )
 
 WEB_GO=(
@@ -36,6 +37,7 @@ WEB_GEMS=(wpscan)
 
 WEB_GIT=(
     "XSStrike=https://github.com/s0md3v/XSStrike.git"
+    "xsser=https://github.com/epsylon/xsser.git"
     "Corsy=https://github.com/s0md3v/Corsy.git"
     "LinkFinder=https://github.com/GerbenJavworski/LinkFinder.git"
     "jwt_tool=https://github.com/ticarpi/jwt_tool.git"
@@ -47,13 +49,22 @@ WEB_GIT=(
     "Gopherus=https://github.com/tarunkant/Gopherus.git"
     "oxml_xxe=https://github.com/BuffaloWill/oxml_xxe.git"
     "CMSmap=https://github.com/dionach/CMSmap.git"
+    "tplmap=https://github.com/epinna/tplmap.git"
+    "weevely3=https://github.com/epinna/weevely3.git"
+    "DotDotPwn=https://github.com/wireghoul/dotdotpwn.git"
+    "PhpSploit=https://github.com/nil0x42/phpsploit.git"
+    "Kadimus=https://github.com/P0cL4bs/Kadimus.git"
+    "LFISuite=https://github.com/D35m0nd142/LFISuite.git"
+    "WPSploit=https://github.com/PentestStation/WPSploit.git"
+    "phpggc=https://github.com/ambionics/phpggc.git"
+    "PadBuster=https://github.com/AonCyberLabs/PadBuster.git"
 )
 
 WEB_DOCKER=("beefproject/beef:BeEF")
 
 # Binary names for verify/remove
 WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss getJS cariddi Gxss webanalyze subjack jaeles proxify tlsx)
-WEB_GIT_NAMES=(XSStrike Corsy LinkFinder jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap)
+WEB_GIT_NAMES=(XSStrike xsser Corsy LinkFinder jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap tplmap weevely3 DotDotPwn PhpSploit Kadimus LFISuite WPSploit phpggc PadBuster)
 
 install_module_web() {
     install_apt_batch "Web - Packages" "${WEB_PACKAGES[@]}"

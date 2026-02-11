@@ -5,12 +5,16 @@
 # Subdomain enumeration, intelligence gathering, search engines, OSINT
 # =============================================================================
 
-RECON_PACKAGES=(dnsenum dmitry)
+RECON_PACKAGES=(dnsenum dmitry dnsmap dnstracer dnswalk enum4linux bing-ip2hosts)
 
 RECON_PIPX=(
     dnstwist fierce holehe h8mail social-analyzer maigret ghunt shodan
     socialscan metagoofil maltego-trx altdns dnsrecon raccoon-recon
     theHarvester sherlock-project recon-ng
+    bbot onionsearch crosslinked toutatis opensquat
+    ssh-audit sn0int pagodo
+    autorecon finalrecon hosthunter inspy photon parsero
+    emailharvester maryam osrframework
 )
 
 RECON_GO=(
@@ -37,6 +41,9 @@ RECON_GO=(
     "github.com/projectdiscovery/naabu/v2/cmd/naabu@latest"
     "github.com/projectdiscovery/httpx/cmd/httpx@latest"
     "github.com/sundowndev/phoneinfoga/v2@latest"
+    "github.com/x1sec/commit-stream@latest"
+    "github.com/LukaSikic/subzy@latest"
+    "github.com/j3ssie/metabigor@latest"
 )
 
 RECON_GIT=(
@@ -44,11 +51,28 @@ RECON_GIT=(
     "nmapAutomator=https://github.com/21y4d/nmapAutomator.git"
     "axiom=https://github.com/pry0cc/axiom.git"
     "Sn1per=https://github.com/1N3/Sn1per.git"
+    "robin=https://github.com/apurvsinghgautam/robin.git"
+    "stringcheese=https://github.com/MathisHammel/stringcheese.git"
+    "blackbird=https://github.com/p1ngul1n0/blackbird.git"
+    "GooFuzz=https://github.com/m3n0sd0n4ld/GooFuzz.git"
+    "Telepathy=https://github.com/jordanwildon/Telepathy.git"
+    "iKy=https://github.com/kennbroorg/iKy.git"
+    "Infoga=https://github.com/m4ll0k/Infoga.git"
+    "spoofcheck=https://github.com/BishopFox/spoofcheck.git"
+    "certSniff=https://github.com/A-poc/certSniff.git"
+    "AWSBucketDump=https://github.com/jordanpotti/AWSBucketDump.git"
+    "linkedin2username=https://github.com/initstring/linkedin2username.git"
+    "dnscan=https://github.com/rbsec/dnscan.git"
+    "LinkedInt=https://github.com/vysecurity/LinkedInt.git"
+    "AttackSurfaceMapper=https://github.com/superhedgy/AttackSurfaceMapper.git"
+    "WitnessMe=https://github.com/byt3bl33d3r/WitnessMe.git"
+    "Gato=https://github.com/praetorian-inc/gato.git"
+    "subbrute=https://github.com/TheRook/subbrute.git"
 )
 
 # Binary names for verify/remove
-RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx phoneinfoga)
-RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per)
+RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx phoneinfoga commit-stream subzy metabigor)
+RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy Infoga spoofcheck certSniff AWSBucketDump linkedin2username dnscan LinkedInt AttackSurfaceMapper WitnessMe Gato subbrute)
 
 install_module_recon() {
     install_apt_batch "Recon / OSINT - Packages" "${RECON_PACKAGES[@]}"

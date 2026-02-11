@@ -13,13 +13,14 @@ CRYPTO_GO=()
 
 CRYPTO_GIT=(
     "RsaCtfTool=https://github.com/RsaCtfTool/RsaCtfTool.git"
+    "rsatool=https://github.com/ius/rsatool.git"
     "featherduster=https://github.com/nccgroup/featherduster.git"
     "cribdrag=https://github.com/SpiderLabs/cribdrag.git"
     "foresight=https://github.com/ALSchwalm/foresight.git"
     "nonce-disrespect=https://github.com/nonce-disrespect/nonce-disrespect.git"
 )
 
-CRYPTO_GIT_NAMES=(RsaCtfTool featherduster cribdrag foresight nonce-disrespect hash_extender PkCrack yafu)
+CRYPTO_GIT_NAMES=(RsaCtfTool rsatool featherduster cribdrag foresight nonce-disrespect hash_extender PkCrack yafu fastcoll msieve pemcrack)
 
 install_module_crypto() {
     [[ ${#CRYPTO_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Crypto - Packages" "${CRYPTO_PACKAGES[@]}"
@@ -31,4 +32,7 @@ install_module_crypto() {
     build_from_source "hash_extender" "https://github.com/iagox86/hash_extender.git" "make" || true
     build_from_source "PkCrack" "https://github.com/keyunluo/pkcrack.git" "make" || true
     build_from_source "yafu" "https://github.com/bbuhrow/yafu.git" "make" || true
+    build_from_source "fastcoll" "https://github.com/upbit/clone-fastcoll.git" "make" || true
+    build_from_source "msieve" "https://github.com/radii/msieve.git" "make all" || true
+    build_from_source "pemcrack" "https://github.com/robertdavidgraham/pemcrack.git" "make" || true
 }

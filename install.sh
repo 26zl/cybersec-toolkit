@@ -278,13 +278,7 @@ main() {
 install_modules() {
     for mod in "${MODULES_TO_INSTALL[@]}"; do
         echo ""
-        local func_name
-        case "$mod" in
-            networking) func_name="install_module_networking" ;;
-            reversing)  func_name="install_module_reversing" ;;
-            containers) func_name="install_module_containers" ;;
-            *)          func_name="install_module_${mod}" ;;
-        esac
+        local func_name="install_module_${mod}"
 
         if declare -f "$func_name" > /dev/null 2>&1; then
             log_info "========== Module: $mod =========="

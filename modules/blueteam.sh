@@ -6,13 +6,11 @@
 # incident response platforms, endpoint visibility
 # =============================================================================
 
-BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw)
+BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw tiger darkstat chaosreader sentrypeer)
 
 BLUETEAM_PIPX=(sigma-cli)
 
 BLUETEAM_GO=()
-BLUETEAM_CARGO=()
-BLUETEAM_GEMS=()
 
 BLUETEAM_GIT=(
     "sigma-rules=https://github.com/SigmaHQ/sigma.git"

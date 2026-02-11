@@ -6,12 +6,13 @@
 # =============================================================================
 
 RE_PACKAGES=(
-    radare2 ghidra checksec rizin gdb binwalk
-    qemu-user-static qemu-system-x86 valgrind
+    radare2 ghidra checksec rizin gdb binwalk binutils
+    qemu-user-static qemu-system-x86 valgrind rr
     ltrace strace hexedit upx-ucl
+    nasm edb-debugger
 )
 
-RE_PIPX=(angr)
+RE_PIPX=(angr frida-tools uncompyle6)
 
 RE_GO=()
 
@@ -21,9 +22,11 @@ RE_GIT=(
     "peda=https://github.com/longld/peda.git"
     "decomp2dbg=https://github.com/mahaloz/decomp2dbg.git"
     "Qiling=https://github.com/qilingframework/qiling.git"
+    "Krakatau=https://github.com/Storyyeller/Krakatau.git"
+    "pyinstxtractor=https://github.com/extremecoders-re/pyinstxtractor.git"
 )
 
-RE_GIT_NAMES=(pwndbg GEF peda decomp2dbg Qiling ELFkickers rappel xrop)
+RE_GIT_NAMES=(pwndbg GEF peda decomp2dbg Qiling Krakatau pyinstxtractor ELFkickers rappel xrop)
 
 install_module_reversing() {
     install_apt_batch "Reversing - Packages" "${RE_PACKAGES[@]}"

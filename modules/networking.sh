@@ -13,10 +13,12 @@ NET_PACKAGES=(
     ettercap-graphical mitmproxy dsniff
     wireshark-common tshark sslsplit
     tor proxychains4 macchanger
-    snort yersinia
+    snort yersinia zeek
+    fping ngrep dns2tcp tcpflow tcpreplay
+    netsniff-ng cryptcat arping sslstrip
 )
 
-NET_PIPX=(sshuttle)
+NET_PIPX=(sshuttle smbmap)
 
 NET_GO=(
     "github.com/jpillora/chisel@latest"
@@ -25,10 +27,17 @@ NET_GO=(
 NET_GIT=(
     "bettercap=https://github.com/bettercap/bettercap.git"
     "dnscat2=https://github.com/iagox86/dnscat2.git"
+    "nipe=https://github.com/htrgouvea/nipe.git"
+    "PRET=https://github.com/RUB-NDS/PRET.git"
+    "pwnat=https://github.com/samyk/pwnat.git"
+    "MITMf=https://github.com/byt3bl33d3r/MITMf.git"
+    "evilgrade=https://github.com/infobyte/evilgrade.git"
+    "SigPloit=https://github.com/SigPloiter/SigPloit.git"
+    "dnschef=https://github.com/iphelix/dnschef.git"
 )
 
 NET_GO_BINS=(chisel)
-NET_GIT_NAMES=(bettercap dnscat2)
+NET_GIT_NAMES=(bettercap dnscat2 nipe PRET pwnat MITMf evilgrade SigPloit dnschef)
 
 install_module_networking() {
     install_apt_batch "Networking - Packages" "${NET_PACKAGES[@]}"
@@ -39,6 +48,7 @@ install_module_networking() {
     # Binary releases
     download_github_release "nicocha30/ligolo-ng" "ligolo-proxy" "linux_amd64" || true
     download_github_release "nicocha30/ligolo-ng" "ligolo-agent" "agent.*linux_amd64" || true
+    download_github_release "fatedier/frp" "frp" "linux_amd64\\.tar\\.gz" || true
 
     # RustScan (Rust-based port scanner)
     install_cargo_batch "Networking - Rust" rustscan || true

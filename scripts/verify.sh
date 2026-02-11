@@ -288,6 +288,8 @@ if should_verify "pwn"; then
     check_go_bins "${PWN_GO_BINS[@]}"
     log_info "Pwn (Gems):"
     check_gems "${PWN_GEMS[@]}"
+    log_info "Pwn (Cargo):"
+    check_cargo moonwalk pwninit
     log_info "Pwn (Git):"
     check_git_repos "${PWN_GIT_NAMES[@]}"
     log_info "Pwn (Special):"
@@ -337,6 +339,8 @@ if should_verify "ad"; then
     log_info "========== Module: ad =========="
     log_info "AD (pipx):"
     check_pipx_arr "${AD_PIPX[@]}"
+    log_info "AD (Gems):"
+    check_gems "${AD_GEMS[@]}"
     log_info "AD (Git):"
     check_git_repos "${AD_GIT_NAMES[@]}"
     log_info "AD (Binary):"

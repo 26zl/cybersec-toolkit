@@ -205,6 +205,7 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
         [[ ${#PWN_GEMS[@]} -gt 0 ]]   && ALL_GEMS+=("${PWN_GEMS[@]}")
         [[ ${#WEB_GEMS[@]} -gt 0 ]]   && ALL_GEMS+=("${WEB_GEMS[@]}")
         [[ ${#STEGO_GEMS[@]} -gt 0 ]] && ALL_GEMS+=("${STEGO_GEMS[@]}")
+        [[ ${#AD_GEMS[@]} -gt 0 ]]    && ALL_GEMS+=("${AD_GEMS[@]}")
 
         if [[ ${#ALL_GEMS[@]} -gt 0 ]]; then
             log_info "Updating Ruby gems (${ALL_GEMS[*]})..."
@@ -230,6 +231,9 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
         [[ ${#WEB_CARGO[@]} -gt 0 ]] && ALL_CARGO+=("${WEB_CARGO[@]}")
         # RustScan from networking module (installed via cargo)
         command_exists rustscan && ALL_CARGO+=(rustscan)
+        # Pwn module cargo tools
+        command_exists moonwalk && ALL_CARGO+=(moonwalk)
+        command_exists pwninit && ALL_CARGO+=(pwninit)
 
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."

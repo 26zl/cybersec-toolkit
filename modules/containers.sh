@@ -10,9 +10,10 @@ CONTAINER_GO=()
 CONTAINER_GIT=(
     "deepce=https://github.com/stealthcopter/deepce.git"
     "docker-bench-security=https://github.com/docker/docker-bench-security.git"
+    "peirates=https://github.com/inguardians/peirates.git"
 )
 
-CONTAINER_GIT_NAMES=(deepce docker-bench-security)
+CONTAINER_GIT_NAMES=(deepce docker-bench-security peirates)
 
 install_module_containers() {
     install_git_batch "Containers - Git" "${CONTAINER_GIT[@]}"

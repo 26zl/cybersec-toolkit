@@ -154,6 +154,7 @@ if should_remove "pwn"; then
     [[ ${#PWN_GO_BINS[@]} -gt 0 ]]     && GO_BINS_TO_REMOVE+=("${PWN_GO_BINS[@]}")
     [[ ${#PWN_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${PWN_GIT_NAMES[@]}")
     [[ ${#PWN_GEMS[@]} -gt 0 ]]        && GEMS_TO_REMOVE+=("${PWN_GEMS[@]}")
+    CARGO_TO_REMOVE+=(moonwalk pwninit)
 fi
 
 # --- Reversing ---
@@ -179,6 +180,7 @@ fi
 # --- AD ---
 if should_remove "ad"; then
     [[ ${#AD_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${AD_PIPX[@]}")
+    [[ ${#AD_GEMS[@]} -gt 0 ]]        && GEMS_TO_REMOVE+=("${AD_GEMS[@]}")
     [[ ${#AD_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${AD_GIT_NAMES[@]}")
 fi
 
@@ -306,7 +308,7 @@ echo ""
 
 # --- 7) Binary releases ------------------------------------------------------
 log_info "Removing binary releases from /usr/local/bin..."
-BINARY_TOOLS=(findomain ligolo-proxy ligolo-agent chainsaw kerbrute trivy grype kubeaudit cdk pspy gophish trufflehog stegseek rp-lin d2j-dex2jar velociraptor laurel)
+BINARY_TOOLS=(findomain ligolo-proxy ligolo-agent frp chainsaw kerbrute trivy grype kubeaudit cdk pspy gophish trufflehog stegseek rp-lin d2j-dex2jar velociraptor laurel)
 for bin in "${BINARY_TOOLS[@]}"; do
     if [[ -f "/usr/local/bin/$bin" ]]; then
         sudo rm -f "/usr/local/bin/$bin"

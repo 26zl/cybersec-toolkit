@@ -9,6 +9,7 @@ CLOUD_PACKAGES=()
 
 CLOUD_PIPX=(
     kube-hunter pacu cloudsplaining prowler scoutsuite
+    s3scanner roadrecon
 )
 
 CLOUD_GO=(
@@ -21,10 +22,14 @@ CLOUD_GIT=(
     "enumerate-iam=https://github.com/andresriancho/enumerate-iam.git"
     "WeirdAAL=https://github.com/carnal0wnage/weirdAAL.git"
     "s3reverse=https://github.com/hahwul/s3reverse.git"
+    "CloudHunter=https://github.com/belane/CloudHunter.git"
+    "GCPBucketBrute=https://github.com/RhinoSecurityLabs/GCPBucketBrute.git"
+    "endgame=https://github.com/DavidDikker/endgame.git"
+    "cloud_enum=https://github.com/initstring/cloud_enum.git"
 )
 
 CLOUD_GO_BINS=(cloudfox cloudlist)
-CLOUD_GIT_NAMES=(CloudBrute enumerate-iam WeirdAAL s3reverse)
+CLOUD_GIT_NAMES=(CloudBrute enumerate-iam WeirdAAL s3reverse CloudHunter GCPBucketBrute endgame cloud_enum)
 
 install_module_cloud() {
     [[ ${#CLOUD_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Cloud - Packages" "${CLOUD_PACKAGES[@]}"

@@ -7,7 +7,7 @@
 
 STEGO_PACKAGES=(
     steghide stegsnow outguess pngcheck
-    sonic-visualiser
+    sonic-visualiser exiv2 pngtools
 )
 
 STEGO_PIPX=(stegoveritas)
@@ -19,9 +19,11 @@ STEGO_GEMS=(zsteg)
 STEGO_GIT=(
     "stegsolve=https://github.com/Giotino/stegsolve.git"
     "openstego=https://github.com/syvaidya/openstego.git"
+    "stegextract=https://github.com/evyatarmeged/stegextract.git"
+    "stegosaurus=https://github.com/AngelKitty/stegosaurus.git"
 )
 
-STEGO_GIT_NAMES=(stegsolve openstego)
+STEGO_GIT_NAMES=(stegsolve openstego stegextract stegosaurus)
 
 install_module_stego() {
     install_apt_batch "Stego - Packages" "${STEGO_PACKAGES[@]}"
