@@ -259,7 +259,7 @@ BANNER
 
 # ----- Module registry (single source of truth) -----------------------------
 # shellcheck disable=SC2034  # Used by all scripts that source this file
-ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers)
+ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam)
 
 # ----- Auto-init on source ---------------------------------------------------
 detect_pkg_manager

@@ -1,6 +1,6 @@
 # CyberSec Tools Installer
 
-The most comprehensive automated installer for cybersecurity and penetration testing tools on Linux. Installs **347 tools** across **15 modules** using **10 install methods** with a single command. Modular, profile-based architecture with multi-distro support.
+The most comprehensive automated installer for cybersecurity and penetration testing tools on Linux. Installs **364 tools** across **16 modules** using **10 install methods** with a single command. Modular, profile-based architecture with multi-distro support.
 
 ## Supported Distros
 
@@ -13,8 +13,8 @@ The most comprehensive automated installer for cybersecurity and penetration tes
 
 ## Features
 
-- **347 tools** across 15 specialized modules
-- **8 install profiles** — full, ctf, redteam, web, malware, osint, crackstation, lightweight
+- **364 tools** across 16 specialized modules
+- **9 install profiles** — full, ctf, redteam, web, malware, osint, crackstation, lightweight, blueteam
 - **10 install methods** — apt, pipx, go, cargo, gem, git clone, binary release, Docker, snap, build-from-source
 - **Multi-distro** — auto-detects your distro and translates package names across apt/dnf/pacman/zypper
 - **Modular** — install only the modules you need with `--module`
@@ -69,7 +69,7 @@ sudo ./install.sh --list-modules
 
 | Profile | Modules | Description |
 | ------- | ------- | ----------- |
-| `full` | All 15 modules | Everything — complete security toolkit |
+| `full` | All 16 modules | Everything — complete security toolkit |
 | `ctf` | misc, crypto, pwn, reversing, stego, forensics, password, web | Capture The Flag competitions |
 | `redteam` | misc, networking, recon, web, ad, pwn | Offensive security operations |
 | `web` | misc, networking, recon, web | Web application security testing |
@@ -77,6 +77,7 @@ sudo ./install.sh --list-modules
 | `osint` | misc, recon | Open source intelligence gathering |
 | `crackstation` | misc, password, crypto | Password cracking and hash analysis |
 | `lightweight` | misc, networking, recon, web | Core tools only for limited disk/laptops |
+| `blueteam` | misc, blueteam, forensics, malware, containers | Defensive security and incident response |
 
 ## Modules
 
@@ -97,6 +98,7 @@ sudo ./install.sh --list-modules
 | `stego` | 10 | steghide, stegsolve, zsteg, stegoveritas, stegseek, outguess, openstego |
 | `cloud` | 11 | Prowler, ScoutSuite, pacu, cloudfox, CloudBrute, enumerate-iam |
 | `containers` | 6 | Trivy, Grype, kubeaudit, CDK, deepce, docker-bench-security |
+| `blueteam` | 17 | Suricata, Zeek, Wazuh, TheHive, Velociraptor, Sigma, fail2ban, AIDE |
 
 ## Install Methods
 
@@ -149,8 +151,9 @@ cybersec-tools-installer/
     stego.sh                 # Steganography
     cloud.sh                 # AWS/Azure/GCP security
     containers.sh            # Docker/Kubernetes security
+    blueteam.sh              # Defensive security, IDS/IPS, SIEM, IR
   profiles/
-    full.conf                # All 15 modules
+    full.conf                # All 16 modules
     ctf.conf                 # CTF competitions
     redteam.conf             # Offensive security
     web.conf                 # Web app security
@@ -158,7 +161,8 @@ cybersec-tools-installer/
     osint.conf               # OSINT gathering
     crackstation.conf        # Password cracking
     lightweight.conf         # Minimal install
-  tools_config.json          # Tool registry (347 tools, not parsed at runtime)
+    blueteam.conf            # Defensive security
+  tools_config.json          # Tool registry (364 tools, not parsed at runtime)
   scripts/
     verify.sh                # Verification script
     update.sh                # Update script

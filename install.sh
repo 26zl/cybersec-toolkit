@@ -46,11 +46,12 @@ Usage: sudo ./install.sh [OPTIONS]
 Options:
   --profile <name>     Install a predefined tool profile:
                          full, ctf, redteam, web, malware, osint,
-                         crackstation, lightweight
+                         crackstation, lightweight, blueteam
   --module <name>      Install specific module(s). Can be repeated.
                          Modules: misc, networking, recon, web, crypto,
                          pwn, reversing, forensics, malware, ad,
-                         wireless, password, stego, cloud, containers
+                         wireless, password, stego, cloud, containers,
+                         blueteam
   --upgrade-system     Upgrade all system packages before installing
                          (apt upgrade / dnf upgrade / pacman -Syu)
   --skip-heavy         Skip large packages (sagemath, gnuradio, etc.)
@@ -109,6 +110,7 @@ list_modules() {
     printf "  %-16s %s\n" "stego"      "Steganography tools"
     printf "  %-16s %s\n" "cloud"      "AWS/Azure/GCP security"
     printf "  %-16s %s\n" "containers" "Docker/Kubernetes security"
+    printf "  %-16s %s\n" "blueteam"   "Defensive security, IDS/IPS, SIEM, IR"
     echo ""
     echo "Usage: sudo ./install.sh --module <name> [--module <name> ...]"
     exit 0

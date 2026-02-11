@@ -125,6 +125,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
         [[ ${#PASSWORD_GO[@]} -gt 0 ]]  && ALL_GO_TOOLS+=("${PASSWORD_GO[@]}")
         [[ ${#STEGO_GO[@]} -gt 0 ]]     && ALL_GO_TOOLS+=("${STEGO_GO[@]}")
         [[ ${#CONTAINER_GO[@]} -gt 0 ]] && ALL_GO_TOOLS+=("${CONTAINER_GO[@]}")
+        [[ ${#BLUETEAM_GO[@]} -gt 0 ]]   && ALL_GO_TOOLS+=("${BLUETEAM_GO[@]}")
 
         GO_TOTAL=${#ALL_GO_TOOLS[@]}
         GO_CURRENT=0

@@ -35,7 +35,7 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, ad, wireless, password, stego, cloud, containers
+         malware, ad, wireless, password, stego, cloud, containers, blueteam
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems).
@@ -215,6 +215,13 @@ if should_remove "containers"; then
     [[ ${#CONTAINER_GIT_NAMES[@]} -gt 0 ]] && GIT_NAMES_TO_REMOVE+=("${CONTAINER_GIT_NAMES[@]}")
 fi
 
+# --- Blue Team ---
+if should_remove "blueteam"; then
+    [[ ${#BLUETEAM_PACKAGES[@]} -gt 0 ]]    && PKGS_TO_REMOVE+=("${BLUETEAM_PACKAGES[@]}")
+    [[ ${#BLUETEAM_PIPX[@]} -gt 0 ]]        && PIPX_TO_REMOVE+=("${BLUETEAM_PIPX[@]}")
+    [[ ${#BLUETEAM_GIT_NAMES[@]} -gt 0 ]]   && GIT_NAMES_TO_REMOVE+=("${BLUETEAM_GIT_NAMES[@]}")
+fi
+
 # =============================================================================
 # Execute removal
 # =============================================================================
@@ -299,7 +306,7 @@ echo ""
 
 # --- 7) Binary releases ------------------------------------------------------
 log_info "Removing binary releases from /usr/local/bin..."
-BINARY_TOOLS=(findomain ligolo-proxy ligolo-agent chainsaw kerbrute trivy grype kubeaudit cdk pspy gophish trufflehog stegseek rp-lin d2j-dex2jar)
+BINARY_TOOLS=(findomain ligolo-proxy ligolo-agent chainsaw kerbrute trivy grype kubeaudit cdk pspy gophish trufflehog stegseek rp-lin d2j-dex2jar velociraptor laurel)
 for bin in "${BINARY_TOOLS[@]}"; do
     if [[ -f "/usr/local/bin/$bin" ]]; then
         sudo rm -f "/usr/local/bin/$bin"
@@ -343,7 +350,7 @@ find /tmp -maxdepth 1 -name 'tmp*.sh' -user root -newer "$SCRIPT_DIR/install.sh"
 # Docker images (only on full removal)
 if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
     log_info "Removing Docker images..."
-    for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound"; do
+    for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound" "strangebee/thehive" "thehiveproject/cortex"; do
         if docker images "$img" -q 2>/dev/null | grep -q .; then
             docker rmi "$img" >> "$LOG_FILE" 2>&1 && \
                 log_success "Removed Docker: $img" || true

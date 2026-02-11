@@ -33,7 +33,7 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, ad, wireless, password, stego, cloud, containers
+         malware, ad, wireless, password, stego, cloud, containers, blueteam
 EOF
     exit 0
 fi
@@ -398,6 +398,33 @@ if should_verify "containers"; then
     check_git_repos "${CONTAINER_GIT_NAMES[@]}"
     log_info "Containers (Binary):"
     check_cmds trivy grype kubeaudit cdk
+fi
+
+if should_verify "blueteam"; then
+    echo ""
+    log_info "========== Module: blueteam =========="
+    log_info "Blue Team (packages):"
+    check_cmds suricata fail2ban aide auditctl zeek apparmor_parser ufw
+    log_info "Blue Team (pipx):"
+    check_pipx_arr "${BLUETEAM_PIPX[@]}"
+    log_info "Blue Team (Git):"
+    check_git_repos "${BLUETEAM_GIT_NAMES[@]}"
+    log_info "Blue Team (Binary):"
+    check_cmd "velociraptor" || true
+    check_cmd "laurel" || true
+    log_info "Blue Team (Docker):"
+    if command_exists docker; then
+        for img in "strangebee/thehive" "thehiveproject/cortex"; do
+            TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+            if docker images "$img" -q 2>/dev/null | grep -q .; then
+                TOTAL_FOUND=$((TOTAL_FOUND + 1))
+                [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$img — Docker image present"
+            else
+                TOTAL_MISSING=$((TOTAL_MISSING + 1))
+                [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$img — Docker image NOT found"
+            fi
+        done
+    fi
 fi
 
 # --- Summary -----------------------------------------------------------------

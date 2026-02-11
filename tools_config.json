@@ -2,7 +2,7 @@
     "metadata": {
         "version": "2.0",
         "description": "Tool registry for cybersec-tools-installer (documentation only, not parsed at runtime)",
-        "modules": 15,
+        "modules": 16,
         "install_methods": ["apt", "pipx", "go", "cargo", "gem", "git", "binary", "docker", "special", "source"]
     },
     "modules": {
@@ -461,6 +461,28 @@
                 "grype": { "description": "Container image vulnerability scanner", "install_method": "binary" },
                 "kubeaudit": { "description": "Kubernetes security audit", "install_method": "binary" },
                 "cdk": { "description": "Container penetration toolkit", "install_method": "binary" }
+            }
+        },
+        "blueteam": {
+            "description": "Defensive security, IDS/IPS, SIEM, log analysis, threat intelligence, and incident response",
+            "tools": {
+                "suricata": { "description": "High-performance IDS/IPS engine", "install_method": "apt" },
+                "fail2ban": { "description": "Intrusion prevention via log monitoring", "install_method": "apt" },
+                "aide": { "description": "Advanced Intrusion Detection Environment (file integrity)", "install_method": "apt" },
+                "auditd": { "description": "Linux audit daemon for security event logging", "install_method": "apt" },
+                "zeek": { "description": "Network analysis framework (formerly Bro)", "install_method": "apt" },
+                "apparmor-utils": { "description": "AppArmor security profile utilities", "install_method": "apt" },
+                "ufw": { "description": "Uncomplicated Firewall management", "install_method": "apt" },
+                "sigma-cli": { "description": "Sigma detection rule converter and manager", "install_method": "pipx" },
+                "sigma-rules": { "description": "SigmaHQ community detection rules", "install_method": "git" },
+                "maltrail": { "description": "Malicious traffic detection system", "install_method": "git" },
+                "CIMSweep": { "description": "CIM/WMI-based threat hunting toolkit", "install_method": "git" },
+                "MISP-docker": { "description": "Threat intelligence sharing platform (docker-compose)", "install_method": "git" },
+                "wazuh-docker": { "description": "HIDS and SIEM platform (docker-compose)", "install_method": "git" },
+                "velociraptor": { "description": "Endpoint visibility and digital forensics", "install_method": "binary" },
+                "laurel": { "description": "Linux audit log to JSONL converter", "install_method": "binary" },
+                "thehive": { "description": "Incident response case management platform", "install_method": "docker" },
+                "cortex": { "description": "Observable analysis and active response engine", "install_method": "docker" }
             }
         }
     }

@@ -40,6 +40,7 @@ fixup_package_names() {
                     upx-ucl)            pkg="upx" ;;
                     gqrx-sdr)           pkg="gqrx" ;;
                     spooftooph|cewl|hashid|wapiti|zmap|rizin) continue ;;
+                    auditd)             pkg="audit" ;;
                     checksec)           pkg="checksec" ;;
                     sonic-visualiser)   pkg="sonic-visualiser" ;;
                     qemu-user-static)   pkg="qemu-user-static" ;;
@@ -73,6 +74,7 @@ fixup_package_names() {
                     bulk-extractor)     pkg="bulk_extractor" ;;
                     snmp)               pkg="net-snmp" ;;
                     spooftooph|cewl|hashid|wapiti) continue ;;
+                    auditd)             pkg="audit" ;;
                     upx-ucl)            pkg="upx" ;;
                     qemu-user-static)   pkg="qemu-user-static" ;;
                     qemu-system-x86)    pkg="qemu-system-x86" ;;
@@ -107,6 +109,7 @@ fixup_package_names() {
                     imagemagick)        pkg="ImageMagick" ;;
                     upx-ucl)            pkg="upx" ;;
                     spooftooph|cewl|hashid|wapiti|zmap|checksec|rizin|sagemath|sonic-visualiser) continue ;;
+                    auditd)             pkg="audit" ;;
                     qemu-user-static)   pkg="qemu-linux-user" ;;
                     qemu-system-x86)    pkg="qemu-x86" ;;
                     sslsplit)           pkg="sslsplit" ;;
