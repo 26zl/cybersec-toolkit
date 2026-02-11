@@ -24,6 +24,13 @@ With a profile:
 git clone https://github.com/26zl/cybersec-tools-installer.git && cd cybersec-tools-installer && sudo ./install.sh --profile ctf
 ```
 
+From ZIP download:
+
+```bash
+# If you downloaded the ZIP instead of using git clone:
+unzip cybersec-tools-installer-main.zip && cd cybersec-tools-installer-main && sudo bash install.sh
+```
+
 ## Usage
 
 ```bash

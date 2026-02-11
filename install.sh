@@ -482,6 +482,9 @@ main() {
     echo -e "${GREEN}${BOLD}=============================================${NC}"
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules installed: ${MODULES_TO_INSTALL[*]}"
+    if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
+        log_error "Module failures: $TOTAL_MODULE_FAILURES"
+    fi
     log_info "Log file: $LOG_FILE"
     log_info "Version tracking: $VERSION_FILE"
     echo ""
@@ -493,9 +496,15 @@ main() {
     log_info "  GitHub repos:     $GITHUB_TOOL_DIR/"
     log_info "  Binary releases:  /usr/local/bin/"
     echo ""
+
+    if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
+        exit 1
+    fi
 }
 
 # ----- Module installation ---------------------------------------------------
+TOTAL_MODULE_FAILURES=0
+
 install_modules() {
     for mod in "${MODULES_TO_INSTALL[@]}"; do
         echo ""
@@ -503,7 +512,10 @@ install_modules() {
 
         if declare -f "$func_name" > /dev/null 2>&1; then
             log_info "========== Module: $mod =========="
-            "$func_name"
+            if ! "$func_name"; then
+                log_error "Module failed: $mod"
+                TOTAL_MODULE_FAILURES=$((TOTAL_MODULE_FAILURES + 1))
+            fi
         else
             log_warn "No install function for module: $mod"
         fi

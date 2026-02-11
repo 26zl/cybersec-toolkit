@@ -67,7 +67,7 @@ encrypt_files() {
         local relative_path="${file#"$source_dir"/}"
         local encrypted_path="$target_dir/${relative_path}.enc"
         ensure_dir "$(dirname "$encrypted_path")"
-        openssl enc -aes-256-cbc -salt -pbkdf2 -in "$file" -out "$encrypted_path" -pass file:"$pass_file" 2>/dev/null && \
+        openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -in "$file" -out "$encrypted_path" -pass file:"$pass_file" 2>/dev/null && \
             log_success "Encrypted: $relative_path" || \
             log_warn "Failed to encrypt: $relative_path"
     done < <(find "$source_dir" -type f \( -name "*.conf" -o -name "*.cfg" -o -name "*.json" -o -name "*.xml" -o -name "*.yml" -o -name "*.yaml" \) -print0)
@@ -93,7 +93,7 @@ decrypt_files() {
         local relative_path="${file#"$source_dir"/}"
         local decrypted_path="$target_dir/${relative_path%.enc}"
         ensure_dir "$(dirname "$decrypted_path")"
-        openssl enc -aes-256-cbc -d -pbkdf2 -in "$file" -out "$decrypted_path" -pass file:"$pass_file" 2>/dev/null && \
+        openssl enc -aes-256-cbc -d -pbkdf2 -iter 600000 -in "$file" -out "$decrypted_path" -pass file:"$pass_file" 2>/dev/null && \
             log_success "Decrypted: $relative_path" || \
             log_warn "Failed to decrypt: $relative_path"
     done < <(find "$source_dir" -type f -name "*.enc" -print0)
@@ -154,6 +154,12 @@ cmd_backup() {
 
     log_info "Encrypting sensitive configuration files..."
     encrypt_files "$BACKUP_PATH" "$BACKUP_PATH/encrypted"
+
+    # Remove plaintext category dirs — archive should only contain encrypted files
+    for dir in "$BACKUP_PATH"/*/; do
+        [[ "$(basename "$dir")" == "encrypted" ]] && continue
+        rm -rf "$dir"
+    done
 
     log_info "Creating archive..."
     tar -czf "$BACKUP_PATH.tar.gz" -C "$BACKUP_DIR" "backup_$TIMESTAMP"

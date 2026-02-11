@@ -474,6 +474,12 @@ download_github_release() {
         pkg_install unzip >> "$LOG_FILE" 2>&1 || true
     fi
 
+    # Adapt arch tokens in the pattern to match the current system architecture
+    if [[ "$SYS_ARCH" != "amd64" ]]; then
+        pattern="${pattern//amd64/$SYS_ARCH}"
+        pattern="${pattern//x86_64/$SYS_ARCH_ALT}"
+    fi
+
     log_info "Downloading $binary from $repo releases..."
     local api_url="https://api.github.com/repos/$repo/releases/latest"
     local release_json
@@ -529,6 +535,10 @@ for asset in data.get('assets', []):
         *.deb)
             # shellcheck disable=SC2024  # Script runs as root; redirect is fine
             sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1
+            # Fix missing dependencies left by dpkg
+            if [[ "$PKG_MANAGER" == "apt" ]]; then
+                sudo apt-get install -f -y >> "$LOG_FILE" 2>&1
+            fi
             rm -rf "$tmp_dir"
             log_success "Installed: $binary (.deb)"
             track_version "$binary" "binary" "latest"

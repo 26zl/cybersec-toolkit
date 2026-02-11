@@ -1,0 +1,7 @@
+# Force LF line endings for all shell scripts (prevents CRLF issues on Linux)
+*.sh text eol=lf
+*.bats text eol=lf
+*.conf text eol=lf
+
+# Ensure these root scripts also get LF
+install.sh text eol=lf

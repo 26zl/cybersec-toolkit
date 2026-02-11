@@ -92,6 +92,7 @@ pkg_update() {
         dnf)     sudo dnf check-update -q || true ;;
         pacman)  sudo pacman -Sy --noconfirm ;;
         zypper)  sudo zypper refresh -q ;;
+        *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
 
@@ -107,6 +108,7 @@ pkg_install() {
             ;;
         pacman)  sudo pacman -S --noconfirm --needed "$@" ;;
         zypper)  sudo zypper install -y -q "$@" ;;
+        *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
 
@@ -116,6 +118,7 @@ pkg_remove() {
         dnf)     sudo dnf remove -y "$@" ;;
         pacman)  sudo pacman -Rns --noconfirm "$@" 2>/dev/null || true ;;
         zypper)  sudo zypper remove -y "$@" ;;
+        *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
 
@@ -125,6 +128,7 @@ pkg_upgrade() {
         dnf)     sudo dnf upgrade -y -q ;;
         pacman)  sudo pacman -Syu --noconfirm ;;
         zypper)  sudo zypper update -y -q ;;
+        *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
 
@@ -134,6 +138,7 @@ pkg_cleanup() {
         dnf)     sudo dnf autoremove -y && sudo dnf clean all ;;
         pacman)  sudo pacman -Sc --noconfirm ;;
         zypper)  sudo zypper clean ;;
+        *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
 
@@ -252,8 +257,22 @@ BANNER
 # shellcheck disable=SC2034  # Used by all scripts that source this file
 ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam mobile)
 
+# ----- Architecture detection ------------------------------------------------
+detect_arch() {
+    local machine
+    machine=$(uname -m)
+    case "$machine" in
+        x86_64)       SYS_ARCH="amd64";  SYS_ARCH_ALT="x86_64"  ;;
+        aarch64)      SYS_ARCH="arm64";  SYS_ARCH_ALT="aarch64" ;;
+        armv7l|armhf) SYS_ARCH="armv7";  SYS_ARCH_ALT="armv7l"  ;;
+        *)            SYS_ARCH="$machine"; SYS_ARCH_ALT="$machine" ;;
+    esac
+    export SYS_ARCH SYS_ARCH_ALT
+}
+
 # ----- Auto-init on source ---------------------------------------------------
 detect_pkg_manager
+detect_arch
 
 # ----- Tool paths (system-wide install) --------------------------------------
 # Go: GOBIN puts binaries directly in /usr/local/bin (accessible to all users)
