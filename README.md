@@ -12,10 +12,16 @@ The most comprehensive automated installer for cybersecurity tools on Linux. __7
 
 ## Quick Start
 
+One-liner:
+
 ```bash
-git clone https://github.com/26zl/cybersec-tools-installer.git
-cd cybersec-tools-installer
-sudo ./install.sh
+git clone https://github.com/26zl/cybersec-tools-installer.git && cd cybersec-tools-installer && sudo ./install.sh
+```
+
+With a profile:
+
+```bash
+git clone https://github.com/26zl/cybersec-tools-installer.git && cd cybersec-tools-installer && sudo ./install.sh --profile ctf
 ```
 
 ## Usage
