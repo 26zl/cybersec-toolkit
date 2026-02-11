@@ -13,7 +13,7 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux. __665+ tools__, __18 modules__, __10 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux. __680+ tools__, __18 modules__, __10 install methods__, one command.
 
 ---
 
@@ -84,7 +84,7 @@ cd cybersec-tools-installer
 sudo ./install.sh
 ```
 
-That installs all 665+ tools. To install a subset, use a profile or pick specific modules:
+That installs all 680+ tools. To install a subset, use a profile or pick specific modules:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -161,16 +161,16 @@ sudo ./install.sh -v                    # Verbose / debug output
 | `pwn` | ~53 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | ~31 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
-| `malware` | ~5 | YARA, ClamAV, inetsim, quark-engine |
+| `malware` | ~7 | YARA, ClamAV, inetsim, quark-engine, FLOSS, Capa |
 | `enterprise` | ~102 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | ~41 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `password` | ~32 | Hash cracking (john, hashcat), brute force, wordlist generation |
-| `stego` | ~14 | Image/audio steganography, detection |
-| `cloud` | ~17 | AWS/Azure/GCP security auditing |
-| `containers` | ~7 | Docker/Kubernetes security (Trivy, Grype, kubeaudit) |
+| `stego` | ~15 | Image/audio steganography, detection, StegCracker |
+| `cloud` | ~18 | AWS/Azure/GCP security auditing, Checkov |
+| `containers` | ~9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
 | `blueteam` | ~21 | IDS/IPS, SIEM, incident response, threat intelligence, hardening |
 | `mobile` | ~10 | Android/iOS app testing, APK analysis, MobSF (Docker) |
-| `blockchain` | ~7 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
+| `blockchain` | ~8 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
 
 ## Install Methods
 
@@ -180,7 +180,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 | Git clone | ~260 | GitHub repos with auto-setup, resources, wordlists |
 | pipx | ~157 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | ~55 | nuclei, subfinder, ffuf, httpx |
-| Binary release | ~21 | gitleaks, chainsaw, findomain |
+| Binary release | ~26 | gitleaks, chainsaw, findomain, FLOSS, Capa, Syft, Kubescape |
 | Build from source | ~15 | massdns, duplicut, yara |
 | Docker | ~7 | C2, MobSF, BeEF, TheHive |
 | Ruby gem | 6 | wpscan, evil-winrm, XSpear |
@@ -229,7 +229,7 @@ Only used with `--enable-docker`. If Docker is not installed, these are skipped 
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 665+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
+__Debian/Ubuntu/Kali is the primary target__ -- all 680+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
 
 ## Supply Chain Model
 

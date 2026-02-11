@@ -106,8 +106,8 @@ jobs:
             # 7. curl|bash / wget|bash patterns
             # ---------------------------------------------------
             while IFS= read -r match; do
-              # Allowlist: rustup uses TLS pinning
-              if echo "$match" | grep -q 'rustup'; then
+              # Allowlist: rustup (TLS pinning), foundry (no alternative installer)
+              if echo "$match" | grep -qE 'rustup|foundry|paradigm\.xyz'; then
                 continue
               fi
               echo "::warning file=$f::curl-pipe-bash pattern: $match"

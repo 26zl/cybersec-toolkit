@@ -23,13 +23,16 @@ jobs:
             install.sh \
             lib/common.sh \
             lib/installers.sh \
-            modules/ad.sh \
+            modules/blockchain.sh \
+            modules/blueteam.sh \
             modules/cloud.sh \
             modules/containers.sh \
             modules/crypto.sh \
+            modules/enterprise.sh \
             modules/forensics.sh \
             modules/malware.sh \
             modules/misc.sh \
+            modules/mobile.sh \
             modules/networking.sh \
             modules/password.sh \
             modules/pwn.sh \
@@ -38,8 +41,6 @@ jobs:
             modules/stego.sh \
             modules/web.sh \
             modules/wireless.sh \
-            modules/blueteam.sh \
-            modules/mobile.sh \
             scripts/verify.sh \
             scripts/update.sh \
             scripts/remove.sh \
@@ -102,7 +103,7 @@ jobs:
 
       - name: Validate profile configs
         run: |
-          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware ad wireless password stego cloud containers blueteam mobile"
+          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware enterprise wireless password stego cloud containers blueteam mobile blockchain"
           exit_code=0
 
           for conf in profiles/*.conf; do

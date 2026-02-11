@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2034  # Arrays are consumed by modules and scripts that source this file
 # =============================================================================
 # installers.sh — Install method helpers for cybersec-tools-installer
 # Provides batch install functions for: apt, pipx, go, cargo, gem, git, binary, docker
@@ -821,7 +822,6 @@ build_from_source() {
 # ----- Binary release registry (single source of truth) --------------------
 # Format: "repo|binary|pattern|dest_dir" (dest_dir optional, defaults to /usr/local/bin)
 # Used by modules for install and scripts/update.sh for updates.
-# shellcheck disable=SC2034  # Consumed by modules and update.sh
 BINARY_RELEASES_MISC=(
     "DominicBreuker/pspy|pspy|pspy64$"
     "gophish/gophish|gophish|linux-64bit"
