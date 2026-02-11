@@ -40,3 +40,7 @@ venv/
 # CI/CD local artifacts
 verification-summary.md
 results.sarif
+
+# Bats test artifacts
+tests/tmp/
+tests/.bats-run-*
