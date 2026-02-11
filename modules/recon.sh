@@ -5,7 +5,7 @@
 # Subdomain enumeration, intelligence gathering, search engines, OSINT
 # =============================================================================
 
-RECON_PACKAGES=(dnsenum dmitry dnsmap dnstracer dnswalk enum4linux bing-ip2hosts)
+RECON_PACKAGES=(dnsenum dmitry dnsmap dnstracer dnswalk bing-ip2hosts)
 
 RECON_PIPX=(
     dnstwist fierce holehe h8mail social-analyzer maigret ghunt shodan
@@ -13,7 +13,7 @@ RECON_PIPX=(
     bbot onionsearch crosslinked toutatis
     ssh-audit parsero
     emailharvester maryam osrframework
-    censys ignorant instaloader
+    censys ignorant instaloader recon-ng
 )
 
 RECON_GO=(
@@ -60,23 +60,24 @@ RECON_GIT=(
     "certSniff=https://github.com/A-poc/certSniff.git"
     "AWSBucketDump=https://github.com/jordanpotti/AWSBucketDump.git"
     "linkedin2username=https://github.com/initstring/linkedin2username.git"
-    "dnscan=https://github.com/rbsec/dnscan.git"
+    "linkedin2username=https://github.com/initstring/linkedin2username.git"
+    "LinkedInt=https://github.com/vysecurity/LinkedInt.git"
     "LinkedInt=https://github.com/vysecurity/LinkedInt.git"
     "AttackSurfaceMapper=https://github.com/superhedgy/AttackSurfaceMapper.git"
     "WitnessMe=https://github.com/byt3bl33d3r/WitnessMe.git"
     "Gato=https://github.com/praetorian-inc/gato.git"
-    "subbrute=https://github.com/TheRook/subbrute.git"
     "carbon14=https://github.com/Lazza/carbon14.git"
     "GeoPincer=https://github.com/tloja/GeoPincer.git"
     "pwndb=https://github.com/davidtavarez/pwndb.git"
     "SimplyEmail=https://github.com/SimplySecurity/SimplyEmail.git"
     "Yalis=https://github.com/EatonChips/yalis.git"
     "EyeWitness=https://github.com/FortyNorthSecurity/EyeWitness.git"
+    "osmedeus=https://github.com/j3ssie/osmedeus.git"
 )
 
 # Binary names for verify/remove
 RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor phoneinfoga subzy subjack)
-RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username dnscan LinkedInt AttackSurfaceMapper WitnessMe Gato subbrute carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness)
+RECON_GIT_NAMES=(reconftw nmapAutomator massdns axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username LinkedInt AttackSurfaceMapper WitnessMe Gato carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness osmedeus)
 
 install_module_recon() {
     install_apt_batch "Recon / OSINT - Packages" "${RECON_PACKAGES[@]}"

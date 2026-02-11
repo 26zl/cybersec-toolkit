@@ -5,7 +5,7 @@
 # Web application testing, scanning, fuzzing, exploitation
 # =============================================================================
 
-WEB_PACKAGES=(nikto whatweb dirb)
+WEB_PACKAGES=(nikto whatweb)
 
 WEB_PIPX=(
     sqlmap wafw00f sslyze dirsearch arjun
@@ -48,9 +48,7 @@ WEB_GIT=(
     "Gopherus=https://github.com/tarunkant/Gopherus.git"
     "oxml_xxe=https://github.com/BuffaloWill/oxml_xxe.git"
     "CMSmap=https://github.com/dionach/CMSmap.git"
-    "tplmap=https://github.com/epinna/tplmap.git"
     "weevely3=https://github.com/epinna/weevely3.git"
-    "DotDotPwn=https://github.com/wireghoul/dotdotpwn.git"
     "PhpSploit=https://github.com/nil0x42/phpsploit.git"
     "Kadimus=https://github.com/P0cL4bs/Kadimus.git"
     "LFISuite=https://github.com/D35m0nd142/LFISuite.git"
@@ -63,13 +61,14 @@ WEB_GIT=(
     "symfony-exploits=https://github.com/ambionics/symfony-exploits.git"
     "tomcatwardeployer=https://github.com/mgeeky/tomcatwardeployer.git"
     "XXEinjector=https://github.com/enjoiz/XXEinjector.git"
+    "paramspider=https://github.com/devanshbatham/ParamSpider.git"
 )
 
 WEB_DOCKER=("beefproject/beef:BeEF")
 
 # Binary names for verify/remove
 WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice getJS)
-WEB_GIT_NAMES=(XSStrike xsser Corsy jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap tplmap weevely3 DotDotPwn PhpSploit Kadimus LFISuite phpggc PadBuster h2csmuggler joomscan bolt pp-finder symfony-exploits tomcatwardeployer XXEinjector)
+WEB_GIT_NAMES=(XSStrike xsser Corsy jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap weevely3 PhpSploit Kadimus LFISuite phpggc PadBuster h2csmuggler joomscan bolt pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider)
 
 install_module_web() {
     install_apt_batch "Web - Packages" "${WEB_PACKAGES[@]}"
@@ -81,6 +80,7 @@ install_module_web() {
 
     # Binary releases
     download_github_release "frohoff/ysoserial" "ysoserial" "ysoserial-all.jar" "/opt/cybersec-jars" || true
+    download_github_release "assetnote/kiterunner" "kr" "linux_amd64" || true
 
     # Docker (optional)
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then

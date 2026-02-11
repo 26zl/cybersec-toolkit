@@ -65,6 +65,7 @@ MISC_POSTEXPLOIT=(
     "pivotsuite=https://github.com/RedTeamOperations/PivotSuite.git"
     "unix-privesc-check=https://github.com/pentestmonkey/unix-privesc-check.git"
     "LOLBAS=https://github.com/LOLBAS-Project/LOLBAS.git"
+    "Vigil=https://github.com/0x5A65726F677275/Vigil.git"
 )
 
 # --- Social engineering ---
@@ -110,7 +111,7 @@ MISC_GIT_NAMES=(
     Modlishka ReelPhish Catphish
     CyberChef ctf-tools CTF-Katana
     Caldera atomic-red-team RedEye
-    ibombshell powercat
+    ibombshell powercat Vigil
 )
 MISC_GO_BINS=(gf anew qsreplace notify gitleaks)
 
