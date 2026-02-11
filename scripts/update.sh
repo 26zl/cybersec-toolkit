@@ -77,6 +77,12 @@ LOG_FILE="$SCRIPT_DIR/tool_update.log"
 check_root
 print_banner
 
+if [[ "$PKG_MANAGER" == "unknown" ]]; then
+    log_error "Unsupported distribution — could not detect package manager"
+    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE)"
+    exit 1
+fi
+
 if [[ "$VERBOSE" == "true" ]]; then
     log_info "Verbose mode enabled"
     log_system_environment
@@ -252,7 +258,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
             for crate in "${ALL_CARGO[@]}"; do
-                cargo install "$crate" >> "$LOG_FILE" 2>&1 && \
+                cargo install --force "$crate" >> "$LOG_FILE" 2>&1 && \
                     log_success "Updated cargo: $crate" || \
                     log_warn "Failed cargo: $crate"
             done
@@ -288,8 +294,14 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     }
 
     # misc
-    update_binary "DominicBreuker/pspy" "pspy" "pspy64"
-    update_binary "gophish/gophish" "gophish" "linux-64bit"
+    local pspy_pattern="pspy64$"
+    local gophish_pattern="linux-64bit"
+    if [[ "$SYS_ARCH" != "amd64" ]]; then
+        pspy_pattern="pspy_${SYS_ARCH}$"
+        gophish_pattern="linux-${SYS_ARCH}"
+    fi
+    update_binary "DominicBreuker/pspy" "pspy" "$pspy_pattern"
+    update_binary "gophish/gophish" "gophish" "$gophish_pattern"
     update_binary "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx"
     update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar"
     update_binary "trufflesecurity/trufflehog" "trufflehog" "linux_amd64\\.tar\\.gz"
@@ -313,7 +325,9 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     update_binary "Velocidex/velociraptor" "velociraptor" "linux-amd64$"
     update_binary "threathunters-io/laurel" "laurel" "x86_64-glibc"
     # containers
-    update_binary "aquasecurity/trivy" "trivy" "Linux-64bit\\.tar\\.gz"
+    local trivy_pattern="Linux-64bit\\.tar\\.gz"
+    [[ "$SYS_ARCH" != "amd64" ]] && trivy_pattern="Linux-ARM64\\.tar\\.gz"
+    update_binary "aquasecurity/trivy" "trivy" "$trivy_pattern"
     update_binary "anchore/grype" "grype" "linux_amd64\\.tar\\.gz"
     update_binary "Shopify/kubeaudit" "kubeaudit" "linux_amd64\\.tar\\.gz"
     update_binary "cdk-team/CDK" "cdk" "cdk_linux_amd64"

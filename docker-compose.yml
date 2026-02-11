@@ -1,0 +1,5 @@
+services:
+  installer:
+    build: .
+    image: cybersec-installer
+    # Override CMD to change profile: docker compose run installer --profile ctf

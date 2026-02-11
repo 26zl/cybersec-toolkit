@@ -170,6 +170,11 @@ should_verify() { [[ " ${VERIFY_MODULES[*]} " =~ " $1 " ]]; }
 
 # --- System info -------------------------------------------------------------
 print_banner
+
+if [[ "$PKG_MANAGER" == "unknown" ]]; then
+    log_warn "Unknown distribution — package-level checks may be inaccurate"
+fi
+
 if [[ "$VERBOSE" == "true" ]]; then
     log_info "Verbose mode enabled"
     log_system_environment

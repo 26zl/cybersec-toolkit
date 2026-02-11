@@ -1,0 +1,87 @@
+name: Integration
+
+on:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: "${{ matrix.distro }} integration"
+    runs-on: ubuntu-latest
+    container:
+      image: "${{ matrix.image }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu
+            image: ubuntu:24.04
+          - distro: fedora
+            image: fedora:41
+          - distro: arch
+            image: archlinux:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Install distro-appropriate prerequisites ──
+      - name: Install prerequisites (Ubuntu)
+        if: matrix.distro == 'ubuntu'
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git curl wget sudo \
+            python3 python3-pip python3-venv python3-dev pipx \
+            golang-go build-essential libpcap-dev libssl-dev libffi-dev \
+            zlib1g-dev libxml2-dev libxslt1-dev cmake ca-certificates
+
+      - name: Install prerequisites (Fedora)
+        if: matrix.distro == 'fedora'
+        run: |
+          dnf install -y \
+            git curl wget sudo \
+            python3 python3-pip python3-devel pipx \
+            golang @development-tools libpcap-devel openssl-devel libffi-devel \
+            zlib-devel libxml2-devel libxslt-devel cmake which
+
+      - name: Install prerequisites (Arch)
+        if: matrix.distro == 'arch'
+        run: |
+          pacman -Sy --noconfirm \
+            git curl wget sudo \
+            python python-pip python-pipx \
+            go base-devel libpcap openssl libffi zlib libxml2 libxslt cmake which
+
+      # ── Syntax check on real distro ──
+      - name: Bash syntax check
+        run: |
+          exit_code=0
+          for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do
+            if ! bash -n "$f"; then
+              echo "::error file=$f::Syntax error in $f"
+              exit_code=1
+            fi
+          done
+          exit $exit_code
+
+      # ── Dry-run full profile ──
+      - name: Dry-run full profile
+        run: bash install.sh --dry-run --profile full
+
+      # ── Install a small package subset ──
+      - name: Install networking subset
+        run: |
+          # Install a few fast, universally-available packages to test the real
+          # install path including fixup_package_names and pkg_install.
+          bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois
+
+      # ── Verify installed tools ──
+      - name: Verify networking tools
+        run: bash scripts/verify.sh --module networking --summary
+
+      # ── Remove installed tools ──
+      - name: Remove networking module
+        run: bash scripts/remove.sh --module networking --yes

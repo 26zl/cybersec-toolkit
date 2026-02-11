@@ -89,6 +89,23 @@ sudo ./install.sh --tool sqlmap --tool nmap            # Individual tools
 sudo ./install.sh --dry-run --profile ctf              # Preview without installing
 ```
 
+### Try in Docker
+
+Run the installer in a container without touching your host system:
+
+```bash
+docker build -t cybersec-installer .
+docker run cybersec-installer                          # Dry-run full profile
+docker run cybersec-installer --profile ctf            # Install CTF tools
+docker run cybersec-installer --module web --module recon
+```
+
+Or with Docker Compose:
+
+```bash
+docker compose run installer --profile ctf
+```
+
 From a ZIP download (no git):
 
 ```bash

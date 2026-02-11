@@ -72,8 +72,9 @@ Prerequisites are validated per-module: only runtimes needed by the
 selected modules are required. E.g. --module web requires go, cargo, gem.
 
 Environment variables:
-  INSTALL_DIR          Base install directory (default: /opt)
   GITHUB_TOOL_DIR      Where to clone GitHub repos (default: /opt)
+  GITHUB_TOKEN         GitHub personal access token for API requests
+                         (avoids rate limits on binary downloads)
   BURP_VERSION         Burp Suite version (default: 2024.10.1)
   VERBOSE              Enable verbose/debug output (default: false)
   PARALLEL_JOBS        Number of parallel install jobs (default: 4)
@@ -181,8 +182,14 @@ install_single_tool() {
     )
     for a in "${pkg_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
-            log_info "Installing $tool via $PKG_MANAGER..."
-            pkg_install "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
+            local _tmp_pkg=("$tool")
+            fixup_package_names _tmp_pkg
+            if [[ ${#_tmp_pkg[@]} -eq 0 ]]; then
+                log_warn "$tool is not available on this distro — skipped"
+                return 0
+            fi
+            log_info "Installing ${_tmp_pkg[0]} via $PKG_MANAGER..."
+            pkg_install "${_tmp_pkg[0]}" >> "$LOG_FILE" 2>&1 && log_success "Installed: ${_tmp_pkg[0]}" || log_error "Failed: ${_tmp_pkg[0]}"
             return 0
         fi
     done
@@ -289,7 +296,10 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     for tool in "${SELECTED_TOOLS[@]}"; do
         install_single_tool "$tool" || TOOL_FAILED=$((TOOL_FAILED + 1))
     done
-    [[ "$TOOL_FAILED" -gt 0 ]] && log_warn "$TOOL_FAILED tool(s) failed"
+    if [[ "$TOOL_FAILED" -gt 0 ]]; then
+        log_warn "$TOOL_FAILED tool(s) failed"
+        exit 1
+    fi
     exit 0
 fi
 
@@ -387,6 +397,12 @@ VERSION_FILE="$SCRIPT_DIR/.versions"
 main() {
     check_root
     print_banner
+
+    if [[ "$PKG_MANAGER" == "unknown" ]]; then
+        log_error "Unsupported distribution — could not detect package manager"
+        log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE)"
+        exit 1
+    fi
 
     # Verbose mode: log system environment and enable bash trace
     if [[ "$VERBOSE" == "true" ]]; then
@@ -512,9 +528,15 @@ main() {
     local seconds=$(( elapsed % 60 ))
 
     echo ""
-    echo -e "${GREEN}${BOLD}=============================================${NC}"
-    log_success "Installation complete! (${minutes}m ${seconds}s)"
-    echo -e "${GREEN}${BOLD}=============================================${NC}"
+    if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
+        echo -e "${YELLOW}${BOLD}=============================================${NC}"
+        log_warn "Installation finished with errors (${minutes}m ${seconds}s)"
+        echo -e "${YELLOW}${BOLD}=============================================${NC}"
+    else
+        echo -e "${GREEN}${BOLD}=============================================${NC}"
+        log_success "Installation complete! (${minutes}m ${seconds}s)"
+        echo -e "${GREEN}${BOLD}=============================================${NC}"
+    fi
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules installed: ${MODULES_TO_INSTALL[*]}"
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then

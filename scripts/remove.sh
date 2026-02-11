@@ -73,6 +73,12 @@ LOG_FILE="$SCRIPT_DIR/tool_removal.log"
 check_root
 print_banner
 
+if [[ "$PKG_MANAGER" == "unknown" ]]; then
+    log_error "Unsupported distribution — could not detect package manager"
+    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE)"
+    exit 1
+fi
+
 if [[ "$VERBOSE" == "true" ]]; then
     log_info "Verbose mode enabled"
     log_system_environment

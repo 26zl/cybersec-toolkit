@@ -5,8 +5,6 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
-  schedule:
-    - cron: "0 2 * * 0" # Sunday 2am UTC
 
 permissions:
   contents: read
@@ -82,10 +80,6 @@ jobs:
             # 4. Unsafe eval usage
             # ---------------------------------------------------
             while IFS= read -r match; do
-              # Allowlist: eval "$build_cmd" in lib/installers.sh
-              if [[ "$f" == "lib/installers.sh" ]] && echo "$match" | grep -q 'eval "\$build_cmd"'; then
-                continue
-              fi
               echo "::error file=$f::Unsafe eval: $match"
               ((errors++))
             done < <(grep -nP '\beval\b' "$f" | grep -v '^\s*#' || true)

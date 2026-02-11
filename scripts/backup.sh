@@ -37,11 +37,7 @@ ensure_dir() {
     [[ -d "$1" ]] || mkdir -p "$1"
 }
 
-encrypt_files() {
-    local source_dir="$1"
-    local target_dir="$2"
-
-    # Prompt for passphrase — no key file stored alongside the backup
+_prompt_passphrase() {
     local passphrase passphrase_confirm
     read -rsp "Enter encryption passphrase: " passphrase
     echo ""
@@ -57,26 +53,61 @@ encrypt_files() {
         return 1
     fi
 
-    # Write passphrase to a temporary file descriptor (avoids process-list exposure)
+    # Return passphrase via global (subshell would lose it)
+    _PASSPHRASE="$passphrase"
+}
+
+encrypt_archive() {
+    local archive_path="$1"
+
+    _prompt_passphrase || return 1
+
+    local pass_file
+    pass_file=$(mktemp)
+    chmod 600 "$pass_file"
+    printf '%s' "$_PASSPHRASE" > "$pass_file"
+    unset _PASSPHRASE
+
+    if openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 \
+        -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null; then
+        rm -f "$pass_file" "$archive_path"
+        log_success "Archive encrypted: ${archive_path}.enc"
+        log_info "Remember your passphrase (it is NOT stored)"
+        return 0
+    else
+        rm -f "$pass_file" "${archive_path}.enc"
+        log_error "Encryption failed"
+        return 1
+    fi
+}
+
+decrypt_archive() {
+    local encrypted_path="$1"
+    local output_path="${encrypted_path%.enc}"
+
+    local passphrase
+    read -rsp "Enter decryption passphrase: " passphrase
+    echo ""
+
     local pass_file
     pass_file=$(mktemp)
     chmod 600 "$pass_file"
     printf '%s' "$passphrase" > "$pass_file"
 
-    while IFS= read -r -d '' file; do
-        local relative_path="${file#"$source_dir"/}"
-        local encrypted_path="$target_dir/${relative_path}.enc"
-        ensure_dir "$(dirname "$encrypted_path")"
-        openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -in "$file" -out "$encrypted_path" -pass file:"$pass_file" 2>/dev/null && \
-            log_success "Encrypted: $relative_path" || \
-            log_warn "Failed to encrypt: $relative_path"
-    done < <(find "$source_dir" -type f \( -name "*.conf" -o -name "*.cfg" -o -name "*.json" -o -name "*.xml" -o -name "*.yml" -o -name "*.yaml" \) -print0)
-
-    rm -f "$pass_file"
-    log_info "Encryption complete — remember your passphrase (it is NOT stored)"
+    if openssl enc -aes-256-cbc -d -pbkdf2 -iter 600000 \
+        -in "$encrypted_path" -out "$output_path" -pass file:"$pass_file" 2>/dev/null; then
+        rm -f "$pass_file"
+        log_success "Archive decrypted: $output_path"
+        return 0
+    else
+        rm -f "$pass_file" "$output_path"
+        log_error "Decryption failed (wrong passphrase?)"
+        return 1
+    fi
 }
 
-decrypt_files() {
+# Legacy: decrypt individual .enc files from old-format backups
+decrypt_files_legacy() {
     local source_dir="$1"
     local target_dir="$2"
 
@@ -152,20 +183,22 @@ cmd_backup() {
 
     backup_configs "$BACKUP_PATH"
 
-    log_info "Encrypting sensitive configuration files..."
-    encrypt_files "$BACKUP_PATH" "$BACKUP_PATH/encrypted"
-
-    # Remove plaintext category dirs — archive should only contain encrypted files
-    for dir in "$BACKUP_PATH"/*/; do
-        [[ "$(basename "$dir")" == "encrypted" ]] && continue
-        rm -rf "$dir"
-    done
-
     log_info "Creating archive..."
-    tar -czf "$BACKUP_PATH.tar.gz" -C "$BACKUP_DIR" "backup_$TIMESTAMP"
+    if ! tar -czf "$BACKUP_PATH.tar.gz" -C "$BACKUP_DIR" "backup_$TIMESTAMP"; then
+        log_error "Failed to create archive"
+        rm -rf "$BACKUP_PATH"
+        exit 1
+    fi
     rm -rf "$BACKUP_PATH"
 
-    log_success "Backup created: $BACKUP_PATH.tar.gz"
+    log_info "Encrypting archive..."
+    if ! encrypt_archive "$BACKUP_PATH.tar.gz"; then
+        log_error "Encryption failed — aborting (no backup created)"
+        rm -f "$BACKUP_PATH.tar.gz"
+        exit 1
+    fi
+
+    log_success "Backup created: $BACKUP_PATH.tar.gz.enc"
 }
 
 cmd_restore() {
@@ -176,15 +209,33 @@ cmd_restore() {
         exit 1
     fi
 
-    log_info "Extracting backup..."
-    tar -xzf "$backup_file" -C "$BACKUP_DIR"
-    local backup_name
-    backup_name=$(tar -tzf "$backup_file" | head -1 | cut -f1 -d"/")
+    local tar_file="$backup_file"
 
-    # Check if backup contains encrypted files
+    # New format: .tar.gz.enc — decrypt first
+    if [[ "$backup_file" == *.tar.gz.enc ]]; then
+        log_info "Encrypted backup detected — decrypting..."
+        if ! decrypt_archive "$backup_file"; then
+            exit 1
+        fi
+        tar_file="${backup_file%.enc}"
+    elif [[ "$backup_file" != *.tar.gz ]]; then
+        log_error "Unrecognized backup format: $backup_file"
+        log_info "Expected .tar.gz.enc (encrypted) or .tar.gz (legacy)"
+        exit 1
+    fi
+
+    log_info "Extracting backup..."
+    tar -xzf "$tar_file" -C "$BACKUP_DIR"
+    local backup_name
+    backup_name=$(tar -tzf "$tar_file" | head -1 | cut -f1 -d"/")
+
+    # Clean up decrypted tar if we created it
+    [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
+
+    # Legacy format: check for individually encrypted files inside the archive
     if find "$BACKUP_DIR/$backup_name" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
-        log_info "Encrypted files found — decrypting..."
-        decrypt_files "$BACKUP_DIR/$backup_name/encrypted" "$BACKUP_DIR/$backup_name"
+        log_info "Legacy encrypted files found — decrypting..."
+        decrypt_files_legacy "$BACKUP_DIR/$backup_name/encrypted" "$BACKUP_DIR/$backup_name"
     fi
 
     log_info "Restoring configurations..."
@@ -196,7 +247,13 @@ cmd_restore() {
 
 cmd_list() {
     log_info "Available backups:"
-    ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null || echo "  No backups found"
+    local found=false
+    for f in "$BACKUP_DIR"/*.tar.gz.enc "$BACKUP_DIR"/*.tar.gz; do
+        [[ -f "$f" ]] || continue
+        echo "  $f"
+        found=true
+    done
+    [[ "$found" == "false" ]] && echo "  No backups found"
 }
 
 cmd_schedule() {
@@ -233,7 +290,7 @@ show_usage() {
     echo ""
     echo "Commands:"
     echo "  backup                           Create encrypted backup"
-    echo "  restore <backup_file.tar.gz>     Restore from backup"
+    echo "  restore <backup_file>            Restore from backup (.tar.gz.enc or .tar.gz)"
     echo "  list                             List available backups"
     echo "  schedule <daily|weekly|monthly> <HH:MM>"
     echo "  unschedule                       Remove scheduled backup"

@@ -615,6 +615,15 @@ install_git_batch() {
     log_debug "install_git_batch: '$label' completed in ${_batch_elapsed}s"
 }
 
+# ----- GitHub API curl options (with optional token auth) -------------------
+_github_curl_opts() {
+    local -a opts=(-sSL)
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        opts+=(-H "Authorization: token $GITHUB_TOKEN")
+    fi
+    echo "${opts[@]}"
+}
+
 # ----- Verify download against release checksum file ------------------------
 # Looks for SHA256 checksum files in the same GitHub release and verifies
 # the downloaded file.  Returns 0 on match, 1 on mismatch or missing checksums.
@@ -641,7 +650,8 @@ for asset in data.get('assets', []):
     fi
 
     local checksums
-    checksums=$(curl -sSL "$checksum_url" 2>>"$LOG_FILE")
+    # shellcheck disable=SC2046  # Intentional word splitting of curl options
+    checksums=$(curl $(_github_curl_opts) "$checksum_url" 2>>"$LOG_FILE")
     if [[ -z "$checksums" ]]; then
         log_warn "Failed to download checksums for $file_name"
         return 1
@@ -698,7 +708,8 @@ download_github_release() {
     log_info "Downloading $binary from $repo releases..."
     local api_url="https://api.github.com/repos/$repo/releases/latest"
     local release_json
-    release_json=$(curl -sSL "$api_url" 2>>"$LOG_FILE")
+    # shellcheck disable=SC2046  # Intentional word splitting of curl options
+    release_json=$(curl $(_github_curl_opts) "$api_url" 2>>"$LOG_FILE")
     if [[ -z "$release_json" ]]; then
         log_error "Could not fetch release info for $binary"
         return 1
@@ -883,7 +894,8 @@ build_from_source() {
 
     git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1 || return 1
     # Run build in a subshell to avoid changing the caller's working directory
-    if (cd "$dest" && eval "$build_cmd") >> "$LOG_FILE" 2>&1; then
+    # shellcheck disable=SC2086  # Intentional word splitting on build command
+    if (cd "$dest" && $build_cmd) >> "$LOG_FILE" 2>&1; then
         log_success "Built: $name"
         track_version "$name" "source" "HEAD"
     else
