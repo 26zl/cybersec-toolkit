@@ -23,14 +23,14 @@ The most comprehensive automated installer for cybersecurity tools on Linux and 
 
 The installer automatically installs all required runtimes (Python, Go, Ruby, Java, Rust), dev libraries, pipx, and build tools. The only prerequisite is a supported Linux distro with a package manager.
 
-> __Docker** is the one exception — install it manually if you want C2 frameworks, MobSF, BeEF, or TheHive (`--enable-docker`). See [Docker install docs](https://docs.docker.com/engine/install/).
+> __Docker__ is the one exception — install it manually if you want C2 frameworks, MobSF, BeEF, or TheHive (`--enable-docker`). See [Docker install docs](https://docs.docker.com/engine/install/).
 
 ### What gets installed automatically
 
 | Runtime | How | Why |
 | ------- | --- | --- |
 | Python 3, pip, venv, pipx | System package + pip fallback | ~157 Python security tools |
-| Go | System package | ~55 Go tools (subfinder, nuclei, ffuf, httpx, etc.) |
+| Go | System package or auto-downloaded from go.dev (≥1.21) | ~55 Go tools (subfinder, nuclei, ffuf, httpx, etc.) |
 | Rust / Cargo | rustup (auto-downloaded) | 3 Rust tools (feroxbuster, RustScan, pwninit) |
 | Ruby / gem | System package | 6 Ruby gems (wpscan, evil-winrm, XSpear, etc.) |
 | Java (JDK) | System package | Burp Suite, ysoserial, apktool |
@@ -169,7 +169,7 @@ On Linux, all binaries end up in `/usr/local/bin/`. On Termux, they go to `$PREF
 | Go | `/usr/local/bin/` | `$PREFIX/bin/` | `/opt/go/` or `~/.go/` |
 | Cargo | `/usr/local/bin/` (symlinked) | `$PREFIX/bin/` (symlinked) | `~/.cargo/` |
 | Git repos | `/usr/local/bin/` (symlinked) | `$PREFIX/bin/` (symlinked) | `/opt/<repo>/` or `~/tools/<repo>/` |
-| Binary releases | `/usr/local/bin/` | `$PREFIX/bin/` | -- |
+| Binary releases | `/usr/local/bin/` | Skipped (Linux/glibc) | -- |
 
 ## Docker Images (optional)
 
@@ -192,7 +192,7 @@ __Debian/Ubuntu/Kali is the primary target__ -- all 660+ tools available. Fedora
 
 ### Termux (Android)
 
-Runs on rooted or non-rooted Android phones via [Termux](https://termux.dev/). No sudo required. Docker/snap are not available, and GUI/kernel-level tools (wireshark, wireless tools, forensics-extra, etc.) are auto-skipped. pipx, Go, Cargo, gem, and git installs work normally. Binary releases are mostly Linux/glibc and will fail on Android — only architecture-matched assets work. Burp Suite, Metasploit, and ZAP are skipped automatically on Termux.
+Runs on rooted or non-rooted Android phones via [Termux](https://termux.dev/). No sudo required. Docker/snap are not available, and GUI/kernel-level tools (wireshark, wireless tools, forensics-extra, etc.) are auto-skipped. pipx, Go, Cargo, gem, and git installs work normally. Binary releases and build-from-source tools are skipped automatically (Linux/glibc binaries are incompatible with Android/Bionic). Burp Suite, Metasploit, and ZAP are also skipped on Termux.
 
 ```bash
 pkg install git

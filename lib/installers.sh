@@ -1094,6 +1094,12 @@ build_from_source() {
     local build_cmd="$3"
     local dest="$GITHUB_TOOL_DIR/$name"
 
+    # Termux: build-from-source tools assume glibc/x86 — skip entirely
+    if [[ "$PKG_MANAGER" == "pkg" ]]; then
+        log_warn "Skipping build-from-source on Termux: $name"
+        return 0
+    fi
+
     if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
         log_error "Clone failed: $name"
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
