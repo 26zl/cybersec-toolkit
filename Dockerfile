@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:a4453623f2f8319cfff65c43da9be80fe83b1a7ce689579b475867d69495b782
 
 LABEL maintainer="26zl" \
       description="Cybersec Tools Installer — 660+ security tools, one command"

@@ -6,14 +6,14 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
     name: Pre-release Validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: ShellCheck
         run: |
@@ -31,8 +31,10 @@ jobs:
     name: Create Release
     needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
@@ -81,7 +83,7 @@ jobs:
             echo "apt, pipx, go install, cargo, gem, git clone, binary release, Docker, snap, build-from-source"
           } > verification-summary.md
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           body: |
             ${{ steps.changelog.outputs.changelog }}
