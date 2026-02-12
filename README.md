@@ -1,7 +1,9 @@
-[![CI](https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml)
-[![Integration](https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml)
-[![Security](https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml)
-[![Release](https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml)
+<p>
+  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml/badge.svg" alt="Integration"></a>
+  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml/badge.svg" alt="Security"></a>
+  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+</p>
 
 ```text
    ______      __              _____
