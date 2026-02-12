@@ -42,6 +42,7 @@ SKIP_BINARY="${SKIP_BINARY:-false}"
 SKIP_SOURCE="${SKIP_SOURCE:-false}"
 ENABLE_DOCKER="${ENABLE_DOCKER:-false}"
 INCLUDE_C2="${INCLUDE_C2:-false}"
+REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
 
 usage() {
     cat << 'EOF'
@@ -72,6 +73,7 @@ Options:
   --skip-git           Skip all git clone installs
   --skip-binary        Skip all binary release downloads
   --skip-source        Skip build-from-source, snap, npm, and curl-pipe installs
+  --require-checksums  Fail if a binary release has no checksum file
   --enable-docker      Pull Docker images (C2 frameworks, IR platforms, MobSF, etc.)
   --include-c2         Enable C2 frameworks (requires --enable-docker)
   --dry-run            Show what would be installed without installing
@@ -176,6 +178,7 @@ while [[ $# -gt 0 ]]; do
         --skip-git)        SKIP_GIT=true; shift ;;
         --skip-binary)     SKIP_BINARY=true; shift ;;
         --skip-source)     SKIP_SOURCE=true; shift ;;
+        --require-checksums) REQUIRE_CHECKSUMS=true; shift ;;
         --enable-docker)   ENABLE_DOCKER=true; shift ;;
         --include-c2)      INCLUDE_C2=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
@@ -389,7 +392,7 @@ fi
 
 # Export flags for modules
 export SKIP_HEAVY SKIP_PIPX SKIP_GO SKIP_CARGO SKIP_GEMS SKIP_GIT SKIP_BINARY SKIP_SOURCE
-export ENABLE_DOCKER INCLUDE_C2 UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
+export ENABLE_DOCKER INCLUDE_C2 REQUIRE_CHECKSUMS UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
 
 # Source selected modules
 for mod in "${MODULES_TO_INSTALL[@]}"; do

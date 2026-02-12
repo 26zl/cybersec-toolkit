@@ -60,6 +60,7 @@ sudo ./install.sh --skip-gems           # Skip all Ruby gem installs
 sudo ./install.sh --skip-git            # Skip all git clone installs
 sudo ./install.sh --skip-binary         # Skip all binary release downloads
 sudo ./install.sh --skip-source         # Skip build-from-source, snap, npm, and curl-pipe installs
+sudo ./install.sh --require-checksums   # Fail if binary release has no checksum file
 sudo ./install.sh --upgrade-system      # Upgrade system packages before installing
 sudo ./install.sh --enable-docker       # Pull Docker images
 sudo ./install.sh --include-c2          # Include C2 frameworks (needs --enable-docker)
@@ -198,11 +199,16 @@ This installer downloads and runs code from the internet. On Linux it runs as ro
 
 - __System packages__: GPG-signed by your distro's repos (apt, dnf, pacman, zypper, pkg)
 - __pipx/Go/Cargo/Gem/npm__: Downloads from registries (no signature verification, pipx isolated in venvs)
-- __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch
+- __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch. Use `--require-checksums` to also fail when no checksum file is published
+- __Go SDK__: SHA256 verified against go.dev published hashes when available; warns on API failure, hard-fails with `--require-checksums`
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
 - __Build from source__: Runs `make` (as root on Linux) -- review what you're building
 
 The `.versions` file logs what was installed and when.
+
+## Known Limitations
+
+Checksum verification is best-effort by default. Some upstream releases do not publish checksums or signatures, so downloads may proceed without cryptographic verification in those cases. Use `--require-checksums` to fail-closed when no checksum file is available. Go SDK downloads are SHA256-verified against go.dev when the API is reachable; use `--require-checksums` to hard-fail if it is not.
 
 ## License
 

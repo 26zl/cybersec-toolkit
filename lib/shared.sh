@@ -94,6 +94,40 @@ ensure_go() {
         return 1
     fi
 
+    # Verify SHA256 against go.dev published hash
+    log_info "Verifying Go tarball checksum..."
+    local expected_hash
+    expected_hash=$(curl -fsSL "https://go.dev/dl/?mode=json" 2>>"$LOG_FILE" \
+        | python3 -c "
+import json, sys
+for rel in json.load(sys.stdin):
+    if rel['version'] == 'go${GO_INSTALL_VERSION}':
+        for f in rel['files']:
+            if f['filename'] == '${tarball}':
+                print(f['sha256'])
+                break
+        break
+" 2>>"$LOG_FILE")
+
+    if [[ -n "$expected_hash" ]]; then
+        local actual_hash
+        actual_hash=$(sha256sum "$tmp_tar" | awk '{print $1}')
+        if [[ "$actual_hash" == "$expected_hash" ]]; then
+            log_success "Go tarball checksum verified"
+        else
+            log_error "Go tarball checksum MISMATCH (expected: ${expected_hash:0:16}…, got: ${actual_hash:0:16}…)"
+            rm -f "$tmp_tar"
+            return 1
+        fi
+    else
+        if [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+            log_error "Could not fetch Go checksum from go.dev (--require-checksums)"
+            rm -f "$tmp_tar"
+            return 1
+        fi
+        log_warn "Could not fetch Go checksum from go.dev — skipping verification"
+    fi
+
     # Remove previous Go SDK at this location
     [[ -d "$install_parent/go" ]] && rm -rf "$install_parent/go"
 

@@ -39,6 +39,7 @@ Options:
   --skip-binary    Skip binary release update
   --skip-special   Skip Metasploit/ZAP update
   --skip-docker    Skip Docker image update
+  --require-checksums  Fail if a binary release has no checksum file
   -v, --verbose    Enable debug logging and system environment dump
   -h, --help       Show this help and exit
 EOF
@@ -55,6 +56,7 @@ SKIP_CARGO=false
 SKIP_BINARY=false
 SKIP_SPECIAL=false
 SKIP_DOCKER=false
+REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -67,6 +69,7 @@ while [[ $# -gt 0 ]]; do
         --skip-binary)  SKIP_BINARY=true; shift ;;
         --skip-special) SKIP_SPECIAL=true; shift ;;
         --skip-docker)  SKIP_DOCKER=true; shift ;;
+        --require-checksums) REQUIRE_CHECKSUMS=true; shift ;;
         -v|--verbose)   VERBOSE=true; shift ;;
         -h|--help)      exec "$0" --help ;;
         *)              shift ;;

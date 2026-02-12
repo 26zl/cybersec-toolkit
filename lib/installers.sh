@@ -842,13 +842,17 @@ for asset in data.get('assets', []):
 
     # Verify checksum — fail-closed on mismatch, warn-only if no checksums available
     if ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
-        # Check if it was a real mismatch (exit code 2) vs missing checksums (exit code 1)
         if [[ -f "$tmp_dir/.checksum_mismatch" ]]; then
             log_error "Aborting install of $binary due to checksum mismatch"
             rm -rf "$tmp_dir"
             return 1
         fi
-        # No checksum file available — warn but continue
+        # No checksum file available — fail if --require-checksums is set
+        if [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+            log_error "Aborting install of $binary — no checksum file (--require-checksums)"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
     fi
 
     # Handle archive types
@@ -1021,6 +1025,12 @@ for asset in data.get('assets', []):
     if ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
         if [[ -f "$tmp_dir/.checksum_mismatch" ]]; then
             log_error "Aborting update of $binary due to checksum mismatch"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+        # No checksum file available — fail if --require-checksums is set
+        if [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+            log_error "Aborting update of $binary — no checksum file (--require-checksums)"
             rm -rf "$tmp_dir"
             return 1
         fi
