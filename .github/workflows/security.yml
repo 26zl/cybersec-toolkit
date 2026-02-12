@@ -50,7 +50,7 @@ jobs:
               echo "::error file=$f::Hardcoded IP found: $ip"
               ((errors++))
             done < <(grep -nP '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b' "$f" \
-              | grep -v '^\s*#' | grep -v '127\.0\.0\.1' | grep -v '0\.0\.0\.0' \
+              | grep -vP '^\d+:\s*#' | grep -v '127\.0\.0\.1' | grep -v '0\.0\.0\.0' \
               | grep -v '192\.0\.2\.' | grep -v '198\.51\.100\.' | grep -v '203\.0\.113\.' || true)
 
             # ---------------------------------------------------
@@ -60,7 +60,7 @@ jobs:
               echo "::error file=$f::Potential hardcoded secret: $match"
               ((errors++))
             done < <(grep -nPi '(API_KEY|TOKEN|PASSWORD|SECRET)\s*=\s*["\x27][^"\x27$]{8,}' "$f" \
-              | grep -v '^\s*#' || true)
+              | grep -vP '^\d+:\s*#' || true)
 
             # ---------------------------------------------------
             # 3. HTTP URLs (non-HTTPS)
@@ -69,7 +69,7 @@ jobs:
               echo "::error file=$f::Non-HTTPS URL: $match"
               ((errors++))
             done < <(grep -nP 'http://' "$f" \
-              | grep -v '^\s*#' \
+              | grep -vP '^\d+:\s*#' \
               | grep -v 'localhost' \
               | grep -v 'example\.com' \
               | grep -v '127\.0\.0\.1' \
@@ -82,7 +82,7 @@ jobs:
             while IFS= read -r match; do
               echo "::error file=$f::Unsafe eval: $match"
               ((errors++))
-            done < <(grep -nP '\beval\b' "$f" | grep -v '^\s*#' || true)
+            done < <(grep -nP '\beval\b' "$f" | grep -vP '^\d+:\s*#' || true)
 
             # ---------------------------------------------------
             # 5. Predictable temp files (warning, not error)
@@ -91,7 +91,7 @@ jobs:
               echo "::warning file=$f::Predictable temp file (consider mktemp): $match"
               ((warnings++))
             done < <(grep -nP '/tmp/\w+' "$f" \
-              | grep -v '^\s*#' \
+              | grep -vP '^\d+:\s*#' \
               | grep -v 'mktemp' || true)
 
             # ---------------------------------------------------
@@ -100,7 +100,7 @@ jobs:
             while IFS= read -r match; do
               echo "::error file=$f::Overly permissive chmod: $match"
               ((errors++))
-            done < <(grep -nP 'chmod\s+(777|666)' "$f" | grep -v '^\s*#' || true)
+            done < <(grep -nP 'chmod\s+(777|666)' "$f" | grep -vP '^\d+:\s*#' || true)
 
             # ---------------------------------------------------
             # 7. curl|bash / wget|bash patterns
@@ -113,7 +113,7 @@ jobs:
               echo "::warning file=$f::curl-pipe-bash pattern: $match"
               ((warnings++))
             done < <(grep -nP 'curl.*\|\s*(ba)?sh|wget.*\|\s*(ba)?sh' "$f" \
-              | grep -v '^\s*#' || true)
+              | grep -vP '^\d+:\s*#' || true)
           done
 
           echo ""

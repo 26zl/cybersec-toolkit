@@ -21,7 +21,7 @@ install_module_llm() {
     install_pipx_batch "LLM - Python" "${LLM_PIPX[@]}"
     install_git_batch "LLM - Git" "${LLM_GIT[@]}"
 
-    # promptfoo — LLM eval & red teaming (npm package)
+    # promptfoo — LLM red teaming & testing (npm package)
     if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
         if ensure_node; then
             log_info "Installing promptfoo via npm..."

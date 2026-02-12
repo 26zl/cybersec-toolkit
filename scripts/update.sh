@@ -248,9 +248,8 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
 
         if [[ ${#ALL_GEMS[@]} -gt 0 ]]; then
             # Only update gems that are already installed
-            local installed_gems
             installed_gems=$(gem list --no-details 2>/dev/null || true)
-            local GEMS_TO_UPDATE=()
+            GEMS_TO_UPDATE=()
             for _gem in "${ALL_GEMS[@]}"; do
                 if echo "$installed_gems" | grep -q "^${_gem} "; then
                     GEMS_TO_UPDATE+=("$_gem")

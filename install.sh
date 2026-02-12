@@ -485,7 +485,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "Modules:        ${MODULES_TO_INSTALL[*]}"
     echo "Skip heavy:     $SKIP_HEAVY"
     # Show active skip flags
-    local _skip_flags=()
+    _skip_flags=()
     [[ "$SKIP_PIPX"   == "true" ]] && _skip_flags+=(pipx)
     [[ "$SKIP_GO"     == "true" ]] && _skip_flags+=(go)
     [[ "$SKIP_CARGO"  == "true" ]] && _skip_flags+=(cargo)
