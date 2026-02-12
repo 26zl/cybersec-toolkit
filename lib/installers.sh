@@ -4,6 +4,11 @@
 # Provides batch install functions for: apt, pipx, go, cargo, gem, git, binary, docker
 # Source AFTER common.sh
 
+# Global tool failure counter — incremented by batch install functions.
+# Used by install.sh to detect per-module failures without relying on
+# the module function's return code (which only reflects the last command).
+TOTAL_TOOL_FAILURES=0
+
 # Distro-specific package name translation
 fixup_package_names() {
     local -n arr=$1
@@ -17,9 +22,10 @@ fixup_package_names() {
                         # Kali-only packages not available in standard Ubuntu/Debian repos
                         spike|enum4linux|bing-ip2hosts) continue ;;
                         sagemath) continue ;;
-                        ghidra|rizin) continue ;;
+                        ghidra|rizin|radare2) continue ;;
                         bulk-extractor|forensics-extra) continue ;;
                         kismet|spooftooph|crackle|asleap|fern-wifi-cracker) continue ;;
+                        smali) continue ;;
                         rsmangler) continue ;;
                         zeek|sentrypeer|chaosreader) continue ;;
                     esac
@@ -142,8 +148,7 @@ fixup_package_names() {
                     netcat-openbsd)     pkg="netcat-openbsd" ;;
                     dnsutils)           pkg="bind-utils" ;;
                     build-essential)
-                        # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-                        sudo zypper install -y -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
+                        zypper install -y -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
                         continue ;;
                     default-jdk)        pkg="java-17-openjdk-devel" ;;
                     zlib1g-dev)         pkg="zlib-devel" ;;
@@ -189,6 +194,59 @@ fixup_package_names() {
                     llvm-dev)           pkg="llvm-devel" ;;
                     libpixman-1-dev)    pkg="libpixman-1-devel" ;;
                     sslsplit)           pkg="sslsplit" ;;
+                esac
+                ;;
+            pkg)
+                case "$pkg" in
+                    # Build tools — Termux uses clang, no gcc (two packages)
+                    build-essential)    new_arr+=("clang" "make"); continue ;;
+                    # Python — Termux uses 'python' (pip/venv/dev included)
+                    python3)            pkg="python" ;;
+                    python3-pip|python3-venv|python3-dev) continue ;;
+                    # Runtimes
+                    golang-go)          pkg="golang" ;;
+                    default-jdk)        pkg="openjdk-17" ;;
+                    ruby-dev)           continue ;;  # included in ruby
+                    # Dev libraries — Termux drops the -dev suffix
+                    libpcap-dev)        pkg="libpcap" ;;
+                    libssl-dev)         pkg="openssl" ;;
+                    libffi-dev)         pkg="libffi" ;;
+                    zlib1g-dev)         pkg="zlib" ;;
+                    libxml2-dev)        pkg="libxml2" ;;
+                    libxslt1-dev)       pkg="libxslt" ;;
+                    libglib2.0-dev)     pkg="glib" ;;
+                    libreadline-dev)    pkg="readline" ;;
+                    libsqlite3-dev)     pkg="libsqlite" ;;
+                    libcurl4-openssl-dev) pkg="libcurl" ;;
+                    libedit-dev)        pkg="libedit" ;;
+                    liblzma-dev)        pkg="xz-utils" ;;
+                    libgmp-dev)         pkg="libgmp" ;;
+                    # Unavailable dev libs on Termux — skip
+                    libseccomp-dev|binutils-dev|libkrb5-dev|libsctp-dev) continue ;;
+                    libnfnetlink-dev|libecm-dev|libldap2-dev|libsasl2-dev) continue ;;
+                    llvm-dev|libpixman-1-dev) continue ;;
+                    # Networking tools — Termux bundles ncat with nmap
+                    netcat-openbsd)     pkg="nmap" ;;
+                    dnsutils)           pkg="dnsutils" ;;
+                    proxychains4)       pkg="proxychains-ng" ;;
+                    # Unavailable tools on Termux
+                    spooftooph|cewl|hashid|wapiti) continue ;;
+                    wireshark-common|ettercap-graphical) continue ;;
+                    kismet|crackle|asleap|fern-wifi-cracker) continue ;;
+                    forensics-extra|bulk-extractor) continue ;;
+                    auditd|apparmor-utils) continue ;;
+                    adb|smali|scrcpy|apksigner|zipalign) continue ;;
+                    qemu-user-static|qemu-system-x86) continue ;;
+                    sagemath|ghidra|rizin) continue ;;
+                    hackrf|hcxdumptool|mfcuk|mfoc|rtl-433|libnfc-dev|avrdude) continue ;;
+                    sentrypeer|chaosreader) continue ;;
+                    sonic-visualiser|gqrx-sdr|sslsplit) continue ;;
+                    checksec|rsmangler|zmap) continue ;;
+                    snmp)               pkg="net-snmp" ;;
+                    imagemagick)        pkg="imagemagick" ;;
+                    upx-ucl)            pkg="upx" ;;
+                    libimage-exiftool-perl) pkg="exiftool" ;;
+                    dos2unix)           pkg="dos2unix" ;;
                 esac
                 ;;
         esac
@@ -245,7 +303,7 @@ install_apt_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_apt_batch: '$label' completed in ${_batch_elapsed}s"
-    [[ "$failed" -gt 0 ]] && return 1
+    [[ "$failed" -gt 0 ]] && { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed)); return 1; }
     return 0
 }
 
@@ -291,7 +349,7 @@ install_pipx_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_pipx_batch: '$label' completed in ${_batch_elapsed}s"
-    [[ "$failed" -gt 0 ]] && return 1
+    [[ "$failed" -gt 0 ]] && { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed)); return 1; }
     return 0
 }
 
@@ -306,7 +364,7 @@ install_go_batch() {
         log_warn "Go not found — skipping ${label}"
         return 0
     fi
-    # GOPATH and GOBIN are set in common.sh (system-wide: /opt/go, /usr/local/bin)
+    # GOPATH and GOBIN are set in common.sh (GOPATH=$GOPATH, GOBIN=$GOBIN)
 
     log_debug "install_go_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
@@ -350,7 +408,7 @@ install_go_batch() {
             local name
             name=$(_go_bin_name "$tool")
             show_progress "$current" "$total" "$name"
-            # Skip if binary already exists (GOBIN=/usr/local/bin, so command_exists suffices)
+            # Skip if binary already exists (GOBIN is in PATH, so command_exists suffices)
             if command_exists "$name"; then
                 skipped=$((skipped + 1))
                 track_version "$name" "go" "existing"
@@ -370,7 +428,7 @@ install_go_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_go_batch: '$label' completed in ${_batch_elapsed}s"
-    [[ "$failed" -gt 0 ]] && return 1
+    [[ "$failed" -gt 0 ]] && { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed)); return 1; }
     return 0
 }
 
@@ -408,7 +466,7 @@ install_cargo_batch() {
             failed=$((failed + 1))
         else
             if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-                ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
+                ln -sf "$HOME/.cargo/bin/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
             fi
             track_version "$crate" "cargo" "latest"
         fi
@@ -419,7 +477,7 @@ install_cargo_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_cargo_batch: '$label' completed in ${_batch_elapsed}s"
-    [[ "$failed" -gt 0 ]] && return 1
+    [[ "$failed" -gt 0 ]] && { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed)); return 1; }
     return 0
 }
 
@@ -467,7 +525,7 @@ install_gem_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_gem_batch: '$label' completed in ${_batch_elapsed}s"
-    [[ "$failed" -gt 0 ]] && return 1
+    [[ "$failed" -gt 0 ]] && { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed)); return 1; }
     return 0
 }
 
@@ -491,12 +549,12 @@ setup_git_repo() {
         "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1 || true
     fi
 
-    # Create wrapper scripts in /usr/local/bin for discoverable entry points
+    # Create wrapper scripts in $PIPX_BIN_DIR for discoverable entry points
     # Look for executable scripts the venv created, or standalone .py scripts
     if [[ -d "$dest/venv/bin" ]]; then
         for candidate in "$dest/venv/bin/$name" "$dest/venv/bin/${name,,}" "$dest/venv/bin/${name//-/_}"; do
             if [[ -f "$candidate" ]] && [[ -x "$candidate" ]]; then
-                ln -sf "$candidate" "/usr/local/bin/$(basename "$candidate")" 2>/dev/null || true
+                ln -sf "$candidate" "$PIPX_BIN_DIR/$(basename "$candidate")" 2>/dev/null || true
                 break
             fi
         done
@@ -506,17 +564,17 @@ setup_git_repo() {
     if [[ -f "$dest/$name.py" ]] && [[ ! -d "$dest/venv" ]]; then
         chmod +x "$dest/$name.py" 2>/dev/null || true
         # Create a wrapper in PATH
-        cat > "/usr/local/bin/$name" 2>/dev/null << PYWRAP || true
+        cat > "$PIPX_BIN_DIR/$name" 2>/dev/null << PYWRAP || true
 #!/bin/bash
 exec python3 "$dest/$name.py" "\$@"
 PYWRAP
-        chmod +x "/usr/local/bin/$name" 2>/dev/null || true
+        chmod +x "$PIPX_BIN_DIR/$name" 2>/dev/null || true
     fi
 
     # Standalone shell script: symlink to PATH
-    if [[ -f "$dest/$name.sh" ]] && [[ ! -L "/usr/local/bin/$name" ]]; then
+    if [[ -f "$dest/$name.sh" ]] && [[ ! -L "$PIPX_BIN_DIR/$name" ]]; then
         chmod +x "$dest/$name.sh" 2>/dev/null || true
-        ln -sf "$dest/$name.sh" "/usr/local/bin/$name" 2>/dev/null || true
+        ln -sf "$dest/$name.sh" "$PIPX_BIN_DIR/$name" 2>/dev/null || true
     fi
 }
 
@@ -593,7 +651,7 @@ install_git_batch() {
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_git_batch: '$label' completed in ${_batch_elapsed}s"
-    [[ "$failed" -gt 0 ]] && return 1
+    [[ "$failed" -gt 0 ]] && { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed)); return 1; }
     return 0
 }
 
@@ -665,7 +723,7 @@ download_github_release() {
     local repo="$1"
     local binary="$2"
     local pattern="$3"
-    local dest_dir="${4:-/usr/local/bin}"
+    local dest_dir="${4:-$PIPX_BIN_DIR}"
 
     # Check if already installed
     if command_exists "$binary"; then
@@ -747,16 +805,14 @@ for asset in data.get('assets', []):
         *.zip)
             unzip -qo "$tmp_dir/$asset_name" -d "$tmp_dir" 2>>"$LOG_FILE" ;;
         *.deb)
-            if [[ "$PKG_MANAGER" != "apt" ]]; then
+            if [[ "$PKG_MANAGER" != "apt" && "$PKG_MANAGER" != "pkg" ]]; then
                 log_error "$binary is a .deb package — not supported on $PKG_MANAGER"
                 rm -rf "$tmp_dir"
                 return 1
             fi
-            # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-            if ! sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1; then
-                # Fix missing dependencies left by dpkg
-                # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-                if ! sudo apt-get install -f -y >> "$LOG_FILE" 2>&1; then
+            # Script runs as root on Linux (check_root); Termux runs without root
+            if ! dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1; then
+                if ! apt-get install -f -y >> "$LOG_FILE" 2>&1; then
                     log_error "Failed to install $binary (.deb) — dpkg and dependency fix both failed"
                     rm -rf "$tmp_dir"
                     return 1
@@ -772,14 +828,14 @@ for asset in data.get('assets', []):
             fi
             return 0 ;;
         *.jar)
-            sudo mkdir -p "$dest_dir"
-            sudo cp "$tmp_dir/$asset_name" "$dest_dir/$binary.jar"
+            mkdir -p "$dest_dir" 2>/dev/null || true
+            cp "$tmp_dir/$asset_name" "$dest_dir/$binary.jar"
             # Create wrapper script
-            sudo tee "/usr/local/bin/$binary" > /dev/null << WRAPPER
+            cat > "$PIPX_BIN_DIR/$binary" << WRAPPER
 #!/bin/bash
 exec java -jar "$dest_dir/$binary.jar" "\$@"
 WRAPPER
-            sudo chmod +x "/usr/local/bin/$binary"
+            chmod +x "$PIPX_BIN_DIR/$binary"
             rm -rf "$tmp_dir"
             log_success "Installed: $binary (.jar)"
             track_version "$binary" "binary" "${release_tag:-latest}"
@@ -800,10 +856,10 @@ WRAPPER
         found="$tmp_dir/$asset_name"
     fi
 
-    if [[ "$dest_dir" != "/usr/local/bin" ]]; then
+    if [[ "$dest_dir" != "$PIPX_BIN_DIR" ]]; then
         # Custom dest_dir (e.g. /opt/jadx): copy entire extracted tree there
-        sudo mkdir -p "$dest_dir"
-        sudo cp -a "$tmp_dir"/* "$dest_dir/" 2>/dev/null || true
+        mkdir -p "$dest_dir" 2>/dev/null || true
+        cp -a "$tmp_dir"/* "$dest_dir/" 2>/dev/null || true
         # Find the binary in dest_dir (NOT tmp_dir — it's about to be deleted)
         # Some tools ship with .sh extension (e.g. d2j-dex2jar.sh), so try both
         local dest_bin=""
@@ -821,11 +877,11 @@ WRAPPER
             dest_bin=$(find "$dest_dir" \( -name "$binary" -o -name "${binary}.sh" \) -type f 2>/dev/null | head -1)
         fi
         if [[ -n "$dest_bin" ]]; then
-            sudo chmod +x "$dest_bin" 2>/dev/null || true
-            sudo ln -sf "$dest_bin" "/usr/local/bin/$binary" 2>/dev/null || true
+            chmod +x "$dest_bin" 2>/dev/null || true
+            ln -sf "$dest_bin" "$PIPX_BIN_DIR/$binary" 2>/dev/null || true
         fi
     else
-        sudo install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"
+        install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"
     fi
     rm -rf "$tmp_dir"
 
@@ -853,7 +909,7 @@ download_github_release_update() {
     local repo="$1"
     local binary="$2"
     local pattern="$3"
-    local dest_dir="${4:-/usr/local/bin}"
+    local dest_dir="${4:-$PIPX_BIN_DIR}"
     _RELEASE_TAG=""
 
     # Ensure unzip is available for .zip archives
@@ -925,15 +981,13 @@ for asset in data.get('assets', []):
         *.zip)
             unzip -qo "$tmp_dir/$asset_name" -d "$tmp_dir" 2>>"$LOG_FILE" ;;
         *.deb)
-            if [[ "$PKG_MANAGER" != "apt" ]]; then
+            if [[ "$PKG_MANAGER" != "apt" && "$PKG_MANAGER" != "pkg" ]]; then
                 log_error "$binary is a .deb package — not supported on $PKG_MANAGER"
                 rm -rf "$tmp_dir"
                 return 1
             fi
-            # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-            if ! sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1; then
-                # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-                if ! sudo apt-get install -f -y >> "$LOG_FILE" 2>&1; then
+            if ! dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1; then
+                if ! apt-get install -f -y >> "$LOG_FILE" 2>&1; then
                     rm -rf "$tmp_dir"
                     return 1
                 fi
@@ -941,13 +995,13 @@ for asset in data.get('assets', []):
             rm -rf "$tmp_dir"
             return 0 ;;
         *.jar)
-            sudo mkdir -p "$dest_dir"
-            sudo cp "$tmp_dir/$asset_name" "$dest_dir/$binary.jar"
-            sudo tee "/usr/local/bin/$binary" > /dev/null << WRAPPER
+            mkdir -p "$dest_dir" 2>/dev/null || true
+            cp "$tmp_dir/$asset_name" "$dest_dir/$binary.jar"
+            cat > "$PIPX_BIN_DIR/$binary" << WRAPPER
 #!/bin/bash
 exec java -jar "$dest_dir/$binary.jar" "\$@"
 WRAPPER
-            sudo chmod +x "/usr/local/bin/$binary"
+            chmod +x "$PIPX_BIN_DIR/$binary"
             rm -rf "$tmp_dir"
             return 0 ;;
         *)
@@ -964,9 +1018,9 @@ WRAPPER
         found="$tmp_dir/$asset_name"
     fi
 
-    if [[ "$dest_dir" != "/usr/local/bin" ]]; then
-        sudo mkdir -p "$dest_dir"
-        sudo cp -a "$tmp_dir"/* "$dest_dir/" 2>/dev/null || true
+    if [[ "$dest_dir" != "$PIPX_BIN_DIR" ]]; then
+        mkdir -p "$dest_dir" 2>/dev/null || true
+        cp -a "$tmp_dir"/* "$dest_dir/" 2>/dev/null || true
         local dest_bin=""
         for candidate in \
             "$dest_dir/bin/$binary" \
@@ -982,11 +1036,11 @@ WRAPPER
             dest_bin=$(find "$dest_dir" \( -name "$binary" -o -name "${binary}.sh" \) -type f 2>/dev/null | head -1)
         fi
         if [[ -n "$dest_bin" ]]; then
-            sudo chmod +x "$dest_bin" 2>/dev/null || true
-            sudo ln -sf "$dest_bin" "/usr/local/bin/$binary" 2>/dev/null || true
+            chmod +x "$dest_bin" 2>/dev/null || true
+            ln -sf "$dest_bin" "$PIPX_BIN_DIR/$binary" 2>/dev/null || true
         fi
     else
-        sudo install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"
+        install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"
     fi
     rm -rf "$tmp_dir"
     return 0
@@ -1008,6 +1062,7 @@ docker_pull() {
         track_version "$name" "docker" "$image"
     else
         log_error "Docker pull failed: $name"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         return 1
     fi
 }
@@ -1039,7 +1094,11 @@ build_from_source() {
     local build_cmd="$3"
     local dest="$GITHUB_TOOL_DIR/$name"
 
-    git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1 || return 1
+    if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
+        log_error "Clone failed: $name"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        return 1
+    fi
     # Run build in a subshell to avoid changing the caller's working directory.
     # Uses bash -c to support multi-step commands (e.g. "cmake . && make").
     if (cd "$dest" && bash -c "$build_cmd") >> "$LOG_FILE" 2>&1; then
@@ -1047,12 +1106,13 @@ build_from_source() {
         track_version "$name" "source" "HEAD"
     else
         log_error "Build failed: $name"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         return 1
     fi
 }
 
 # Binary release registry (single source of truth) 
-# Format: "repo|binary|pattern|dest_dir" (dest_dir optional, defaults to /usr/local/bin)
+# Format: "repo|binary|pattern|dest_dir" (dest_dir optional, defaults to $PIPX_BIN_DIR)
 # Used by modules for install and scripts/update.sh for updates.
 BINARY_RELEASES_MISC=(
     "DominicBreuker/pspy|pspy|pspy64$"
@@ -1069,11 +1129,11 @@ BINARY_RELEASES_RECON=(
     "Findomain/Findomain|findomain|linux"
 )
 BINARY_RELEASES_WEB=(
-    "frohoff/ysoserial|ysoserial|ysoserial-all.jar|/opt/cybersec-jars"
+    "frohoff/ysoserial|ysoserial|ysoserial-all.jar|${GITHUB_TOOL_DIR}/cybersec-jars"
 )
 BINARY_RELEASES_REVERSING=(
     "0vercl0k/rp|rp-lin|rp-lin"
-    "java-decompiler/jd-gui|jd-gui|jd-gui.*\\.jar|/opt/cybersec-jars"
+    "java-decompiler/jd-gui|jd-gui|jd-gui.*\\.jar|${GITHUB_TOOL_DIR}/cybersec-jars"
 )
 BINARY_RELEASES_FORENSICS=(
     "WithSecureLabs/chainsaw|chainsaw|x86_64.*linux"
@@ -1118,10 +1178,17 @@ ALL_DOCKER_IMAGES=(
 # install_binary_releases — install all binary releases from a registry array.
 # Usage: install_binary_releases "${BINARY_RELEASES_MISC[@]}"
 # Supports parallel downloads when PARALLEL_JOBS > 1 (~3-4x faster, network I/O bound).
+# Skipped on Termux/Android — most GitHub release assets are Linux/glibc and won't run.
 install_binary_releases() {
     local -a entries=("$@")
     local total=${#entries[@]}
     [[ "$total" -eq 0 ]] && return 0
+
+    # Termux: GitHub release binaries are almost always Linux/glibc — skip entirely
+    if [[ "$PKG_MANAGER" == "pkg" ]]; then
+        log_warn "Skipping $total binary release(s) on Termux (Linux/glibc binaries)"
+        return 0
+    fi
 
     log_debug "install_binary_releases: starting with $total items, PARALLEL_JOBS=$PARALLEL_JOBS"
     local _batch_start; _batch_start=$(date +%s)
@@ -1132,7 +1199,7 @@ install_binary_releases() {
 
         for _entry in "${entries[@]}"; do
             IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
-            _dest="${_dest:-/usr/local/bin}"
+            _dest="${_dest:-$PIPX_BIN_DIR}"
 
             # Skip-check in main process (avoid spawning a job for already-installed tools)
             if command_exists "$_binary"; then
@@ -1159,13 +1226,18 @@ install_binary_releases() {
         _collect_parallel_results "$_results_dir" "binary"
         # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
         local failed=$_par_failed skipped=$_par_skipped
+        [[ "$failed" -gt 0 ]] && TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed))
         log_success "Binary releases: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
     else
         # --- Sequential mode (original) ---
+        local failed=0
         for _entry in "${entries[@]}"; do
             IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
-            download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-/usr/local/bin}" || true
+            if ! download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}"; then
+                failed=$((failed + 1))
+            fi
         done
+        [[ "$failed" -gt 0 ]] && TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed))
     fi
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
@@ -1175,7 +1247,7 @@ install_binary_releases() {
 # Install searchsploit symlink
 install_searchsploit_symlink() {
     if [[ -f "$GITHUB_TOOL_DIR/exploitdb/searchsploit" ]]; then
-        sudo ln -sf "$GITHUB_TOOL_DIR/exploitdb/searchsploit" /usr/local/bin/searchsploit 2>/dev/null
+        ln -sf "$GITHUB_TOOL_DIR/exploitdb/searchsploit" "$PIPX_BIN_DIR/searchsploit" 2>/dev/null
     fi
 }
 
@@ -1207,8 +1279,8 @@ install_metasploit() {
         return 1
     fi
 
-    # Basic content verification — ensure the script is from Rapid7
-    if ! grep -q "rapid7" "$tmp_installer" 2>/dev/null; then
+    # Basic content verification — ensure the script is the Metasploit installer
+    if ! grep -q "metasploit" "$tmp_installer" 2>/dev/null; then
         log_error "Metasploit installer content verification failed — aborting"
         rm -f "$tmp_installer"
         return 1
@@ -1230,6 +1302,7 @@ install_metasploit() {
         curl -fsSL "https://apt.metasploit.com/metasploit-framework.gpg.key" 2>>"$LOG_FILE" \
             | gpg --dearmor 2>/dev/null | tee "$_keyring" >/dev/null 2>&1
         if [[ -f "$_keyring" ]]; then
+            # "xenial" is Rapid7's universal release name — it works on all Debian/Ubuntu distros
             echo "deb [signed-by=$_keyring] https://apt.metasploit.com/ xenial main" \
                 > /etc/apt/sources.list.d/metasploit-framework.list
             pkg_update >> "$LOG_FILE" 2>&1
@@ -1243,6 +1316,7 @@ install_metasploit() {
 
     log_error "All Metasploit installation methods failed"
     rm -f "$tmp_installer"
+    TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
     return 1
 }
 
@@ -1254,14 +1328,15 @@ install_burpsuite() {
         log_success "Burp Suite already installed"
         return 0
     fi
-    local version="${BURP_VERSION:-2024.10.1}"
-    local dest_dir="/opt/burpsuite-installer"
+    local version="$BURP_VERSION"
+    local dest_dir="$GITHUB_TOOL_DIR/burpsuite-installer"
     local installer="$dest_dir/burpsuite_community_v${version}_install.sh"
 
     log_info "Downloading Burp Suite Community v${version}..."
     mkdir -p "$dest_dir"
     if ! wget -q -O "$installer" "https://portswigger.net/burp/releases/download?product=community&version=${version}&type=Linux" 2>> "$LOG_FILE"; then
         log_error "Failed to download Burp Suite"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         return 1
     fi
     chmod +x "$installer"
@@ -1281,9 +1356,14 @@ install_zap() {
     fi
     if snap_available; then
         log_info "Installing OWASP ZAP via snap..."
-        snap_install zaproxy --classic >> "$LOG_FILE" 2>&1
-        log_success "OWASP ZAP installed"
-        track_version "zaproxy" "snap" "latest"
+        if snap_install zaproxy --classic >> "$LOG_FILE" 2>&1; then
+            log_success "OWASP ZAP installed"
+            track_version "zaproxy" "snap" "latest"
+        else
+            log_error "OWASP ZAP snap install failed"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+            return 1
+        fi
     else
         log_warn "snap not available — install OWASP ZAP manually"
     fi

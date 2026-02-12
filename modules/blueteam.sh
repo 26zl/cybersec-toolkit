@@ -8,8 +8,6 @@ BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw tiger d
 
 BLUETEAM_PIPX=(sigma-cli)
 
-BLUETEAM_GO=()
-
 BLUETEAM_GIT=(
     "sigma-rules=https://github.com/SigmaHQ/sigma.git"
     "maltrail=https://github.com/stamparm/maltrail.git"
@@ -18,7 +16,6 @@ BLUETEAM_GIT=(
     "wazuh-docker=https://github.com/wazuh/wazuh-docker.git"
 )
 
-BLUETEAM_GO_BINS=()
 BLUETEAM_GIT_NAMES=(sigma-rules maltrail CIMSweep MISP-docker wazuh-docker)
 
 install_module_blueteam() {

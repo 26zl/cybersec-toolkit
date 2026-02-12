@@ -7,8 +7,6 @@ CRYPTO_PACKAGES=()
 
 CRYPTO_PIPX=(codext xortool factordb-python z3-solver)
 
-CRYPTO_GO=()
-
 CRYPTO_GIT=(
     "RsaCtfTool=https://github.com/RsaCtfTool/RsaCtfTool.git"
     "rsatool=https://github.com/ius/rsatool.git"

@@ -7,8 +7,6 @@ MOBILE_PACKAGES=(adb smali scrcpy apksigner zipalign)
 
 MOBILE_PIPX=(androguard apkleaks objection)
 
-MOBILE_GO=()
-
 MOBILE_GIT=(
     "apktool=https://github.com/iBotPeaches/Apktool.git"
 )

@@ -16,8 +16,6 @@ FORENSICS_PACKAGES=(
 
 FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3)
 
-FORENSICS_GO=()
-
 FORENSICS_GIT=(
     "RegRipper=https://github.com/keydet89/RegRipper3.0.git"
     "Depix=https://github.com/spipm/Depix.git"

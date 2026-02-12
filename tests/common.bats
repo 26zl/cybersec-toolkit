@@ -146,31 +146,68 @@ setup() {
     [[ "$PKG_MANAGER" == "zypper" ]]
 }
 
-# ---------- Exported paths ---------------------------------------------------
+@test "detect_pkg_manager sets pkg for Termux" {
+    # The real detect_pkg_manager checks TERMUX_VERSION env var
+    # Simulate by calling source with android/pkg
+    source_libs android pkg
+    [[ "$PKG_MANAGER" == "pkg" ]]
+    [[ "$DISTRO_ID" == "android" ]]
+}
 
-@test "GOBIN is /usr/local/bin" {
+# ---------- Exported paths (Linux) -------------------------------------------
+
+@test "GOBIN is /usr/local/bin on Linux" {
+    source_libs debian apt
     [[ "$GOBIN" == "/usr/local/bin" ]]
 }
 
-@test "PIPX_HOME is /opt/pipx" {
+@test "PIPX_HOME is /opt/pipx on Linux" {
+    source_libs debian apt
     [[ "$PIPX_HOME" == "/opt/pipx" ]]
 }
 
-@test "PIPX_BIN_DIR is /usr/local/bin" {
+@test "PIPX_BIN_DIR is /usr/local/bin on Linux" {
+    source_libs debian apt
     [[ "$PIPX_BIN_DIR" == "/usr/local/bin" ]]
 }
 
-@test "GOPATH defaults to /opt/go" {
-    # GOPATH can be overridden, but default is /opt/go
+@test "GOPATH defaults to /opt/go on Linux" {
     unset GOPATH
     source_libs debian apt
     [[ "$GOPATH" == "/opt/go" ]]
 }
 
-@test "GITHUB_TOOL_DIR defaults to /opt" {
+@test "GITHUB_TOOL_DIR defaults to /opt on Linux" {
     unset GITHUB_TOOL_DIR
     source_libs debian apt
     [[ "$GITHUB_TOOL_DIR" == "/opt" ]]
+}
+
+# ---------- Exported paths (Termux) -----------------------------------------
+
+@test "GOBIN uses PREFIX/bin on Termux" {
+    # Simulate Termux environment
+    export TERMUX_VERSION="0.118"
+    export PREFIX="/data/data/com.termux/files/usr"
+    unset GOBIN PIPX_BIN_DIR PIPX_HOME GOPATH GITHUB_TOOL_DIR
+    source_libs android pkg
+    [[ "$GOBIN" == "$PREFIX/bin" ]]
+}
+
+@test "PIPX_BIN_DIR uses PREFIX/bin on Termux" {
+    export TERMUX_VERSION="0.118"
+    export PREFIX="/data/data/com.termux/files/usr"
+    unset GOBIN PIPX_BIN_DIR PIPX_HOME GOPATH GITHUB_TOOL_DIR
+    source_libs android pkg
+    [[ "$PIPX_BIN_DIR" == "$PREFIX/bin" ]]
+}
+
+@test "GITHUB_TOOL_DIR defaults to HOME/tools on Termux" {
+    export TERMUX_VERSION="0.118"
+    export PREFIX="/data/data/com.termux/files/usr"
+    unset GOBIN PIPX_BIN_DIR PIPX_HOME GOPATH GITHUB_TOOL_DIR
+    source_libs android pkg
+    [[ "$GITHUB_TOOL_DIR" == "$HOME/tools" ]]
 }
 
 # ---------- ALL_MODULES ------------------------------------------------------

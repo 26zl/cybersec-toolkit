@@ -12,8 +12,6 @@ RE_PACKAGES=(
 
 RE_PIPX=(angr frida-tools uncompyle6)
 
-RE_GO=()
-
 RE_GIT=(
     "pwndbg=https://github.com/pwndbg/pwndbg.git"
     "GEF=https://github.com/hugsy/gef.git"

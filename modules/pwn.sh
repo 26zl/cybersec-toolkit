@@ -74,6 +74,8 @@ install_module_pwn() {
     # Searchsploit symlink
     install_searchsploit_symlink
 
-    # Metasploit
-    install_metasploit
+    # Metasploit (Linux only — Rapid7 installer requires root/apt)
+    if [[ "$PKG_MANAGER" != "pkg" ]]; then
+        install_metasploit
+    fi
 }

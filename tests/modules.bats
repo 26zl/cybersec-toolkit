@@ -82,10 +82,9 @@ _get_prefix() {
 
 @test "all git arrays use name=url format" {
     local git_arrays=(
-        MISC_RESOURCES MISC_POSTEXPLOIT MISC_SOCIAL MISC_CTF
-        NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
+        MISC_GIT NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
         FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT STEGO_GIT
-        CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
+        CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT BLOCKCHAIN_GIT
     )
 
     for arr_name in "${git_arrays[@]}"; do
@@ -107,9 +106,7 @@ _get_prefix() {
 
 @test "all Go tool paths end with @latest" {
     local go_arrays=(
-        MISC_GO NET_GO RECON_GO WEB_GO CRYPTO_GO PWN_GO RE_GO
-        FORENSICS_GO ENTERPRISE_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
-        MALWARE_GO WIRELESS_GO CRACKING_GO STEGO_GO
+        MISC_GO NET_GO RECON_GO WEB_GO PWN_GO ENTERPRISE_GO CLOUD_GO
     )
 
     for arr_name in "${go_arrays[@]}"; do

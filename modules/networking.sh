@@ -50,8 +50,8 @@ install_module_networking() {
     # RustScan (Rust-based port scanner)
     install_cargo_batch "Networking - Rust" "${NET_CARGO[@]}" || true
 
-    # Wireshark non-interactive config (Debian)
+    # Wireshark non-interactive config (Debian/Ubuntu — not Termux)
     if [[ "$PKG_MANAGER" == "apt" ]]; then
-        echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections 2>/dev/null || true
+        echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections 2>/dev/null || true
     fi
 }

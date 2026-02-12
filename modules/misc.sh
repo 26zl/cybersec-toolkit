@@ -21,8 +21,8 @@ MISC_GO=(
     "github.com/projectdiscovery/notify/cmd/notify@latest"
 )
 
-# Reference repos / wordlists
-MISC_RESOURCES=(
+MISC_GIT=(
+    # Resources / wordlists
     "SecLists=https://github.com/danielmiessler/SecLists.git"
     "PayloadsAllTheThings=https://github.com/swisskyrepo/PayloadsAllTheThings.git"
     "wordlists=https://github.com/kkrypt0nn/wordlists.git"
@@ -33,10 +33,7 @@ MISC_RESOURCES=(
     "GTFOBins.github.io=https://github.com/GTFOBins/GTFOBins.github.io.git"
     "WADComs=https://github.com/WADComs/WADComs.github.io.git"
     "BlueTeam-Tools=https://github.com/A-poc/BlueTeam-Tools.git"
-)
-
-# Post-exploitation tools
-MISC_POSTEXPLOIT=(
+    # Post-exploitation
     "PEASS-ng=https://github.com/peass-ng/PEASS-ng.git"
     "linux-exploit-suggester=https://github.com/The-Z-Labs/linux-exploit-suggester.git"
     "linux-smart-enumeration=https://github.com/diego-treitos/linux-smart-enumeration.git"
@@ -56,10 +53,7 @@ MISC_POSTEXPLOIT=(
     "unix-privesc-check=https://github.com/pentestmonkey/unix-privesc-check.git"
     "LOLBAS=https://github.com/LOLBAS-Project/LOLBAS.git"
     "Vigil=https://github.com/deadbits/vigil-llm.git"
-)
-
-# Social engineering
-MISC_SOCIAL=(
+    # Social engineering
     "SET=https://github.com/trustedsec/social-engineer-toolkit.git"
     "Zphisher=https://github.com/htr-tech/zphisher.git"
     "SocialFish=https://github.com/UndeadSec/SocialFish.git"
@@ -70,10 +64,7 @@ MISC_SOCIAL=(
     "Modlishka=https://github.com/drk1wi/Modlishka.git"
     "ReelPhish=https://github.com/mandiant/ReelPhish.git"
     "Catphish=https://github.com/ring0lab/catphish.git"
-)
-
-# CTF / General
-MISC_CTF=(
+    # CTF / General
     "CyberChef=https://github.com/gchq/CyberChef.git"
     "ctf-tools=https://github.com/zardus/ctf-tools.git"
     "CTF-Katana=https://github.com/JohnHammond/ctf-katana.git"
@@ -121,22 +112,19 @@ install_module_misc() {
     # Go tools
     install_go_batch "Misc - Go" "${MISC_GO[@]}"
 
-    # Resources / wordlists
-    install_git_batch "Resources & Wordlists"  "${MISC_RESOURCES[@]}"
+    # Git repos (resources, post-exploitation, social engineering, CTF)
+    install_git_batch "Misc - Git" "${MISC_GIT[@]}"
 
-    # Post-exploitation
-    install_git_batch "Post-Exploitation" "${MISC_POSTEXPLOIT[@]}"
-
-    # Social engineering
-    install_git_batch "Social Engineering" "${MISC_SOCIAL[@]}"
-
-    # CTF general
-    install_git_batch "CTF Tools" "${MISC_CTF[@]}"
-
-    # Binary releases
+    # Binary releases (skipped on Termux — Linux/glibc binaries)
     install_binary_releases "${BINARY_RELEASES_MISC[@]}"
-    download_github_release "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx" || true
-    download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex-tools.*\\.zip" "/opt/dex2jar" || true
+    if [[ "$PKG_MANAGER" != "pkg" ]]; then
+        if ! download_github_release "skylot/jadx" "jadx" "jadx.*\\.zip" "$GITHUB_TOOL_DIR/jadx"; then
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        fi
+        if ! download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex-tools.*\\.zip" "$GITHUB_TOOL_DIR/dex2jar"; then
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        fi
+    fi
     # stegseek is installed by the stego module
 
     # Docker: C2 frameworks and OSINT (only if enabled — no git clone fallback)

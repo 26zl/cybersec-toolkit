@@ -2,12 +2,12 @@
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools — Verification Script (Modular)
 # Sources all modules and checks installation status of all tools.
-# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE.
+# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux/Android.
 #
 # Usage:
-#   sudo ./scripts/verify.sh                      # Full verification
+#   sudo ./scripts/verify.sh                      # Full verification (Linux)
+#   ./scripts/verify.sh                           # Full verification (Termux)
 #   sudo ./scripts/verify.sh --module web          # Verify web module only
-#   sudo ./scripts/verify.sh --module recon --module enterprise  # Multiple modules
 #   sudo ./scripts/verify.sh --summary             # Summary only (no per-tool)
 
 set -uo pipefail
@@ -26,7 +26,8 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     cat << 'EOF'
 CyberSec Tools — Verification Script
 
-Usage: sudo ./scripts/verify.sh [OPTIONS]
+Usage: sudo ./scripts/verify.sh [OPTIONS]    # Linux (requires root)
+       ./scripts/verify.sh [OPTIONS]          # Termux (no root needed)
 
 Options:
   --module <name>    Verify specific module only (can be repeated)
@@ -500,6 +501,16 @@ if should_verify "blockchain"; then
     check_cmd "forge" || true
     check_cmd "cast" || true
     check_cmd "anvil" || true
+    # Foundry chisel is NOT symlinked (collides with jpillora/chisel TCP tunnel)
+    # Check at its native path instead
+    TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+    if [[ -x "$HOME/.foundry/bin/chisel" ]]; then
+        TOTAL_FOUND=$((TOTAL_FOUND + 1))
+        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "chisel (foundry) — $HOME/.foundry/bin/chisel"
+    else
+        TOTAL_MISSING=$((TOTAL_MISSING + 1))
+        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "chisel (foundry) — NOT found at $HOME/.foundry/bin/chisel"
+    fi
 fi
 
 # Docker images (all modules — uses centralized registry)

@@ -15,7 +15,7 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux. __660+ tools__, __18 modules__, __10 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __660+ tools__, __18 modules__, __10 install methods__, one command.
 
 ---
 
@@ -100,13 +100,13 @@ sudo ./install.sh -v                    # Verbose / debug output
 | ------- | ------- | ----------- |
 | `full` | All 18 | Complete security toolkit |
 | `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | CTF competitions |
-| `redteam` | misc, networking, recon, web, enterprise, pwn, mobile | Offensive security |
+| `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | Offensive security |
 | `web` | misc, networking, recon, web | Web application testing |
 | `malware` | misc, malware, forensics, reversing, mobile | Malware analysis |
 | `osint` | misc, recon | OSINT gathering |
 | `crackstation` | misc, cracking, crypto | Hash cracking |
 | `lightweight` | misc, networking, recon, web | Core tools, minimal footprint |
-| `blueteam` | misc, blueteam, forensics, malware, containers | Defensive security / IR |
+| `blueteam` | misc, blueteam, forensics, malware, containers, networking, cloud, recon | Defensive security / IR |
 
 ## Modules
 
@@ -150,26 +150,26 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 ## Post-Install Scripts
 
-All scripts require root and support `--help`.
+All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no root is needed.
 
 | Script | Purpose | Example |
 | ------ | ------- | ------- |
 | `scripts/verify.sh` | Check which tools are installed | `sudo ./scripts/verify.sh --module web` |
 | `scripts/update.sh` | Update all installed tools | `sudo ./scripts/update.sh --skip-system` |
 | `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module enterprise --yes` |
-| `scripts/backup.sh` | Backup/restore tool configs | `sudo ./scripts/backup.sh --encrypt` |
+| `scripts/backup.sh` | Backup/restore tool configs | `sudo ./scripts/backup.sh backup` |
 
 ## Tool Locations
 
-All binaries end up in `/usr/local/bin/` (in PATH on all Linux distros).
+On Linux, all binaries end up in `/usr/local/bin/`. On Termux, they go to `$PREFIX/bin`.
 
-| Method | Binary location | Data location |
-| ------ | --------------- | ------------- |
-| pipx | `/usr/local/bin/` | `/opt/pipx/` |
-| Go | `/usr/local/bin/` | `/opt/go/` |
-| Cargo | `/usr/local/bin/` (symlinked) | `~/.cargo/` |
-| Git repos | `/usr/local/bin/` (symlinked) | `/opt/<repo>/` |
-| Binary releases | `/usr/local/bin/` | -- |
+| Method | Binary location (Linux) | Binary location (Termux) | Data location |
+| ------ | ----------------------- | ------------------------ | ------------- |
+| pipx | `/usr/local/bin/` | `$PREFIX/bin/` | `/opt/pipx/` or `~/.local/pipx/` |
+| Go | `/usr/local/bin/` | `$PREFIX/bin/` | `/opt/go/` or `~/.go/` |
+| Cargo | `/usr/local/bin/` (symlinked) | `$PREFIX/bin/` (symlinked) | `~/.cargo/` |
+| Git repos | `/usr/local/bin/` (symlinked) | `$PREFIX/bin/` (symlinked) | `/opt/<repo>/` or `~/tools/<repo>/` |
+| Binary releases | `/usr/local/bin/` | `$PREFIX/bin/` | -- |
 
 ## Docker Images (optional)
 
@@ -190,15 +190,26 @@ Only used with `--enable-docker`. If Docker is not installed, these are skipped 
 
 __Debian/Ubuntu/Kali is the primary target__ -- all 660+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
 
+### Termux (Android)
+
+Runs on rooted or non-rooted Android phones via [Termux](https://termux.dev/). No sudo required. Docker/snap are not available, and GUI/kernel-level tools (wireshark, wireless tools, forensics-extra, etc.) are auto-skipped. pipx, Go, Cargo, gem, and git installs work normally. Binary releases are mostly Linux/glibc and will fail on Android — only architecture-matched assets work. Burp Suite, Metasploit, and ZAP are skipped automatically on Termux.
+
+```bash
+pkg install git
+git clone https://github.com/26zl/cybersec-tools-installer.git
+cd cybersec-tools-installer
+./install.sh --profile lightweight
+```
+
 ## Supply Chain Model
 
-This installer downloads and runs code from the internet as root.
+This installer downloads and runs code from the internet. On Linux it runs as root (`sudo`); on Termux it runs in the app's user sandbox (no root).
 
-- __System packages__: GPG-signed by your distro's repos
+- __System packages__: GPG-signed by your distro's repos (apt, dnf, pacman, zypper, pkg)
 - __pipx/Go/Cargo/Gem__: Downloads from registries (no signature verification, pipx isolated in venvs)
 - __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
-- __Build from source__: Runs `make` as root -- review what you're building
+- __Build from source__: Runs `make` (as root on Linux) -- review what you're building
 
 The `.versions` file logs what was installed and when.
 

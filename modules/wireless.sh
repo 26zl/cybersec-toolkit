@@ -18,8 +18,6 @@ WIRELESS_HEAVY_PACKAGES=(gnuradio gqrx-sdr)
 
 WIRELESS_PIPX=(sipvicious)
 
-WIRELESS_GO=()
-
 WIRELESS_GIT=(
     "wifite2=https://github.com/derv82/wifite2.git"
     "fluxion=https://github.com/FluxionNetwork/fluxion.git"

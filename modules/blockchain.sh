@@ -43,15 +43,17 @@ install_module_blockchain() {
         fi
     fi
 
-    # Symlink Foundry binaries to /usr/local/bin for system-wide PATH access
+    # Symlink Foundry binaries to $PIPX_BIN_DIR for PATH access
+    # NOTE: 'chisel' is skipped — it collides with jpillora/chisel (TCP tunnel)
+    # from the networking module.  Access Foundry's chisel via ~/.foundry/bin/chisel.
     local _foundry_dir="$HOME/.foundry/bin"
     if [[ -d "$_foundry_dir" ]]; then
-        for _bin in foundryup forge cast anvil chisel; do
-            if [[ -f "$_foundry_dir/$_bin" ]] && [[ ! -f "/usr/local/bin/$_bin" ]]; then
-                ln -sf "$_foundry_dir/$_bin" "/usr/local/bin/$_bin" 2>/dev/null || true
+        for _bin in foundryup forge cast anvil; do
+            if [[ -f "$_foundry_dir/$_bin" ]] && [[ ! -f "$PIPX_BIN_DIR/$_bin" ]]; then
+                ln -sf "$_foundry_dir/$_bin" "$PIPX_BIN_DIR/$_bin" 2>/dev/null || true
             fi
         done
-        log_info "Foundry binaries symlinked to /usr/local/bin"
+        log_info "Foundry binaries symlinked to $PIPX_BIN_DIR"
     fi
 
     # Docker: Echidna fuzzer (optional)

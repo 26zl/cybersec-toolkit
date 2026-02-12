@@ -11,8 +11,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Configurable defaults
-GITHUB_TOOL_DIR="${GITHUB_TOOL_DIR:-/opt}"
+# Configurable defaults (GITHUB_TOOL_DIR set after distro detection — see path block below)
 BURP_VERSION="${BURP_VERSION:-2024.10.1}"
 VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
 LOG_FILE="${LOG_FILE:-/dev/null}"
@@ -167,8 +166,20 @@ detect_distro() {
     export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME DISTRO_VERSION
 }
 
-# Determine the package-manager family: apt | dnf | pacman | zypper | unknown
+# Determine the package-manager family: apt | dnf | pacman | zypper | pkg | unknown
 detect_pkg_manager() {
+    # Termux on Android — detect before os-release (Termux always sets TERMUX_VERSION)
+    if [[ -n "${TERMUX_VERSION:-}" ]]; then
+        DISTRO_ID="android"
+        DISTRO_ID_LIKE=""
+        DISTRO_NAME="Termux"
+        DISTRO_VERSION="${TERMUX_VERSION}"
+        export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME DISTRO_VERSION
+        PKG_MANAGER="pkg"
+        export PKG_MANAGER
+        return
+    fi
+
     detect_distro
     case "$DISTRO_ID" in
         debian|ubuntu|kali|parrot|linuxmint|pop|elementary|zorin|mx)
@@ -204,6 +215,7 @@ pkg_update() {
         dnf)     sudo dnf check-update -q || true ;;
         pacman)  sudo pacman -Sy --noconfirm ;;
         zypper)  sudo zypper refresh -q ;;
+        pkg)     pkg update -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
@@ -220,6 +232,7 @@ pkg_install() {
             ;;
         pacman)  sudo pacman -S --noconfirm --needed "$@" ;;
         zypper)  sudo zypper install -y -q "$@" ;;
+        pkg)     pkg install -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
@@ -230,6 +243,7 @@ pkg_remove() {
         dnf)     sudo dnf remove -y "$@" ;;
         pacman)  sudo pacman -Rns --noconfirm "$@" 2>/dev/null || true ;;
         zypper)  sudo zypper remove -y "$@" ;;
+        pkg)     pkg uninstall -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
@@ -240,6 +254,7 @@ pkg_upgrade() {
         dnf)     sudo dnf upgrade -y -q ;;
         pacman)  sudo pacman -Syu --noconfirm ;;
         zypper)  sudo zypper update -y -q ;;
+        pkg)     pkg upgrade -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
@@ -250,6 +265,7 @@ pkg_cleanup() {
         dnf)     sudo dnf autoremove -y && sudo dnf clean all ;;
         pacman)  sudo pacman -Sc --noconfirm ;;
         zypper)  sudo zypper clean ;;
+        pkg)     pkg clean ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
 }
@@ -262,6 +278,7 @@ pkg_is_installed() {
         dnf)    rpm -q "$pkg" &>/dev/null ;;
         pacman) pacman -Q "$pkg" &>/dev/null ;;
         zypper) rpm -q "$pkg" &>/dev/null ;;
+        pkg)    dpkg -l "$pkg" 2>/dev/null | grep -q "^ii" ;;
         *)      return 1 ;;
     esac
 }
@@ -286,6 +303,8 @@ command_exists() {
 }
 
 check_root() {
+    # Termux doesn't use root — runs in its own user sandbox
+    [[ "$PKG_MANAGER" == "pkg" ]] && return 0
     if [[ $EUID -ne 0 ]]; then
         log_error "This script must be run as root or with sudo."
         exit 1
@@ -298,21 +317,28 @@ ensure_pipx() {
 
     log_info "pipx not found — installing..."
 
-    # Try system package first (python3-pipx available on newer distros)
-    if pkg_install python3-pipx >> "$LOG_FILE" 2>&1 && command_exists pipx; then
+    # Try system package first
+    local _pipx_pkg="python3-pipx"
+    [[ "$PKG_MANAGER" == "pkg" ]] && _pipx_pkg="pipx"
+    if pkg_install "$_pipx_pkg" >> "$LOG_FILE" 2>&1 && command_exists pipx; then
         log_success "pipx installed via $PKG_MANAGER"
         return 0
     fi
 
     # Fallback: pip3
+    # Try system-wide install first (preferred when running as root — puts pipx
+    # in $PIPX_BIN_DIR which is always in PATH). Only fall back to --user if
+    # system-wide fails (e.g. externally-managed-environment on newer distros).
     if command_exists pip3; then
-        pip3 install --user pipx >> "$LOG_FILE" 2>&1 || \
-            pip3 install pipx >> "$LOG_FILE" 2>&1 || true
-        # Ensure pipx binary is in PATH
-        local pip_bin_dir
-        pip_bin_dir=$(python3 -m site --user-base 2>/dev/null)/bin
-        if [[ -d "$pip_bin_dir" ]] && [[ ! ":$PATH:" == *":$pip_bin_dir:"* ]]; then
-            export PATH="$pip_bin_dir:$PATH"
+        pip3 install pipx >> "$LOG_FILE" 2>&1 || \
+            pip3 install --user pipx >> "$LOG_FILE" 2>&1 || true
+        # If --user was used, ensure that bin dir is in PATH
+        if ! command_exists pipx; then
+            local pip_bin_dir
+            pip_bin_dir=$(python3 -m site --user-base 2>/dev/null)/bin
+            if [[ -d "$pip_bin_dir" ]] && [[ ! ":$PATH:" == *":$pip_bin_dir:"* ]]; then
+                export PATH="$pip_bin_dir:$PATH"
+            fi
         fi
     fi
 
@@ -377,8 +403,11 @@ show_progress() {
     for ((i = 0; i < filled; i++)); do bar+="="; done
     for ((i = 0; i < empty; i++)); do bar+=" "; done
 
-    printf "\r  ${BLUE}[${NC}%s${BLUE}]${NC} %3d%% " "$bar" "$percentage"
-    [[ -n "$label" ]] && printf "(%s)" "$label"
+    # %-25s pads with spaces to 25 chars — ensures shorter labels overwrite
+    # longer previous ones. Works on all terminals (no ANSI escape needed).
+    local display_label=""
+    [[ -n "$label" ]] && display_label="($label)"
+    printf "\r  ${BLUE}[${NC}%s${BLUE}]${NC} %3d%% %-25s" "$bar" "$percentage" "$display_label"
 }
 
 # Banner
@@ -454,12 +483,26 @@ detect_arch() {
 detect_pkg_manager
 detect_arch
 
-# Tool paths (system-wide install)
-# Go: GOBIN puts binaries directly in /usr/local/bin (accessible to all users)
-export GOPATH="${GOPATH:-/opt/go}"
-export GOBIN="/usr/local/bin"
-# pipx: install venvs to /opt/pipx, binaries to /usr/local/bin
-export PIPX_HOME="/opt/pipx"
-export PIPX_BIN_DIR="/usr/local/bin"
-# Cargo: keep in root's home but symlink to /usr/local/bin after install
-export PATH="/usr/local/bin:$HOME/.cargo/bin:$PATH"
+# Tool paths — Termux uses $PREFIX/bin and user-local dirs; Linux uses system-wide /usr/local/bin
+if [[ "$PKG_MANAGER" == "pkg" ]]; then
+    # Termux: $PREFIX is /data/data/com.termux/files/usr (always set by Termux)
+    GITHUB_TOOL_DIR="${GITHUB_TOOL_DIR:-$HOME/tools}"
+    export GITHUB_TOOL_DIR
+    export GOPATH="${GOPATH:-$HOME/.go}"
+    export GOBIN="$PREFIX/bin"
+    export PIPX_HOME="$HOME/.local/pipx"
+    export PIPX_BIN_DIR="$PREFIX/bin"
+    export PATH="$PREFIX/bin:$HOME/.cargo/bin:$PATH"
+else
+    # Linux: system-wide install
+    GITHUB_TOOL_DIR="${GITHUB_TOOL_DIR:-/opt}"
+    export GITHUB_TOOL_DIR
+    # Go: GOBIN puts binaries directly in /usr/local/bin (accessible to all users)
+    export GOPATH="${GOPATH:-/opt/go}"
+    export GOBIN="/usr/local/bin"
+    # pipx: install venvs to /opt/pipx, binaries to /usr/local/bin
+    export PIPX_HOME="/opt/pipx"
+    export PIPX_BIN_DIR="/usr/local/bin"
+    # Cargo: keep in root's home but symlink to /usr/local/bin after install
+    export PATH="/usr/local/bin:$HOME/.cargo/bin:$PATH"
+fi

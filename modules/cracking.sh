@@ -13,8 +13,6 @@ CRACKING_PACKAGES=(
 
 CRACKING_PIPX=(search-that-hash name-that-hash trevorspray patator)
 
-CRACKING_GO=()
-
 CRACKING_GIT=(
     "DefaultCreds-cheat-sheet=https://github.com/ihebski/DefaultCreds-cheat-sheet.git"
     "cupp=https://github.com/Mebus/cupp.git"

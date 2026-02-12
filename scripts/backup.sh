@@ -1,6 +1,6 @@
 #!/bin/bash
 # CyberSec Tools — Config Backup/Restore Script
-# Backs up and restores tool configurations with ChaCha20-Poly1305 encryption.
+# Backs up and restores tool configurations with ChaCha20 encryption (PBKDF2 key derivation).
 # Supports scheduling via cron (Linux/macOS).
 
 set -uo pipefail
@@ -26,6 +26,7 @@ case "$(uname -s)" in
 esac
 
 # Configuration
+PBKDF2_ITERATIONS=600000
 BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
@@ -67,7 +68,7 @@ encrypt_archive() {
     printf '%s' "$_PASSPHRASE" > "$pass_file"
     unset _PASSPHRASE
 
-    if openssl enc -chacha20 -salt -pbkdf2 -iter 600000 \
+    if openssl enc -chacha20 -salt -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
         -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null; then
         rm -f "$pass_file" "$archive_path"
         log_success "Archive encrypted: ${archive_path}.enc"
@@ -93,7 +94,7 @@ decrypt_archive() {
     chmod 600 "$pass_file"
     printf '%s' "$passphrase" > "$pass_file"
 
-    if openssl enc -chacha20 -d -pbkdf2 -iter 600000 \
+    if openssl enc -chacha20 -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
         -in "$encrypted_path" -out "$output_path" -pass file:"$pass_file" 2>/dev/null; then
         rm -f "$pass_file"
         log_success "Archive decrypted: $output_path"
@@ -123,7 +124,7 @@ decrypt_files_legacy() {
         local relative_path="${file#"$source_dir"/}"
         local decrypted_path="$target_dir/${relative_path%.enc}"
         ensure_dir "$(dirname "$decrypted_path")"
-        openssl enc -aes-256-cbc -d -pbkdf2 -iter 600000 -in "$file" -out "$decrypted_path" -pass file:"$pass_file" 2>/dev/null && \
+        openssl enc -aes-256-cbc -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" -in "$file" -out "$decrypted_path" -pass file:"$pass_file" 2>/dev/null && \
             log_success "Decrypted: $relative_path" || \
             log_warn "Failed to decrypt: $relative_path"
     done < <(find "$source_dir" -type f -name "*.enc" -print0)
@@ -143,8 +144,7 @@ backup_configs() {
         ["cracking"]="$HOME_DIR/.john $HOME_DIR/.hashcat"
         ["exploitation"]="$HOME_DIR/.msf4 $GITHUB_TOOL_DIR/exploitdb"
         ["forensics"]="$HOME_DIR/.autopsy"
-        ["osint"]="$GITHUB_TOOL_DIR/theHarvester $GITHUB_TOOL_DIR/recon-ng"
-        ["phishing"]="$GITHUB_TOOL_DIR/gophish $GITHUB_TOOL_DIR/evilginx2"
+        ["osint"]="$GITHUB_TOOL_DIR/recon-ng"
     )
 
     for category in "${!CONFIG_PATHS[@]}"; do
@@ -168,7 +168,7 @@ restore_configs() {
     done
 
     # /opt tool dirs
-    for dir in exploitdb theHarvester recon-ng gophish evilginx2; do
+    for dir in exploitdb recon-ng; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
         [[ -n "$found" ]] && cp -r "$found" "$GITHUB_TOOL_DIR/" 2>/dev/null
@@ -255,6 +255,47 @@ cmd_list() {
     [[ "$found" == "false" ]] && echo "  No backups found"
 }
 
+cmd_delete() {
+    local target="${1:-}"
+
+    if [[ "$target" == "--all" ]]; then
+        local count=0
+        for f in "$BACKUP_DIR"/*.tar.gz.enc "$BACKUP_DIR"/*.tar.gz; do
+            [[ -f "$f" ]] || continue
+            count=$((count + 1))
+        done
+        if [[ "$count" -eq 0 ]]; then
+            log_info "No backups to delete"
+            return 0
+        fi
+        read -rp "Delete all $count backup(s) in $BACKUP_DIR? (y/N) " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_warn "Cancelled"
+            return 0
+        fi
+        for f in "$BACKUP_DIR"/*.tar.gz.enc "$BACKUP_DIR"/*.tar.gz; do
+            [[ -f "$f" ]] || continue
+            rm -f "$f"
+            log_success "Deleted: $f"
+        done
+        # Remove log and empty dir if nothing left
+        rm -f "$BACKUP_DIR/backup.log" 2>/dev/null
+        rmdir "$BACKUP_DIR" 2>/dev/null || true
+    else
+        if [[ ! -f "$target" ]]; then
+            log_error "File not found: $target"
+            return 1
+        fi
+        read -rp "Delete $target? (y/N) " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_warn "Cancelled"
+            return 0
+        fi
+        rm -f "$target"
+        log_success "Deleted: $target"
+    fi
+}
+
 cmd_schedule() {
     local frequency="$1"
     local time="$2"
@@ -291,6 +332,8 @@ show_usage() {
     echo "  backup                           Create encrypted backup"
     echo "  restore <backup_file>            Restore from backup (.tar.gz.enc or .tar.gz)"
     echo "  list                             List available backups"
+    echo "  delete <backup_file>             Delete a specific backup"
+    echo "  delete --all                     Delete all backups"
     echo "  schedule <daily|weekly|monthly> <HH:MM>"
     echo "  unschedule                       Remove scheduled backup"
 }
@@ -305,6 +348,10 @@ case "${1:-}" in
         cmd_restore "$2"
         ;;
     list)        cmd_list ;;
+    delete)
+        [[ -z "${2:-}" ]] && { log_error "Specify backup file or --all"; show_usage; exit 1; }
+        cmd_delete "$2"
+        ;;
     schedule)
         [[ -z "${2:-}" || -z "${3:-}" ]] && { log_error "Specify frequency and time"; show_usage; exit 1; }
         cmd_schedule "$2" "$3"

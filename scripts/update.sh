@@ -2,10 +2,11 @@
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools — Update Script (Modular)
 # Sources all modules and updates all installed tools across all methods.
-# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE.
+# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux/Android.
 #
 # Usage:
-#   sudo ./scripts/update.sh                    # Full update
+#   sudo ./scripts/update.sh                    # Full update (Linux)
+#   ./scripts/update.sh                         # Full update (Termux)
 #   sudo ./scripts/update.sh --skip-system      # Skip apt/dnf/pacman update
 #   sudo ./scripts/update.sh --skip-go          # Skip Go tools
 
@@ -25,7 +26,8 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     cat << 'EOF'
 CyberSec Tools — Update Script
 
-Usage: sudo ./scripts/update.sh [OPTIONS]
+Usage: sudo ./scripts/update.sh [OPTIONS]    # Linux (requires root)
+       ./scripts/update.sh [OPTIONS]          # Termux (no root needed)
 
 Options:
   --skip-system    Skip system package update/upgrade
@@ -79,7 +81,7 @@ print_banner
 
 if [[ "$PKG_MANAGER" == "unknown" ]]; then
     log_error "Unsupported distribution — could not detect package manager"
-    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE)"
+    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
     exit 1
 fi
 
@@ -94,9 +96,11 @@ START_TIME=$(date +%s)
 # 1) System packages
 if [[ "$SKIP_SYSTEM" == "false" ]]; then
     log_info "Updating system packages..."
-    pkg_update >> "$LOG_FILE" 2>&1
-    pkg_upgrade >> "$LOG_FILE" 2>&1
-    log_success "System packages updated"
+    if pkg_update >> "$LOG_FILE" 2>&1 && pkg_upgrade >> "$LOG_FILE" 2>&1; then
+        log_success "System packages updated"
+    else
+        log_warn "System package update had errors (check log) — continuing"
+    fi
 else
     log_warn "Skipping system package update"
 fi
@@ -106,8 +110,11 @@ echo ""
 if [[ "$SKIP_PIPX" == "false" ]]; then
     if command_exists pipx; then
         log_info "Updating pipx packages..."
-        pipx upgrade-all >> "$LOG_FILE" 2>&1 || true
-        log_success "pipx packages updated"
+        if pipx upgrade-all >> "$LOG_FILE" 2>&1; then
+            log_success "pipx packages updated"
+        else
+            log_warn "Some pipx packages failed to update (check log)"
+        fi
     else
         log_warn "pipx not found — skipping Python tool updates"
     fi
@@ -118,6 +125,8 @@ echo ""
 
 # 3) Go tools
 if [[ "$SKIP_GO" == "false" ]]; then
+    # Ensure Go is modern enough (>= 1.21) before updating Go tools
+    ensure_go
     if command_exists go; then
         # GOPATH and GOBIN are set in common.sh (system-wide: /opt/go, /usr/local/bin)
         log_info "Updating Go tools..."
@@ -269,7 +278,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                         log_success "Updated cargo: $crate"
                         CARGO_UPDATED=$((CARGO_UPDATED + 1))
                         if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-                            ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
+                            ln -sf "$HOME/.cargo/bin/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
                         fi
                         track_version "$crate" "cargo" "latest"
                     fi
@@ -305,7 +314,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
 
     # Re-download only if the binary is already installed and a new version exists
     update_binary() {
-        local repo="$1" binary="$2" pattern="$3" dest="${4:-/usr/local/bin}"
+        local repo="$1" binary="$2" pattern="$3" dest="${4:-$PIPX_BIN_DIR}"
 
         # Skip if not installed
         command_exists "$binary" || [[ -f "$dest/$binary" ]] || [[ -f "$dest/bin/$binary" ]] || return 0
@@ -353,12 +362,12 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     done
     for _entry in "${_ALL_BIN_RELEASES[@]}"; do
         IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
-        update_binary "$_repo" "$_binary" "$_pattern" "${_dest:-/usr/local/bin}"
+        update_binary "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}"
     done
 
     # Non-registry binaries (custom destinations not suited for registry)
-    update_binary "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx"
-    update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar"
+    update_binary "skylot/jadx" "jadx" "jadx.*\\.zip" "$GITHUB_TOOL_DIR/jadx"
+    update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "$GITHUB_TOOL_DIR/dex2jar"
 
     if [[ "$BIN_TOTAL" -gt 0 ]]; then
         log_success "Binary releases: $BIN_UPDATED updated, $BIN_SKIPPED already latest, $BIN_FAILED failed ($BIN_TOTAL total)"
@@ -377,8 +386,7 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
     # Metasploit
     if command_exists msfupdate; then
         log_info "Updating Metasploit..."
-        # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-        sudo msfupdate >> "$LOG_FILE" 2>&1 && \
+        msfupdate >> "$LOG_FILE" 2>&1 && \
             log_success "Metasploit updated" || \
             log_warn "Metasploit update failed"
     fi
@@ -386,8 +394,7 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
     # OWASP ZAP (snap)
     if command_exists zaproxy && snap_available; then
         log_info "Updating OWASP ZAP..."
-        # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-        sudo snap refresh zaproxy >> "$LOG_FILE" 2>&1 && \
+        snap refresh zaproxy >> "$LOG_FILE" 2>&1 && \
             log_success "OWASP ZAP updated" || \
             log_warn "OWASP ZAP update failed"
     fi

@@ -3,8 +3,6 @@
 # Module: Container Security
 # Docker, Kubernetes security testing and auditing
 
-CONTAINER_GO=()
-
 CONTAINER_GIT=(
     "deepce=https://github.com/stealthcopter/deepce.git"
     "docker-bench-security=https://github.com/docker/docker-bench-security.git"

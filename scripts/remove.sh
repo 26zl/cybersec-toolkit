@@ -2,10 +2,11 @@
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools — Removal Script (Modular)
 # Sources all modules and removes all installed tools across all methods.
-# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE.
+# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux/Android.
 #
 # Usage:
-#   sudo ./scripts/remove.sh                      # Remove everything
+#   sudo ./scripts/remove.sh                      # Remove everything (Linux)
+#   ./scripts/remove.sh                           # Remove everything (Termux)
 #   sudo ./scripts/remove.sh --module web          # Remove web module only
 #   sudo ./scripts/remove.sh --remove-deps          # Also remove base packages (dangerous)
 #   sudo ./scripts/remove.sh --yes                 # Skip confirmation
@@ -26,7 +27,8 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     cat << 'EOF'
 CyberSec Tools — Removal Script
 
-Usage: sudo ./scripts/remove.sh [OPTIONS]
+Usage: sudo ./scripts/remove.sh [OPTIONS]    # Linux (requires root)
+       ./scripts/remove.sh [OPTIONS]          # Termux (no root needed)
 
 Options:
   --module <name>    Remove specific module only (can be repeated)
@@ -75,7 +77,7 @@ print_banner
 
 if [[ "$PKG_MANAGER" == "unknown" ]]; then
     log_error "Unsupported distribution — could not detect package manager"
-    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE)"
+    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
     exit 1
 fi
 
@@ -137,8 +139,90 @@ for _mod in "${REMOVE_MODULES[@]}"; do
 done
 
 # Execute removal
+# ORDER: Tools that need runtime commands (pipx, gem, cargo) are removed FIRST,
+# before system packages which may remove those runtimes.
 
-# 1) System packages
+# 1) pipx tools — must run BEFORE system packages remove python3-pipx
+if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
+    if command_exists pipx; then
+        # Cache installed list once
+        installed_pipx=$(pipx list --short 2>/dev/null || true)
+        pipx_removed=0
+        pipx_skipped=0
+        for tool in "${PIPX_TO_REMOVE[@]}"; do
+            if echo "$installed_pipx" | grep -qi "^${tool} "; then
+                pipx_remove "$tool" >> "$LOG_FILE" 2>&1
+                log_success "Removed pipx: $tool"
+                pipx_removed=$((pipx_removed + 1))
+            else
+                log_debug "Skipping pipx $tool (not installed)"
+                pipx_skipped=$((pipx_skipped + 1))
+            fi
+        done
+        log_info "pipx: $pipx_removed removed, $pipx_skipped already removed"
+    else
+        # Fallback: pipx command not available — clean up files directly
+        log_warn "pipx not found — removing pipx tools by cleaning up files directly"
+        pipx_removed=0
+        for tool in "${PIPX_TO_REMOVE[@]}"; do
+            # Remove binary from PIPX_BIN_DIR
+            if [[ -f "$PIPX_BIN_DIR/$tool" ]] || [[ -L "$PIPX_BIN_DIR/$tool" ]]; then
+                rm -f "$PIPX_BIN_DIR/$tool"
+                log_success "Removed: $PIPX_BIN_DIR/$tool"
+                pipx_removed=$((pipx_removed + 1))
+            fi
+            # Remove venv from PIPX_HOME
+            if [[ -d "$PIPX_HOME/venvs/$tool" ]]; then
+                rm -rf "$PIPX_HOME/venvs/$tool"
+                log_debug "Removed venv: $PIPX_HOME/venvs/$tool"
+            fi
+        done
+        log_info "pipx (file cleanup): $pipx_removed binaries removed"
+    fi
+else
+    log_info "No pipx tools to remove"
+fi
+echo ""
+
+# 2) Ruby gems — must run BEFORE system packages remove ruby
+if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
+    installed_gems=$(gem list --no-details 2>/dev/null || true)
+    gems_removed=0
+    gems_skipped=0
+    for gem_name in "${GEMS_TO_REMOVE[@]}"; do
+        if echo "$installed_gems" | grep -q "^${gem_name} "; then
+            gem uninstall -x "$gem_name" >> "$LOG_FILE" 2>&1 && gems_removed=$((gems_removed + 1)) || true
+        else
+            log_debug "Skipping gem $gem_name (not installed)"
+            gems_skipped=$((gems_skipped + 1))
+        fi
+    done
+    log_info "Gems: $gems_removed removed, $gems_skipped already removed"
+elif [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]]; then
+    log_warn "gem not found — skipping Ruby gem removal"
+fi
+echo ""
+
+# 3) Cargo tools — must run BEFORE system packages (cargo is from rustup, not apt, but be safe)
+if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
+    log_info "Removing ${#CARGO_TO_REMOVE[@]} Cargo tools..."
+    for crate in "${CARGO_TO_REMOVE[@]}"; do
+        if ! command_exists "$crate" && [[ ! -f "$HOME/.cargo/bin/$crate" ]]; then
+            log_debug "Skipping cargo $crate (not installed)"
+            continue
+        fi
+        if command_exists cargo; then
+            cargo uninstall "$crate" >> "$LOG_FILE" 2>&1 && \
+                log_success "Removed cargo: $crate" || true
+        fi
+        # Clean up binary and symlink regardless of cargo uninstall result
+        [[ -f "$HOME/.cargo/bin/$crate" ]] && rm -f "$HOME/.cargo/bin/$crate"
+        [[ -L "$PIPX_BIN_DIR/$crate" ]] && rm -f "$PIPX_BIN_DIR/$crate"
+    done
+fi
+echo ""
+
+# 4) System packages — AFTER tools that need runtime commands
 if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
     # Apply distro-specific package name translation (same as install path)
     fixup_package_names PKGS_TO_REMOVE
@@ -170,37 +254,15 @@ else
 fi
 echo ""
 
-# 2) pipx tools
-if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]] && command_exists pipx; then
-    # Cache installed list once
-    installed_pipx=$(pipx list --short 2>/dev/null || true)
-    pipx_removed=0
-    pipx_skipped=0
-    for tool in "${PIPX_TO_REMOVE[@]}"; do
-        if echo "$installed_pipx" | grep -qi "^${tool} "; then
-            pipx_remove "$tool" >> "$LOG_FILE" 2>&1
-            log_success "Removed pipx: $tool"
-            pipx_removed=$((pipx_removed + 1))
-        else
-            log_debug "Skipping pipx $tool (not installed)"
-            pipx_skipped=$((pipx_skipped + 1))
-        fi
-    done
-    log_info "pipx: $pipx_removed removed, $pipx_skipped already removed"
-else
-    [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]] && log_warn "pipx not found — skipping"
-fi
-echo ""
-
-# 3) Go binaries
-# Go binaries are installed to /usr/local/bin (GOBIN) system-wide
+# 5) Go binaries
+# Go binaries are installed to $GOBIN (GOBIN) system-wide
 if [[ ${#GO_BINS_TO_REMOVE[@]} -gt 0 ]]; then
     go_removed=0
     go_skipped=0
     for bin in "${GO_BINS_TO_REMOVE[@]}"; do
-        if [[ -f "/usr/local/bin/$bin" ]]; then
-            rm -f "/usr/local/bin/$bin"
-            log_success "Removed: /usr/local/bin/$bin"
+        if [[ -f "$GOBIN/$bin" ]]; then
+            rm -f "$GOBIN/$bin"
+            log_success "Removed: $GOBIN/$bin"
             go_removed=$((go_removed + 1))
         else
             log_debug "Skipping Go binary $bin (not installed)"
@@ -211,14 +273,14 @@ if [[ ${#GO_BINS_TO_REMOVE[@]} -gt 0 ]]; then
 fi
 echo ""
 
-# 4) GitHub repos
+# 6) GitHub repos
 if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
     git_removed=0
     git_skipped=0
     for name in "${GIT_NAMES_TO_REMOVE[@]}"; do
         repo_path="$GITHUB_TOOL_DIR/$name"
         if [[ -d "$repo_path" ]]; then
-            sudo rm -rf "$repo_path"
+            rm -rf "$repo_path"
             log_success "Removed: $repo_path"
             git_removed=$((git_removed + 1))
         else
@@ -230,44 +292,8 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
 fi
 echo ""
 
-# 5) Ruby gems
-if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
-    installed_gems=$(gem list --no-details 2>/dev/null || true)
-    gems_removed=0
-    gems_skipped=0
-    for gem_name in "${GEMS_TO_REMOVE[@]}"; do
-        if echo "$installed_gems" | grep -q "^${gem_name} "; then
-            gem uninstall -x "$gem_name" >> "$LOG_FILE" 2>&1 && gems_removed=$((gems_removed + 1)) || true
-        else
-            log_debug "Skipping gem $gem_name (not installed)"
-            gems_skipped=$((gems_skipped + 1))
-        fi
-    done
-    log_info "Gems: $gems_removed removed, $gems_skipped already removed"
-fi
-echo ""
-
-# 6) Cargo tools
-if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
-    log_info "Removing ${#CARGO_TO_REMOVE[@]} Cargo tools..."
-    for crate in "${CARGO_TO_REMOVE[@]}"; do
-        if ! command_exists "$crate" && [[ ! -f "$HOME/.cargo/bin/$crate" ]]; then
-            log_debug "Skipping cargo $crate (not installed)"
-            continue
-        fi
-        if command_exists cargo; then
-            cargo uninstall "$crate" >> "$LOG_FILE" 2>&1 && \
-                log_success "Removed cargo: $crate" || true
-        fi
-        # Clean up binary and symlink regardless of cargo uninstall result
-        [[ -f "$HOME/.cargo/bin/$crate" ]] && rm -f "$HOME/.cargo/bin/$crate"
-        [[ -L "/usr/local/bin/$crate" ]] && rm -f "/usr/local/bin/$crate"
-    done
-fi
-echo ""
-
 # 7) Binary releases
-log_info "Removing binary releases from /usr/local/bin..."
+log_info "Removing binary releases from $PIPX_BIN_DIR..."
 # Build BINARY_TOOLS dynamically from BINARY_RELEASES_* arrays in installers.sh
 # (single source of truth — no hardcoded list to maintain)
 _extract_binary_names() {
@@ -286,9 +312,9 @@ done
 bin_removed=0
 bin_skipped=0
 for bin in "${BINARY_TOOLS[@]}"; do
-    if [[ -f "/usr/local/bin/$bin" ]]; then
-        sudo rm -f "/usr/local/bin/$bin"
-        log_success "Removed: /usr/local/bin/$bin"
+    if [[ -f "$PIPX_BIN_DIR/$bin" ]]; then
+        rm -f "$PIPX_BIN_DIR/$bin"
+        log_success "Removed: $PIPX_BIN_DIR/$bin"
         bin_removed=$((bin_removed + 1))
     else
         log_debug "Skipping binary $bin (not present)"
@@ -298,18 +324,18 @@ done
 log_info "Binary releases: $bin_removed removed, $bin_skipped already removed"
 # Jar wrappers and directories
 for jar_bin in ysoserial jd-gui; do
-    [[ -f "/usr/local/bin/$jar_bin" ]] && sudo rm -f "/usr/local/bin/$jar_bin"
+    [[ -f "$PIPX_BIN_DIR/$jar_bin" ]] && rm -f "$PIPX_BIN_DIR/$jar_bin" 2>/dev/null || true
 done
-sudo rm -rf /opt/cybersec-jars 2>/dev/null
-sudo rm -rf /opt/jadx 2>/dev/null
-sudo rm -rf /opt/dex2jar 2>/dev/null
+rm -rf "$GITHUB_TOOL_DIR/cybersec-jars" 2>/dev/null
+rm -rf "$GITHUB_TOOL_DIR/jadx" 2>/dev/null
+rm -rf "$GITHUB_TOOL_DIR/dex2jar" 2>/dev/null
 echo ""
 
 # 8) Special tools
 log_info "Removing special tools..."
 
 # Searchsploit symlink
-[[ -L /usr/local/bin/searchsploit ]] && sudo rm -f /usr/local/bin/searchsploit && \
+[[ -L "$PIPX_BIN_DIR/searchsploit" ]] && rm -f "$PIPX_BIN_DIR/searchsploit" 2>/dev/null && \
     log_success "Removed searchsploit symlink"
 
 # Metasploit
@@ -322,14 +348,33 @@ fi
 # OWASP ZAP (snap)
 if should_remove "web" && snap_available && snap list zaproxy &>/dev/null; then
     log_info "Removing OWASP ZAP..."
-    # shellcheck disable=SC2024  # Script runs as root; redirect is fine
-    sudo snap remove zaproxy >> "$LOG_FILE" 2>&1
+    snap remove zaproxy >> "$LOG_FILE" 2>&1
     log_success "OWASP ZAP removed"
 fi
 
+# solc (snap — installed by blockchain module)
+if should_remove "blockchain" && snap_available && snap list solc &>/dev/null; then
+    log_info "Removing solc..."
+    snap remove solc >> "$LOG_FILE" 2>&1
+    log_success "solc removed"
+fi
+
+# Foundry (forge, cast, anvil, chisel — installed by blockchain module)
+if should_remove "blockchain"; then
+    _foundry_dir="$HOME/.foundry"
+    if [[ -d "$_foundry_dir" ]]; then
+        # Remove symlinks from PIPX_BIN_DIR
+        for _fbin in foundryup forge cast anvil chisel; do
+            [[ -L "$PIPX_BIN_DIR/$_fbin" ]] && rm -f "$PIPX_BIN_DIR/$_fbin" 2>/dev/null
+        done
+        rm -rf "$_foundry_dir"
+        log_success "Removed Foundry ($HOME/.foundry)"
+    fi
+fi
+
 # Burp Suite installer cleanup (deterministic path only)
-if [[ -d "/opt/burpsuite-installer" ]]; then
-    rm -rf "/opt/burpsuite-installer"
+if [[ -d "$GITHUB_TOOL_DIR/burpsuite-installer" ]]; then
+    rm -rf "$GITHUB_TOOL_DIR/burpsuite-installer"
     log_success "Removed Burp Suite installer directory"
 fi
 
@@ -344,12 +389,40 @@ if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; 
         fi
     done
 fi
+
+# Go SDK installed by ensure_go (only with --remove-deps)
+if [[ "$REMOVE_DEPS" == "true" ]]; then
+    local_go_root=""
+    if [[ "$PKG_MANAGER" == "pkg" ]]; then
+        local_go_root="$PREFIX/lib/go"
+    else
+        local_go_root="/usr/local/go"
+    fi
+    if [[ -d "$local_go_root" ]]; then
+        rm -rf "$local_go_root"
+        log_success "Removed Go SDK from $local_go_root"
+    fi
+fi
 echo ""
 
-# Cleanup
+# 9) Cleanup
 log_info "Cleaning up..."
-pkg_cleanup >> "$LOG_FILE" 2>&1
-log_success "System cleaned"
+
+# Clean up empty PIPX_HOME on full removal
+if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]] && [[ -d "$PIPX_HOME/venvs" ]]; then
+    # Count remaining venvs — if none left, remove PIPX_HOME
+    local_remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    if [[ "$local_remaining" -eq 0 ]]; then
+        rm -rf "$PIPX_HOME"
+        log_success "Removed empty PIPX_HOME ($PIPX_HOME)"
+    fi
+fi
+
+if pkg_cleanup >> "$LOG_FILE" 2>&1; then
+    log_success "System cleaned"
+else
+    log_warn "Cleanup had errors (check log)"
+fi
 
 # Remove version tracking file on full removal
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then

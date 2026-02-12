@@ -40,7 +40,8 @@ usage() {
     cat << 'EOF'
 CyberSec Tools Installer — Production-Grade Security Toolkit
 
-Usage: sudo ./install.sh [OPTIONS]
+Usage: sudo ./install.sh [OPTIONS]        # Linux (requires root)
+       ./install.sh [OPTIONS]              # Termux (no root needed)
 
 Options:
   --profile <name>     Install a predefined tool profile:
@@ -74,16 +75,22 @@ Environment variables:
   GITHUB_TOKEN         GitHub personal access token for API requests
                          (avoids rate limits on binary downloads)
   BURP_VERSION         Burp Suite version (default: 2024.10.1)
+  GO_INSTALL_VERSION   Go version to download from go.dev (default: 1.23.6)
+  GO_MIN_VERSION       Minimum Go version before auto-upgrade (default: 1.21)
   VERBOSE              Enable verbose/debug output (default: false)
   PARALLEL_JOBS        Number of parallel install jobs (default: 4)
 
-Examples:
+Examples (Linux):
   sudo ./install.sh                              # Full install
   sudo ./install.sh --profile ctf                # CTF tools
   sudo ./install.sh --module web --module recon   # Web + recon only
   sudo ./install.sh --profile redteam --enable-docker  # Red team + Docker C2
   sudo ./install.sh --upgrade-system             # Full install + system upgrade
   sudo ./install.sh --tool sqlmap --tool nmap     # Install individual tools
+
+Examples (Termux/Android — no sudo):
+  ./install.sh --profile lightweight             # Recommended for Termux
+  ./install.sh --module recon --module web        # Specific modules
 EOF
     exit 0
 }
@@ -99,7 +106,11 @@ list_profiles() {
         printf "  %-16s %s\n" "$name" "$desc"
     done
     echo ""
-    echo "Usage: sudo ./install.sh --profile <name>"
+    if [[ "$PKG_MANAGER" == "pkg" ]]; then
+        echo "Usage: ./install.sh --profile <name>"
+    else
+        echo "Usage: sudo ./install.sh --profile <name>"
+    fi
     exit 0
 }
 
@@ -125,7 +136,11 @@ list_modules() {
     printf "  %-16s %s\n" "mobile"     "Android/iOS app testing, APK analysis"
     printf "  %-16s %s\n" "blockchain" "Smart contract auditing, analysis, reversing"
     echo ""
-    echo "Usage: sudo ./install.sh --module <name> [--module <name> ...]"
+    if [[ "$PKG_MANAGER" == "pkg" ]]; then
+        echo "Usage: ./install.sh --module <name> [--module <name> ...]"
+    else
+        echo "Usage: sudo ./install.sh --module <name> [--module <name> ...]"
+    fi
     exit 0
 }
 
@@ -210,10 +225,8 @@ install_single_tool() {
 
     # Go (match binary name from full import path)
     local go_arrs=(
-        MISC_GO NET_GO RECON_GO WEB_GO CRYPTO_GO PWN_GO RE_GO
-        FORENSICS_GO MALWARE_GO ENTERPRISE_GO WIRELESS_GO CRACKING_GO
-        STEGO_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
-        BLOCKCHAIN_GO
+        MISC_GO NET_GO RECON_GO WEB_GO PWN_GO
+        ENTERPRISE_GO CLOUD_GO
     )
     for a in "${go_arrs[@]}"; do
         declare -p "$a" &>/dev/null || continue
@@ -239,7 +252,7 @@ install_single_tool() {
             log_info "Installing $tool via cargo..."
             cargo install "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
             if [[ -f "$HOME/.cargo/bin/$tool" ]]; then
-                ln -sf "$HOME/.cargo/bin/$tool" "/usr/local/bin/$tool" 2>/dev/null || true
+                ln -sf "$HOME/.cargo/bin/$tool" "$PIPX_BIN_DIR/$tool" 2>/dev/null || true
             fi
             return 0
         fi
@@ -257,8 +270,7 @@ install_single_tool() {
 
     # Git repos (match name= prefix)
     local git_arrs=(
-        MISC_RESOURCES MISC_POSTEXPLOIT MISC_SOCIAL MISC_CTF
-        NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
+        MISC_GIT NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
         FORENSICS_GIT MALWARE_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT
         STEGO_GIT CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
         BLOCKCHAIN_GIT
@@ -392,15 +404,8 @@ estimate_install_time() {
         cargo_count=$((cargo_count + $(_count_array "${prefix}_CARGO")))
         gem_count=$((gem_count + $(_count_array "${prefix}_GEMS")))
 
-        # Git repos (misc has multiple git arrays)
-        if [[ "$mod" == "misc" ]]; then
-            git_count=$((git_count + $(_count_array MISC_RESOURCES)))
-            git_count=$((git_count + $(_count_array MISC_POSTEXPLOIT)))
-            git_count=$((git_count + $(_count_array MISC_SOCIAL)))
-            git_count=$((git_count + $(_count_array MISC_CTF)))
-        else
-            git_count=$((git_count + $(_count_array "${prefix}_GIT")))
-        fi
+        # Git repos
+        git_count=$((git_count + $(_count_array "${prefix}_GIT")))
 
         # Binary releases (BINARY_RELEASES_<MODULE_UPPER> in installers.sh)
         binary_count=$((binary_count + $(_count_array "BINARY_RELEASES_${mod_upper}")))
@@ -472,7 +477,7 @@ main() {
 
     if [[ "$PKG_MANAGER" == "unknown" ]]; then
         log_error "Unsupported distribution — could not detect package manager"
-        log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE)"
+        log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
         exit 1
     fi
 
@@ -481,6 +486,12 @@ main() {
         log_info "Verbose mode enabled"
         log_system_environment
         enable_debug_trace
+    fi
+
+    # Termux: Docker and snap are not available
+    if [[ "$PKG_MANAGER" == "pkg" ]] && [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
+        log_warn "Docker is not available on Termux/Android — skipping Docker tools"
+        ENABLE_DOCKER="false"
     fi
 
     # Docker is the only prerequisite users must install themselves
@@ -501,14 +512,20 @@ main() {
 
     # Stage 1: Refresh package lists (required for installing packages)
     log_info "Refreshing package lists..."
-    pkg_update >> "$LOG_FILE" 2>&1
-    log_success "Package lists refreshed"
+    if pkg_update >> "$LOG_FILE" 2>&1; then
+        log_success "Package lists refreshed"
+    else
+        log_warn "Package list refresh had errors (check log) — continuing"
+    fi
 
     # Optional: full system upgrade (only with --upgrade-system)
     if [[ "$UPGRADE_SYSTEM" == "true" ]]; then
         log_info "Upgrading system packages (--upgrade-system)..."
-        pkg_upgrade >> "$LOG_FILE" 2>&1
-        log_success "System packages upgraded"
+        if pkg_upgrade >> "$LOG_FILE" 2>&1; then
+            log_success "System packages upgraded"
+        else
+            log_warn "System upgrade had errors (check log) — continuing"
+        fi
     fi
     echo ""
 
@@ -518,6 +535,7 @@ main() {
 
     # Stage 3: Ensure additional toolchains are available
     ensure_pipx
+    ensure_go
     ensure_cargo
     echo ""
 
@@ -547,18 +565,19 @@ main() {
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules installed: ${MODULES_TO_INSTALL[*]}"
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
-        log_error "Module failures: $TOTAL_MODULE_FAILURES"
+        log_error "Modules with failures: $TOTAL_MODULE_FAILURES"
+        log_error "Total tool failures: $TOTAL_TOOL_FAILURES"
     fi
     log_info "Log file: $LOG_FILE"
     log_info "Version tracking: $VERSION_FILE"
     echo ""
     log_info "Tool locations:"
     log_info "  System packages:  managed by $PKG_MANAGER"
-    log_info "  pipx tools:       /usr/local/bin/ (PIPX_HOME=/opt/pipx)"
-    log_info "  Go tools:         /usr/local/bin/ (GOBIN)"
-    log_info "  Cargo tools:      /usr/local/bin/ (symlinked)"
+    log_info "  pipx tools:       $PIPX_BIN_DIR/ (PIPX_HOME=$PIPX_HOME)"
+    log_info "  Go tools:         $GOBIN/ (GOBIN)"
+    log_info "  Cargo tools:      $PIPX_BIN_DIR/ (symlinked)"
     log_info "  GitHub repos:     $GITHUB_TOOL_DIR/"
-    log_info "  Binary releases:  /usr/local/bin/"
+    log_info "  Binary releases:  $PIPX_BIN_DIR/"
     echo ""
 
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
@@ -578,8 +597,13 @@ install_modules() {
             log_info "========== Module: $mod =========="
             local _mod_start; _mod_start=$(date +%s)
             log_debug "install_modules: starting module '$mod'"
-            if ! "$func_name"; then
-                log_error "Module failed: $mod"
+            # Track failures via global counter (not return code — modules don't
+            # aggregate sub-function failures without set -e)
+            local _pre_failures=$TOTAL_TOOL_FAILURES
+            "$func_name"
+            if [[ $TOTAL_TOOL_FAILURES -gt $_pre_failures ]]; then
+                local _mod_fails=$((TOTAL_TOOL_FAILURES - _pre_failures))
+                log_warn "Module $mod: $_mod_fails tool(s) failed"
                 TOTAL_MODULE_FAILURES=$((TOTAL_MODULE_FAILURES + 1))
             fi
             local _mod_elapsed=$(( $(date +%s) - _mod_start ))

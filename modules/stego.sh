@@ -10,8 +10,6 @@ STEGO_PACKAGES=(
 
 STEGO_PIPX=(stegoveritas stegcracker)
 
-STEGO_GO=()
-
 STEGO_GEMS=(zsteg)
 
 STEGO_GIT=(

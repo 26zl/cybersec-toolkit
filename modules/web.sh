@@ -61,8 +61,6 @@ WEB_GIT=(
     "paramspider=https://github.com/devanshbatham/ParamSpider.git"
 )
 
-WEB_DOCKER=("beefproject/beef:BeEF")
-
 # Binary names for verify/remove
 WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice)
 WEB_GIT_NAMES=(XSStrike xsser Corsy jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap weevely3 PhpSploit Kadimus LFISuite phpggc PadBuster h2csmuggler joomscan bolt pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider)
@@ -75,20 +73,22 @@ install_module_web() {
     install_gem_batch "Web - Ruby" "${WEB_GEMS[@]}"
     install_git_batch "Web - Git" "${WEB_GIT[@]}"
 
-    # Binary releases
+    # Binary releases (skipped on Termux — Linux/glibc binaries)
     install_binary_releases "${BINARY_RELEASES_WEB[@]}"
-    download_github_release "assetnote/kiterunner" "kr" "linux_amd64" || true
-
-    # Docker (optional)
-    if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
-        for entry in "${WEB_DOCKER[@]}"; do
-            local image="${entry%%:*}"
-            local name="${entry#*:}"
-            docker_pull "$image" "$name" || true
-        done
+    if [[ "$PKG_MANAGER" != "pkg" ]]; then
+        if ! download_github_release "assetnote/kiterunner" "kr" "linux_amd64"; then
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        fi
     fi
 
-    # Special installs
-    install_burpsuite
-    install_zap
+    # Docker (optional) — BeEF is in ALL_DOCKER_IMAGES (centralized registry)
+    if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
+        docker_pull "beefproject/beef" "BeEF" || true
+    fi
+
+    # Special installs (Linux/GUI only — not available on Termux)
+    if [[ "$PKG_MANAGER" != "pkg" ]]; then
+        install_burpsuite
+        install_zap
+    fi
 }
