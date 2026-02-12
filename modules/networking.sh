@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Networking
 # Port scanning, packet capture, tunneling, pivoting, MITM, protocol analysis
-# =============================================================================
 
 NET_PACKAGES=(
     nmap masscan netdiscover tcpdump hping3 arp-scan

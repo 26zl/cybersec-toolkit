@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Recon / OSINT
 # Subdomain enumeration, intelligence gathering, search engines, OSINT
-# =============================================================================
 
 RECON_PACKAGES=(dnsenum dmitry dnsmap dnstracer dnswalk bing-ip2hosts)
 
@@ -13,7 +11,7 @@ RECON_PIPX=(
     bbot onionsearch crosslinked toutatis
     ssh-audit parsero
     emailharvester maryam osrframework
-    censys ignorant instaloader recon-ng
+    censys ignorant instaloader
 )
 
 RECON_GO=(
@@ -41,9 +39,8 @@ RECON_GO=(
     "github.com/projectdiscovery/httpx/cmd/httpx@latest"
     "github.com/x1sec/commit-stream@latest"
     "github.com/j3ssie/metabigor@latest"
-    "github.com/sundowndev/phoneinfoga/v2/cmd/phoneinfoga@latest"
+    "github.com/sundowndev/phoneinfoga/v2@latest"
     "github.com/PentestPad/subzy@latest"
-    "github.com/haccer/subjack@latest"
 )
 
 RECON_GIT=(
@@ -71,11 +68,12 @@ RECON_GIT=(
     "Yalis=https://github.com/EatonChips/yalis.git"
     "EyeWitness=https://github.com/FortyNorthSecurity/EyeWitness.git"
     "osmedeus=https://github.com/j3ssie/osmedeus.git"
+    "recon-ng=https://github.com/lanmaster53/recon-ng.git"
 )
 
 # Binary names for verify/remove
-RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor phoneinfoga subzy subjack)
-RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username LinkedInt AttackSurfaceMapper WitnessMe Gato carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness osmedeus)
+RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor phoneinfoga subzy)
+RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username LinkedInt AttackSurfaceMapper WitnessMe Gato carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness osmedeus recon-ng)
 RECON_BUILD_NAMES=(massdns)
 
 install_module_recon() {

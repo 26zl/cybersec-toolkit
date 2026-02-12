@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Steganography
 # Image/audio steganography tools
-# =============================================================================
 
 STEGO_PACKAGES=(
     steghide stegsnow outguess pngcheck

@@ -1,10 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Blue Team / Defensive Security
 # IDS/IPS, SIEM, log analysis, file integrity, threat intelligence,
 # incident response platforms, endpoint visibility
-# =============================================================================
 
 BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw tiger darkstat chaosreader sentrypeer)
 

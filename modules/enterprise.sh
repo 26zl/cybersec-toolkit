@@ -1,10 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Enterprise
 # Active Directory, Kerberos, LDAP, Azure AD, Windows network pentesting,
 # credential harvesting, lateral movement
-# =============================================================================
 
 ENTERPRISE_PACKAGES=()
 
@@ -14,7 +12,7 @@ ENTERPRISE_PIPX=(
     adidnsdump dploot bloodyad hekatomb
     donpapi certsync masky pywhisker autobloody
     krbjack roadtx pywerview pysnaffler powerview aclpwn
-    netexec ldeep smbclientng ldapsearchad
+    ldeep smbclientng ldapsearchad
 )
 
 ENTERPRISE_GO=(
@@ -90,6 +88,12 @@ ENTERPRISE_GIT_NAMES=(Responder Rubeus ADRecon enum4linux-ng linWinPwn PCredz WM
 install_module_enterprise() {
     [[ ${#ENTERPRISE_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Enterprise - Packages" "${ENTERPRISE_PACKAGES[@]}"
     install_pipx_batch "Enterprise - Python" "${ENTERPRISE_PIPX[@]}"
+
+    # NetExec — install from git (PyPI package 'nxc' was removed)
+    if ! pipx list --short 2>/dev/null | grep -qi "^netexec "; then
+        log_info "Installing NetExec from GitHub..."
+        pipx install "git+https://github.com/Pennyw0rth/NetExec" 2>>"$LOG_FILE" || log_warn "Failed to install NetExec"
+    fi
     install_go_batch "Enterprise - Go" "${ENTERPRISE_GO[@]}"
     install_gem_batch "Enterprise - Ruby" "${ENTERPRISE_GEMS[@]}"
     install_git_batch "Enterprise - Git" "${ENTERPRISE_GIT[@]}"

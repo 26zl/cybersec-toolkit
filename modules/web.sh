@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Web Security
 # Web application testing, scanning, fuzzing, exploitation
-# =============================================================================
 
 WEB_PACKAGES=(nikto whatweb)
 
@@ -28,7 +26,6 @@ WEB_GO=(
     "github.com/projectdiscovery/proxify/cmd/proxify@latest"
     "github.com/projectdiscovery/tlsx/cmd/tlsx@latest"
     "github.com/BishopFox/jsluice/cmd/jsluice@latest"
-    "github.com/003random/getJS@latest"
 )
 
 WEB_CARGO=(feroxbuster)
@@ -67,7 +64,7 @@ WEB_GIT=(
 WEB_DOCKER=("beefproject/beef:BeEF")
 
 # Binary names for verify/remove
-WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice getJS)
+WEB_GO_BINS=(nuclei katana ffuf gobuster crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice)
 WEB_GIT_NAMES=(XSStrike xsser Corsy jwt_tool SSRFmap GraphQLmap smuggler NoSQLMap testssl.sh Gopherus oxml_xxe CMSmap weevely3 PhpSploit Kadimus LFISuite phpggc PadBuster h2csmuggler joomscan bolt pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider)
 
 install_module_web() {

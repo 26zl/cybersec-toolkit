@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Reverse Engineering
 # Disassembly, decompilation, debugging, binary analysis, emulation
-# =============================================================================
 
 RE_PACKAGES=(
     radare2 ghidra checksec rizin gdb binwalk binutils
@@ -38,7 +36,7 @@ install_module_reversing() {
     log_info "Building RE tools from source..."
     build_from_source "ELFkickers" "https://github.com/BR903/ELFkickers.git" "make" || true
     build_from_source "rappel" "https://github.com/yrp604/rappel.git" "make" || true
-    build_from_source "xrop" "https://github.com/acama/xrop.git" "make" || true
+    build_from_source "xrop" "https://github.com/acama/xrop.git" "git submodule update --init --recursive && make" || true
 
     # Binary releases
     install_binary_releases "${BINARY_RELEASES_REVERSING[@]}"

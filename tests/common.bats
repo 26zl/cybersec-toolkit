@@ -180,7 +180,7 @@ setup() {
 }
 
 @test "ALL_MODULES contains all expected modules" {
-    local expected=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless password stego cloud containers blueteam mobile blockchain)
+    local expected=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain)
     for mod in "${expected[@]}"; do
         local found=false
         for m in "${ALL_MODULES[@]}"; do

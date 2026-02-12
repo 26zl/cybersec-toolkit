@@ -1,6 +1,5 @@
 #!/bin/bash
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
-# =============================================================================
 # CyberSec Tools — Verification Script (Modular)
 # Sources all modules and checks installation status of all tools.
 # Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE.
@@ -10,11 +9,13 @@
 #   sudo ./scripts/verify.sh --module web          # Verify web module only
 #   sudo ./scripts/verify.sh --module recon --module enterprise  # Multiple modules
 #   sudo ./scripts/verify.sh --summary             # Summary only (no per-tool)
-# =============================================================================
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/installers.sh"
+source "$SCRIPT_DIR/lib/shared.sh"
 
 # Source all modules to get tool arrays (ALL_MODULES defined in lib/common.sh)
 for mod in "${ALL_MODULES[@]}"; do
@@ -34,13 +35,13 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, enterprise, wireless, password, stego, cloud, containers,
+         malware, enterprise, wireless, cracking, stego, cloud, containers,
          blueteam, mobile, blockchain
 EOF
     exit 0
 fi
 
-# --- Parse args --------------------------------------------------------------
+# Parse args
 VERIFY_MODULES=()
 SUMMARY_ONLY=false
 while [[ $# -gt 0 ]]; do
@@ -65,7 +66,7 @@ TOTAL_CHECKED=0
 TOTAL_FOUND=0
 TOTAL_MISSING=0
 
-# --- Helpers -----------------------------------------------------------------
+# Helpers
 check_cmd() {
     local tool="$1"
     local version_cmd="${2:-}"
@@ -141,6 +142,37 @@ check_cmd_any() {
     return 1
 }
 
+# Check build-from-source: verifies a binary was actually built (not just cloned)
+check_build() {
+    local name="$1"
+    local dir="$GITHUB_TOOL_DIR/$name"
+    TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+
+    if command_exists "$name"; then
+        # Binary is in PATH (e.g. symlinked or installed to /usr/local/bin)
+        TOTAL_FOUND=$((TOTAL_FOUND + 1))
+        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$name — built & in PATH"
+        return 0
+    elif [[ -d "$dir" ]]; then
+        # Directory exists — check for common build artifacts
+        # shellcheck disable=SC2044
+        if find "$dir" -maxdepth 3 -type f \( -name "$name" -o -name "*.so" -o -name "afl-fuzz" \) -executable 2>/dev/null | grep -q .; then
+            TOTAL_FOUND=$((TOTAL_FOUND + 1))
+            [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$name — built at $dir"
+            return 0
+        else
+            TOTAL_MISSING=$((TOTAL_MISSING + 1))
+            [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$name — cloned at $dir but build artifacts NOT found"
+            return 1
+        fi
+    else
+        TOTAL_MISSING=$((TOTAL_MISSING + 1))
+        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$name — NOT found at $dir"
+        return 1
+    fi
+}
+check_builds() { for n in "$@"; do check_build "$n" || true; done; }
+
 # Batch check helpers
 check_cmds()      { for t in "$@"; do check_cmd "$t" || true; done; }
 check_pipx_arr()  { for t in "$@"; do check_pipx "$t" || true; done; }
@@ -149,7 +181,7 @@ check_git_repos() { for n in "$@"; do check_dir "$n" "$GITHUB_TOOL_DIR/$n" || tr
 # shellcheck disable=SC2076  # Intentional literal match, not regex
 should_verify() { [[ " ${VERIFY_MODULES[*]} " =~ " $1 " ]]; }
 
-# --- System info -------------------------------------------------------------
+# System info
 print_banner
 
 if [[ "$PKG_MANAGER" == "unknown" ]]; then
@@ -166,7 +198,7 @@ log_message "  Kernel: $(uname -r)"
 log_message "  Arch: $(uname -m)"
 echo ""
 
-# --- Runtime environments ----------------------------------------------------
+# Runtime environments
 log_info "Environments:"
 check_cmd "python3" "python3 --version" || true
 check_cmd "pip3" "pip3 --version" || true
@@ -179,20 +211,22 @@ check_cmd "cargo" "cargo --version" || true
 check_cmd "docker" "docker --version" || true
 echo ""
 
+# Shared base dependencies (always checked regardless of module selection)
+log_info "========== Shared Dependencies =========="
+log_info "Base Dependencies:"
+check_cmds git curl wget openssl python3 pip3 ruby go java cmake dos2unix rlwrap jq file
+check_cmds autoconf automake libtool pkg-config
+check_cmd_any "imagemagick" convert magick || true
+echo ""
+
 # Kali/Parrot flag — some packages are only available on these distros
 _is_kali=false
 [[ "$DISTRO_ID" == "kali" || "$DISTRO_ID" == "parrot" ]] && _is_kali=true
 
-# =============================================================================
 # Per-module verification
-# =============================================================================
-
 if should_verify "misc"; then
     echo ""
     log_info "========== Module: misc =========="
-    log_info "Base Dependencies:"
-    check_cmds git curl wget openssl python3 pip3 ruby go java cmake dos2unix rlwrap
-    check_cmd_any "imagemagick" convert magick || true
     log_info "Security Tools:"
     check_cmds lynis rkhunter chkrootkit
     log_info "Heavy Tools:"
@@ -210,6 +244,7 @@ if should_verify "misc"; then
     check_cmd "pspy" || true
     check_cmd "gophish" || true
     check_cmd "trufflehog" || true
+    check_cmd "gitleaks" || true
 fi
 
 if should_verify "networking"; then
@@ -244,7 +279,7 @@ if should_verify "recon"; then
     log_info "Recon (Git):"
     check_git_repos "${RECON_GIT_NAMES[@]}"
     log_info "Recon (Build from source):"
-    check_git_repos "${RECON_BUILD_NAMES[@]}"
+    check_builds "${RECON_BUILD_NAMES[@]}"
     log_info "Recon (Binary):"
     check_cmd "findomain" || true
 fi
@@ -277,7 +312,7 @@ if should_verify "crypto"; then
     log_info "Crypto (Git):"
     check_git_repos "${CRYPTO_GIT_NAMES[@]}"
     log_info "Crypto (Build from source):"
-    check_git_repos "${CRYPTO_BUILD_NAMES[@]}"
+    check_builds "${CRYPTO_BUILD_NAMES[@]}"
 fi
 
 if should_verify "pwn"; then
@@ -296,7 +331,7 @@ if should_verify "pwn"; then
     log_info "Pwn (Git):"
     check_git_repos "${PWN_GIT_NAMES[@]}"
     log_info "Pwn (Build from source):"
-    check_git_repos "${PWN_BUILD_NAMES[@]}"
+    check_builds "${PWN_BUILD_NAMES[@]}"
     log_info "Pwn (Special):"
     check_cmd "msfconsole" || true
 fi
@@ -316,7 +351,7 @@ if should_verify "reversing"; then
     log_info "RE (Git):"
     check_git_repos "${RE_GIT_NAMES[@]}"
     log_info "RE (Build from source):"
-    check_git_repos "${RE_BUILD_NAMES[@]}"
+    check_builds "${RE_BUILD_NAMES[@]}"
     log_info "RE (Binary):"
     check_cmd "rp-lin" || true
     check_cmd "jd-gui" || true
@@ -376,18 +411,18 @@ if should_verify "wireless"; then
     check_git_repos "${WIRELESS_GIT_NAMES[@]}"
 fi
 
-if should_verify "password"; then
+if should_verify "cracking"; then
     echo ""
-    log_info "========== Module: password =========="
-    log_info "Password (packages):"
+    log_info "========== Module: cracking =========="
+    log_info "Cracking (packages):"
     check_cmds john hashcat hydra medusa crunch ophcrack fcrackzip pdfcrack chntpw
     [[ "$_is_kali" == "true" ]] && { check_cmds cewl hashid || true; }
-    log_info "Password (pipx):"
-    check_pipx_arr "${PASSWORD_PIPX[@]}"
-    log_info "Password (Git):"
-    check_git_repos "${PASSWORD_GIT_NAMES[@]}"
-    log_info "Password (Build from source):"
-    check_git_repos "${PASSWORD_BUILD_NAMES[@]}"
+    log_info "Cracking (pipx):"
+    check_pipx_arr "${CRACKING_PIPX[@]}"
+    log_info "Cracking (Git):"
+    check_git_repos "${CRACKING_GIT_NAMES[@]}"
+    log_info "Cracking (Build from source):"
+    check_builds "${CRACKING_BUILD_NAMES[@]}"
 fi
 
 if should_verify "stego"; then
@@ -450,19 +485,6 @@ if should_verify "blueteam"; then
     log_info "Blue Team (Binary):"
     check_cmd "velociraptor" || true
     check_cmd "laurel" || true
-    log_info "Blue Team (Docker):"
-    if command_exists docker; then
-        for img in "strangebee/thehive" "thehiveproject/cortex"; do
-            TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
-            if docker images "$img" -q 2>/dev/null | grep -q .; then
-                TOTAL_FOUND=$((TOTAL_FOUND + 1))
-                [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$img — Docker image present"
-            else
-                TOTAL_MISSING=$((TOTAL_MISSING + 1))
-                [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$img — Docker image NOT found"
-            fi
-        done
-    fi
 fi
 
 if should_verify "blockchain"; then
@@ -473,10 +495,31 @@ if should_verify "blockchain"; then
     log_info "Blockchain (Git):"
     check_git_repos "${BLOCKCHAIN_GIT_NAMES[@]}"
     log_info "Blockchain (Special):"
+    check_cmd "solc" || true
     check_cmd "foundryup" || true
+    check_cmd "forge" || true
+    check_cmd "cast" || true
+    check_cmd "anvil" || true
 fi
 
-# --- Summary -----------------------------------------------------------------
+# Docker images (all modules — uses centralized registry)
+if command_exists docker; then
+    echo ""
+    log_info "========== Docker Images =========="
+    for _docker_entry in "${ALL_DOCKER_IMAGES[@]}"; do
+        IFS='|' read -r _docker_img _docker_label <<< "$_docker_entry"
+        TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+        if docker images "${_docker_img%%:*}" -q 2>/dev/null | grep -q .; then
+            TOTAL_FOUND=$((TOTAL_FOUND + 1))
+            [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$_docker_label ($_docker_img) — Docker image present"
+        else
+            TOTAL_MISSING=$((TOTAL_MISSING + 1))
+            [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$_docker_label ($_docker_img) — Docker image NOT found"
+        fi
+    done
+fi
+
+# Summary
 echo ""
 echo -e "${BOLD}=============================================${NC}"
 log_info "Verification Summary"

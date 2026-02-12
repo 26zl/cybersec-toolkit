@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Cloud Security
 # AWS, Azure, GCP security testing and auditing
-# =============================================================================
 
 CLOUD_PACKAGES=()
 

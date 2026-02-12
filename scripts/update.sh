@@ -1,6 +1,5 @@
 #!/bin/bash
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
-# =============================================================================
 # CyberSec Tools — Update Script (Modular)
 # Sources all modules and updates all installed tools across all methods.
 # Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE.
@@ -9,12 +8,13 @@
 #   sudo ./scripts/update.sh                    # Full update
 #   sudo ./scripts/update.sh --skip-system      # Skip apt/dnf/pacman update
 #   sudo ./scripts/update.sh --skip-go          # Skip Go tools
-# =============================================================================
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
+source "$SCRIPT_DIR/lib/shared.sh"
 
 # Source all modules to get tool arrays (ALL_MODULES defined in lib/common.sh)
 for mod in "${ALL_MODULES[@]}"; do
@@ -43,7 +43,7 @@ EOF
     exit 0
 fi
 
-# --- Parse args --------------------------------------------------------------
+# Parse args
 SKIP_SYSTEM=false
 SKIP_PIPX=false
 SKIP_GO=false
@@ -91,9 +91,7 @@ fi
 
 START_TIME=$(date +%s)
 
-# =============================================================================
 # 1) System packages
-# =============================================================================
 if [[ "$SKIP_SYSTEM" == "false" ]]; then
     log_info "Updating system packages..."
     pkg_update >> "$LOG_FILE" 2>&1
@@ -104,9 +102,7 @@ else
 fi
 echo ""
 
-# =============================================================================
 # 2) pipx packages
-# =============================================================================
 if [[ "$SKIP_PIPX" == "false" ]]; then
     if command_exists pipx; then
         log_info "Updating pipx packages..."
@@ -120,9 +116,7 @@ else
 fi
 echo ""
 
-# =============================================================================
 # 3) Go tools
-# =============================================================================
 if [[ "$SKIP_GO" == "false" ]]; then
     if command_exists go; then
         # GOPATH and GOBIN are set in common.sh (system-wide: /opt/go, /usr/local/bin)
@@ -134,6 +128,8 @@ if [[ "$SKIP_GO" == "false" ]]; then
 
         GO_TOTAL=${#ALL_GO_TOOLS[@]}
         GO_CURRENT=0
+        GO_UPDATED=0
+        GO_SKIPPED=0
         GO_FAILED=0
 
         if [[ "$GO_TOTAL" -eq 0 ]]; then
@@ -144,15 +140,32 @@ if [[ "$SKIP_GO" == "false" ]]; then
             GO_CURRENT=$((GO_CURRENT + 1))
             tool_name=$(_go_bin_name "$tool")
             show_progress "$GO_CURRENT" "$GO_TOTAL" "$tool_name"
+
+            # Record mtime before install to detect actual binary changes
+            bin_path=""
+            old_mtime=0
+            bin_path=$(command -v "$tool_name" 2>/dev/null || echo "")
+            [[ -n "$bin_path" ]] && old_mtime=$(stat -c %Y "$bin_path" 2>/dev/null || echo 0)
+
             if go install "$tool" >> "$LOG_FILE" 2>&1; then
-                log_success "Updated: $tool_name"
+                new_mtime=0
+                bin_path=$(command -v "$tool_name" 2>/dev/null || echo "")
+                [[ -n "$bin_path" ]] && new_mtime=$(stat -c %Y "$bin_path" 2>/dev/null || echo 0)
+                if [[ "$new_mtime" -gt "$old_mtime" ]]; then
+                    log_success "Updated: $tool_name"
+                    GO_UPDATED=$((GO_UPDATED + 1))
+                    track_version "$tool_name" "go" "latest"
+                else
+                    log_debug "Already latest: $tool_name"
+                    GO_SKIPPED=$((GO_SKIPPED + 1))
+                fi
             else
                 log_warn "Failed: $tool_name"
                 GO_FAILED=$((GO_FAILED + 1))
             fi
         done
         echo ""
-        log_success "Go tools: $((GO_TOTAL - GO_FAILED))/$GO_TOTAL updated"
+        log_success "Go tools: $GO_UPDATED updated, $GO_SKIPPED already latest, $GO_FAILED failed ($GO_TOTAL total)"
     else
         log_warn "Go not found — skipping Go tool updates"
     fi
@@ -161,37 +174,47 @@ else
 fi
 echo ""
 
-# =============================================================================
 # 4) GitHub repos
-# =============================================================================
 if [[ "$SKIP_GIT" == "false" ]]; then
     log_info "Updating GitHub repositories in $GITHUB_TOOL_DIR..."
     if [[ -d "$GITHUB_TOOL_DIR" ]]; then
-        GIT_COUNT=0
+        GIT_TOTAL=0
         GIT_UPDATED=0
+        GIT_SKIPPED=0
+        GIT_FAILED=0
         for dir in "$GITHUB_TOOL_DIR"/*/; do
             [[ -d "$dir/.git" ]] || continue
             name="$(basename "$dir")"
-            GIT_COUNT=$((GIT_COUNT + 1))
-            if git -C "$dir" pull -q >> "$LOG_FILE" 2>&1; then
-                log_success "Updated: $name"
-                GIT_UPDATED=$((GIT_UPDATED + 1))
+            GIT_TOTAL=$((GIT_TOTAL + 1))
+
+            pull_output=""
+            if pull_output=$(git -C "$dir" pull 2>>"$LOG_FILE"); then
+                if echo "$pull_output" | grep -q "Already up to date"; then
+                    log_debug "Already latest: $name"
+                    GIT_SKIPPED=$((GIT_SKIPPED + 1))
+                else
+                    log_success "Updated: $name"
+                    GIT_UPDATED=$((GIT_UPDATED + 1))
+                    track_version "$name" "git" "HEAD"
+
+                    # Reinstall Python deps if present — only into existing venvs to
+                    # avoid polluting system Python.
+                    if [[ -f "$dir/requirements.txt" ]]; then
+                        if [[ -d "$dir/venv" ]]; then
+                            "$dir/venv/bin/pip" install -q -r "$dir/requirements.txt" >> "$LOG_FILE" 2>&1 || true
+                        elif [[ -d "$dir/.venv" ]]; then
+                            "$dir/.venv/bin/pip" install -q -r "$dir/requirements.txt" >> "$LOG_FILE" 2>&1 || true
+                        else
+                            log_warn "$name has requirements.txt but no venv — skipping pip install (create venv to enable)"
+                        fi
+                    fi
+                fi
             else
                 log_warn "Failed: $name"
-            fi
-            # Reinstall Python deps if present — only into existing venvs to
-            # avoid polluting system Python.
-            if [[ -f "$dir/requirements.txt" ]]; then
-                if [[ -d "$dir/venv" ]]; then
-                    "$dir/venv/bin/pip" install -q -r "$dir/requirements.txt" >> "$LOG_FILE" 2>&1 || true
-                elif [[ -d "$dir/.venv" ]]; then
-                    "$dir/.venv/bin/pip" install -q -r "$dir/requirements.txt" >> "$LOG_FILE" 2>&1 || true
-                else
-                    log_warn "$name has requirements.txt but no venv — skipping pip install (create venv to enable)"
-                fi
+                GIT_FAILED=$((GIT_FAILED + 1))
             fi
         done
-        log_success "GitHub repos: $GIT_UPDATED/$GIT_COUNT updated"
+        log_success "Git repos: $GIT_UPDATED updated, $GIT_SKIPPED already latest, $GIT_FAILED failed ($GIT_TOTAL total)"
     else
         log_warn "$GITHUB_TOOL_DIR not found — skipping"
     fi
@@ -200,9 +223,7 @@ else
 fi
 echo ""
 
-# =============================================================================
 # 5) Ruby gems
-# =============================================================================
 if [[ "$SKIP_GEMS" == "false" ]]; then
     if command_exists gem; then
         # Aggregate all gems from modules
@@ -223,9 +244,7 @@ else
 fi
 echo ""
 
-# =============================================================================
 # 6) Cargo tools
-# =============================================================================
 if [[ "$SKIP_CARGO" == "false" ]]; then
     if command_exists cargo; then
         export PATH="$HOME/.cargo/bin:$PATH"
@@ -233,12 +252,40 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
         _collect_module_arrays "CARGO" ALL_CARGO
 
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
+            CARGO_TOTAL=${#ALL_CARGO[@]}
+            CARGO_UPDATED=0
+            CARGO_SKIPPED=0
+            CARGO_FAILED=0
+
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
             for crate in "${ALL_CARGO[@]}"; do
-                cargo install --force "$crate" >> "$LOG_FILE" 2>&1 && \
-                    log_success "Updated cargo: $crate" || \
-                    log_warn "Failed cargo: $crate"
+                # Without --force, cargo skips if the installed version matches latest
+                cargo_output=""
+                if cargo_output=$(cargo install "$crate" 2>&1); then
+                    if echo "$cargo_output" | grep -q "already installed"; then
+                        log_debug "Already latest: $crate"
+                        CARGO_SKIPPED=$((CARGO_SKIPPED + 1))
+                    else
+                        log_success "Updated cargo: $crate"
+                        CARGO_UPDATED=$((CARGO_UPDATED + 1))
+                        if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
+                            ln -sf "$HOME/.cargo/bin/$crate" "/usr/local/bin/$crate" 2>/dev/null || true
+                        fi
+                        track_version "$crate" "cargo" "latest"
+                    fi
+                else
+                    # cargo install exits non-zero for "already installed" on some versions
+                    if echo "$cargo_output" | grep -q "already installed"; then
+                        log_debug "Already latest: $crate"
+                        CARGO_SKIPPED=$((CARGO_SKIPPED + 1))
+                    else
+                        log_warn "Failed cargo: $crate"
+                        CARGO_FAILED=$((CARGO_FAILED + 1))
+                    fi
+                fi
+                echo "$cargo_output" >> "$LOG_FILE"
             done
+            log_success "Cargo tools: $CARGO_UPDATED updated, $CARGO_SKIPPED already latest, $CARGO_FAILED failed ($CARGO_TOTAL total)"
         fi
     else
         log_warn "cargo not found — skipping Cargo tool updates"
@@ -248,32 +295,61 @@ else
 fi
 echo ""
 
-# =============================================================================
 # 7) Binary releases (GitHub release assets)
-# =============================================================================
 if [[ "$SKIP_BINARY" == "false" ]]; then
     log_info "Updating binary releases..."
     BIN_TOTAL=0
     BIN_UPDATED=0
+    BIN_SKIPPED=0
+    BIN_FAILED=0
 
-    # Re-download only if the binary is already installed
+    # Re-download only if the binary is already installed and a new version exists
     update_binary() {
         local repo="$1" binary="$2" pattern="$3" dest="${4:-/usr/local/bin}"
-        if command_exists "$binary" || [[ -f "$dest/$binary" ]] || [[ -f "$dest/bin/$binary" ]]; then
-            BIN_TOTAL=$((BIN_TOTAL + 1))
-            if download_github_release "$repo" "$binary" "$pattern" "$dest" >> "$LOG_FILE" 2>&1; then
-                log_success "Updated: $binary"
-                BIN_UPDATED=$((BIN_UPDATED + 1))
+
+        # Skip if not installed
+        command_exists "$binary" || [[ -f "$dest/$binary" ]] || [[ -f "$dest/bin/$binary" ]] || return 0
+
+        BIN_TOTAL=$((BIN_TOTAL + 1))
+
+        # Get installed version from .versions file
+        local installed_ver=""
+        installed_ver=$(grep "^${binary}|" "$VERSION_FILE" 2>/dev/null | cut -d'|' -f3)
+
+        # Get latest release tag from GitHub
+        local api_url="https://api.github.com/repos/$repo/releases/latest"
+        local latest_tag=""
+        # shellcheck disable=SC2046  # Intentional word splitting of curl options
+        latest_tag=$(curl $(_github_curl_opts) "$api_url" 2>/dev/null \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)
+
+        if [[ -n "$latest_tag" && -n "$installed_ver" && "$latest_tag" == "$installed_ver" ]]; then
+            log_debug "Already latest: $binary ($latest_tag)"
+            BIN_SKIPPED=$((BIN_SKIPPED + 1))
+            return 0
+        fi
+
+        # Version differs or unknown — re-download
+        local old_ver="${installed_ver:-unknown}"
+        if download_github_release_update "$repo" "$binary" "$pattern" "$dest" >> "$LOG_FILE" 2>&1; then
+            local tag="${_RELEASE_TAG:-$latest_tag}"
+            track_version "$binary" "binary" "$tag"
+            if [[ "$old_ver" == "unknown" || "$old_ver" == "existing" || "$old_ver" == "latest" ]]; then
+                log_success "Updated: $binary (→ $tag)"
             else
-                log_warn "Failed: $binary"
+                log_success "Updated: $binary ($old_ver → $tag)"
             fi
+            BIN_UPDATED=$((BIN_UPDATED + 1))
+        else
+            log_warn "Failed: $binary"
+            BIN_FAILED=$((BIN_FAILED + 1))
         fi
     }
 
     # Iterate all BINARY_RELEASES_* registry arrays (defined in lib/installers.sh)
     _ALL_BIN_RELEASES=()
-    for _arr_name in BINARY_RELEASES_{MISC,NETWORKING,RECON,WEB,REVERSING,FORENSICS,ENTERPRISE,BLUETEAM,CONTAINERS,MALWARE,STEGO}; do
-        _append_module_array _ALL_BIN_RELEASES "$_arr_name"
+    for _br_mod in "${ALL_MODULES[@]}"; do
+        _append_module_array _ALL_BIN_RELEASES "BINARY_RELEASES_${_br_mod^^}"
     done
     for _entry in "${_ALL_BIN_RELEASES[@]}"; do
         IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
@@ -285,7 +361,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar"
 
     if [[ "$BIN_TOTAL" -gt 0 ]]; then
-        log_success "Binary releases: $BIN_UPDATED/$BIN_TOTAL updated"
+        log_success "Binary releases: $BIN_UPDATED updated, $BIN_SKIPPED already latest, $BIN_FAILED failed ($BIN_TOTAL total)"
     else
         log_info "No binary releases found to update"
     fi
@@ -294,9 +370,7 @@ else
 fi
 echo ""
 
-# =============================================================================
 # 8) Special tools
-# =============================================================================
 if [[ "$SKIP_SPECIAL" == "false" ]]; then
     log_info "Updating special tools..."
 
@@ -321,20 +395,19 @@ else
     log_warn "Skipping special tool updates"
 fi
 
-# =============================================================================
 # 9) Docker images
-# =============================================================================
 if [[ "$SKIP_DOCKER" == "false" ]]; then
     if command_exists docker; then
         log_info "Updating Docker images..."
         DOCKER_UPDATED=0
-        for img in "beefproject/beef" "bcsecurity/empire" "opensecurity/mobile-security-framework-mobsf" "spiderfoot/spiderfoot" "specterops/bloodhound" "strangebee/thehive:latest" "thehiveproject/cortex:latest" "trailofbits/echidna"; do
-            if docker images "${img%%:*}" -q 2>/dev/null | grep -q .; then
-                if docker pull "$img" >> "$LOG_FILE" 2>&1; then
-                    log_success "Updated Docker: $img"
+        for _docker_entry in "${ALL_DOCKER_IMAGES[@]}"; do
+            IFS='|' read -r _docker_img _docker_label <<< "$_docker_entry"
+            if docker images "${_docker_img%%:*}" -q 2>/dev/null | grep -q .; then
+                if docker pull "$_docker_img" >> "$LOG_FILE" 2>&1; then
+                    log_success "Updated Docker: $_docker_label"
                     DOCKER_UPDATED=$((DOCKER_UPDATED + 1))
                 else
-                    log_warn "Failed Docker: $img"
+                    log_warn "Failed Docker: $_docker_label"
                 fi
             fi
         done
@@ -345,9 +418,7 @@ else
 fi
 echo ""
 
-# =============================================================================
 # Done
-# =============================================================================
 disable_debug_trace
 
 echo ""

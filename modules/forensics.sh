@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Forensics
 # Disk forensics, memory forensics, file carving, incident response
-# =============================================================================
 
 FORENSICS_PACKAGES=(
     autopsy sleuthkit foremost scalpel

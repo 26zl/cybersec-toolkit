@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Wireless Security
 # WiFi, Bluetooth, SDR
-# =============================================================================
 
 WIRELESS_PACKAGES=(
     aircrack-ng reaver kismet pixiewps bully
@@ -15,7 +13,7 @@ WIRELESS_PACKAGES=(
     libnfc-dev avrdude
 )
 
-# --- Heavy packages (skipped with --skip-heavy) ---
+# Heavy packages (skipped with --skip-heavy)
 WIRELESS_HEAVY_PACKAGES=(gnuradio gqrx-sdr)
 
 WIRELESS_PIPX=(sipvicious)

@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Mobile Security
 # Android/iOS application testing, APK analysis, device interaction
-# =============================================================================
 
 MOBILE_PACKAGES=(adb smali scrcpy apksigner zipalign)
 

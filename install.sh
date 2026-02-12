@@ -1,6 +1,5 @@
 #!/bin/bash
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
-# =============================================================================
 # CyberSec Tools Installer — Modular, Profile-Based, Production-Grade
 #
 # The most comprehensive cybersecurity tool installer for Linux.
@@ -17,18 +16,17 @@
 #   sudo ./install.sh --dry-run              # Show what would install
 #   sudo ./install.sh --skip-heavy           # Skip large packages
 #   sudo ./install.sh --enable-docker        # Pull Docker images for C2/etc
-# =============================================================================
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
+source "$SCRIPT_DIR/lib/shared.sh"
 
 # ALL_MODULES is defined in lib/common.sh
 
-# =============================================================================
 # Argument parsing
-# =============================================================================
 PROFILE=""
 SELECTED_MODULES=()
 SELECTED_TOOLS=()
@@ -51,7 +49,7 @@ Options:
   --module <name>      Install specific module(s). Can be repeated.
                          Modules: misc, networking, recon, web, crypto,
                          pwn, reversing, forensics, malware, enterprise,
-                         wireless, password, stego, cloud, containers,
+                         wireless, cracking, stego, cloud, containers,
                          blueteam, mobile, blockchain
   --tool <name>        Install a single tool by name. Can be repeated.
                          Searches all modules for a matching package,
@@ -68,8 +66,8 @@ Options:
   --list-modules       List available modules and exit
   -h, --help           Show this help and exit
 
-Prerequisites are validated per-module: only runtimes needed by the
-selected modules are required. E.g. --module web requires go, cargo, gem.
+All runtimes (Python, Go, Ruby, Rust, Java) and dev libraries are
+installed automatically. Only Docker requires manual installation.
 
 Environment variables:
   GITHUB_TOOL_DIR      Where to clone GitHub repos (default: /opt)
@@ -108,7 +106,7 @@ list_profiles() {
 list_modules() {
     echo "Available modules:"
     echo ""
-    printf "  %-16s %s\n" "misc"       "Base dependencies, utilities, resources, C2, social engineering"
+    printf "  %-16s %s\n" "misc"       "Security tools, utilities, resources, C2, social engineering"
     printf "  %-16s %s\n" "networking" "Port scanning, packet capture, tunneling, MITM"
     printf "  %-16s %s\n" "recon"      "Subdomain enum, OSINT, intelligence gathering"
     printf "  %-16s %s\n" "web"        "Web app testing, fuzzing, scanning"
@@ -119,7 +117,7 @@ list_modules() {
     printf "  %-16s %s\n" "malware"    "Malware analysis, AV, YARA"
     printf "  %-16s %s\n" "enterprise" "AD, Kerberos, LDAP, Azure AD, lateral movement"
     printf "  %-16s %s\n" "wireless"   "WiFi, Bluetooth, SDR"
-    printf "  %-16s %s\n" "password"   "Hash cracking, brute force, wordlists"
+    printf "  %-16s %s\n" "cracking"   "Hash cracking, brute force, wordlists"
     printf "  %-16s %s\n" "stego"      "Steganography tools"
     printf "  %-16s %s\n" "cloud"      "AWS/Azure/GCP security"
     printf "  %-16s %s\n" "containers" "Docker/Kubernetes security"
@@ -154,9 +152,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# =============================================================================
 # Single-tool install (--tool)
-# =============================================================================
 # shellcheck disable=SC2034  # Arrays read via nameref
 install_single_tool() {
     local tool="$1"
@@ -173,13 +169,14 @@ install_single_tool() {
         return 1
     }
 
-    # --- APT packages ---
+    # APT packages
     local pkg_arrs=(
-        MISC_BASE_PACKAGES MISC_SECURITY_PACKAGES MISC_HEAVY_PACKAGES
+        SHARED_BASE_PACKAGES
+        MISC_PACKAGES MISC_HEAVY_PACKAGES
         NET_PACKAGES RECON_PACKAGES WEB_PACKAGES PWN_PACKAGES RE_PACKAGES
-        FORENSICS_PACKAGES MALWARE_PACKAGES WIRELESS_PACKAGES PASSWORD_PACKAGES
-        STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES ENTERPRISE_PACKAGES
-        CRYPTO_PACKAGES CLOUD_PACKAGES CONTAINER_PACKAGES
+        FORENSICS_PACKAGES MALWARE_PACKAGES WIRELESS_PACKAGES WIRELESS_HEAVY_PACKAGES
+        CRACKING_PACKAGES STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES
+        ENTERPRISE_PACKAGES CRYPTO_PACKAGES CLOUD_PACKAGES BLOCKCHAIN_PACKAGES
     )
     for a in "${pkg_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
@@ -195,11 +192,12 @@ install_single_tool() {
         fi
     done
 
-    # --- pipx ---
+    # pipx
     local pipx_arrs=(
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX PASSWORD_PIPX
-        STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX
+        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
+        STEGO_PIPX CLOUD_PIPX CONTAINER_PIPX BLUETEAM_PIPX MOBILE_PIPX
+        BLOCKCHAIN_PIPX
     )
     for a in "${pipx_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
@@ -210,11 +208,12 @@ install_single_tool() {
         fi
     done
 
-    # --- Go (match binary name from full import path) ---
+    # Go (match binary name from full import path)
     local go_arrs=(
         MISC_GO NET_GO RECON_GO WEB_GO CRYPTO_GO PWN_GO RE_GO
-        ENTERPRISE_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
-        FORENSICS_GO MALWARE_GO WIRELESS_GO PASSWORD_GO STEGO_GO
+        FORENSICS_GO MALWARE_GO ENTERPRISE_GO WIRELESS_GO CRACKING_GO
+        STEGO_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
+        BLOCKCHAIN_GO
     )
     for a in "${go_arrs[@]}"; do
         declare -p "$a" &>/dev/null || continue
@@ -231,10 +230,12 @@ install_single_tool() {
         done
     done
 
-    # --- Cargo ---
-    local known_cargo=(feroxbuster rustscan pwninit)
-    for crate in "${known_cargo[@]}"; do
-        if [[ "$crate" == "$tool" ]]; then
+    # Cargo
+    local cargo_arrs=(
+        WEB_CARGO NET_CARGO PWN_CARGO
+    )
+    for a in "${cargo_arrs[@]}"; do
+        if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via cargo..."
             cargo install "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
             if [[ -f "$HOME/.cargo/bin/$tool" ]]; then
@@ -244,7 +245,7 @@ install_single_tool() {
         fi
     done
 
-    # --- Gems ---
+    # Gems
     local gem_arrs=(WEB_GEMS PWN_GEMS STEGO_GEMS ENTERPRISE_GEMS)
     for a in "${gem_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
@@ -254,12 +255,13 @@ install_single_tool() {
         fi
     done
 
-    # --- Git repos (match name= prefix) ---
+    # Git repos (match name= prefix)
     local git_arrs=(
         MISC_RESOURCES MISC_POSTEXPLOIT MISC_SOCIAL MISC_CTF
         NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
-        FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT PASSWORD_GIT STEGO_GIT
-        CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
+        FORENSICS_GIT MALWARE_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT
+        STEGO_GIT CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
+        BLOCKCHAIN_GIT
     )
     for a in "${git_arrs[@]}"; do
         declare -p "$a" &>/dev/null || continue
@@ -304,9 +306,7 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     exit 0
 fi
 
-# =============================================================================
 # Resolve modules to install
-# =============================================================================
 MODULES_TO_INSTALL=()
 
 if [[ -n "$PROFILE" ]]; then
@@ -337,12 +337,7 @@ if [[ -n "$PROFILE" ]]; then
         fi
     done
 elif [[ ${#SELECTED_MODULES[@]} -gt 0 ]]; then
-    # Always include misc for base dependencies
-    # shellcheck disable=SC2076
-    if [[ ! " ${SELECTED_MODULES[*]} " =~ " misc " ]]; then
-        MODULES_TO_INSTALL=(misc)
-    fi
-    MODULES_TO_INSTALL+=("${SELECTED_MODULES[@]}")
+    MODULES_TO_INSTALL=("${SELECTED_MODULES[@]}")
 else
     # Default: full install
     MODULES_TO_INSTALL=("${ALL_MODULES[@]}")
@@ -351,9 +346,7 @@ fi
 # Export flags for modules
 export SKIP_HEAVY ENABLE_DOCKER INCLUDE_C2 UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
 
-# =============================================================================
 # Source selected modules
-# =============================================================================
 for mod in "${MODULES_TO_INSTALL[@]}"; do
     local_mod="$SCRIPT_DIR/modules/${mod}.sh"
     if [[ -f "$local_mod" ]]; then
@@ -364,9 +357,88 @@ for mod in "${MODULES_TO_INSTALL[@]}"; do
     fi
 done
 
-# =============================================================================
+# Time estimate helper
+# _count_array — returns the length of a named array, or 0 if it doesn't exist.
+_count_array() {
+    local arr_name="$1"
+    declare -p "$arr_name" &>/dev/null || { echo 0; return; }
+    local -n _ref="$arr_name"
+    echo "${#_ref[@]}"
+}
+
+# estimate_install_time — counts tools per install method from sourced module
+# arrays and displays a range-based time estimate.
+estimate_install_time() {
+    local apt_count=0 pipx_count=0 go_count=0 cargo_count=0 gem_count=0
+    local git_count=0 binary_count=0 build_count=0
+
+    # Shared base dependencies (always installed)
+    apt_count=$((apt_count + $(_count_array SHARED_BASE_PACKAGES)))
+
+    for mod in "${MODULES_TO_INSTALL[@]}"; do
+        local prefix
+        prefix=$(_module_prefix "$mod")
+        local mod_upper="${mod^^}"
+
+        # APT packages
+        apt_count=$((apt_count + $(_count_array "${prefix}_PACKAGES")))
+        if [[ "$SKIP_HEAVY" != "true" ]]; then
+            apt_count=$((apt_count + $(_count_array "${prefix}_HEAVY_PACKAGES")))
+        fi
+
+        # pipx / Go / Cargo / Gems
+        pipx_count=$((pipx_count + $(_count_array "${prefix}_PIPX")))
+        go_count=$((go_count + $(_count_array "${prefix}_GO")))
+        cargo_count=$((cargo_count + $(_count_array "${prefix}_CARGO")))
+        gem_count=$((gem_count + $(_count_array "${prefix}_GEMS")))
+
+        # Git repos (misc has multiple git arrays)
+        if [[ "$mod" == "misc" ]]; then
+            git_count=$((git_count + $(_count_array MISC_RESOURCES)))
+            git_count=$((git_count + $(_count_array MISC_POSTEXPLOIT)))
+            git_count=$((git_count + $(_count_array MISC_SOCIAL)))
+            git_count=$((git_count + $(_count_array MISC_CTF)))
+        else
+            git_count=$((git_count + $(_count_array "${prefix}_GIT")))
+        fi
+
+        # Binary releases (BINARY_RELEASES_<MODULE_UPPER> in installers.sh)
+        binary_count=$((binary_count + $(_count_array "BINARY_RELEASES_${mod_upper}")))
+
+        # Build from source (PREFIX_BUILD_NAMES)
+        build_count=$((build_count + $(_count_array "${prefix}_BUILD_NAMES")))
+    done
+
+    local total=$((apt_count + pipx_count + go_count + cargo_count + gem_count + git_count + binary_count + build_count))
+
+    # Per-method time benchmarks (seconds) — min/max for range estimate
+    local apt_min=0 apt_max=0
+    if [[ "$apt_count" -gt 0 ]]; then
+        apt_min=$((30 + apt_count / 10))    # batch install + resolution overhead
+        apt_max=$((60 + apt_count / 5))
+    fi
+    local pipx_min=$((pipx_count * 3))      pipx_max=$((pipx_count * 6))
+    local go_min=$((go_count * 4))           go_max=$((go_count * 8))
+    local cargo_min=$((cargo_count * 10))    cargo_max=$((cargo_count * 25))
+    local gem_min=$((gem_count * 2))         gem_max=$((gem_count * 5))
+    local git_min=$((git_count * 2))         git_max=$((git_count * 5))
+    local binary_min=$((binary_count * 3))   binary_max=$((binary_count * 8))
+    local build_min=$((build_count * 8))     build_max=$((build_count * 20))
+
+    local total_min_s=$((apt_min + pipx_min + go_min + cargo_min + gem_min + git_min + binary_min + build_min))
+    local total_max_s=$((apt_max + pipx_max + go_max + cargo_max + gem_max + git_max + binary_max + build_max))
+
+    # Round up to minutes
+    local min_minutes=$(( (total_min_s + 59) / 60 ))
+    local max_minutes=$(( (total_max_s + 59) / 60 ))
+
+    log_warn "Estimated install time: ~${min_minutes}-${max_minutes} minutes (${#MODULES_TO_INSTALL[@]} modules, ${total}+ tools)"
+    log_info "  Breakdown: ${apt_count} apt, ${pipx_count} pipx, ${go_count} go, ${cargo_count} cargo, ${gem_count} gem, ${git_count} git, ${binary_count} binary, ${build_count} source"
+    log_info "  Speed depends on network bandwidth, disk I/O, and CPU cores"
+    echo ""
+}
+
 # Dry run
-# =============================================================================
 if [[ "$DRY_RUN" == "true" ]]; then
     echo ""
     echo -e "${CYAN}${BOLD}=== DRY RUN ===${NC}"
@@ -385,12 +457,11 @@ if [[ "$DRY_RUN" == "true" ]]; then
         echo "  - install_module_${mod}"
     done
     echo ""
+    estimate_install_time
     exit 0
 fi
 
-# =============================================================================
 # Main installation
-# =============================================================================
 LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
 : > "$LOG_FILE"
 VERSION_FILE="$SCRIPT_DIR/.versions"
@@ -412,90 +483,16 @@ main() {
         enable_debug_trace
     fi
 
-    # =========================================================================
-    # Prerequisite check — verify required tools before starting
-    # =========================================================================
-    log_info "Checking prerequisites..."
-    local prereq_fail=0
-
-    # Hard requirements — abort if missing
-    for req in git curl; do
-        if ! command_exists "$req"; then
-            log_error "MISSING (required): $req — install it first"
-            prereq_fail=1
-        fi
-    done
-
-    if ! command_exists python3; then
-        log_error "MISSING (required): python3 — needed for pipx, venvs, and ~157 Python tools"
-        prereq_fail=1
-    fi
-
-    if [[ "$prereq_fail" -eq 1 ]]; then
-        echo ""
-        log_error "Aborting: install the missing prerequisites above and re-run."
-        exit 1
-    fi
-
-    # Module-based prerequisite checks — hard-fail for runtimes needed by selected modules
-    local need_go=false need_cargo=false need_gem=false need_build=false
-
-    for mod in "${MODULES_TO_INSTALL[@]}"; do
-        case "$mod" in
-            misc|networking|recon|web|pwn|enterprise|cloud) need_go=true ;;&
-            networking|web|pwn)                              need_cargo=true ;;&
-            web|pwn|reversing|stego|enterprise)              need_gem=true ;;&
-            recon|crypto|pwn|reversing|password)     need_build=true ;;&
-        esac
-    done
-
-    if [[ "$need_go" == "true" ]] && ! command_exists go; then
-        log_error "MISSING: go — required by selected modules ($(printf '%s ' "${MODULES_TO_INSTALL[@]}"))"
-        log_error "Install Go: https://go.dev/doc/install"
-        prereq_fail=1
-    fi
-
-    if [[ "$need_cargo" == "true" ]] && ! command_exists cargo; then
-        log_error "MISSING: cargo — required by selected modules"
-        log_error "Install Rust: https://rustup.rs/"
-        prereq_fail=1
-    fi
-
-    if [[ "$need_gem" == "true" ]] && ! command_exists gem; then
-        log_error "MISSING: gem — required by selected modules"
-        log_error "Install Ruby: apt install ruby-full / dnf install ruby / pacman -S ruby"
-        prereq_fail=1
-    fi
-
-    if [[ "$need_build" == "true" ]] && ! command_exists make && ! command_exists gcc; then
-        log_error "MISSING: make/gcc — required by selected modules"
-        log_error "Install build tools: apt install build-essential / dnf groupinstall 'Development Tools'"
-        prereq_fail=1
-    fi
-
+    # Docker is the only prerequisite users must install themselves
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]] && ! command_exists docker; then
         log_error "MISSING: docker — --enable-docker was set but Docker is not installed"
         log_error "Install Docker: https://docs.docker.com/engine/install/"
-        prereq_fail=1
-    fi
-
-    if ! command_exists pipx; then
-        log_error "MISSING: pipx — required for ~157 Python security tools"
-        log_error "Install pipx: https://pipx.pypa.io/stable/installation/"
-        prereq_fail=1
-    fi
-
-    if [[ "$prereq_fail" -eq 1 ]]; then
-        echo ""
-        log_error "Aborting: install the missing prerequisites above and re-run."
         exit 1
     fi
 
-    log_success "All prerequisites found"
-    echo ""
-
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules: ${MODULES_TO_INSTALL[*]}"
+    estimate_install_time
     log_info "Starting installation..."
     echo ""
 
@@ -515,7 +512,16 @@ main() {
     fi
     echo ""
 
-    # Stage 2: Install modules
+    # Stage 2: Install shared base dependencies (runtimes, compilers, dev libs)
+    install_shared_deps
+    echo ""
+
+    # Stage 3: Ensure additional toolchains are available
+    ensure_pipx
+    ensure_cargo
+    echo ""
+
+    # Stage 4: Install modules
     install_modules
 
     # Disable debug trace before summary output
@@ -560,7 +566,7 @@ main() {
     fi
 }
 
-# ----- Module installation ---------------------------------------------------
+# Module installation
 TOTAL_MODULE_FAILURES=0
 
 install_modules() {

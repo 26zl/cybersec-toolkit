@@ -1,11 +1,13 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
 # Module: Pwn / Exploit Dev
 # Binary exploitation, shellcode, fuzzing, exploit frameworks, payload generation
-# =============================================================================
 
-PWN_PACKAGES=(patchelf cmake spike)
+PWN_PACKAGES=(
+    patchelf spike
+    llvm llvm-dev clang lld
+    flex bison libpixman-1-dev
+)
 
 PWN_PIPX=(pwntools ROPgadget ropper boofuzz pwncat-cs scapy)
 
@@ -67,7 +69,7 @@ install_module_pwn() {
     build_from_source "preeny" "https://github.com/zardus/preeny.git" "make" || true
     build_from_source "AFLplusplus" "https://github.com/AFLplusplus/AFLplusplus.git" "make distrib" || true
     build_from_source "honggfuzz" "https://github.com/google/honggfuzz.git" "make" || true
-    build_from_source "radamsa" "https://github.com/aoh/radamsa.git" "make" || true
+    build_from_source "radamsa" "https://gitlab.com/akihe/radamsa.git" "make" || true
 
     # Searchsploit symlink
     install_searchsploit_symlink

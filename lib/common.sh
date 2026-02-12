@@ -1,10 +1,8 @@
 #!/bin/bash
-# =============================================================================
 # common.sh — Shared library for cybersec-tools-installer
 # Source this file: source "$SCRIPT_DIR/lib/common.sh"
-# =============================================================================
 
-# ----- Colors ----------------------------------------------------------------
+# Colors 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -13,7 +11,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# ----- Configurable defaults -------------------------------------------------
+# Configurable defaults
 GITHUB_TOOL_DIR="${GITHUB_TOOL_DIR:-/opt}"
 BURP_VERSION="${BURP_VERSION:-2024.10.1}"
 VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
@@ -21,7 +19,7 @@ LOG_FILE="${LOG_FILE:-/dev/null}"
 VERBOSE="${VERBOSE:-false}"
 PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
 
-# ----- Logging ---------------------------------------------------------------
+# Logging
 log_message() {
     echo -e "$1"
     if [[ -n "$LOG_FILE" ]]; then
@@ -38,7 +36,7 @@ log_debug() {
     log_message "${CYAN}[D]${NC} $1"
 }
 
-# ----- Debug trace (set -x to log file) --------------------------------------
+# Debug trace (set -x to log file)
 enable_debug_trace() {
     [[ "$VERBOSE" == "true" ]] || return 0
     [[ "$LOG_FILE" == "/dev/null" ]] && return 0
@@ -57,7 +55,7 @@ disable_debug_trace() {
     fi
 }
 
-# ----- System environment logging --------------------------------------------
+# System environment logging
 log_system_environment() {
     log_info "=== System Environment ==="
     log_info "  Hostname: $(hostname 2>/dev/null || echo unknown)"
@@ -94,7 +92,7 @@ log_system_environment() {
     log_info "=========================="
 }
 
-# ----- Go binary name helper --------------------------------------------------
+# Go binary name helper
 
 # _go_bin_name — extract the actual binary name from a `go install` path.
 # Handles /v2, /v3 module versions and /... wildcard suffixes.
@@ -115,7 +113,7 @@ _go_bin_name() {
     echo "$base"
 }
 
-# ----- Parallel install helpers -----------------------------------------------
+# Parallel install helpers
 
 # _wait_for_job_slot — blocks until fewer than PARALLEL_JOBS background jobs are running
 _wait_for_job_slot() {
@@ -146,7 +144,7 @@ _collect_parallel_results() {
     rm -rf "$rdir"
 }
 
-# ----- Distro detection -------------------------------------------------------
+# Distro detection
 detect_distro() {
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
@@ -199,7 +197,7 @@ detect_pkg_manager() {
     export PKG_MANAGER
 }
 
-# ----- Package manager abstraction -------------------------------------------
+# Package manager abstraction
 pkg_update() {
     case "$PKG_MANAGER" in
         apt)     sudo apt-get update -qq ;;
@@ -256,7 +254,7 @@ pkg_cleanup() {
     esac
 }
 
-# ----- Package installed check ------------------------------------------------
+# Package installed check
 pkg_is_installed() {
     local pkg="$1"
     case "$PKG_MANAGER" in
@@ -268,7 +266,7 @@ pkg_is_installed() {
     esac
 }
 
-# ----- Snap support -----------------------------------------------------------
+# Snap support
 snap_available() {
     command -v snap &>/dev/null
 }
@@ -282,7 +280,7 @@ snap_install() {
     fi
 }
 
-# ----- Command / tool helpers ------------------------------------------------
+# Command / tool helpers
 command_exists() {
     command -v "$1" &>/dev/null
 }
@@ -294,13 +292,37 @@ check_root() {
     fi
 }
 
-# ----- pipx ------------------------------------------------------------------
+# pipx — auto-install if not present
 ensure_pipx() {
-    if ! command_exists pipx; then
-        log_error "pipx not found — Python tools will NOT be installed"
-        log_error "Install pipx first: https://pipx.pypa.io/stable/installation/"
-        return 1
+    command_exists pipx && return 0
+
+    log_info "pipx not found — installing..."
+
+    # Try system package first (python3-pipx available on newer distros)
+    if pkg_install python3-pipx >> "$LOG_FILE" 2>&1 && command_exists pipx; then
+        log_success "pipx installed via $PKG_MANAGER"
+        return 0
     fi
+
+    # Fallback: pip3
+    if command_exists pip3; then
+        pip3 install --user pipx >> "$LOG_FILE" 2>&1 || \
+            pip3 install pipx >> "$LOG_FILE" 2>&1 || true
+        # Ensure pipx binary is in PATH
+        local pip_bin_dir
+        pip_bin_dir=$(python3 -m site --user-base 2>/dev/null)/bin
+        if [[ -d "$pip_bin_dir" ]] && [[ ! ":$PATH:" == *":$pip_bin_dir:"* ]]; then
+            export PATH="$pip_bin_dir:$PATH"
+        fi
+    fi
+
+    if command_exists pipx; then
+        log_success "pipx installed via pip3"
+        return 0
+    fi
+
+    log_error "Failed to install pipx — Python security tools will not be available"
+    return 1
 }
 
 pipx_install() {
@@ -323,7 +345,7 @@ pipx_remove() {
     fi
 }
 
-# ----- Git clone helper -------------------------------------------------------
+# Git clone helper
 git_clone_or_pull() {
     local repo_url="$1"
     local dest="$2"
@@ -337,7 +359,7 @@ git_clone_or_pull() {
     fi
 }
 
-# ----- Progress bar -----------------------------------------------------------
+# Progress bar
 show_progress() {
     local current=$1
     local total=$2
@@ -359,7 +381,7 @@ show_progress() {
     [[ -n "$label" ]] && printf "(%s)" "$label"
 }
 
-# ----- Banner ----------------------------------------------------------------
+# Banner
 print_banner() {
     echo -e "${CYAN}${BOLD}"
     cat << 'BANNER'
@@ -377,9 +399,9 @@ BANNER
     echo ""
 }
 
-# ----- Module registry (single source of truth) -----------------------------
+# Module registry (single source of truth) 
 # shellcheck disable=SC2034  # Used by all scripts that source this file
-ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless password stego cloud containers blueteam mobile blockchain)
+ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain)
 
 # Module name → array prefix mapping
 _module_prefix() {
@@ -415,7 +437,7 @@ _collect_module_arrays() {
     done
 }
 
-# ----- Architecture detection ------------------------------------------------
+# Architecture detection
 detect_arch() {
     local machine
     machine=$(uname -m)
@@ -428,11 +450,11 @@ detect_arch() {
     export SYS_ARCH SYS_ARCH_ALT
 }
 
-# ----- Auto-init on source ---------------------------------------------------
+# Auto-init on source
 detect_pkg_manager
 detect_arch
 
-# ----- Tool paths (system-wide install) --------------------------------------
+# Tool paths (system-wide install)
 # Go: GOBIN puts binaries directly in /usr/local/bin (accessible to all users)
 export GOPATH="${GOPATH:-/opt/go}"
 export GOBIN="/usr/local/bin"

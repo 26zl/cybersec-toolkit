@@ -1,12 +1,10 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by modules and scripts that source this file
-# =============================================================================
 # installers.sh — Install method helpers for cybersec-tools-installer
 # Provides batch install functions for: apt, pipx, go, cargo, gem, git, binary, docker
 # Source AFTER common.sh
-# =============================================================================
 
-# ----- Distro-specific package name translation ------------------------------
+# Distro-specific package name translation
 fixup_package_names() {
     local -n arr=$1
     local new_arr=()
@@ -65,6 +63,23 @@ fixup_package_names() {
                     sonic-visualiser)   pkg="sonic-visualiser" ;;
                     qemu-user-static)   pkg="qemu-user-static" ;;
                     qemu-system-x86)    pkg="qemu-system-x86" ;;
+                    libseccomp-dev)     pkg="libseccomp-devel" ;;
+                    binutils-dev)       pkg="binutils-devel" ;;
+                    libedit-dev)        pkg="libedit-devel" ;;
+                    liblzma-dev)        pkg="xz-devel" ;;
+                    libkrb5-dev)        pkg="krb5-devel" ;;
+                    libsctp-dev)        pkg="lksctp-tools-devel" ;;
+                    libnfnetlink-dev)   pkg="libnfnetlink-devel" ;;
+                    libgmp-dev)         pkg="gmp-devel" ;;
+                    libecm-dev)         pkg="gmp-ecm-devel" ;;
+                    libglib2.0-dev)     pkg="glib2-devel" ;;
+                    libreadline-dev)    pkg="readline-devel" ;;
+                    libsqlite3-dev)     pkg="sqlite-devel" ;;
+                    libcurl4-openssl-dev) pkg="libcurl-devel" ;;
+                    libldap2-dev)       pkg="openldap-devel" ;;
+                    libsasl2-dev)       pkg="cyrus-sasl-devel" ;;
+                    llvm-dev)           pkg="llvm-devel" ;;
+                    libpixman-1-dev)    pkg="pixman-devel" ;;
                     sslsplit)           pkg="sslsplit" ;;
                 esac
                 ;;
@@ -102,6 +117,23 @@ fixup_package_names() {
                     upx-ucl)            pkg="upx" ;;
                     qemu-user-static)   pkg="qemu-user-static" ;;
                     qemu-system-x86)    pkg="qemu-system-x86" ;;
+                    libseccomp-dev)     pkg="libseccomp" ;;
+                    binutils-dev)       pkg="binutils-devel" ;;
+                    libedit-dev)        pkg="libedit" ;;
+                    liblzma-dev)        pkg="xz" ;;
+                    libkrb5-dev)        pkg="krb5" ;;
+                    libsctp-dev)        pkg="lksctp-tools" ;;
+                    libnfnetlink-dev)   pkg="libnfnetlink" ;;
+                    libgmp-dev)         pkg="gmp" ;;
+                    libecm-dev)         continue ;;
+                    libglib2.0-dev)     pkg="glib2" ;;
+                    libreadline-dev)    pkg="readline" ;;
+                    libsqlite3-dev)     pkg="sqlite" ;;
+                    libcurl4-openssl-dev) pkg="curl" ;;
+                    libldap2-dev)       pkg="libldap" ;;
+                    libsasl2-dev)       pkg="libsasl" ;;
+                    llvm-dev)           pkg="llvm" ;;
+                    libpixman-1-dev)    pkg="pixman" ;;
                     sslsplit)           pkg="sslsplit" ;;
                 esac
                 ;;
@@ -139,6 +171,23 @@ fixup_package_names() {
                     auditd)             pkg="audit" ;;
                     qemu-user-static)   pkg="qemu-linux-user" ;;
                     qemu-system-x86)    pkg="qemu-x86" ;;
+                    libseccomp-dev)     pkg="libseccomp-devel" ;;
+                    binutils-dev)       pkg="binutils-devel" ;;
+                    libedit-dev)        pkg="libedit-devel" ;;
+                    liblzma-dev)        pkg="xz-devel" ;;
+                    libkrb5-dev)        pkg="krb5-devel" ;;
+                    libsctp-dev)        pkg="lksctp-tools-devel" ;;
+                    libnfnetlink-dev)   pkg="libnfnetlink-devel" ;;
+                    libgmp-dev)         pkg="gmp-devel" ;;
+                    libecm-dev)         pkg="gmp-ecm-devel" ;;
+                    libglib2.0-dev)     pkg="glib2-devel" ;;
+                    libreadline-dev)    pkg="readline-devel" ;;
+                    libsqlite3-dev)     pkg="sqlite3-devel" ;;
+                    libcurl4-openssl-dev) pkg="libcurl-devel" ;;
+                    libldap2-dev)       pkg="openldap2-devel" ;;
+                    libsasl2-dev)       pkg="cyrus-sasl-devel" ;;
+                    llvm-dev)           pkg="llvm-devel" ;;
+                    libpixman-1-dev)    pkg="libpixman-1-devel" ;;
                     sslsplit)           pkg="sslsplit" ;;
                 esac
                 ;;
@@ -152,7 +201,7 @@ fixup_package_names() {
     fi
 }
 
-# ----- Batch APT install with progress and distro fixup ---------------------
+# Batch APT install with progress and distro fixup
 install_apt_batch() {
     local label="$1"; shift
     local -a packages=("$@")
@@ -161,33 +210,46 @@ install_apt_batch() {
 
     local total=${#packages[@]}
     [[ "$total" -eq 0 ]] && return 0
-    local current=0 failed=0 skipped=0
+    local failed=0
 
     log_debug "install_apt_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
     log_info "Installing ${label} ($total packages)..."
-    for pkg in "${packages[@]}"; do
-        current=$((current + 1))
-        show_progress "$current" "$total" "$pkg"
-        # apt/dnf/pacman handle already-installed packages gracefully (no-op),
-        # but we still track the outcome consistently.
-        if ! pkg_install "$pkg" >> "$LOG_FILE" 2>&1; then
-            log_error "Failed: $pkg"
-            failed=$((failed + 1))
-        else
+
+    # Fast path: try all packages in one transaction (~50-80% faster)
+    if pkg_install "${packages[@]}" >> "$LOG_FILE" 2>&1; then
+        # All succeeded — track versions in bulk
+        for pkg in "${packages[@]}"; do
             track_version "$pkg" "apt" "system"
-        fi
-    done
-    echo ""
-    log_success "${label}: $((total - failed))/$total installed ($failed failed)"
+        done
+        echo ""
+        log_success "${label}: ${total}/${total} installed (0 failed) [batch]"
+    else
+        # Fallback: one-by-one to identify broken packages
+        log_warn "${label}: batch install failed — falling back to per-package install"
+        local current=0
+        for pkg in "${packages[@]}"; do
+            current=$((current + 1))
+            show_progress "$current" "$total" "$pkg"
+            if ! pkg_install "$pkg" >> "$LOG_FILE" 2>&1; then
+                log_error "Failed: $pkg"
+                failed=$((failed + 1))
+            else
+                track_version "$pkg" "apt" "system"
+            fi
+        done
+        echo ""
+        log_success "${label}: $((total - failed))/$total installed ($failed failed) [fallback]"
+    fi
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_apt_batch: '$label' completed in ${_batch_elapsed}s"
     [[ "$failed" -gt 0 ]] && return 1
+    return 0
 }
 
-# ----- Batch pipx install ---------------------------------------------------
+# Batch pipx install
 install_pipx_batch() {
     local label="$1"; shift
     local -a tools=("$@")
@@ -230,9 +292,10 @@ install_pipx_batch() {
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_pipx_batch: '$label' completed in ${_batch_elapsed}s"
     [[ "$failed" -gt 0 ]] && return 1
+    return 0
 }
 
-# ----- Batch Go install -----------------------------------------------------
+# Batch Go install
 install_go_batch() {
     local label="$1"; shift
     local -a tools=("$@")
@@ -308,9 +371,10 @@ install_go_batch() {
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_go_batch: '$label' completed in ${_batch_elapsed}s"
     [[ "$failed" -gt 0 ]] && return 1
+    return 0
 }
 
-# ----- Batch cargo install --------------------------------------------------
+# Batch cargo install
 install_cargo_batch() {
     local label="$1"; shift
     local -a crates=("$@")
@@ -356,9 +420,10 @@ install_cargo_batch() {
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_cargo_batch: '$label' completed in ${_batch_elapsed}s"
     [[ "$failed" -gt 0 ]] && return 1
+    return 0
 }
 
-# ----- Batch gem install ----------------------------------------------------
+# Batch gem install
 install_gem_batch() {
     local label="$1"; shift
     local -a gems=("$@")
@@ -403,9 +468,10 @@ install_gem_batch() {
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_gem_batch: '$label' completed in ${_batch_elapsed}s"
     [[ "$failed" -gt 0 ]] && return 1
+    return 0
 }
 
-# ----- Post-clone setup for git repos ---------------------------------------
+# Post-clone setup for git repos
 # Creates isolated venvs for Python repos with requirements.txt.
 # Does NOT execute setup.py/pyproject.toml (supply-chain risk: arbitrary code as root).
 # Only installs pinned dependencies from requirements.txt into the venv.
@@ -454,7 +520,7 @@ PYWRAP
     fi
 }
 
-# ----- Batch git clone with auto-setup -------------------------------------
+# Batch git clone with auto-setup
 # Usage: install_git_batch "Label" name1=url1 name2=url2 ...
 install_git_batch() {
     local label="$1"; shift
@@ -500,7 +566,7 @@ install_git_batch() {
         # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
         local failed=$_par_failed skipped=$_par_skipped
     else
-        # --- Sequential mode (original) ---
+        # Sequential mode (original)
         local current=0 failed=0 skipped=0
         for entry in "${repos[@]}"; do
             current=$((current + 1))
@@ -528,9 +594,10 @@ install_git_batch() {
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_git_batch: '$label' completed in ${_batch_elapsed}s"
     [[ "$failed" -gt 0 ]] && return 1
+    return 0
 }
 
-# ----- GitHub API curl options (with optional token auth) -------------------
+# GitHub API curl options (with optional token auth)
 _github_curl_opts() {
     local -a opts=(-sSL)
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -539,7 +606,7 @@ _github_curl_opts() {
     echo "${opts[@]}"
 }
 
-# ----- Verify download against release checksum file ------------------------
+# Verify download against release checksum file
 # Looks for SHA256 checksum files in the same GitHub release and verifies
 # the downloaded file.  Returns 0 on match, 1 on mismatch or missing checksums.
 verify_github_checksum() {
@@ -592,7 +659,7 @@ for asset in data.get('assets', []):
     fi
 }
 
-# ----- Download GitHub release binary ---------------------------------------
+# Download GitHub release binary
 # Usage: download_github_release "owner/repo" "binary_name" "filename_pattern" [dest_dir]
 download_github_release() {
     local repo="$1"
@@ -629,6 +696,10 @@ download_github_release() {
         log_error "Could not fetch release info for $binary"
         return 1
     fi
+
+    # Extract actual release tag for version tracking
+    local release_tag=""
+    release_tag=$(echo "$release_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || true)
 
     # Parse download URL using Python (portable — no grep -P dependency)
     local download_url
@@ -694,7 +765,7 @@ for asset in data.get('assets', []):
             rm -rf "$tmp_dir"
             if command_exists "$binary"; then
                 log_success "Installed: $binary (.deb)"
-                track_version "$binary" "binary" "latest"
+                track_version "$binary" "binary" "${release_tag:-latest}"
             else
                 log_error "Install failed: $binary (.deb) — binary not found after dpkg"
                 return 1
@@ -711,7 +782,7 @@ WRAPPER
             sudo chmod +x "/usr/local/bin/$binary"
             rm -rf "$tmp_dir"
             log_success "Installed: $binary (.jar)"
-            track_version "$binary" "binary" "latest"
+            track_version "$binary" "binary" "${release_tag:-latest}"
             return 0 ;;
         *)
             chmod +x "$tmp_dir/$asset_name" ;;
@@ -760,12 +831,12 @@ WRAPPER
 
     if command_exists "$binary"; then
         log_success "Installed: $binary"
-        track_version "$binary" "binary" "latest"
+        track_version "$binary" "binary" "${release_tag:-latest}"
     else
         # Binary may be in dest_dir but not in PATH — still a success if file exists
         if [[ -f "$dest_dir/$binary" ]] || [[ -f "$dest_dir/bin/$binary" ]]; then
             log_success "Installed: $binary (in $dest_dir)"
-            track_version "$binary" "binary" "latest"
+            track_version "$binary" "binary" "${release_tag:-latest}"
         else
             log_error "Install failed: $binary"
             return 1
@@ -773,7 +844,155 @@ WRAPPER
     fi
 }
 
-# ----- Docker image pull ----------------------------------------------------
+# Download GitHub release binary (update mode — no skip)
+# Same as download_github_release() but does NOT skip already-installed binaries.
+# Used by scripts/update.sh to force re-download when a new version is detected.
+# Returns the release tag via the global _RELEASE_TAG variable.
+_RELEASE_TAG=""
+download_github_release_update() {
+    local repo="$1"
+    local binary="$2"
+    local pattern="$3"
+    local dest_dir="${4:-/usr/local/bin}"
+    _RELEASE_TAG=""
+
+    # Ensure unzip is available for .zip archives
+    if ! command_exists unzip; then
+        pkg_install unzip >> "$LOG_FILE" 2>&1 || true
+    fi
+
+    # Adapt arch tokens in the pattern to match the current system architecture
+    if [[ "$SYS_ARCH" != "amd64" ]]; then
+        pattern="${pattern//amd64/$SYS_ARCH}"
+        pattern="${pattern//x86_64/$SYS_ARCH_ALT}"
+    fi
+
+    log_debug "download_github_release_update: repo=$repo binary=$binary pattern=$pattern"
+    log_info "Downloading $binary from $repo releases..."
+    local api_url="https://api.github.com/repos/$repo/releases/latest"
+    local release_json
+    # shellcheck disable=SC2046  # Intentional word splitting of curl options
+    release_json=$(curl $(_github_curl_opts) "$api_url" 2>>"$LOG_FILE")
+    if [[ -z "$release_json" ]]; then
+        log_error "Could not fetch release info for $binary"
+        return 1
+    fi
+
+    # Extract the release tag
+    _RELEASE_TAG=$(echo "$release_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)
+
+    # Parse download URL using Python (portable — no grep -P dependency)
+    local download_url
+    download_url=$(echo "$release_json" | python3 -c "
+import json, sys, re
+data = json.load(sys.stdin)
+for asset in data.get('assets', []):
+    if re.search(r'''$pattern''', asset.get('name', '')):
+        print(asset['browser_download_url'])
+        break
+" 2>>"$LOG_FILE")
+
+    if [[ -z "$download_url" ]]; then
+        log_error "Could not find release for $binary (pattern: $pattern)"
+        return 1
+    fi
+
+    log_debug "download_github_release_update: URL=$download_url"
+
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    local asset_name
+    asset_name=$(basename "$download_url")
+    if ! curl -sSL -o "$tmp_dir/$asset_name" "$download_url" >> "$LOG_FILE" 2>&1; then
+        log_error "Download failed: $binary"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    # Verify checksum — fail-closed on mismatch, warn-only if no checksums available
+    if ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
+        if [[ -f "$tmp_dir/.checksum_mismatch" ]]; then
+            log_error "Aborting update of $binary due to checksum mismatch"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    fi
+
+    # Handle archive types
+    case "$download_url" in
+        *.tar.gz|*.tgz)
+            tar xzf "$tmp_dir/$asset_name" -C "$tmp_dir" 2>>"$LOG_FILE" ;;
+        *.zip)
+            unzip -qo "$tmp_dir/$asset_name" -d "$tmp_dir" 2>>"$LOG_FILE" ;;
+        *.deb)
+            if [[ "$PKG_MANAGER" != "apt" ]]; then
+                log_error "$binary is a .deb package — not supported on $PKG_MANAGER"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            # shellcheck disable=SC2024  # Script runs as root; redirect is fine
+            if ! sudo dpkg -i "$tmp_dir/$asset_name" >> "$LOG_FILE" 2>&1; then
+                # shellcheck disable=SC2024  # Script runs as root; redirect is fine
+                if ! sudo apt-get install -f -y >> "$LOG_FILE" 2>&1; then
+                    rm -rf "$tmp_dir"
+                    return 1
+                fi
+            fi
+            rm -rf "$tmp_dir"
+            return 0 ;;
+        *.jar)
+            sudo mkdir -p "$dest_dir"
+            sudo cp "$tmp_dir/$asset_name" "$dest_dir/$binary.jar"
+            sudo tee "/usr/local/bin/$binary" > /dev/null << WRAPPER
+#!/bin/bash
+exec java -jar "$dest_dir/$binary.jar" "\$@"
+WRAPPER
+            sudo chmod +x "/usr/local/bin/$binary"
+            rm -rf "$tmp_dir"
+            return 0 ;;
+        *)
+            chmod +x "$tmp_dir/$asset_name" ;;
+    esac
+
+    # Find the binary in extracted files
+    local found
+    found=$(find "$tmp_dir" -name "$binary" -type f 2>/dev/null | head -1)
+    if [[ -z "$found" ]]; then
+        found=$(find "$tmp_dir" -type f -executable 2>/dev/null | head -1)
+    fi
+    if [[ -z "$found" ]]; then
+        found="$tmp_dir/$asset_name"
+    fi
+
+    if [[ "$dest_dir" != "/usr/local/bin" ]]; then
+        sudo mkdir -p "$dest_dir"
+        sudo cp -a "$tmp_dir"/* "$dest_dir/" 2>/dev/null || true
+        local dest_bin=""
+        for candidate in \
+            "$dest_dir/bin/$binary" \
+            "$dest_dir/bin/${binary}.sh" \
+            "$dest_dir/$binary" \
+            "$dest_dir/${binary}.sh"; do
+            if [[ -f "$candidate" ]]; then
+                dest_bin="$candidate"
+                break
+            fi
+        done
+        if [[ -z "$dest_bin" ]]; then
+            dest_bin=$(find "$dest_dir" \( -name "$binary" -o -name "${binary}.sh" \) -type f 2>/dev/null | head -1)
+        fi
+        if [[ -n "$dest_bin" ]]; then
+            sudo chmod +x "$dest_bin" 2>/dev/null || true
+            sudo ln -sf "$dest_bin" "/usr/local/bin/$binary" 2>/dev/null || true
+        fi
+    else
+        sudo install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"
+    fi
+    rm -rf "$tmp_dir"
+    return 0
+}
+
+# Docker image pull
 docker_pull() {
     local image="$1"
     local name="$2"
@@ -793,7 +1012,7 @@ docker_pull() {
     fi
 }
 
-# ----- Version tracking -----------------------------------------------------
+# Version tracking
 track_version() {
     local tool="$1"
     local method="$2"
@@ -813,7 +1032,7 @@ track_version() {
     echo "${tool}|${method}|${version}|${timestamp}" >> "$version_file"
 }
 
-# ----- Build from source helper ---------------------------------------------
+# Build from source helper
 build_from_source() {
     local name="$1"
     local url="$2"
@@ -821,9 +1040,9 @@ build_from_source() {
     local dest="$GITHUB_TOOL_DIR/$name"
 
     git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1 || return 1
-    # Run build in a subshell to avoid changing the caller's working directory
-    # shellcheck disable=SC2086  # Intentional word splitting on build command
-    if (cd "$dest" && $build_cmd) >> "$LOG_FILE" 2>&1; then
+    # Run build in a subshell to avoid changing the caller's working directory.
+    # Uses bash -c to support multi-step commands (e.g. "cmake . && make").
+    if (cd "$dest" && bash -c "$build_cmd") >> "$LOG_FILE" 2>&1; then
         log_success "Built: $name"
         track_version "$name" "source" "HEAD"
     else
@@ -832,14 +1051,14 @@ build_from_source() {
     fi
 }
 
-# ----- Binary release registry (single source of truth) --------------------
+# Binary release registry (single source of truth) 
 # Format: "repo|binary|pattern|dest_dir" (dest_dir optional, defaults to /usr/local/bin)
 # Used by modules for install and scripts/update.sh for updates.
 BINARY_RELEASES_MISC=(
     "DominicBreuker/pspy|pspy|pspy64$"
     "gophish/gophish|gophish|linux-64bit"
     "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz"
-    "gitleaks/gitleaks|gitleaks|linux_amd64\\.tar\\.gz"
+    "gitleaks/gitleaks|gitleaks|linux_x64\\.tar\\.gz"
 )
 BINARY_RELEASES_NETWORKING=(
     "nicocha30/ligolo-ng|ligolo-proxy|linux_amd64"
@@ -871,7 +1090,7 @@ BINARY_RELEASES_CONTAINERS=(
     "anchore/grype|grype|linux_amd64\\.tar\\.gz"
     "anchore/syft|syft|linux_amd64\\.tar\\.gz"
     "Shopify/kubeaudit|kubeaudit|linux_amd64\\.tar\\.gz"
-    "kubescape/kubescape|kubescape|ubuntu-latest"
+    "kubescape/kubescape|kubescape|linux_amd64\\.tar\\.gz"
     "cdk-team/CDK|cdk|cdk_linux_amd64"
 )
 BINARY_RELEASES_MALWARE=(
@@ -882,23 +1101,85 @@ BINARY_RELEASES_STEGO=(
     "RickdeJager/stegseek|stegseek|\\.deb"
 )
 
+# Docker image registry (single source of truth)
+# Format: "image|label"
+# Used by modules for install and scripts for update/remove/verify.
+ALL_DOCKER_IMAGES=(
+    "beefproject/beef|BeEF"
+    "bcsecurity/empire|Empire"
+    "opensecurity/mobile-security-framework-mobsf|MobSF"
+    "spiderfoot/spiderfoot|SpiderFoot"
+    "specterops/bloodhound|BloodHound CE"
+    "strangebee/thehive:latest|TheHive"
+    "thehiveproject/cortex:latest|Cortex"
+    "trailofbits/echidna|Echidna"
+)
+
 # install_binary_releases — install all binary releases from a registry array.
 # Usage: install_binary_releases "${BINARY_RELEASES_MISC[@]}"
+# Supports parallel downloads when PARALLEL_JOBS > 1 (~3-4x faster, network I/O bound).
 install_binary_releases() {
-    for _entry in "$@"; do
-        IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
-        download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-/usr/local/bin}" || true
-    done
+    local -a entries=("$@")
+    local total=${#entries[@]}
+    [[ "$total" -eq 0 ]] && return 0
+
+    log_debug "install_binary_releases: starting with $total items, PARALLEL_JOBS=$PARALLEL_JOBS"
+    local _batch_start; _batch_start=$(date +%s)
+
+    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+        # --- Parallel mode ---
+        local _results_dir; _results_dir=$(mktemp -d)
+
+        for _entry in "${entries[@]}"; do
+            IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+            _dest="${_dest:-/usr/local/bin}"
+
+            # Skip-check in main process (avoid spawning a job for already-installed tools)
+            if command_exists "$_binary"; then
+                log_success "Already installed: $_binary"
+                printf 'skip\nexisting\n' > "$_results_dir/$_binary"
+                continue
+            fi
+
+            _wait_for_job_slot
+
+            (
+                if download_github_release "$_repo" "$_binary" "$_pattern" "$_dest" >> "$LOG_FILE" 2>&1; then
+                    # Read the actual tag that download_github_release stored
+                    local _stored_ver=""
+                    _stored_ver=$(grep "^${_binary}|" "$VERSION_FILE" 2>/dev/null | cut -d'|' -f3)
+                    printf 'ok\n%s\n' "${_stored_ver:-latest}" > "$_results_dir/$_binary"
+                else
+                    printf 'fail\n\n' > "$_results_dir/$_binary"
+                fi
+            ) &
+        done
+        wait
+
+        _collect_parallel_results "$_results_dir" "binary"
+        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
+        local failed=$_par_failed skipped=$_par_skipped
+        log_success "Binary releases: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
+    else
+        # --- Sequential mode (original) ---
+        for _entry in "${entries[@]}"; do
+            IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+            download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-/usr/local/bin}" || true
+        done
+    fi
+
+    local _batch_elapsed=$(( $(date +%s) - _batch_start ))
+    log_debug "install_binary_releases: completed in ${_batch_elapsed}s"
 }
 
-# ----- Install searchsploit symlink ----------------------------------------
+# Install searchsploit symlink
 install_searchsploit_symlink() {
     if [[ -f "$GITHUB_TOOL_DIR/exploitdb/searchsploit" ]]; then
         sudo ln -sf "$GITHUB_TOOL_DIR/exploitdb/searchsploit" /usr/local/bin/searchsploit 2>/dev/null
     fi
 }
 
-# ----- Metasploit -----------------------------------------------------------
+# Metasploit
 install_metasploit() {
     if command_exists msfconsole; then
         log_success "Metasploit already installed"
@@ -935,17 +1216,37 @@ install_metasploit() {
 
     chmod 755 "$tmp_installer"
     if "$tmp_installer" >> "$LOG_FILE" 2>&1; then
-        log_success "Metasploit installed"
+        log_success "Metasploit installed via Rapid7 script"
         track_version "metasploit" "special" "latest"
-    else
-        log_error "Metasploit installation failed"
         rm -f "$tmp_installer"
-        return 1
+        return 0
     fi
     rm -f "$tmp_installer"
+
+    # Second fallback: manually add apt.metasploit.com repo (modern signed-by keyring)
+    if [[ "$PKG_MANAGER" == "apt" ]]; then
+        log_warn "Rapid7 script failed — trying manual apt.metasploit.com repo setup"
+        local _keyring="/usr/share/keyrings/metasploit-framework.gpg"
+        curl -fsSL "https://apt.metasploit.com/metasploit-framework.gpg.key" 2>>"$LOG_FILE" \
+            | gpg --dearmor 2>/dev/null | tee "$_keyring" >/dev/null 2>&1
+        if [[ -f "$_keyring" ]]; then
+            echo "deb [signed-by=$_keyring] https://apt.metasploit.com/ xenial main" \
+                > /etc/apt/sources.list.d/metasploit-framework.list
+            pkg_update >> "$LOG_FILE" 2>&1
+            if pkg_install metasploit-framework >> "$LOG_FILE" 2>&1; then
+                log_success "Metasploit installed via apt.metasploit.com"
+                track_version "metasploit" "apt" "latest"
+                return 0
+            fi
+        fi
+    fi
+
+    log_error "All Metasploit installation methods failed"
+    rm -f "$tmp_installer"
+    return 1
 }
 
-# ----- Burp Suite -----------------------------------------------------------
+# Burp Suite
 # NOTE: Burp Suite requires a GUI installer and cannot be fully automated.
 # This downloads the installer and provides instructions for manual completion.
 install_burpsuite() {
@@ -972,7 +1273,7 @@ install_burpsuite() {
     track_version "burpsuite" "special" "$version (downloaded, needs manual install)"
 }
 
-# ----- OWASP ZAP ------------------------------------------------------------
+# OWASP ZAP
 install_zap() {
     if command_exists zaproxy; then
         log_success "OWASP ZAP already installed"

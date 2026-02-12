@@ -6,20 +6,10 @@
 # post-exploitation, mobile, resources
 # =============================================================================
 
-# --- Base dependencies (always installed first) ---
-MISC_BASE_PACKAGES=(
-    git curl wget openssl build-essential unzip
-    python3 python3-pip python3-venv python3-dev
-    ruby ruby-dev golang-go default-jdk
-    libpcap-dev libssl-dev libffi-dev
-    zlib1g-dev libxml2-dev libxslt1-dev
-    dos2unix rlwrap imagemagick
-)
+# Security / detection tools
+MISC_PACKAGES=(lynis rkhunter chkrootkit)
 
-# --- Security / detection tools ---
-MISC_SECURITY_PACKAGES=(lynis rkhunter chkrootkit)
-
-# --- Heavy tools (skipped with --skip-heavy) ---
+# Heavy tools (skipped with --skip-heavy)
 MISC_HEAVY_PACKAGES=(gimp audacity sagemath)
 
 MISC_PIPX=(arsenal-cli sploitscan faraday-cli)
@@ -31,7 +21,7 @@ MISC_GO=(
     "github.com/projectdiscovery/notify/cmd/notify@latest"
 )
 
-# --- Reference repos / wordlists ---
+# Reference repos / wordlists
 MISC_RESOURCES=(
     "SecLists=https://github.com/danielmiessler/SecLists.git"
     "PayloadsAllTheThings=https://github.com/swisskyrepo/PayloadsAllTheThings.git"
@@ -45,7 +35,7 @@ MISC_RESOURCES=(
     "BlueTeam-Tools=https://github.com/A-poc/BlueTeam-Tools.git"
 )
 
-# --- Post-exploitation tools ---
+# Post-exploitation tools
 MISC_POSTEXPLOIT=(
     "PEASS-ng=https://github.com/peass-ng/PEASS-ng.git"
     "linux-exploit-suggester=https://github.com/The-Z-Labs/linux-exploit-suggester.git"
@@ -65,10 +55,10 @@ MISC_POSTEXPLOIT=(
     "pivotsuite=https://github.com/RedTeamOperations/PivotSuite.git"
     "unix-privesc-check=https://github.com/pentestmonkey/unix-privesc-check.git"
     "LOLBAS=https://github.com/LOLBAS-Project/LOLBAS.git"
-    "Vigil=https://github.com/0x5A65726F677275/Vigil.git"
+    "Vigil=https://github.com/deadbits/vigil-llm.git"
 )
 
-# --- Social engineering ---
+# Social engineering
 MISC_SOCIAL=(
     "SET=https://github.com/trustedsec/social-engineer-toolkit.git"
     "Zphisher=https://github.com/htr-tech/zphisher.git"
@@ -82,7 +72,7 @@ MISC_SOCIAL=(
     "Catphish=https://github.com/ring0lab/catphish.git"
 )
 
-# --- CTF / General ---
+# CTF / General
 MISC_CTF=(
     "CyberChef=https://github.com/gchq/CyberChef.git"
     "ctf-tools=https://github.com/zardus/ctf-tools.git"
@@ -94,7 +84,7 @@ MISC_CTF=(
     "powercat=https://github.com/besimorhino/powercat.git"
 )
 
-# --- C2 Frameworks (Docker ONLY — these require complex multi-service setup) ---
+# C2 Frameworks (Docker ONLY — these require complex multi-service setup)
 # C2 frameworks are not runnable from a simple git clone; they need databases,
 # listeners, agents, and service orchestration.  Docker is the only supported
 # install method to ensure they work out-of-the-box.
@@ -113,12 +103,10 @@ MISC_GIT_NAMES=(
     Caldera atomic-red-team RedEye
     ibombshell powercat Vigil
 )
-MISC_GO_BINS=(gf anew qsreplace notify gitleaks)
+MISC_GO_BINS=(gf anew qsreplace notify)
 
 install_module_misc() {
-    # Base dependencies (always first)
-    install_apt_batch "Base dependencies" "${MISC_BASE_PACKAGES[@]}"
-    install_apt_batch "Security tools" "${MISC_SECURITY_PACKAGES[@]}"
+    install_apt_batch "Security tools" "${MISC_PACKAGES[@]}"
 
     # Heavy packages (optional)
     if [[ "${SKIP_HEAVY:-false}" != "true" ]]; then
@@ -148,7 +136,7 @@ install_module_misc() {
     # Binary releases
     install_binary_releases "${BINARY_RELEASES_MISC[@]}"
     download_github_release "skylot/jadx" "jadx" "jadx.*\\.zip" "/opt/jadx" || true
-    download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "/opt/dex2jar" || true
+    download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex-tools.*\\.zip" "/opt/dex2jar" || true
     # stegseek is installed by the stego module
 
     # Docker: C2 frameworks and OSINT (only if enabled — no git clone fallback)

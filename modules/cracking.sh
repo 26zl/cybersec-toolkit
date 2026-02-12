@@ -1,11 +1,9 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
-# =============================================================================
-# Module: Password Cracking
+# Module: Cracking
 # Hash cracking, brute force, wordlist generation
-# =============================================================================
 
-PASSWORD_PACKAGES=(
+CRACKING_PACKAGES=(
     john hashcat hydra medusa crunch
     ophcrack chntpw fcrackzip pdfcrack
     cewl hashid bruteforce-luks
@@ -13,11 +11,11 @@ PASSWORD_PACKAGES=(
     rsmangler sucrack
 )
 
-PASSWORD_PIPX=(search-that-hash name-that-hash trevorspray patator)
+CRACKING_PIPX=(search-that-hash name-that-hash trevorspray patator)
 
-PASSWORD_GO=()
+CRACKING_GO=()
 
-PASSWORD_GIT=(
+CRACKING_GIT=(
     "DefaultCreds-cheat-sheet=https://github.com/ihebski/DefaultCreds-cheat-sheet.git"
     "cupp=https://github.com/Mebus/cupp.git"
     "pipal=https://github.com/digininja/pipal.git"
@@ -28,13 +26,19 @@ PASSWORD_GIT=(
     "gpp-decrypt=https://github.com/t0thkr1s/gpp-decrypt.git"
 )
 
-PASSWORD_GIT_NAMES=(DefaultCreds-cheat-sheet cupp pipal Hob0Rules Pantagrule OneRuleToRuleThemStill username-anarchy gpp-decrypt)
-PASSWORD_BUILD_NAMES=(duplicut)
+CRACKING_GIT_NAMES=(DefaultCreds-cheat-sheet cupp pipal Hob0Rules Pantagrule OneRuleToRuleThemStill username-anarchy gpp-decrypt)
+CRACKING_BUILD_NAMES=(duplicut)
 
-install_module_password() {
-    install_apt_batch "Password - Packages" "${PASSWORD_PACKAGES[@]}"
-    install_pipx_batch "Password - Python" "${PASSWORD_PIPX[@]}"
-    install_git_batch "Password - Git" "${PASSWORD_GIT[@]}"
+install_module_cracking() {
+    install_apt_batch "Cracking - Packages" "${CRACKING_PACKAGES[@]}"
+    install_pipx_batch "Cracking - Python" "${CRACKING_PIPX[@]}"
+
+    # patator's cx-Oracle dependency needs setuptools at build time
+    if command_exists pipx && pipx list --short 2>/dev/null | grep -qi "^patator "; then
+        pipx inject patator setuptools >> "$LOG_FILE" 2>&1 || true
+    fi
+
+    install_git_batch "Cracking - Git" "${CRACKING_GIT[@]}"
 
     # Build from source
     build_from_source "duplicut" "https://github.com/nil0x42/duplicut.git" "make" || true

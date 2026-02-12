@@ -7,7 +7,7 @@
 setup() {
     load 'test_helper'
     PROFILES_DIR="$PROJECT_ROOT/profiles"
-    VALID_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless password stego cloud containers blueteam mobile blockchain)
+    VALID_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain)
 }
 
 # ---------- Profile file existence -------------------------------------------

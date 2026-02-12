@@ -14,11 +14,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULES_DIR = ROOT / "modules"
 INSTALLERS_PATH = ROOT / "lib" / "installers.sh"
+SHARED_PATH = ROOT / "lib" / "shared.sh"
 CONFIG_PATH = ROOT / "tools_config.json"
 
 ALL_MODULES = [
+    "shared",  # pseudo-module: lib/shared.sh base dependencies
     "misc", "networking", "recon", "web", "crypto", "pwn", "reversing",
-    "forensics", "malware", "enterprise", "wireless", "password", "stego",
+    "forensics", "malware", "enterprise", "wireless", "cracking", "stego",
     "cloud", "containers", "blueteam", "mobile", "blockchain",
 ]
 
@@ -26,7 +28,7 @@ MODULE_PREFIX = {
     "misc": "MISC", "networking": "NET", "recon": "RECON", "web": "WEB",
     "crypto": "CRYPTO", "pwn": "PWN", "reversing": "RE",
     "forensics": "FORENSICS", "malware": "MALWARE", "enterprise": "ENTERPRISE",
-    "wireless": "WIRELESS", "password": "PASSWORD", "stego": "STEGO",
+    "wireless": "WIRELESS", "cracking": "CRACKING", "stego": "STEGO",
     "cloud": "CLOUD", "containers": "CONTAINER", "blueteam": "BLUETEAM",
     "mobile": "MOBILE", "blockchain": "BLOCKCHAIN",
 }
@@ -47,11 +49,7 @@ NAME_ALIASES = {
     "d2j-dex2jar": "dex2jar",
 }
 
-
-# ---------------------------------------------------------------------------
 # Bash parsing helpers
-# ---------------------------------------------------------------------------
-
 def strip_comments(text):
     """Remove full-line bash comments."""
     return "\n".join(
@@ -94,11 +92,7 @@ BINARY_RELEASE_MODULE = {
     "CONTAINERS": "containers", "MALWARE": "malware", "STEGO": "stego",
 }
 
-
-# ---------------------------------------------------------------------------
 # Binary release extraction from installers.sh
-# ---------------------------------------------------------------------------
-
 def extract_binary_releases():
     """Parse BINARY_RELEASES_* arrays from lib/installers.sh.
 
@@ -124,12 +118,22 @@ def extract_binary_releases():
     return tools
 
 
-# ---------------------------------------------------------------------------
-# Module extraction
-# ---------------------------------------------------------------------------
+# Shared base dependencies from lib/shared.sh
+def extract_shared_tools():
+    """Parse SHARED_BASE_PACKAGES from lib/shared.sh."""
+    text = SHARED_PATH.read_text(encoding="utf-8", errors="replace")
+    arrays = parse_arrays(text)
+    tools = []
+    for pkg in arrays.get("SHARED_BASE_PACKAGES", []):
+        tools.append({"name": pkg, "method": "apt", "url": ""})
+    return tools
 
+
+# Module extraction
 def extract_module_tools(module_name):
     """Return list of {name, method, url} for every tool in a module."""
+    if module_name == "shared":
+        return extract_shared_tools()
     filepath = MODULES_DIR / f"{module_name}.sh"
     text = filepath.read_text(encoding="utf-8", errors="replace")
     clean = strip_comments(text)
@@ -137,7 +141,7 @@ def extract_module_tools(module_name):
     prefix = MODULE_PREFIX[module_name]
     tools = []
 
-    # ---- Array-based tools ----
+    # Array-based tools
     for arr_name, entries in arrays.items():
         if not arr_name.startswith(prefix + "_"):
             continue
@@ -174,7 +178,7 @@ def extract_module_tools(module_name):
 
         # Skip GO, GO_BINS, GIT_NAMES — handled separately
 
-    # ---- Go tools (from GO_BINS with URLs from GO) ----
+    # Go tools (from GO_BINS with URLs from GO)
     go_bins_key = f"{prefix}_GO_BINS"
     go_arr_key = f"{prefix}_GO"
     if go_bins_key in arrays and arrays[go_bins_key]:
@@ -201,7 +205,7 @@ def extract_module_tools(module_name):
             url = url_map.get(bin_name, "")
             tools.append({"name": bin_name, "method": "go", "url": url})
 
-    # ---- Function-call tools ----
+    # Function-call tools
 
     # download_github_release "owner/repo" "tool_name" ...
     for m in re.finditer(
@@ -259,13 +263,26 @@ def extract_module_tools(module_name):
             "url": "https://github.com/foundry-rs/foundry",
         })
 
+    # pipx install git+URL patterns (not in PIPX arrays)
+    for m in re.finditer(
+        r'pipx\s+install\s+"git\+https://github\.com/([^"]+)"', clean
+    ):
+        repo_path = m.group(1)
+        name = repo_path.split("/")[-1].lower()
+        tools.append({
+            "name": name, "method": "pipx",
+            "url": f"https://github.com/{repo_path}",
+        })
+
+    # snap_install calls
+    for m in re.finditer(r'snap_install\s+(\S+)', clean):
+        name = m.group(1)
+        tools.append({"name": name, "method": "snap", "url": ""})
+
     return tools
 
 
-# ---------------------------------------------------------------------------
 # Validation
-# ---------------------------------------------------------------------------
-
 def validate():
     """Cross-validate tools_config.json against module files. Return exit code."""
     errors = 0
@@ -300,10 +317,13 @@ def validate():
             errors += 1
         seen.add(name)
 
-    # -- Cross-validation --
+    # Cross-validation
     # Build lookup from module arrays: (name, method) → module
+    # Skip "shared" — base deps are infrastructure, not tracked in tools_config.json
     module_tools = {}
     for mod in ALL_MODULES:
+        if mod == "shared":
+            continue
         for t in extract_module_tools(mod):
             module_tools[(t["name"], t["method"])] = mod
 
@@ -344,10 +364,7 @@ def validate():
     return 1 if errors > 0 else 0
 
 
-# ---------------------------------------------------------------------------
 # Sync (populate URLs)
-# ---------------------------------------------------------------------------
-
 def sync():
     """Add/update url field in tools_config.json from module data."""
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -381,10 +398,7 @@ def sync():
     print(f"Synced: {populated}/{len(config)} tools have URLs")
 
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
-
 def main():
     if "--sync" in sys.argv:
         sync()

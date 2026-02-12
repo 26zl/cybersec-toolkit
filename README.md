@@ -13,72 +13,27 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux. __680+ tools__, __18 modules__, __10 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux. __660+ tools__, __18 modules__, __10 install methods__, one command.
 
 ---
 
-## Step 1: Install Prerequisites
+## Step 1: Install
 
-The installer does __not__ install runtimes for you. Install everything below __before__ running `install.sh`. The installer checks on startup and tells you exactly what is missing.
+The installer automatically installs all required runtimes (Python, Go, Ruby, Java, Rust), dev libraries, pipx, and build tools. The only prerequisite is a supported Linux distro with a package manager.
 
-> **Already have git, python3, pipx, go, cargo, ruby, and java installed?** Skip to [Step 2: Install](#step-2-install).
+> __Docker** is the one exception — install it manually if you want C2 frameworks, MobSF, BeEF, or TheHive (`--enable-docker`). See [Docker install docs](https://docs.docker.com/engine/install/).
 
-### Debian / Ubuntu / Kali
+### What gets installed automatically
 
-```bash
-sudo apt update && sudo apt install -y \
-    git curl wget python3 python3-pip python3-venv python3-dev pipx \
-    ruby ruby-dev golang-go default-jdk \
-    build-essential libpcap-dev libssl-dev libffi-dev \
-    zlib1g-dev libxml2-dev libxslt1-dev cmake
-
-# Rust / Cargo (not in apt — installed via rustup)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
-```
-
-### Fedora / RHEL
-
-```bash
-sudo dnf install -y \
-    git curl wget python3 python3-pip python3-devel pipx \
-    ruby ruby-devel golang java-17-openjdk-devel \
-    @development-tools libpcap-devel openssl-devel libffi-devel \
-    zlib-devel libxml2-devel libxslt-devel cmake
-
-# Rust / Cargo
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
-```
-
-### Arch
-
-```bash
-sudo pacman -S --needed \
-    git curl wget python python-pip python-pipx \
-    ruby go jdk-openjdk rust \
-    base-devel libpcap openssl libffi zlib libxml2 libxslt cmake
-```
-
-### What each prerequisite is for
-
-| Prerequisite | Why it is needed |
-| ------------ | ---------------- |
-| git, curl, wget | Cloning repos, downloading releases |
-| Python 3 + pipx | ~157 Python security tools installed in isolated venvs |
-| Go | ~55 Go-based tools (subfinder, nuclei, ffuf, httpx, etc.) |
-| Rust / Cargo | 3 Rust tools (feroxbuster, RustScan, pwninit) |
-| Ruby / gem | 6 Ruby gems (wpscan, evil-winrm, XSpear, etc.) |
-| Java (JDK) | Burp Suite, ysoserial, apktool |
-| build-essential / cmake | ~15 tools built from source (massdns, duplicut, etc.) |
-| libpcap, libssl, libffi, zlib, libxml2, libxslt | C libraries required by Python/Go tools during compilation |
-| Docker __(optional)__ | Only needed with `--enable-docker` for C2, MobSF, BeEF, TheHive |
-
-> Only runtimes needed by your selected modules are required. For example `--profile osint` only needs Python, pipx, Go, and build tools — not Rust or Ruby.
-
----
-
-## Step 2: Install
+| Runtime | How | Why |
+| ------- | --- | --- |
+| Python 3, pip, venv, pipx | System package + pip fallback | ~157 Python security tools |
+| Go | System package | ~55 Go tools (subfinder, nuclei, ffuf, httpx, etc.) |
+| Rust / Cargo | rustup (auto-downloaded) | 3 Rust tools (feroxbuster, RustScan, pwninit) |
+| Ruby / gem | System package | 6 Ruby gems (wpscan, evil-winrm, XSpear, etc.) |
+| Java (JDK) | System package | Burp Suite, ysoserial, apktool |
+| build-essential, cmake, autotools | System package | ~15 tools built from source |
+| Dev libraries | System package | libpcap, libssl, libffi, zlib, libxml2, libxslt, libglib2, libreadline, libsqlite3, libcurl, libldap, etc. |
 
 ```bash
 git clone https://github.com/26zl/cybersec-tools-installer.git
@@ -86,7 +41,7 @@ cd cybersec-tools-installer
 sudo ./install.sh
 ```
 
-That installs all 680+ tools. To install a subset, use a profile or pick specific modules:
+That installs all 660+ tools. To install a subset, use a profile or pick specific modules:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -133,7 +88,7 @@ sudo ./install.sh -j 8                  # 8 parallel install jobs (default: 4)
 sudo ./install.sh -v                    # Verbose / debug output
 ```
 
-`--profile` and `--module` always auto-include the `misc` module (base dependencies). `--tool` does not — it installs only the specified tool.
+`--tool` installs only the specified tool without running the full dependency setup.
 
 ---
 
@@ -142,12 +97,12 @@ sudo ./install.sh -v                    # Verbose / debug output
 | Profile | Modules | Description |
 | ------- | ------- | ----------- |
 | `full` | All 18 | Complete security toolkit |
-| `ctf` | misc, crypto, pwn, reversing, stego, forensics, password, web, mobile, blockchain | CTF competitions |
+| `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | CTF competitions |
 | `redteam` | misc, networking, recon, web, enterprise, pwn, mobile | Offensive security |
 | `web` | misc, networking, recon, web | Web application testing |
 | `malware` | misc, malware, forensics, reversing, mobile | Malware analysis |
 | `osint` | misc, recon | OSINT gathering |
-| `crackstation` | misc, password, crypto | Password cracking |
+| `crackstation` | misc, cracking, crypto | Hash cracking |
 | `lightweight` | misc, networking, recon, web | Core tools, minimal footprint |
 | `blueteam` | misc, blueteam, forensics, malware, containers | Defensive security / IR |
 
@@ -155,18 +110,18 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | ~94 | Base dependencies, post-exploitation, social engineering, wordlists, C2 (Docker) |
+| `misc` | ~65 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
 | `networking` | ~58 | Port scanning, packet capture, tunneling, MITM, protocol tools |
 | `recon` | ~103 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | ~78 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | ~17 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | ~53 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `pwn` | ~55 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | ~31 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
 | `malware` | ~7 | YARA, ClamAV, inetsim, quark-engine, FLOSS, Capa |
 | `enterprise` | ~102 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | ~41 | WiFi cracking, Bluetooth, SDR, rogue AP |
-| `password` | ~32 | Hash cracking (john, hashcat), brute force, wordlist generation |
+| `cracking` | ~32 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | ~15 | Image/audio steganography, detection, StegCracker |
 | `cloud` | ~18 | AWS/Azure/GCP security auditing, Checkov |
 | `containers` | ~9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
@@ -231,7 +186,7 @@ Only used with `--enable-docker`. If Docker is not installed, these are skipped 
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 680+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
+__Debian/Ubuntu/Kali is the primary target__ -- all 660+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
 
 ## Supply Chain Model
 

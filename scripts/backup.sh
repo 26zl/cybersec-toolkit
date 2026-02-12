@@ -1,15 +1,14 @@
 #!/bin/bash
-# =============================================================================
 # CyberSec Tools — Config Backup/Restore Script
 # Backs up and restores tool configurations with ChaCha20-Poly1305 encryption.
 # Supports scheduling via cron (Linux/macOS).
-# =============================================================================
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-# ----- Platform paths --------------------------------------------------------
+# Platform paths
 case "$(uname -s)" in
     Linux*)
         HOME_DIR="$HOME"
@@ -26,13 +25,13 @@ case "$(uname -s)" in
         ;;
 esac
 
-# ----- Configuration --------------------------------------------------------
+# Configuration
 BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
 LOG_FILE="$BACKUP_DIR/backup.log"
 
-# ----- Helpers ---------------------------------------------------------------
+# Helpers
 ensure_dir() {
     [[ -d "$1" ]] || mkdir -p "$1"
 }
@@ -132,7 +131,7 @@ decrypt_files_legacy() {
     rm -f "$pass_file"
 }
 
-# ----- Backup config dirs (silently skip missing ones) -----------------------
+# Backup config dirs (silently skip missing ones)
 backup_configs() {
     local dest="$1"
 
@@ -141,7 +140,7 @@ backup_configs() {
         ["network"]="$HOME_DIR/.nmap $HOME_DIR/.wireshark"
         ["web"]="$HOME_DIR/.burpsuite $HOME_DIR/.ZAP $HOME_DIR/.sqlmap"
         ["wireless"]="$HOME_DIR/.aircrack-ng $HOME_DIR/.kismet"
-        ["password"]="$HOME_DIR/.john $HOME_DIR/.hashcat"
+        ["cracking"]="$HOME_DIR/.john $HOME_DIR/.hashcat"
         ["exploitation"]="$HOME_DIR/.msf4 $GITHUB_TOOL_DIR/exploitdb"
         ["forensics"]="$HOME_DIR/.autopsy"
         ["osint"]="$GITHUB_TOOL_DIR/theHarvester $GITHUB_TOOL_DIR/recon-ng"
@@ -156,7 +155,7 @@ backup_configs() {
     done
 }
 
-# ----- Restore config dirs ---------------------------------------------------
+# Restore config dirs
 restore_configs() {
     local src="$1"
 
@@ -176,7 +175,7 @@ restore_configs() {
     done
 }
 
-# ----- Commands --------------------------------------------------------------
+# Commands
 cmd_backup() {
     log_info "Creating backup..."
     ensure_dir "$BACKUP_PATH"
@@ -296,7 +295,7 @@ show_usage() {
     echo "  unschedule                       Remove scheduled backup"
 }
 
-# ----- Main ------------------------------------------------------------------
+# Main
 ensure_dir "$BACKUP_DIR"
 
 case "${1:-}" in
@@ -312,5 +311,6 @@ case "${1:-}" in
         ;;
     unschedule)  cmd_unschedule ;;
     --help|-h)   show_usage ;;
-    *)           show_usage; exit 1 ;;
+    "")          cmd_backup ;;
+    *)           log_error "Unknown command: ${1:-}"; show_usage; exit 1 ;;
 esac

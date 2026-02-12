@@ -47,7 +47,7 @@ _get_prefix() {
         malware)    echo "MALWARE" ;;
         enterprise) echo "ENTERPRISE" ;;
         wireless)   echo "WIRELESS" ;;
-        password)   echo "PASSWORD" ;;
+        cracking)   echo "CRACKING" ;;
         stego)      echo "STEGO" ;;
         cloud)      echo "CLOUD" ;;
         containers) echo "CONTAINER" ;;
@@ -67,7 +67,7 @@ _get_prefix() {
 
         # At least one of these arrays should be declared
         local found=false
-        for suffix in PACKAGES BASE_PACKAGES SECURITY_PACKAGES PIPX GO GIT CARGO GEMS; do
+        for suffix in PACKAGES HEAVY_PACKAGES PIPX GO GIT CARGO GEMS; do
             local arr_name="${prefix}_${suffix}"
             if declare -p "$arr_name" &>/dev/null; then
                 found=true
@@ -84,7 +84,7 @@ _get_prefix() {
     local git_arrays=(
         MISC_RESOURCES MISC_POSTEXPLOIT MISC_SOCIAL MISC_CTF
         NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
-        FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT PASSWORD_GIT STEGO_GIT
+        FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT STEGO_GIT
         CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
     )
 
@@ -109,7 +109,7 @@ _get_prefix() {
     local go_arrays=(
         MISC_GO NET_GO RECON_GO WEB_GO CRYPTO_GO PWN_GO RE_GO
         FORENSICS_GO ENTERPRISE_GO CLOUD_GO CONTAINER_GO BLUETEAM_GO MOBILE_GO
-        MALWARE_GO WIRELESS_GO PASSWORD_GO STEGO_GO
+        MALWARE_GO WIRELESS_GO CRACKING_GO STEGO_GO
     )
 
     for arr_name in "${go_arrays[@]}"; do
@@ -172,7 +172,7 @@ _get_prefix() {
 @test "no duplicate entries in pipx arrays" {
     local pipx_arrays=(
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX PASSWORD_PIPX
+        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
         STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX
     )
 
