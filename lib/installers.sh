@@ -14,6 +14,21 @@ fixup_package_names() {
     local -n arr=$1
     local new_arr=()
     for pkg in "${arr[@]}"; do
+        # WSL: skip kernel/hardware-dependent tools (no kernel module access)
+        if [[ "$IS_WSL" == "true" ]]; then
+            case "$pkg" in
+                auditd|apparmor-utils) continue ;;
+                rr) continue ;;
+            esac
+        fi
+
+        # ARM: skip x86-only packages
+        if [[ "$IS_ARM" == "true" ]]; then
+            case "$pkg" in
+                qemu-system-x86) continue ;;
+            esac
+        fi
+
         case "$PKG_MANAGER" in
             apt)
                 # Skip Kali/Parrot-only packages on standard Debian/Ubuntu
@@ -86,6 +101,8 @@ fixup_package_names() {
                     libsasl2-dev)       pkg="cyrus-sasl-devel" ;;
                     llvm-dev)           pkg="llvm-devel" ;;
                     libpixman-1-dev)    pkg="pixman-devel" ;;
+                    libunwind-dev)      pkg="libunwind-devel" ;;
+                    libini-config-dev)  pkg="ding-libs-devel" ;;
                     sslsplit)           pkg="sslsplit" ;;
                 esac
                 ;;
@@ -140,6 +157,8 @@ fixup_package_names() {
                     libsasl2-dev)       pkg="libsasl" ;;
                     llvm-dev)           pkg="llvm" ;;
                     libpixman-1-dev)    pkg="pixman" ;;
+                    libunwind-dev)      pkg="libunwind" ;;
+                    libini-config-dev)  continue ;;
                     sslsplit)           pkg="sslsplit" ;;
                 esac
                 ;;
@@ -193,6 +212,8 @@ fixup_package_names() {
                     libsasl2-dev)       pkg="cyrus-sasl-devel" ;;
                     llvm-dev)           pkg="llvm-devel" ;;
                     libpixman-1-dev)    pkg="libpixman-1-devel" ;;
+                    libunwind-dev)      pkg="libunwind-devel" ;;
+                    libini-config-dev)  continue ;;
                     sslsplit)           pkg="sslsplit" ;;
                 esac
                 ;;
@@ -224,7 +245,7 @@ fixup_package_names() {
                     # Unavailable dev libs on Termux — skip
                     libseccomp-dev|binutils-dev|libkrb5-dev|libsctp-dev) continue ;;
                     libnfnetlink-dev|libecm-dev|libldap2-dev|libsasl2-dev) continue ;;
-                    llvm-dev|libpixman-1-dev) continue ;;
+                    llvm-dev|libpixman-1-dev|libunwind-dev|libini-config-dev) continue ;;
                     # Networking tools — Termux bundles ncat with nmap
                     netcat-openbsd)     pkg="nmap" ;;
                     dnsutils)           pkg="dnsutils" ;;
@@ -656,13 +677,17 @@ install_git_batch() {
 }
 
 # GitHub API curl options (with optional token auth)
-_github_curl_opts() {
-    local -a opts=(-sSL)
+# Sets the global _CURL_OPTS array — callers expand it as "${_CURL_OPTS[@]}".
+# This avoids the word-splitting problem with echoing options as a string
+# (the Authorization header contains spaces that must not be split).
+_CURL_OPTS=()
+_setup_curl_opts() {
+    _CURL_OPTS=(-sSL)
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-        opts+=(-H "Authorization: token $GITHUB_TOKEN")
+        _CURL_OPTS+=(-H "Authorization: token $GITHUB_TOKEN")
     fi
-    echo "${opts[@]}"
 }
+_setup_curl_opts
 
 # Verify download against release checksum file
 # Looks for SHA256 checksum files in the same GitHub release and verifies
@@ -690,8 +715,7 @@ for asset in data.get('assets', []):
     fi
 
     local checksums
-    # shellcheck disable=SC2046  # Intentional word splitting of curl options
-    checksums=$(curl $(_github_curl_opts) "$checksum_url" 2>>"$LOG_FILE")
+    checksums=$(curl "${_CURL_OPTS[@]}" "$checksum_url" 2>>"$LOG_FILE")
     if [[ -z "$checksums" ]]; then
         log_warn "Failed to download checksums for $file_name"
         return 1
@@ -748,8 +772,7 @@ download_github_release() {
     log_info "Downloading $binary from $repo releases..."
     local api_url="https://api.github.com/repos/$repo/releases/latest"
     local release_json
-    # shellcheck disable=SC2046  # Intentional word splitting of curl options
-    release_json=$(curl $(_github_curl_opts) "$api_url" 2>>"$LOG_FILE")
+    release_json=$(curl "${_CURL_OPTS[@]}" "$api_url" 2>>"$LOG_FILE")
     if [[ -z "$release_json" ]]; then
         log_error "Could not fetch release info for $binary"
         return 1
@@ -927,8 +950,7 @@ download_github_release_update() {
     log_info "Downloading $binary from $repo releases..."
     local api_url="https://api.github.com/repos/$repo/releases/latest"
     local release_json
-    # shellcheck disable=SC2046  # Intentional word splitting of curl options
-    release_json=$(curl $(_github_curl_opts) "$api_url" 2>>"$LOG_FILE")
+    release_json=$(curl "${_CURL_OPTS[@]}" "$api_url" 2>>"$LOG_FILE")
     if [[ -z "$release_json" ]]; then
         log_error "Could not fetch release info for $binary"
         return 1
@@ -1194,6 +1216,30 @@ install_binary_releases() {
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
         log_warn "Skipping $total binary release(s) on Termux (Linux/glibc binaries)"
         return 0
+    fi
+
+    # ARM: filter out x86-only binary releases that have no ARM builds
+    if [[ "$IS_ARM" == "true" ]]; then
+        local -a _arm_filtered=()
+        local -a _arm_skip_bins=(pspy rp-lin chainsaw velociraptor laurel)
+        for _entry in "${entries[@]}"; do
+            IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+            local _skip=false
+            for _sb in "${_arm_skip_bins[@]}"; do
+                if [[ "$_binary" == "$_sb" ]]; then
+                    _skip=true
+                    break
+                fi
+            done
+            if [[ "$_skip" == "true" ]]; then
+                log_warn "Skipping x86-only binary on ARM: $_binary"
+            else
+                _arm_filtered+=("$_entry")
+            fi
+        done
+        entries=("${_arm_filtered[@]}")
+        total=${#entries[@]}
+        [[ "$total" -eq 0 ]] && return 0
     fi
 
     log_debug "install_binary_releases: starting with $total items, PARALLEL_JOBS=$PARALLEL_JOBS"

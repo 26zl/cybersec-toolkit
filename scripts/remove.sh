@@ -304,7 +304,7 @@ _extract_binary_names() {
     done
 }
 BINARY_TOOLS=()
-for _br_mod in "${ALL_MODULES[@]}"; do
+for _br_mod in "${REMOVE_MODULES[@]}"; do
     _br_arr="BINARY_RELEASES_${_br_mod^^}"
     declare -p "$_br_arr" &>/dev/null || continue
     _extract_binary_names "$_br_arr"

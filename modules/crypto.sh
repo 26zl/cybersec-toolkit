@@ -28,7 +28,7 @@ install_module_crypto() {
     log_info "Building crypto tools from source..."
     build_from_source "hash_extender" "https://github.com/iagox86/hash_extender.git" "make" || true
     build_from_source "PkCrack" "https://github.com/keyunluo/pkcrack.git" "cmake . && make" || true
-    build_from_source "yafu" "https://github.com/bbuhrow/yafu.git" "make" || true
+    build_from_source "yafu" "https://github.com/bbuhrow/yafu.git" "make -f Makefile.gcc yafu" || true
     build_from_source "fastcoll" "https://github.com/upbit/clone-fastcoll.git" "make" || true
     build_from_source "msieve" "https://github.com/radii/msieve.git" "make all" || true
     build_from_source "pemcrack" "https://github.com/robertdavidgraham/pemcrack.git" "make" || true

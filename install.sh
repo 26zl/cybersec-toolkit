@@ -191,7 +191,8 @@ install_single_tool() {
         NET_PACKAGES RECON_PACKAGES WEB_PACKAGES PWN_PACKAGES RE_PACKAGES
         FORENSICS_PACKAGES MALWARE_PACKAGES WIRELESS_PACKAGES WIRELESS_HEAVY_PACKAGES
         CRACKING_PACKAGES STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES
-        ENTERPRISE_PACKAGES CRYPTO_PACKAGES CLOUD_PACKAGES BLOCKCHAIN_PACKAGES
+        ENTERPRISE_PACKAGES CRYPTO_PACKAGES CLOUD_PACKAGES CONTAINER_PACKAGES
+        BLOCKCHAIN_PACKAGES
     )
     for a in "${pkg_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
@@ -456,6 +457,8 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "System upgrade: $UPGRADE_SYSTEM"
     echo "Parallel jobs:  $PARALLEL_JOBS"
     echo "Verbose:        $VERBOSE"
+    echo "WSL:            $IS_WSL"
+    echo "ARM:            $IS_ARM"
     echo ""
     echo "The following module install functions would run:"
     for mod in "${MODULES_TO_INSTALL[@]}"; do
@@ -492,6 +495,19 @@ main() {
     if [[ "$PKG_MANAGER" == "pkg" ]] && [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
         log_warn "Docker is not available on Termux/Android — skipping Docker tools"
         ENABLE_DOCKER="false"
+    fi
+
+    # WSL: wireless module requires hardware access not available under WSL
+    if [[ "$IS_WSL" == "true" ]]; then
+        local _wsl_filtered=()
+        for _mod in "${MODULES_TO_INSTALL[@]}"; do
+            if [[ "$_mod" == "wireless" ]]; then
+                log_warn "Skipping wireless module on WSL (no hardware access)"
+            else
+                _wsl_filtered+=("$_mod")
+            fi
+        done
+        MODULES_TO_INSTALL=("${_wsl_filtered[@]}")
     fi
 
     # Docker is the only prerequisite users must install themselves

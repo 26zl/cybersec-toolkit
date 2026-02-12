@@ -10,7 +10,7 @@ SHARED_BASE_PACKAGES=(
     git curl wget openssl unzip jq file
 
     # Compilers & build tools
-    build-essential cmake autoconf automake libtool pkg-config
+    build-essential cmake autoconf automake libtool pkg-config texinfo
 
     # Runtimes
     python3 python3-pip python3-venv python3-dev
@@ -24,6 +24,10 @@ SHARED_BASE_PACKAGES=(
     libkrb5-dev libsctp-dev libnfnetlink-dev
     libgmp-dev libecm-dev
     libldap2-dev libsasl2-dev
+    libpixman-1-dev libunwind-dev libini-config-dev
+
+    # Compiler toolchains — needed by fuzzing, build-from-source, and native extensions
+    llvm llvm-dev clang lld flex bison
 
     # Misc utilities
     dos2unix rlwrap imagemagick

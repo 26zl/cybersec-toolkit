@@ -5,8 +5,6 @@
 
 PWN_PACKAGES=(
     patchelf spike
-    llvm llvm-dev clang lld
-    flex bison libpixman-1-dev
 )
 
 PWN_PIPX=(pwntools ROPgadget ropper boofuzz pwncat-cs scapy)

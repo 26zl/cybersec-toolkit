@@ -61,6 +61,8 @@ log_system_environment() {
     log_info "  Kernel:   $(uname -r 2>/dev/null || echo unknown)"
     log_info "  Arch:     $(uname -m 2>/dev/null || echo unknown)"
     log_info "  Distro:   ${DISTRO_NAME:-unknown} (${DISTRO_ID:-unknown})"
+    log_info "  WSL:      $IS_WSL"
+    log_info "  ARM:      $IS_ARM"
     log_info "  Shell:    BASH ${BASH_VERSION:-unknown}"
     log_info "  Disk:     $(df -h / 2>/dev/null | awk 'NR==2{print $4 " free of " $2}' || echo unknown)"
     log_info "  Memory:   $(free -h 2>/dev/null | awk '/^Mem:/{print $7 " free of " $2}' || echo unknown)"
@@ -376,38 +378,52 @@ check_root() {
 }
 
 # pipx — auto-install if not present
+# Install order: system package (multiple names per distro) → venv bootstrap.
+# Does NOT use pip3 install — blocked by PEP 668 on modern distros (Ubuntu 23.04+).
 ensure_pipx() {
     command_exists pipx && return 0
 
     log_info "pipx not found — installing..."
 
-    # Try system package first
-    local _pipx_pkg="python3-pipx"
-    [[ "$PKG_MANAGER" == "pkg" ]] && _pipx_pkg="pipx"
-    if pkg_install "$_pipx_pkg" >> "$LOG_FILE" 2>&1 && command_exists pipx; then
-        log_success "pipx installed via $PKG_MANAGER"
-        return 0
-    fi
+    # Try system package — package name varies by distro
+    # apt: python3-pipx or pipx   dnf: pipx or python3-pipx
+    # pacman: python-pipx          zypper: python3-pipx   pkg: pipx
+    local -a _pipx_names
+    case "$PKG_MANAGER" in
+        apt)    _pipx_names=(pipx python3-pipx) ;;
+        dnf)    _pipx_names=(pipx python3-pipx) ;;
+        pacman) _pipx_names=(python-pipx) ;;
+        zypper) _pipx_names=(python3-pipx pipx) ;;
+        pkg)    _pipx_names=(pipx) ;;
+        *)      _pipx_names=(pipx python3-pipx) ;;
+    esac
 
-    # Fallback: pip3
-    # Try system-wide install first (preferred when running as root — puts pipx
-    # in $PIPX_BIN_DIR which is always in PATH). Only fall back to --user if
-    # system-wide fails (e.g. externally-managed-environment on newer distros).
-    if command_exists pip3; then
-        pip3 install pipx >> "$LOG_FILE" 2>&1 || \
-            pip3 install --user pipx >> "$LOG_FILE" 2>&1 || true
-        # If --user was used, ensure that bin dir is in PATH
-        if ! command_exists pipx; then
-            local pip_bin_dir
-            pip_bin_dir=$(python3 -m site --user-base 2>/dev/null)/bin
-            if [[ -d "$pip_bin_dir" ]] && [[ ! ":$PATH:" == *":$pip_bin_dir:"* ]]; then
-                export PATH="$pip_bin_dir:$PATH"
+    for _pipx_pkg in "${_pipx_names[@]}"; do
+        if pkg_install "$_pipx_pkg" >> "$LOG_FILE" 2>&1 && command_exists pipx; then
+            pipx ensurepath >> "$LOG_FILE" 2>&1 || true
+            log_success "pipx installed via $PKG_MANAGER ($_pipx_pkg)"
+            return 0
+        fi
+    done
+
+    # Fallback: bootstrap pipx via an isolated venv.
+    # Works around missing packages (WSL minimal repos) and PEP 668.
+    # Requires python3-venv which is in SHARED_BASE_PACKAGES.
+    if command_exists python3; then
+        log_info "Bootstrapping pipx via isolated venv..."
+        local _bootstrap_venv="$PIPX_HOME/.pipx-bootstrap"
+        mkdir -p "$PIPX_HOME" 2>/dev/null || true
+        if python3 -m venv "$_bootstrap_venv" >> "$LOG_FILE" 2>&1; then
+            "$_bootstrap_venv/bin/pip" install --upgrade pip >> "$LOG_FILE" 2>&1 || true
+            if "$_bootstrap_venv/bin/pip" install pipx >> "$LOG_FILE" 2>&1; then
+                ln -sf "$_bootstrap_venv/bin/pipx" "$PIPX_BIN_DIR/pipx" 2>/dev/null || true
+                export PIPX_HOME PIPX_BIN_DIR
             fi
         fi
     fi
 
     if command_exists pipx; then
-        log_success "pipx installed via pip3"
+        log_success "pipx installed via venv bootstrap"
         return 0
     fi
 
@@ -489,6 +505,8 @@ BANNER
     echo -e "${NC}"
     log_info "Distro: $DISTRO_NAME ($DISTRO_ID)"
     log_info "Package manager: $PKG_MANAGER"
+    [[ "$IS_WSL" == "true" ]] && log_warn "WSL detected — wireless module and kernel-level tools will be skipped"
+    [[ "$IS_ARM" == "true" ]] && log_warn "ARM architecture detected — x86-only binary releases and tools will be skipped"
     echo ""
 }
 
@@ -534,18 +552,28 @@ _collect_module_arrays() {
 detect_arch() {
     local machine
     machine=$(uname -m)
+    IS_ARM=false
     case "$machine" in
         x86_64)       SYS_ARCH="amd64";  SYS_ARCH_ALT="x86_64"  ;;
-        aarch64)      SYS_ARCH="arm64";  SYS_ARCH_ALT="aarch64" ;;
-        armv7l|armhf) SYS_ARCH="armv7";  SYS_ARCH_ALT="armv7l"  ;;
+        aarch64)      SYS_ARCH="arm64";  SYS_ARCH_ALT="aarch64"; IS_ARM=true ;;
+        armv7l|armhf) SYS_ARCH="armv7";  SYS_ARCH_ALT="armv7l";  IS_ARM=true ;;
         *)            SYS_ARCH="$machine"; SYS_ARCH_ALT="$machine" ;;
     esac
-    export SYS_ARCH SYS_ARCH_ALT
+    export SYS_ARCH SYS_ARCH_ALT IS_ARM
+}
+
+detect_wsl() {
+    IS_WSL=false
+    if [[ -f /proc/version ]] && grep -qi "microsoft" /proc/version 2>/dev/null; then
+        IS_WSL=true
+    fi
+    export IS_WSL
 }
 
 # Auto-init on source
 detect_pkg_manager
 detect_arch
+detect_wsl
 
 # Tool paths — Termux uses $PREFIX/bin and user-local dirs; Linux uses system-wide /usr/local/bin
 if [[ "$PKG_MANAGER" == "pkg" ]]; then

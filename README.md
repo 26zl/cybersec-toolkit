@@ -1,9 +1,7 @@
-<p>
-  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml/badge.svg" alt="Integration"></a>
-  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml/badge.svg" alt="Security"></a>
-  <a href="https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml"><img src="https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml/badge.svg" alt="Release"></a>
-</p>
+[![CI](https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml)
+[![Integration](https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml)
+[![Security](https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml)
+[![Release](https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/release.yml)
 
 ```text
    ______      __              _____
@@ -29,7 +27,7 @@ The installer automatically installs all required runtimes (Python, Go, Ruby, Ja
 
 | Runtime | How | Why |
 | ------- | --- | --- |
-| Python 3, pip, venv, pipx | System package + pip fallback | ~157 Python security tools |
+| Python 3, pip, venv, pipx | System package (+ venv bootstrap fallback) | ~157 Python security tools |
 | Go | System package or auto-downloaded from go.dev (≥1.21) | ~55 Go tools (subfinder, nuclei, ffuf, httpx, etc.) |
 | Rust / Cargo | rustup (auto-downloaded) | 3 Rust tools (feroxbuster, RustScan, pwninit) |
 | Ruby / gem | System package | 6 Ruby gems (wpscan, evil-winrm, XSpear, etc.) |
@@ -140,7 +138,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 | pipx | ~157 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | ~55 | nuclei, subfinder, ffuf, httpx |
 | Binary release | ~26 | gitleaks, chainsaw, findomain, FLOSS, Capa, Syft, Kubescape |
-| Build from source | ~15 | massdns, duplicut, yara |
+| Build from source | ~15 | massdns, duplicut, AFLplusplus, honggfuzz |
 | Docker | ~7 | C2, MobSF, BeEF, TheHive |
 | Ruby gem | 6 | wpscan, evil-winrm, XSpear |
 | Special | 3 | Metasploit, Burp Suite, OWASP ZAP |
@@ -189,6 +187,14 @@ Only used with `--enable-docker`. If Docker is not installed, these are skipped 
 ## Distro Support
 
 __Debian/Ubuntu/Kali is the primary target__ -- all 660+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
+
+### WSL (Windows Subsystem for Linux)
+
+Automatically detected via `/proc/version`. The wireless module is skipped entirely (no hardware access), and kernel-level packages (`auditd`, `apparmor-utils`, `rr`) are filtered out. Everything else works normally.
+
+### ARM (aarch64 / armv7)
+
+Automatically detected via `uname -m`. x86-only binary releases (pspy, rp-lin, chainsaw, velociraptor, laurel) are skipped with a warning. x86-only build-from-source tools (rappel, xrop) are also skipped. `qemu-system-x86` is filtered from packages. All other install methods work normally.
 
 ### Termux (Android)
 

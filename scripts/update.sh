@@ -328,8 +328,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         # Get latest release tag from GitHub
         local api_url="https://api.github.com/repos/$repo/releases/latest"
         local latest_tag=""
-        # shellcheck disable=SC2046  # Intentional word splitting of curl options
-        latest_tag=$(curl $(_github_curl_opts) "$api_url" 2>/dev/null \
+        latest_tag=$(curl "${_CURL_OPTS[@]}" "$api_url" 2>/dev/null \
             | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)
 
         if [[ -n "$latest_tag" && -n "$installed_ver" && "$latest_tag" == "$installed_ver" ]]; then
