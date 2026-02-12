@@ -504,6 +504,10 @@ main() {
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules: ${MODULES_TO_INSTALL[*]}"
     estimate_install_time
+
+    # Pre-flight disk space check
+    check_disk_space "${#MODULES_TO_INSTALL[@]}"
+
     log_info "Starting installation..."
     echo ""
 

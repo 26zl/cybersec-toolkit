@@ -91,6 +91,70 @@ log_system_environment() {
     log_info "=========================="
 }
 
+# Disk space check — warns if available space is below estimated requirement.
+# Args: $1 = number of modules to install
+# Returns 0 always (non-blocking), but prompts user to abort if critically low.
+check_disk_space() {
+    local num_modules="${1:-18}"
+
+    # Determine check path: Termux uses $HOME, Linux uses /
+    local check_path="/"
+    [[ "$PKG_MANAGER" == "pkg" ]] && check_path="$HOME"
+
+    # Get available space in GB (compatible with Linux and Termux)
+    local avail_kb
+    avail_kb=$(df -k "$check_path" 2>/dev/null | awk 'NR==2{print $4}')
+    if [[ -z "$avail_kb" || "$avail_kb" -le 0 ]] 2>/dev/null; then
+        log_warn "Could not determine available disk space — skipping check"
+        return 0
+    fi
+    local avail_gb=$(( avail_kb / 1048576 ))
+    local avail_mb=$(( avail_kb / 1024 ))
+
+    # Estimate required space based on module count
+    # Base: ~2GB for shared deps + runtimes (Go, Rust, Python venvs, etc.)
+    # Per module: ~1.5GB average (packages + git repos + compiled tools)
+    # Full install (18 modules): ~25-30GB; lightweight (4 modules): ~5-8GB
+    local base_gb=2
+    local per_module_mb=1500
+    local required_mb=$(( base_gb * 1024 + num_modules * per_module_mb ))
+    local required_gb=$(( (required_mb + 1023) / 1024 ))
+
+    # Add extra for Docker images if enabled
+    if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
+        required_mb=$(( required_mb + 5120 ))  # ~5GB for Docker images
+        required_gb=$(( (required_mb + 1023) / 1024 ))
+    fi
+
+    log_info "Disk space: ${avail_gb}GB available, ~${required_gb}GB estimated required"
+
+    if [[ "$avail_mb" -lt "$required_mb" ]]; then
+        echo ""
+        log_warn "Low disk space detected!"
+        log_warn "  Available: ${avail_gb}GB (${avail_mb}MB)"
+        log_warn "  Estimated: ~${required_gb}GB for ${num_modules} module(s)"
+        log_warn "  Tip: Use --profile lightweight or --skip-heavy to reduce disk usage"
+        echo ""
+
+        # Critical: less than half the estimated requirement
+        local half_required=$(( required_mb / 2 ))
+        if [[ "$avail_mb" -lt "$half_required" ]]; then
+            log_error "Critically low disk space — installation will likely fail"
+        fi
+
+        # Interactive prompt (skip if stdin is not a terminal, e.g. piped/CI)
+        if [[ -t 0 ]]; then
+            read -rp "$(echo -e "${YELLOW}[!]${NC} Continue anyway? [y/N] ")" _answer
+            case "$_answer" in
+                [yY]|[yY][eE][sS]) log_info "Continuing despite low disk space..." ;;
+                *) log_info "Aborted by user."; exit 0 ;;
+            esac
+        else
+            log_warn "Non-interactive mode — continuing despite low disk space"
+        fi
+    fi
+}
+
 # Go binary name helper
 
 # _go_bin_name — extract the actual binary name from a `go install` path.
