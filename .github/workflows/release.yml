@@ -80,7 +80,7 @@ jobs:
             done
             echo ""
             echo "## Install Methods"
-            echo "apt, pipx, go install, cargo, gem, git clone, binary release, Docker, snap, build-from-source"
+            echo "apt, pipx, go install, cargo, gem, npm, git clone, binary release, Docker, snap, build-from-source"
           } > verification-summary.md
 
       - uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2

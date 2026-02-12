@@ -3,21 +3,21 @@
 # Module: Recon / OSINT
 # Subdomain enumeration, intelligence gathering, search engines, OSINT
 
-RECON_PACKAGES=(dnsenum dmitry dnsmap dnstracer dnswalk bing-ip2hosts)
+RECON_PACKAGES=(dnsenum)
 
 RECON_PIPX=(
-    dnstwist fierce holehe h8mail social-analyzer maigret ghunt shodan
+    dnstwist holehe h8mail social-analyzer maigret ghunt shodan
     socialscan maltego-trx dnsrecon sherlock-project
     bbot onionsearch crosslinked toutatis
     ssh-audit parsero
     emailharvester maryam osrframework
     censys ignorant instaloader
+    theHarvester
 )
 
 RECON_GO=(
     "github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
     "github.com/owasp-amass/amass/v4/...@latest"
-    "github.com/tomnomnom/assetfinder@latest"
     "github.com/tomnomnom/waybackurls@latest"
     "github.com/lc/gau/v2/cmd/gau@latest"
     "github.com/hakluke/hakrawler@latest"
@@ -39,8 +39,10 @@ RECON_GO=(
     "github.com/projectdiscovery/httpx/cmd/httpx@latest"
     "github.com/x1sec/commit-stream@latest"
     "github.com/j3ssie/metabigor@latest"
-    "github.com/sundowndev/phoneinfoga/v2@latest"
     "github.com/PentestPad/subzy@latest"
+    "github.com/alpkeskin/mosint/v3@latest"
+    "github.com/hakluke/hakrevdns@latest"
+    "github.com/s0md3v/smap/cmd/smap@latest"
 )
 
 RECON_GIT=(
@@ -55,25 +57,18 @@ RECON_GIT=(
     "Telepathy=https://github.com/jordanwildon/Telepathy.git"
     "iKy=https://github.com/kennbroorg/iKy.git"
     "certSniff=https://github.com/A-poc/certSniff.git"
-    "AWSBucketDump=https://github.com/jordanpotti/AWSBucketDump.git"
     "linkedin2username=https://github.com/initstring/linkedin2username.git"
-    "LinkedInt=https://github.com/vysecurity/LinkedInt.git"
-    "AttackSurfaceMapper=https://github.com/superhedgy/AttackSurfaceMapper.git"
-    "WitnessMe=https://github.com/byt3bl33d3r/WitnessMe.git"
     "Gato=https://github.com/praetorian-inc/gato.git"
-    "carbon14=https://github.com/Lazza/carbon14.git"
-    "GeoPincer=https://github.com/tloja/GeoPincer.git"
     "pwndb=https://github.com/davidtavarez/pwndb.git"
-    "SimplyEmail=https://github.com/SimplySecurity/SimplyEmail.git"
-    "Yalis=https://github.com/EatonChips/yalis.git"
     "EyeWitness=https://github.com/FortyNorthSecurity/EyeWitness.git"
     "osmedeus=https://github.com/j3ssie/osmedeus.git"
     "recon-ng=https://github.com/lanmaster53/recon-ng.git"
+    "vulscan=https://github.com/scipag/vulscan.git"
 )
 
 # Binary names for verify/remove
-RECON_GO_BINS=(subfinder amass assetfinder waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor phoneinfoga subzy)
-RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff AWSBucketDump linkedin2username LinkedInt AttackSurfaceMapper WitnessMe Gato carbon14 GeoPincer pwndb SimplyEmail Yalis EyeWitness osmedeus recon-ng)
+RECON_GO_BINS=(subfinder amass waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor subzy mosint hakrevdns smap)
+RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username Gato pwndb EyeWitness osmedeus recon-ng vulscan)
 RECON_BUILD_NAMES=(massdns)
 
 install_module_recon() {

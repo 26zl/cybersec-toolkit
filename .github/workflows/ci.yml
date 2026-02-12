@@ -42,6 +42,7 @@ jobs:
             modules/stego.sh \
             modules/web.sh \
             modules/wireless.sh \
+            modules/llm.sh \
             scripts/verify.sh \
             scripts/update.sh \
             scripts/remove.sh \
@@ -75,6 +76,8 @@ jobs:
           globs: |
             **/*.md
             !docs/TOOL_ANALYSIS.md
+            !tests/bats/**/*.md
+            !tests/test_helper/**/*.md
 
   tests:
     name: Tests (bats-core)
@@ -104,7 +107,7 @@ jobs:
 
       - name: Validate profile configs
         run: |
-          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain"
+          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm"
           exit_code=0
 
           for conf in profiles/*.conf; do

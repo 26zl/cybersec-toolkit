@@ -10,13 +10,10 @@ CRYPTO_PIPX=(codext xortool factordb-python z3-solver)
 CRYPTO_GIT=(
     "RsaCtfTool=https://github.com/RsaCtfTool/RsaCtfTool.git"
     "rsatool=https://github.com/ius/rsatool.git"
-    "featherduster=https://github.com/nccgroup/featherduster.git"
     "cribdrag=https://github.com/SpiderLabs/cribdrag.git"
-    "foresight=https://github.com/ALSchwalm/foresight.git"
-    "nonce-disrespect=https://github.com/nonce-disrespect/nonce-disrespect.git"
 )
 
-CRYPTO_GIT_NAMES=(RsaCtfTool rsatool featherduster cribdrag foresight nonce-disrespect)
+CRYPTO_GIT_NAMES=(RsaCtfTool rsatool cribdrag)
 CRYPTO_BUILD_NAMES=(hash_extender PkCrack yafu fastcoll msieve pemcrack)
 
 install_module_crypto() {
@@ -29,8 +26,8 @@ install_module_crypto() {
     build_from_source "hash_extender" "https://github.com/iagox86/hash_extender.git" "make" || true
     build_from_source "PkCrack" "https://github.com/keyunluo/pkcrack.git" "cmake . && make" || true
     build_from_source "yafu" "https://github.com/bbuhrow/yafu.git" \
-        "sed -i 's|-I\.\./gmp-install/[^ ]*||g; s|-L\.\./gmp-install/[^ ]*||g; s|-I\.\./ecm-install/[^ ]*||g; s|-L\.\./ecm-install/[^ ]*||g' Makefile.gcc && make -f Makefile.gcc yafu" || true
+        "sed -i 's|-I\.\./gmp-install/[^ ]*||g; s|-L\.\./gmp-install/[^ ]*||g; s|-I\.\./ecm-install/[^ ]*||g; s|-L\.\./ecm-install/[^ ]*||g; s|-lcuda||g; s|-lcudart||g; s|-Werror||g' Makefile.gcc && make -f Makefile.gcc yafu NFS=1 USE_CUDA=0" || true
     build_from_source "fastcoll" "https://github.com/upbit/clone-fastcoll.git" "make" || true
-    build_from_source "msieve" "https://github.com/radii/msieve.git" "make all" || true
+    build_from_source "msieve" "https://github.com/radii/msieve.git" "make x86_64" || true
     build_from_source "pemcrack" "https://github.com/robertdavidgraham/pemcrack.git" "make" || true
 }

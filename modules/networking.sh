@@ -5,10 +5,10 @@
 
 NET_PACKAGES=(
     nmap masscan netdiscover tcpdump hping3 arp-scan
-    iftop iptraf-ng net-tools whois dnsutils traceroute
+    iftop iptraf-ng whois dnsutils traceroute
     netcat-openbsd socat p0f ncrack sslscan nbtscan
     onesixtyone snmp smbclient iodine redsocks stunnel4 zmap
-    ettercap-graphical mitmproxy dsniff
+    mitmproxy
     wireshark-common tshark sslsplit
     tor proxychains4 macchanger
     snort yersinia
@@ -28,15 +28,12 @@ NET_GIT=(
     "nipe=https://github.com/htrgouvea/nipe.git"
     "PRET=https://github.com/RUB-NDS/PRET.git"
     "pwnat=https://github.com/samyk/pwnat.git"
-    "MITMf=https://github.com/byt3bl33d3r/MITMf.git"
-    "evilgrade=https://github.com/infobyte/evilgrade.git"
-    "SigPloit=https://github.com/SigPloiter/SigPloit.git"
     "dnschef=https://github.com/iphelix/dnschef.git"
 )
 
 NET_CARGO=(rustscan)
 NET_GO_BINS=(chisel)
-NET_GIT_NAMES=(bettercap dnscat2 nipe PRET pwnat MITMf evilgrade SigPloit dnschef)
+NET_GIT_NAMES=(bettercap dnscat2 nipe PRET pwnat dnschef)
 
 install_module_networking() {
     install_apt_batch "Networking - Packages" "${NET_PACKAGES[@]}"

@@ -21,7 +21,7 @@ ALL_MODULES = [
     "shared",  # pseudo-module: lib/shared.sh base dependencies
     "misc", "networking", "recon", "web", "crypto", "pwn", "reversing",
     "forensics", "malware", "enterprise", "wireless", "cracking", "stego",
-    "cloud", "containers", "blueteam", "mobile", "blockchain",
+    "cloud", "containers", "blueteam", "mobile", "blockchain", "llm",
 ]
 
 MODULE_PREFIX = {
@@ -30,7 +30,7 @@ MODULE_PREFIX = {
     "forensics": "FORENSICS", "malware": "MALWARE", "enterprise": "ENTERPRISE",
     "wireless": "WIRELESS", "cracking": "CRACKING", "stego": "STEGO",
     "cloud": "CLOUD", "containers": "CONTAINER", "blueteam": "BLUETEAM",
-    "mobile": "MOBILE", "blockchain": "BLOCKCHAIN",
+    "mobile": "MOBILE", "blockchain": "BLOCKCHAIN", "llm": "LLM",
 }
 
 APT_SUFFIXES = {"PACKAGES", "BASE_PACKAGES", "HEAVY_PACKAGES"}
@@ -40,7 +40,7 @@ SKIP_SUFFIXES = {"GO_BINS", "GIT_NAMES", "GO", "BUILD_NAMES"}
 
 VALID_METHODS = {
     "apt", "pipx", "go", "cargo", "gem", "git",
-    "binary", "source", "docker", "snap", "special",
+    "binary", "source", "docker", "snap", "special", "npm",
 }
 
 # Names that differ between code and JSON (code_name → json_name)
@@ -250,8 +250,6 @@ def extract_module_tools(module_name):
             "name": "metasploit", "method": "special",
             "url": "https://github.com/rapid7/metasploit-framework",
         })
-    if "install_burpsuite" in clean:
-        tools.append({"name": "burpsuite", "method": "special", "url": ""})
     if "install_zap" in clean:
         tools.append({
             "name": "zaproxy", "method": "snap",
@@ -261,6 +259,11 @@ def extract_module_tools(module_name):
         tools.append({
             "name": "foundry", "method": "special",
             "url": "https://github.com/foundry-rs/foundry",
+        })
+    if "steampipe" in clean:
+        tools.append({
+            "name": "steampipe", "method": "special",
+            "url": "https://github.com/turbot/steampipe",
         })
 
     # pipx install git+URL patterns (not in PIPX arrays)
@@ -274,10 +277,23 @@ def extract_module_tools(module_name):
             "url": f"https://github.com/{repo_path}",
         })
 
+    # pipx install <name> (plain package name, not git+URL)
+    pipx_names = {t["name"] for t in tools if t["method"] == "pipx"}
+    for m in re.finditer(r'pipx\s+install\s+([\w][\w-]*)', clean):
+        name = m.group(1)
+        if name not in pipx_names and name != "git":
+            tools.append({"name": name, "method": "pipx", "url": ""})
+            pipx_names.add(name)
+
     # snap_install calls
     for m in re.finditer(r'snap_install\s+(\S+)', clean):
         name = m.group(1)
         tools.append({"name": name, "method": "snap", "url": ""})
+
+    # npm install -g <package>
+    for m in re.finditer(r'npm\s+install\s+-g\s+([\w][\w@/-]*)', clean):
+        name = m.group(1).split("@")[0]
+        tools.append({"name": name, "method": "npm", "url": ""})
 
     return tools
 

@@ -12,7 +12,6 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Configurable defaults (GITHUB_TOOL_DIR set after distro detection — see path block below)
-BURP_VERSION="${BURP_VERSION:-2024.10.1}"
 VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
 LOG_FILE="${LOG_FILE:-/dev/null}"
 VERBOSE="${VERBOSE:-false}"
@@ -97,7 +96,7 @@ log_system_environment() {
 # Args: $1 = number of modules to install
 # Returns 0 always (non-blocking), but prompts user to abort if critically low.
 check_disk_space() {
-    local num_modules="${1:-18}"
+    local num_modules="${1:-19}"
 
     # Determine check path: Termux uses $HOME, Linux uses /
     local check_path="/"
@@ -116,7 +115,7 @@ check_disk_space() {
     # Estimate required space based on module count
     # Base: ~2GB for shared deps + runtimes (Go, Rust, Python venvs, etc.)
     # Per module: ~1.5GB average (packages + git repos + compiled tools)
-    # Full install (18 modules): ~25-30GB; lightweight (4 modules): ~5-8GB
+    # Full install (19 modules): ~25-30GB; lightweight (4 modules): ~5-8GB
     local base_gb=2
     local per_module_mb=1500
     local required_mb=$(( base_gb * 1024 + num_modules * per_module_mb ))
@@ -234,6 +233,26 @@ detect_distro() {
 
 # Determine the package-manager family: apt | dnf | pacman | zypper | pkg | unknown
 detect_pkg_manager() {
+    # Unsupported OS — hard stop on Windows and macOS
+    local _kernel
+    _kernel="$(uname -s 2>/dev/null || echo unknown)"
+    case "$_kernel" in
+        MINGW*|MSYS*|CYGWIN*|Windows_NT)
+            echo -e "\n${RED}[-] ERROR: Windows is not supported.${NC}"
+            echo "    This installer requires Linux or Termux (Android)."
+            echo "    Use WSL (Windows Subsystem for Linux) instead:"
+            echo "      https://learn.microsoft.com/en-us/windows/wsl/install"
+            exit 1
+            ;;
+        Darwin)
+            echo -e "\n${RED}[-] ERROR: macOS is not supported.${NC}"
+            echo "    This installer requires Linux or Termux (Android)."
+            echo "    On macOS, use a Linux VM or Docker container:"
+            echo "      docker build -t cybersec-installer . && docker run cybersec-installer"
+            exit 1
+            ;;
+    esac
+
     # Termux on Android — detect before os-release (Termux always sets TERMUX_VERSION)
     if [[ -n "${TERMUX_VERSION:-}" ]]; then
         DISTRO_ID="android"
@@ -512,7 +531,7 @@ BANNER
 
 # Module registry (single source of truth) 
 # shellcheck disable=SC2034  # Used by all scripts that source this file
-ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain)
+ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
 
 # Module name → array prefix mapping
 _module_prefix() {

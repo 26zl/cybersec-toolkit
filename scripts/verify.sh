@@ -37,7 +37,7 @@ Options:
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
          malware, enterprise, wireless, cracking, stego, cloud, containers,
-         blueteam, mobile, blockchain
+         blueteam, mobile, blockchain, llm
 EOF
     exit 0
 fi
@@ -155,9 +155,10 @@ check_build() {
         [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$name — built & in PATH"
         return 0
     elif [[ -d "$dir" ]]; then
-        # Directory exists — check for common build artifacts
+        # Directory exists — check for build artifacts (case-insensitive name, .so libs, or any ELF binary in bin/)
         # shellcheck disable=SC2044
-        if find "$dir" -maxdepth 3 -type f \( -name "$name" -o -name "*.so" -o -name "afl-fuzz" \) -executable 2>/dev/null | grep -q .; then
+        if find "$dir" -maxdepth 3 -type f \( -iname "$name" -o -name "*.so" -o -name "afl-fuzz" \) -executable 2>/dev/null | grep -q . \
+           || find "$dir/bin" -maxdepth 1 -type f -executable 2>/dev/null | grep -q .; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
             [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$name — built at $dir"
             return 0
@@ -209,6 +210,8 @@ check_cmd "ruby" "ruby --version" || true
 check_cmd "java" "java -version" || true
 check_cmd "git" "git --version" || true
 check_cmd "cargo" "cargo --version" || true
+check_cmd "node" "node --version" || true
+check_cmd "npm" "npm --version" || true
 check_cmd "docker" "docker --version" || true
 echo ""
 
@@ -216,7 +219,8 @@ echo ""
 log_info "========== Shared Dependencies =========="
 log_info "Base Dependencies:"
 check_cmds git curl wget openssl python3 pip3 ruby go java cmake dos2unix rlwrap jq file
-check_cmds autoconf automake libtool pkg-config
+check_cmds autoconf automake pkg-config
+check_cmd_any "libtool" libtool libtoolize || true
 check_cmd_any "imagemagick" convert magick || true
 echo ""
 
@@ -228,11 +232,8 @@ _is_kali=false
 if should_verify "misc"; then
     echo ""
     log_info "========== Module: misc =========="
-    log_info "Security Tools:"
-    check_cmds lynis rkhunter chkrootkit
     log_info "Heavy Tools:"
-    check_cmds gimp audacity
-    [[ "$_is_kali" == "true" ]] && { check_cmd "sage" || true; }
+    check_cmd "sage" || true
     log_info "Misc (pipx):"
     check_pipx_arr "${MISC_PIPX[@]}"
     log_info "Misc (Go):"
@@ -246,6 +247,9 @@ if should_verify "misc"; then
     check_cmd "gophish" || true
     check_cmd "trufflehog" || true
     check_cmd "gitleaks" || true
+    check_cmd "sliver-server" || true
+    check_cmd "sliver-client" || true
+    check_cmd "evilginx" || true
 fi
 
 if should_verify "networking"; then
@@ -254,7 +258,7 @@ if should_verify "networking"; then
     log_info "Networking (packages):"
     check_cmds nmap masscan netdiscover tcpdump hping3 arp-scan \
         socat p0f ncrack sslscan nbtscan onesixtyone snmpwalk smbclient \
-        iodine zmap ettercap mitmproxy tshark dsniff sslsplit \
+        iodine zmap mitmproxy tshark sslsplit \
         tor proxychains4 macchanger snort yersinia whois traceroute nc
     log_info "Networking (pipx):"
     check_pipx_arr "${NET_PIPX[@]}"
@@ -272,7 +276,7 @@ if should_verify "recon"; then
     echo ""
     log_info "========== Module: recon =========="
     log_info "Recon (packages):"
-    check_cmds dnsenum dmitry
+    check_cmds dnsenum
     log_info "Recon (pipx):"
     check_pipx_arr "${RECON_PIPX[@]}"
     log_info "Recon (Go):"
@@ -283,13 +287,14 @@ if should_verify "recon"; then
     check_builds "${RECON_BUILD_NAMES[@]}"
     log_info "Recon (Binary):"
     check_cmd "findomain" || true
+    check_cmd "phoneinfoga" || true
 fi
 
 if should_verify "web"; then
     echo ""
     log_info "========== Module: web =========="
     log_info "Web (packages):"
-    check_cmds nikto whatweb
+    check_cmds whatweb
     log_info "Web (pipx):"
     check_pipx_arr "${WEB_PIPX[@]}"
     log_info "Web (Go):"
@@ -301,7 +306,6 @@ if should_verify "web"; then
     log_info "Web (Git):"
     check_git_repos "${WEB_GIT_NAMES[@]}"
     log_info "Web (Special):"
-    check_cmd "burpsuite" || true
     check_cmd "zaproxy" || true
 fi
 
@@ -341,8 +345,9 @@ if should_verify "reversing"; then
     echo ""
     log_info "========== Module: reversing =========="
     log_info "RE (packages):"
-    check_cmds r2 checksec gdb binwalk ltrace strace hexedit upx valgrind
+    check_cmds checksec gdb binwalk ltrace strace hexedit upx valgrind
     if [[ "$_is_kali" == "true" ]]; then
+        check_cmd "r2" || true
         check_cmd "rizin" || true
         check_cmd_any "ghidra" ghidra ghidraRun || true
     fi
@@ -362,7 +367,7 @@ if should_verify "forensics"; then
     echo ""
     log_info "========== Module: forensics =========="
     log_info "Forensics (packages):"
-    check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk exiftool clamscan
+    check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk exiftool clamscan pdftotext zbarimg
     [[ "$_is_kali" == "true" ]] && { check_cmd "bulk_extractor" || true; }
     log_info "Forensics (pipx):"
     check_pipx_arr "${FORENSICS_PIPX[@]}"
@@ -379,6 +384,8 @@ if should_verify "malware"; then
     check_cmds yara clamscan
     log_info "Malware (pipx):"
     check_pipx_arr "${MALWARE_PIPX[@]}"
+    log_info "Malware (Cargo):"
+    check_cmds "${MALWARE_CARGO[@]}"
     log_info "Malware (Binary):"
     check_cmd "floss" || true
     check_cmd "capa" || true
@@ -400,16 +407,22 @@ if should_verify "enterprise"; then
 fi
 
 if should_verify "wireless"; then
-    echo ""
-    log_info "========== Module: wireless =========="
-    log_info "Wireless (packages):"
-    check_cmds aircrack-ng reaver pixiewps bully iw horst gnuradio-companion gqrx
-    [[ "$_is_kali" == "true" ]] && { check_cmd "kismet" || true; }
-    check_cmd_any "bluetooth" hciconfig bluetoothctl || true
-    log_info "Wireless (pipx):"
-    check_pipx_arr "${WIRELESS_PIPX[@]}"
-    log_info "Wireless (Git):"
-    check_git_repos "${WIRELESS_GIT_NAMES[@]}"
+    if [[ "$IS_WSL" == "true" ]]; then
+        echo ""
+        log_info "========== Module: wireless =========="
+        log_warn "Skipped on WSL (no wireless hardware access)"
+    else
+        echo ""
+        log_info "========== Module: wireless =========="
+        log_info "Wireless (packages):"
+        check_cmds aircrack-ng reaver pixiewps bully iw horst gnuradio-companion gqrx
+        [[ "$_is_kali" == "true" ]] && { check_cmd "kismet" || true; }
+        check_cmd_any "bluetooth" hciconfig bluetoothctl || true
+        log_info "Wireless (pipx):"
+        check_pipx_arr "${WIRELESS_PIPX[@]}"
+        log_info "Wireless (Git):"
+        check_git_repos "${WIRELESS_GIT_NAMES[@]}"
+    fi
 fi
 
 if should_verify "cracking"; then
@@ -451,6 +464,8 @@ if should_verify "cloud"; then
     check_cmds "${CLOUD_GO_BINS[@]}"
     log_info "Cloud (Git):"
     check_git_repos "${CLOUD_GIT_NAMES[@]}"
+    log_info "Cloud (Special):"
+    check_cmd "steampipe" || true
 fi
 
 if should_verify "containers"; then
@@ -466,7 +481,8 @@ if should_verify "mobile"; then
     echo ""
     log_info "========== Module: mobile =========="
     log_info "Mobile (packages):"
-    check_cmds adb smali scrcpy apksigner zipalign
+    check_cmds adb scrcpy apksigner zipalign
+    [[ "$_is_kali" == "true" ]] && { check_cmd "smali" || true; }
     log_info "Mobile (pipx):"
     check_pipx_arr "${MOBILE_PIPX[@]}"
     log_info "Mobile (Git):"
@@ -477,7 +493,11 @@ if should_verify "blueteam"; then
     echo ""
     log_info "========== Module: blueteam =========="
     log_info "Blue Team (packages):"
-    check_cmds suricata fail2ban-client aide auditctl apparmor_parser ufw
+    check_cmds suricata fail2ban-client aide ufw lynis rkhunter chkrootkit
+    if [[ "$IS_WSL" != "true" ]]; then
+        check_cmd "auditctl" || true
+        check_cmd "apparmor_parser" || true
+    fi
     [[ "$_is_kali" == "true" ]] && { check_cmd "zeek" || true; }
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"
@@ -511,6 +531,17 @@ if should_verify "blockchain"; then
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
         [[ "$SUMMARY_ONLY" == "false" ]] && log_error "chisel (foundry) — NOT found at $HOME/.foundry/bin/chisel"
     fi
+fi
+
+if should_verify "llm"; then
+    echo ""
+    log_info "========== Module: llm =========="
+    log_info "LLM (pipx):"
+    check_pipx_arr "${LLM_PIPX[@]}"
+    log_info "LLM (Git):"
+    check_git_repos "${LLM_GIT_NAMES[@]}"
+    log_info "LLM (npm):"
+    check_cmd "promptfoo" "promptfoo --version" || true
 fi
 
 # Docker images (all modules — uses centralized registry)

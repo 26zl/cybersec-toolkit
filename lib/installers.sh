@@ -335,6 +335,11 @@ install_pipx_batch() {
     local total=${#tools[@]}
     [[ "$total" -eq 0 ]] && return 0
 
+    if [[ "${SKIP_PIPX:-false}" == "true" ]]; then
+        log_warn "Skipping ${label} (--skip-pipx)"
+        return 0
+    fi
+
     log_debug "install_pipx_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
@@ -380,6 +385,11 @@ install_go_batch() {
     local -a tools=("$@")
     local total=${#tools[@]}
     [[ "$total" -eq 0 ]] && return 0
+
+    if [[ "${SKIP_GO:-false}" == "true" ]]; then
+        log_warn "Skipping ${label} (--skip-go)"
+        return 0
+    fi
 
     if ! command_exists go; then
         log_warn "Go not found — skipping ${label}"
@@ -460,6 +470,11 @@ install_cargo_batch() {
     local total=${#crates[@]}
     [[ "$total" -eq 0 ]] && return 0
 
+    if [[ "${SKIP_CARGO:-false}" == "true" ]]; then
+        log_warn "Skipping ${label} (--skip-cargo)"
+        return 0
+    fi
+
     if ! command_exists cargo; then
         log_warn "Cargo not found — skipping ${label}"
         log_warn "Install Rust first: https://rustup.rs/"
@@ -508,6 +523,11 @@ install_gem_batch() {
     local -a gems=("$@")
     local total=${#gems[@]}
     [[ "$total" -eq 0 ]] && return 0
+
+    if [[ "${SKIP_GEMS:-false}" == "true" ]]; then
+        log_warn "Skipping ${label} (--skip-gems)"
+        return 0
+    fi
 
     if ! command_exists gem; then
         log_warn "Ruby gem not found — skipping ${label}"
@@ -606,6 +626,11 @@ install_git_batch() {
     local -a repos=("$@")
     local total=${#repos[@]}
     [[ "$total" -eq 0 ]] && return 0
+
+    if [[ "${SKIP_GIT:-false}" == "true" ]]; then
+        log_warn "Skipping ${label} (--skip-git)"
+        return 0
+    fi
 
     log_debug "install_git_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
@@ -748,6 +773,11 @@ download_github_release() {
     local binary="$2"
     local pattern="$3"
     local dest_dir="${4:-$PIPX_BIN_DIR}"
+
+    if [[ "${SKIP_BINARY:-false}" == "true" ]]; then
+        log_warn "Skipping binary release: $binary (--skip-binary)"
+        return 0
+    fi
 
     # Check if already installed
     if command_exists "$binary"; then
@@ -1098,15 +1128,20 @@ track_version() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
-    # Create version file if it doesn't exist
-    [[ -f "$version_file" ]] || echo "# tool|method|version|last_updated" > "$version_file"
+    # Use flock for atomic read-modify-write (safe with PARALLEL_JOBS > 1)
+    (
+        flock -x 200
 
-    # Remove existing entry for this tool
-    if grep -q "^${tool}|" "$version_file" 2>/dev/null; then
-        sed -i "/^${tool}|/d" "$version_file"
-    fi
+        # Create version file if it doesn't exist
+        [[ -f "$version_file" ]] || echo "# tool|method|version|last_updated" > "$version_file"
 
-    echo "${tool}|${method}|${version}|${timestamp}" >> "$version_file"
+        # Remove existing entry for this tool
+        if grep -q "^${tool}|" "$version_file" 2>/dev/null; then
+            sed -i "/^${tool}|/d" "$version_file"
+        fi
+
+        echo "${tool}|${method}|${version}|${timestamp}" >> "$version_file"
+    ) 200>"${version_file}.lock"
 }
 
 # Build from source helper
@@ -1115,6 +1150,11 @@ build_from_source() {
     local url="$2"
     local build_cmd="$3"
     local dest="$GITHUB_TOOL_DIR/$name"
+
+    if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
+        log_warn "Skipping build-from-source: $name (--skip-source)"
+        return 0
+    fi
 
     # Termux: build-from-source tools assume glibc/x86 — skip entirely
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
@@ -1147,6 +1187,9 @@ BINARY_RELEASES_MISC=(
     "gophish/gophish|gophish|linux-64bit"
     "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz"
     "gitleaks/gitleaks|gitleaks|linux_x64\\.tar\\.gz"
+    "BishopFox/sliver|sliver-server|sliver-server_linux$"
+    "BishopFox/sliver|sliver-client|sliver-client_linux$"
+    "kgretzky/evilginx2|evilginx|linux.*amd64"
 )
 BINARY_RELEASES_NETWORKING=(
     "nicocha30/ligolo-ng|ligolo-proxy|linux_amd64"
@@ -1155,6 +1198,7 @@ BINARY_RELEASES_NETWORKING=(
 )
 BINARY_RELEASES_RECON=(
     "Findomain/Findomain|findomain|linux"
+    "sundowndev/phoneinfoga|phoneinfoga|Linux_x86_64\\.tar\\.gz"
 )
 BINARY_RELEASES_WEB=(
     "frohoff/ysoserial|ysoserial|ysoserial-all.jar|${GITHUB_TOOL_DIR}/cybersec-jars"
@@ -1211,6 +1255,11 @@ install_binary_releases() {
     local -a entries=("$@")
     local total=${#entries[@]}
     [[ "$total" -eq 0 ]] && return 0
+
+    if [[ "${SKIP_BINARY:-false}" == "true" ]]; then
+        log_warn "Skipping binary releases (--skip-binary)"
+        return 0
+    fi
 
     # Termux: GitHub release binaries are almost always Linux/glibc — skip entirely
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
@@ -1372,33 +1421,6 @@ install_metasploit() {
     return 1
 }
 
-# Burp Suite
-# NOTE: Burp Suite requires a GUI installer and cannot be fully automated.
-# This downloads the installer and provides instructions for manual completion.
-install_burpsuite() {
-    if command_exists burpsuite; then
-        log_success "Burp Suite already installed"
-        return 0
-    fi
-    local version="$BURP_VERSION"
-    local dest_dir="$GITHUB_TOOL_DIR/burpsuite-installer"
-    local installer="$dest_dir/burpsuite_community_v${version}_install.sh"
-
-    log_info "Downloading Burp Suite Community v${version}..."
-    mkdir -p "$dest_dir"
-    if ! wget -q -O "$installer" "https://portswigger.net/burp/releases/download?product=community&version=${version}&type=Linux" 2>> "$LOG_FILE"; then
-        log_error "Failed to download Burp Suite"
-        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-        return 1
-    fi
-    chmod +x "$installer"
-
-    log_warn "============================================="
-    log_warn "Burp Suite requires MANUAL GUI installation:"
-    log_warn "  Run: $installer"
-    log_warn "============================================="
-    track_version "burpsuite" "special" "$version (downloaded, needs manual install)"
-}
 
 # OWASP ZAP
 install_zap() {

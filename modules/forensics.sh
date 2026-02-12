@@ -12,6 +12,7 @@ FORENSICS_PACKAGES=(
     galleta pasco mac-robber vinetto
     guymager magicrescue memdump
     rifiuti2 scrounge-ntfs ext3grep ext4magic
+    poppler-utils zbar-tools
 )
 
 FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3)

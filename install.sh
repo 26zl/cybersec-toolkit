@@ -33,6 +33,13 @@ SELECTED_TOOLS=()
 DRY_RUN=false
 UPGRADE_SYSTEM=false
 SKIP_HEAVY="${SKIP_HEAVY:-false}"
+SKIP_PIPX="${SKIP_PIPX:-false}"
+SKIP_GO="${SKIP_GO:-false}"
+SKIP_CARGO="${SKIP_CARGO:-false}"
+SKIP_GEMS="${SKIP_GEMS:-false}"
+SKIP_GIT="${SKIP_GIT:-false}"
+SKIP_BINARY="${SKIP_BINARY:-false}"
+SKIP_SOURCE="${SKIP_SOURCE:-false}"
 ENABLE_DOCKER="${ENABLE_DOCKER:-false}"
 INCLUDE_C2="${INCLUDE_C2:-false}"
 
@@ -51,13 +58,20 @@ Options:
                          Modules: misc, networking, recon, web, crypto,
                          pwn, reversing, forensics, malware, enterprise,
                          wireless, cracking, stego, cloud, containers,
-                         blueteam, mobile, blockchain
+                         blueteam, mobile, blockchain, llm
   --tool <name>        Install a single tool by name. Can be repeated.
                          Searches all modules for a matching package,
                          pipx tool, Go binary, cargo crate, gem, or repo.
   --upgrade-system     Upgrade all system packages before installing
                          (apt upgrade / dnf upgrade / pacman -Syu)
   --skip-heavy         Skip large packages (sagemath, gimp, audacity, gnuradio, etc.)
+  --skip-pipx          Skip all pipx (Python) tool installs
+  --skip-go            Skip all Go tool installs
+  --skip-cargo         Skip all Cargo (Rust) tool installs
+  --skip-gems          Skip all Ruby gem installs
+  --skip-git           Skip all git clone installs
+  --skip-binary        Skip all binary release downloads
+  --skip-source        Skip build-from-source, snap, npm, and curl-pipe installs
   --enable-docker      Pull Docker images (C2 frameworks, IR platforms, MobSF, etc.)
   --include-c2         Enable C2 frameworks (requires --enable-docker)
   --dry-run            Show what would be installed without installing
@@ -74,7 +88,6 @@ Environment variables:
   GITHUB_TOOL_DIR      Where to clone GitHub repos (default: /opt)
   GITHUB_TOKEN         GitHub personal access token for API requests
                          (avoids rate limits on binary downloads)
-  BURP_VERSION         Burp Suite version (default: 2024.10.1)
   GO_INSTALL_VERSION   Go version to download from go.dev (default: 1.23.6)
   GO_MIN_VERSION       Minimum Go version before auto-upgrade (default: 1.21)
   VERBOSE              Enable verbose/debug output (default: false)
@@ -135,6 +148,7 @@ list_modules() {
     printf "  %-16s %s\n" "blueteam"   "Defensive security, IDS/IPS, SIEM, IR"
     printf "  %-16s %s\n" "mobile"     "Android/iOS app testing, APK analysis"
     printf "  %-16s %s\n" "blockchain" "Smart contract auditing, analysis, reversing"
+    printf "  %-16s %s\n" "llm"        "LLM red teaming, prompt injection, AI security"
     echo ""
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
         echo "Usage: ./install.sh --module <name> [--module <name> ...]"
@@ -155,6 +169,13 @@ while [[ $# -gt 0 ]]; do
                            SELECTED_TOOLS+=("$2"); shift 2 ;;
         --upgrade-system)  UPGRADE_SYSTEM=true; shift ;;
         --skip-heavy)      SKIP_HEAVY=true; shift ;;
+        --skip-pipx)       SKIP_PIPX=true; shift ;;
+        --skip-go)         SKIP_GO=true; shift ;;
+        --skip-cargo)      SKIP_CARGO=true; shift ;;
+        --skip-gems)       SKIP_GEMS=true; shift ;;
+        --skip-git)        SKIP_GIT=true; shift ;;
+        --skip-binary)     SKIP_BINARY=true; shift ;;
+        --skip-source)     SKIP_SOURCE=true; shift ;;
         --enable-docker)   ENABLE_DOCKER=true; shift ;;
         --include-c2)      INCLUDE_C2=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
@@ -192,7 +213,7 @@ install_single_tool() {
         FORENSICS_PACKAGES MALWARE_PACKAGES WIRELESS_PACKAGES WIRELESS_HEAVY_PACKAGES
         CRACKING_PACKAGES STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES
         ENTERPRISE_PACKAGES CRYPTO_PACKAGES CLOUD_PACKAGES CONTAINER_PACKAGES
-        BLOCKCHAIN_PACKAGES
+        BLOCKCHAIN_PACKAGES LLM_PACKAGES
     )
     for a in "${pkg_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
@@ -202,8 +223,8 @@ install_single_tool() {
                 log_warn "$tool is not available on this distro — skipped"
                 return 0
             fi
-            log_info "Installing ${_tmp_pkg[0]} via $PKG_MANAGER..."
-            pkg_install "${_tmp_pkg[0]}" >> "$LOG_FILE" 2>&1 && log_success "Installed: ${_tmp_pkg[0]}" || log_error "Failed: ${_tmp_pkg[0]}"
+            log_info "Installing ${_tmp_pkg[*]} via $PKG_MANAGER..."
+            pkg_install "${_tmp_pkg[@]}" >> "$LOG_FILE" 2>&1 && log_success "Installed: ${_tmp_pkg[*]}" || log_error "Failed: ${_tmp_pkg[*]}"
             return 0
         fi
     done
@@ -213,7 +234,7 @@ install_single_tool() {
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
         FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
         STEGO_PIPX CLOUD_PIPX CONTAINER_PIPX BLUETEAM_PIPX MOBILE_PIPX
-        BLOCKCHAIN_PIPX
+        BLOCKCHAIN_PIPX LLM_PIPX
     )
     for a in "${pipx_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
@@ -237,6 +258,7 @@ install_single_tool() {
             local goname
             goname=$(_go_bin_name "$gopkg")
             if [[ "$goname" == "$tool" ]]; then
+                ensure_go || { log_error "Go not available — cannot install $tool"; return 1; }
                 log_info "Installing $tool via go install..."
                 go install "$gopkg" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
                 return 0
@@ -246,10 +268,11 @@ install_single_tool() {
 
     # Cargo
     local cargo_arrs=(
-        WEB_CARGO NET_CARGO PWN_CARGO
+        WEB_CARGO NET_CARGO PWN_CARGO MALWARE_CARGO
     )
     for a in "${cargo_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
+            ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
             log_info "Installing $tool via cargo..."
             cargo install "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
             if [[ -f "$HOME/.cargo/bin/$tool" ]]; then
@@ -274,7 +297,7 @@ install_single_tool() {
         MISC_GIT NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
         FORENSICS_GIT MALWARE_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT
         STEGO_GIT CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
-        BLOCKCHAIN_GIT
+        BLOCKCHAIN_GIT LLM_GIT
     )
     for a in "${git_arrs[@]}"; do
         declare -p "$a" &>/dev/null || continue
@@ -293,6 +316,14 @@ install_single_tool() {
             fi
         done
     done
+
+    # npm tools (promptfoo)
+    if [[ "$tool" == "promptfoo" ]]; then
+        ensure_node || { log_error "Node.js/npm not available — cannot install $tool"; return 1; }
+        log_info "Installing $tool via npm..."
+        npm install -g "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
+        return 0
+    fi
 
     log_error "Tool '$tool' not found in any module array."
     log_info "Use --list-modules to see available modules, or check tool names with:"
@@ -357,7 +388,8 @@ else
 fi
 
 # Export flags for modules
-export SKIP_HEAVY ENABLE_DOCKER INCLUDE_C2 UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
+export SKIP_HEAVY SKIP_PIPX SKIP_GO SKIP_CARGO SKIP_GEMS SKIP_GIT SKIP_BINARY SKIP_SOURCE
+export ENABLE_DOCKER INCLUDE_C2 UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
 
 # Source selected modules
 for mod in "${MODULES_TO_INSTALL[@]}"; do
@@ -452,6 +484,18 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "Profile:        ${PROFILE:-custom}"
     echo "Modules:        ${MODULES_TO_INSTALL[*]}"
     echo "Skip heavy:     $SKIP_HEAVY"
+    # Show active skip flags
+    local _skip_flags=()
+    [[ "$SKIP_PIPX"   == "true" ]] && _skip_flags+=(pipx)
+    [[ "$SKIP_GO"     == "true" ]] && _skip_flags+=(go)
+    [[ "$SKIP_CARGO"  == "true" ]] && _skip_flags+=(cargo)
+    [[ "$SKIP_GEMS"   == "true" ]] && _skip_flags+=(gems)
+    [[ "$SKIP_GIT"    == "true" ]] && _skip_flags+=(git)
+    [[ "$SKIP_BINARY" == "true" ]] && _skip_flags+=(binary)
+    [[ "$SKIP_SOURCE" == "true" ]] && _skip_flags+=(source)
+    if [[ ${#_skip_flags[@]} -gt 0 ]]; then
+        echo "Skipping:       ${_skip_flags[*]}"
+    fi
     echo "Docker:         $ENABLE_DOCKER"
     echo "C2:             $INCLUDE_C2"
     echo "System upgrade: $UPGRADE_SYSTEM"

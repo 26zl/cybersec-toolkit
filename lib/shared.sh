@@ -38,7 +38,7 @@ install_shared_deps() {
     install_apt_batch "Shared base dependencies" "${SHARED_BASE_PACKAGES[@]}"
 
     # Report which key runtimes are now available
-    local -a _runtimes=(python3 go ruby java cargo)
+    local -a _runtimes=(python3 go ruby java cargo node)
     for _rt in "${_runtimes[@]}"; do
         if command_exists "$_rt"; then
             log_success "Runtime available: $_rt"
@@ -146,5 +146,39 @@ ensure_cargo() {
     fi
 
     log_error "Failed to install Rust toolchain — Cargo tools will not be available"
+    return 1
+}
+
+# ensure_node — install Node.js + npm via system package if not present.
+# Required for npm-based tools (e.g., promptfoo).
+ensure_node() {
+    if command_exists node && command_exists npm; then
+        log_success "Node.js + npm already installed"
+        return 0
+    fi
+
+    log_info "Node.js/npm not found — installing via $PKG_MANAGER..."
+
+    # Package names vary by distro
+    local -a _node_pkgs
+    case "$PKG_MANAGER" in
+        apt)    _node_pkgs=(nodejs npm) ;;
+        dnf)    _node_pkgs=(nodejs npm) ;;
+        pacman) _node_pkgs=(nodejs npm) ;;
+        zypper) _node_pkgs=(nodejs npm) ;;
+        pkg)    _node_pkgs=(nodejs) ;;        # Termux: nodejs includes npm
+        *)      _node_pkgs=(nodejs npm) ;;
+    esac
+
+    for _pkg in "${_node_pkgs[@]}"; do
+        pkg_install "$_pkg" >> "$LOG_FILE" 2>&1 || true
+    done
+
+    if command_exists node && command_exists npm; then
+        log_success "Node.js $(node --version 2>/dev/null) + npm installed"
+        return 0
+    fi
+
+    log_error "Failed to install Node.js/npm — npm-based tools will not be available"
     return 1
 }

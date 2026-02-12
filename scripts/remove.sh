@@ -34,13 +34,16 @@ Options:
   --module <name>    Remove specific module only (can be repeated)
   --remove-deps      Also remove base dependencies (python3, openssl, git,
                        build-essential, etc.) — DANGEROUS, may break system
+  --deep-clean       Remove all caches, module caches, build artifacts, and
+                       stale symlinks (Go cache, Cargo registry, pip/pipx
+                       cache, npm cache, rustup toolchains, log files)
   --yes              Skip confirmation prompt
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
          malware, enterprise, wireless, cracking, stego, cloud, containers,
-         blueteam, mobile, blockchain
+         blueteam, mobile, blockchain, llm
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems).
@@ -51,6 +54,7 @@ fi
 # Parse args
 REMOVE_MODULES=()
 REMOVE_DEPS=false
+DEEP_CLEAN=false
 AUTO_YES=false
 
 while [[ $# -gt 0 ]]; do
@@ -58,6 +62,7 @@ while [[ $# -gt 0 ]]; do
         --module)      [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 1; }
                        REMOVE_MODULES+=("$2"); shift 2 ;;
         --remove-deps) REMOVE_DEPS=true; shift ;;
+        --deep-clean)  DEEP_CLEAN=true; shift ;;
         --yes)         AUTO_YES=true; shift ;;
         -v|--verbose)  VERBOSE=true; shift ;;
         -h|--help)     exec "$0" --help ;;
@@ -95,6 +100,9 @@ if [[ "$AUTO_YES" == "false" ]]; then
         echo -e "${RED}${BOLD}[!] --remove-deps: Base dependencies (python3, openssl, git, etc.) WILL be removed!${NC}"
     else
         echo -e "${GREEN}[+]${NC} Base dependencies will be preserved (use --remove-deps to include)"
+    fi
+    if [[ "$DEEP_CLEAN" == "true" ]]; then
+        echo -e "${YELLOW}${BOLD}[!] --deep-clean: All caches, build artifacts, and stale files WILL be purged!${NC}"
     fi
     echo ""
     read -rp "Proceed with removal? (y/N) " confirm
@@ -372,11 +380,16 @@ if should_remove "blockchain"; then
     fi
 fi
 
-# Burp Suite installer cleanup (deterministic path only)
-if [[ -d "$GITHUB_TOOL_DIR/burpsuite-installer" ]]; then
-    rm -rf "$GITHUB_TOOL_DIR/burpsuite-installer"
-    log_success "Removed Burp Suite installer directory"
+# npm tools (promptfoo)
+if should_remove "llm" && command_exists npm; then
+    if npm list -g promptfoo &>/dev/null; then
+        log_info "Removing promptfoo (npm)..."
+        npm uninstall -g promptfoo >> "$LOG_FILE" 2>&1 && \
+            log_success "Removed npm: promptfoo" || \
+            log_warn "Failed to remove promptfoo via npm"
+    fi
 fi
+echo ""
 
 # Docker images (only on full removal)
 if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
@@ -427,6 +440,156 @@ fi
 # Remove version tracking file on full removal
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
     [[ -f "$SCRIPT_DIR/.versions" ]] && rm -f "$SCRIPT_DIR/.versions"
+    [[ -f "$SCRIPT_DIR/.versions.lock" ]] && rm -f "$SCRIPT_DIR/.versions.lock"
+fi
+
+# 10) Deep clean — purge all caches, build artifacts, stale symlinks
+if [[ "$DEEP_CLEAN" == "true" ]]; then
+    echo ""
+    log_info "Deep clean: purging caches and build artifacts..."
+    _deep_freed=0
+
+    # --- Go caches ---
+    # Go module cache (downloaded module source)
+    if [[ -d "$GOPATH/pkg" ]]; then
+        _sz=$(du -sm "$GOPATH/pkg" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$GOPATH/pkg"
+        log_success "Removed Go module cache ($GOPATH/pkg — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+    # Go build cache
+    _go_cache="${HOME}/.cache/go-build"
+    if [[ -d "$_go_cache" ]]; then
+        _sz=$(du -sm "$_go_cache" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$_go_cache"
+        log_success "Removed Go build cache ($_go_cache — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+    # Empty GOPATH dir after cache removal
+    if [[ -d "$GOPATH" ]]; then
+        _gopath_remaining=$(find "$GOPATH" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+        if [[ "$_gopath_remaining" -eq 0 ]]; then
+            rmdir "$GOPATH" 2>/dev/null && log_success "Removed empty GOPATH ($GOPATH)"
+        fi
+    fi
+
+    # --- Cargo / Rust caches ---
+    # Cargo registry (crate source downloads)
+    if [[ -d "$HOME/.cargo/registry" ]]; then
+        _sz=$(du -sm "$HOME/.cargo/registry" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$HOME/.cargo/registry"
+        log_success "Removed Cargo registry cache (~/.cargo/registry — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+    # Cargo git checkouts
+    if [[ -d "$HOME/.cargo/git" ]]; then
+        _sz=$(du -sm "$HOME/.cargo/git" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$HOME/.cargo/git"
+        log_success "Removed Cargo git cache (~/.cargo/git — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+    # Rustup toolchains (only with --remove-deps — these are runtimes)
+    if [[ "$REMOVE_DEPS" == "true" ]] && [[ -d "$HOME/.rustup" ]]; then
+        _sz=$(du -sm "$HOME/.rustup" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$HOME/.rustup"
+        log_success "Removed Rustup toolchains (~/.rustup — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+    # Empty .cargo dir if nothing useful remains
+    if [[ -d "$HOME/.cargo" ]]; then
+        _cargo_bins=$(find "$HOME/.cargo/bin" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+        if [[ "$_cargo_bins" -eq 0 ]]; then
+            rm -rf "$HOME/.cargo"
+            log_success "Removed empty ~/.cargo"
+        fi
+    fi
+
+    # --- pipx / pip caches ---
+    # pipx remaining venvs (orphaned after tool removal)
+    if [[ -d "$PIPX_HOME/venvs" ]]; then
+        _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+        if [[ "$_remaining" -gt 0 ]]; then
+            _sz=$(du -sm "$PIPX_HOME/venvs" 2>/dev/null | cut -f1 || echo 0)
+            rm -rf "$PIPX_HOME/venvs"
+            log_success "Removed $_remaining orphaned pipx venvs ($PIPX_HOME/venvs — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        fi
+    fi
+    # pipx shared libraries
+    if [[ -d "$PIPX_HOME/shared" ]]; then
+        _sz=$(du -sm "$PIPX_HOME/shared" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$PIPX_HOME/shared"
+        log_success "Removed pipx shared libs ($PIPX_HOME/shared — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+    # pipx bootstrap venv
+    [[ -d "$PIPX_HOME/.pipx-bootstrap" ]] && rm -rf "$PIPX_HOME/.pipx-bootstrap"
+    # Remove PIPX_HOME if now empty
+    if [[ -d "$PIPX_HOME" ]]; then
+        _ph_remaining=$(find "$PIPX_HOME" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+        if [[ "$_ph_remaining" -eq 0 ]]; then
+            rmdir "$PIPX_HOME" 2>/dev/null && log_success "Removed empty PIPX_HOME ($PIPX_HOME)"
+        fi
+    fi
+    # pip download cache
+    _pip_cache="${HOME}/.cache/pip"
+    if [[ -d "$_pip_cache" ]]; then
+        _sz=$(du -sm "$_pip_cache" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$_pip_cache"
+        log_success "Removed pip cache (~/.cache/pip — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+    # pipx download cache
+    _pipx_cache="${HOME}/.cache/pipx"
+    if [[ -d "$_pipx_cache" ]]; then
+        _sz=$(du -sm "$_pipx_cache" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$_pipx_cache"
+        log_success "Removed pipx cache (~/.cache/pipx — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+
+    # --- npm cache ---
+    if command_exists npm; then
+        _npm_cache=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+        if [[ -d "$_npm_cache" ]]; then
+            _sz=$(du -sm "$_npm_cache" 2>/dev/null | cut -f1 || echo 0)
+            npm cache clean --force >> "$LOG_FILE" 2>&1 || rm -rf "$_npm_cache"
+            log_success "Removed npm cache (${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        fi
+    fi
+
+    # --- Gem cache ---
+    _gem_cache="${HOME}/.gem"
+    if [[ -d "$_gem_cache/specs" ]] || [[ -d "$_gem_cache/ruby" ]]; then
+        _sz=$(du -sm "$_gem_cache" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$_gem_cache"
+        log_success "Removed gem cache (~/.gem — ${_sz}MB)"
+        _deep_freed=$((_deep_freed + _sz))
+    fi
+
+    # --- Stale symlinks in bin dirs ---
+    _stale=0
+    for _bindir in "$PIPX_BIN_DIR" "$GOBIN"; do
+        [[ -d "$_bindir" ]] || continue
+        while IFS= read -r -d '' _link; do
+            rm -f "$_link"
+            _stale=$((_stale + 1))
+        done < <(find "$_bindir" -maxdepth 1 -xtype l -print0 2>/dev/null)
+    done
+    [[ "$_stale" -gt 0 ]] && log_success "Removed $_stale stale symlinks"
+
+    # --- Log files ---
+    for _logfile in "$SCRIPT_DIR/cybersec_install.log" \
+                    "$SCRIPT_DIR/tool_verification.log" \
+                    "$SCRIPT_DIR/tool_update.log" \
+                    "$SCRIPT_DIR/tool_removal.log"; do
+        [[ -f "$_logfile" ]] && rm -f "$_logfile"
+    done
+    log_success "Removed log files"
+
+    echo ""
+    log_info "Deep clean complete — ~${_deep_freed}MB freed"
 fi
 
 disable_debug_trace
@@ -436,4 +599,5 @@ echo -e "${GREEN}${BOLD}=============================================${NC}"
 log_success "Removal complete!"
 echo -e "${GREEN}${BOLD}=============================================${NC}"
 log_info "Modules removed: ${REMOVE_MODULES[*]}"
+[[ "$DEEP_CLEAN" == "true" ]] && log_info "Deep clean: enabled"
 log_info "Log file: $LOG_FILE"

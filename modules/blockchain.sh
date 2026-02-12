@@ -10,19 +10,16 @@ BLOCKCHAIN_PIPX=(
     mythril
 )
 
-BLOCKCHAIN_GIT=(
-    "smart-contract-sanctuary=https://github.com/tintinweb/smart-contract-sanctuary.git"
-    "openzeppelin-contracts=https://github.com/OpenZeppelin/openzeppelin-contracts.git"
-)
+BLOCKCHAIN_GIT=()
 
-BLOCKCHAIN_GIT_NAMES=(smart-contract-sanctuary openzeppelin-contracts)
+BLOCKCHAIN_GIT_NAMES=()
 
 install_module_blockchain() {
     [[ ${#BLOCKCHAIN_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Blockchain - Packages" "${BLOCKCHAIN_PACKAGES[@]}"
     install_pipx_batch "Blockchain - Python" "${BLOCKCHAIN_PIPX[@]}"
 
     # solc (Solidity compiler) — not in standard repos, use snap if available
-    if ! command_exists solc; then
+    if [[ "${SKIP_SOURCE:-false}" != "true" ]] && ! command_exists solc; then
         if snap_available; then
             log_info "Installing solc via snap..."
             snap_install solc >> "$LOG_FILE" 2>&1 || log_warn "Failed to install solc via snap"
@@ -30,10 +27,12 @@ install_module_blockchain() {
             log_warn "solc not available via apt or snap — install manually: https://docs.soliditylang.org/"
         fi
     fi
-    install_git_batch "Blockchain - Git" "${BLOCKCHAIN_GIT[@]}"
+    [[ ${#BLOCKCHAIN_GIT[@]} -gt 0 ]] && install_git_batch "Blockchain - Git" "${BLOCKCHAIN_GIT[@]}"
 
     # Foundry (forge, cast, anvil, chisel) — installed via foundryup
-    if command_exists foundryup; then
+    if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
+        log_warn "Skipping Foundry (--skip-source)"
+    elif command_exists foundryup; then
         log_info "Foundry already installed"
     else
         log_warn "Installing Foundry via curl | bash (review: https://foundry.paradigm.xyz)"

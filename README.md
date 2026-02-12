@@ -13,27 +13,15 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __660+ tools__, __18 modules__, __10 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __590+ tools__, __19 modules__, __12 install methods__, one command.
 
 ---
 
-## Step 1: Install
+## Install
 
-The installer automatically installs all required runtimes (Python, Go, Ruby, Java, Rust), dev libraries, pipx, and build tools. The only prerequisite is a supported Linux distro with a package manager.
+All required runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pipx, and build tools are installed automatically. The only prerequisite is a supported Linux distro. Windows and macOS are not supported (use WSL or Docker).
 
-> __Docker__ is the one exception — install it manually if you want C2 frameworks, MobSF, BeEF, or TheHive (`--enable-docker`). See [Docker install docs](https://docs.docker.com/engine/install/).
-
-### What gets installed automatically
-
-| Runtime | How | Why |
-| ------- | --- | --- |
-| Python 3, pip, venv, pipx | System package (+ venv bootstrap fallback) | ~157 Python security tools |
-| Go | System package or auto-downloaded from go.dev (≥1.21) | ~55 Go tools (subfinder, nuclei, ffuf, httpx, etc.) |
-| Rust / Cargo | rustup (auto-downloaded) | 3 Rust tools (feroxbuster, RustScan, pwninit) |
-| Ruby / gem | System package | 6 Ruby gems (wpscan, evil-winrm, XSpear, etc.) |
-| Java (JDK) | System package | Burp Suite, ysoserial, apktool |
-| build-essential, cmake, autotools | System package | ~15 tools built from source |
-| Dev libraries | System package | libpcap, libssl, libffi, zlib, libxml2, libxslt, libglib2, libreadline, libsqlite3, libcurl, libldap, etc. |
+> __Docker__ is the one exception — install it manually if you want C2 frameworks, MobSF, BeEF, BloodHound, TheHive, or Cortex (`--enable-docker`). See [Docker install docs](https://docs.docker.com/engine/install/).
 
 ```bash
 git clone https://github.com/26zl/cybersec-tools-installer.git
@@ -41,7 +29,7 @@ cd cybersec-tools-installer
 sudo ./install.sh
 ```
 
-That installs all 660+ tools. To install a subset, use a profile or pick specific modules:
+That installs all 590+ tools. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -53,25 +41,9 @@ sudo ./install.sh --dry-run --profile ctf              # Preview without install
 
 ### Try in Docker
 
-Run the installer in a container without touching your host system:
-
 ```bash
 docker build -t cybersec-installer .
-docker run cybersec-installer                          # Dry-run full profile
-docker run cybersec-installer --profile ctf            # Install CTF tools
-docker run cybersec-installer --module web --module recon
-```
-
-Or with Docker Compose:
-
-```bash
-docker compose run installer --profile ctf
-```
-
-From a ZIP download (no git):
-
-```bash
-unzip cybersec-tools-installer-main.zip && cd cybersec-tools-installer-main && sudo bash install.sh
+docker run cybersec-installer --profile ctf
 ```
 
 ### All flags
@@ -81,6 +53,13 @@ sudo ./install.sh --help                # Full help
 sudo ./install.sh --list-profiles       # Show profiles
 sudo ./install.sh --list-modules        # Show modules
 sudo ./install.sh --skip-heavy          # Skip large packages (sagemath, gnuradio)
+sudo ./install.sh --skip-pipx           # Skip all pipx (Python) installs
+sudo ./install.sh --skip-go             # Skip all Go tool installs
+sudo ./install.sh --skip-cargo          # Skip all Cargo (Rust) installs
+sudo ./install.sh --skip-gems           # Skip all Ruby gem installs
+sudo ./install.sh --skip-git            # Skip all git clone installs
+sudo ./install.sh --skip-binary         # Skip all binary release downloads
+sudo ./install.sh --skip-source         # Skip build-from-source, snap, npm, and curl-pipe installs
 sudo ./install.sh --upgrade-system      # Upgrade system packages before installing
 sudo ./install.sh --enable-docker       # Pull Docker images
 sudo ./install.sh --include-c2          # Include C2 frameworks (needs --enable-docker)
@@ -96,7 +75,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 | Profile | Modules | Description |
 | ------- | ------- | ----------- |
-| `full` | All 18 | Complete security toolkit |
+| `full` | All 19 | Complete security toolkit |
 | `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | CTF competitions |
 | `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | Offensive security |
 | `web` | misc, networking, recon, web | Web application testing |
@@ -110,39 +89,42 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | ~65 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
-| `networking` | ~58 | Port scanning, packet capture, tunneling, MITM, protocol tools |
-| `recon` | ~103 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
-| `web` | ~78 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
-| `crypto` | ~17 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | ~55 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
-| `reversing` | ~31 | Disassemblers, debuggers, emulation, Java/Python reversing |
+| `misc` | ~32 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
+| `networking` | ~53 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `recon` | ~76 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
+| `web` | ~49 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
+| `crypto` | ~13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
+| `pwn` | ~40 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `reversing` | ~32 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
 | `malware` | ~7 | YARA, ClamAV, inetsim, quark-engine, FLOSS, Capa |
-| `enterprise` | ~102 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
-| `wireless` | ~41 | WiFi cracking, Bluetooth, SDR, rogue AP |
-| `cracking` | ~32 | Hash cracking (john, hashcat), brute force, wordlist generation |
-| `stego` | ~15 | Image/audio steganography, detection, StegCracker |
-| `cloud` | ~18 | AWS/Azure/GCP security auditing, Checkov |
+| `enterprise` | ~89 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
+| `wireless` | ~40 | WiFi cracking, Bluetooth, SDR, rogue AP |
+| `cracking` | ~28 | Hash cracking (john, hashcat), brute force, wordlist generation |
+| `stego` | ~14 | Image/audio steganography, detection, StegCracker |
+| `cloud` | ~15 | AWS/Azure/GCP security auditing, Checkov |
 | `containers` | ~9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
-| `blueteam` | ~21 | IDS/IPS, SIEM, incident response, threat intelligence, hardening |
-| `mobile` | ~10 | Android/iOS app testing, APK analysis, MobSF (Docker) |
-| `blockchain` | ~8 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
+| `blueteam` | ~26 | IDS/IPS, SIEM, incident response, threat intelligence, hardening |
+| `mobile` | ~12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
+| `blockchain` | ~5 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
+| `llm` | ~6 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
 
 ## Install Methods
 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
-| System packages (apt/dnf/pacman/zypper) | ~199 | nmap, wireshark, john, hashcat |
-| Git clone | ~260 | GitHub repos with auto-setup, resources, wordlists |
-| pipx | ~157 | sqlmap, impacket, bloodhound, volatility3 |
-| Go install | ~55 | nuclei, subfinder, ffuf, httpx |
-| Binary release | ~26 | gitleaks, chainsaw, findomain, FLOSS, Capa, Syft, Kubescape |
+| Git clone | ~194 | GitHub repos with auto-setup, resources, wordlists |
+| System packages (apt/dnf/pacman/zypper) | ~163 | nmap, wireshark, john, hashcat |
+| pipx | ~111 | sqlmap, impacket, bloodhound, volatility3 |
+| Go install | ~52 | nuclei, subfinder, ffuf, httpx |
+| Binary release | ~30 | gitleaks, chainsaw, findomain, FLOSS, Capa, Syft, Kubescape |
 | Build from source | ~15 | massdns, duplicut, AFLplusplus, honggfuzz |
-| Docker | ~7 | C2, MobSF, BeEF, TheHive |
+| Docker | ~8 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex |
 | Ruby gem | 6 | wpscan, evil-winrm, XSpear |
-| Special | 3 | Metasploit, Burp Suite, OWASP ZAP |
-| Cargo (Rust) | 3 | feroxbuster, RustScan, pwninit |
+| Cargo (Rust) | 4 | feroxbuster, RustScan, pwninit, sniffnet |
+| Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
+| Snap | 2 | zaproxy, solc |
+| npm | 1 | promptfoo |
 
 ---
 
@@ -155,11 +137,14 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `scripts/verify.sh` | Check which tools are installed | `sudo ./scripts/verify.sh --module web` |
 | `scripts/update.sh` | Update all installed tools | `sudo ./scripts/update.sh --skip-system` |
 | `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module enterprise --yes` |
+| `scripts/remove.sh --deep-clean` | Purge all caches and build artifacts | `sudo ./scripts/remove.sh --deep-clean --yes` |
 | `scripts/backup.sh` | Backup/restore tool configs | `sudo ./scripts/backup.sh backup` |
+
+`--deep-clean` removes Go module/build cache, Cargo registry, pip/pipx/npm/gem caches, orphaned pipx venvs, stale symlinks, and log files. Add `--remove-deps` to also purge Rustup toolchains.
 
 ## Tool Locations
 
-On Linux, all binaries end up in `/usr/local/bin/`. On Termux, they go to `$PREFIX/bin`.
+Non-system tools (pipx, Go, Cargo, git, binary releases) are installed to `/usr/local/bin/` on Linux and `$PREFIX/bin` on Termux. System packages go to their default location (`/usr/bin/`).
 
 | Method | Binary location (Linux) | Binary location (Termux) | Data location |
 | ------ | ----------------------- | ------------------------ | ------------- |
@@ -167,7 +152,7 @@ On Linux, all binaries end up in `/usr/local/bin/`. On Termux, they go to `$PREF
 | Go | `/usr/local/bin/` | `$PREFIX/bin/` | `/opt/go/` or `~/.go/` |
 | Cargo | `/usr/local/bin/` (symlinked) | `$PREFIX/bin/` (symlinked) | `~/.cargo/` |
 | Git repos | `/usr/local/bin/` (symlinked) | `$PREFIX/bin/` (symlinked) | `/opt/<repo>/` or `~/tools/<repo>/` |
-| Binary releases | `/usr/local/bin/` | Skipped (Linux/glibc) | -- |
+| Binary releases | `/usr/local/bin/` | Skipped (glibc incompatible with Bionic) | -- |
 
 ## Docker Images (optional)
 
@@ -186,19 +171,19 @@ Only used with `--enable-docker`. If Docker is not installed, these are skipped 
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 660+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros.
+__Debian/Ubuntu/Kali is the primary target__ -- all 590+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
 
-### WSL (Windows Subsystem for Linux)
+| Platform | Status |
+| -------- | ------ |
+| __WSL__ | Supported. Wireless module auto-skipped (no hardware access). Kernel-level packages filtered. |
+| __ARM__ (aarch64/armv7) | Supported. x86-only binary releases and build-from-source tools skipped. |
+| __Termux__ (Android) | Under development -- not fully tested on physical devices. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
+| __Windows__ (native) | Not supported. Use WSL. |
+| __macOS__ | Not supported. Use Docker container. |
 
-Automatically detected via `/proc/version`. The wireless module is skipped entirely (no hardware access), and kernel-level packages (`auditd`, `apparmor-utils`, `rr`) are filtered out. Everything else works normally.
+### Termux quick start (experimental)
 
-### ARM (aarch64 / armv7)
-
-Automatically detected via `uname -m`. x86-only binary releases (pspy, rp-lin, chainsaw, velociraptor, laurel) are skipped with a warning. x86-only build-from-source tools (rappel, xrop) are also skipped. `qemu-system-x86` is filtered from packages. All other install methods work normally.
-
-### Termux (Android)
-
-Runs on rooted or non-rooted Android phones via [Termux](https://termux.dev/). No sudo required. Docker/snap are not available, and GUI/kernel-level tools (wireshark, wireless tools, forensics-extra, etc.) are auto-skipped. pipx, Go, Cargo, gem, and git installs work normally. Binary releases and build-from-source tools are skipped automatically (Linux/glibc binaries are incompatible with Android/Bionic). Burp Suite, Metasploit, and ZAP are also skipped on Termux.
+> __Note:** Termux support is under development and has not been fully tested on physical Android devices. Expect rough edges.
 
 ```bash
 pkg install git
@@ -212,7 +197,7 @@ cd cybersec-tools-installer
 This installer downloads and runs code from the internet. On Linux it runs as root (`sudo`); on Termux it runs in the app's user sandbox (no root).
 
 - __System packages__: GPG-signed by your distro's repos (apt, dnf, pacman, zypper, pkg)
-- __pipx/Go/Cargo/Gem__: Downloads from registries (no signature verification, pipx isolated in venvs)
+- __pipx/Go/Cargo/Gem/npm__: Downloads from registries (no signature verification, pipx isolated in venvs)
 - __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
 - __Build from source__: Runs `make` (as root on Linux) -- review what you're building

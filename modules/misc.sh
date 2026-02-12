@@ -6,11 +6,10 @@
 # post-exploitation, mobile, resources
 # =============================================================================
 
-# Security / detection tools
-MISC_PACKAGES=(lynis rkhunter chkrootkit)
+MISC_PACKAGES=()
 
 # Heavy tools (skipped with --skip-heavy)
-MISC_HEAVY_PACKAGES=(gimp audacity sagemath)
+MISC_HEAVY_PACKAGES=(sagemath)
 
 MISC_PIPX=(arsenal-cli sploitscan faraday-cli)
 
@@ -19,59 +18,35 @@ MISC_GO=(
     "github.com/tomnomnom/anew@latest"
     "github.com/tomnomnom/qsreplace@latest"
     "github.com/projectdiscovery/notify/cmd/notify@latest"
+    "github.com/projectdiscovery/pdtm/cmd/pdtm@latest"
 )
 
 MISC_GIT=(
-    # Resources / wordlists
+    # Resources
     "SecLists=https://github.com/danielmiessler/SecLists.git"
     "PayloadsAllTheThings=https://github.com/swisskyrepo/PayloadsAllTheThings.git"
-    "wordlists=https://github.com/kkrypt0nn/wordlists.git"
-    "OneListForAll=https://github.com/six2dez/OneListForAll.git"
-    "Auto_Wordlists=https://github.com/carlospolop/Auto_Wordlists.git"
-    "FuzzDB=https://github.com/fuzzdb-project/fuzzdb.git"
     "InternalAllTheThings=https://github.com/swisskyrepo/InternalAllTheThings.git"
-    "GTFOBins.github.io=https://github.com/GTFOBins/GTFOBins.github.io.git"
-    "WADComs=https://github.com/WADComs/WADComs.github.io.git"
-    "BlueTeam-Tools=https://github.com/A-poc/BlueTeam-Tools.git"
     # Post-exploitation
     "PEASS-ng=https://github.com/peass-ng/PEASS-ng.git"
-    "linux-exploit-suggester=https://github.com/The-Z-Labs/linux-exploit-suggester.git"
     "linux-smart-enumeration=https://github.com/diego-treitos/linux-smart-enumeration.git"
     "SUDO_KILLER=https://github.com/TH3xACE/SUDO_KILLER.git"
-    "BeRoot=https://github.com/AlessandroZ/BeRoot.git"
     "PrivescCheck=https://github.com/itm4n/PrivescCheck.git"
     "LaZagne=https://github.com/AlessandroZ/LaZagne.git"
     "mimipenguin=https://github.com/huntergregal/mimipenguin.git"
-    "PowerSploit=https://github.com/PowerShellMafia/PowerSploit.git"
-    "Cloakify=https://github.com/TryCatchHCF/Cloakify.git"
     "PyExfil=https://github.com/ytisf/PyExfil.git"
-    "GD-Thief=https://github.com/antman1p/GD-Thief.git"
     "usbkill=https://github.com/hephaest0s/usbkill.git"
-    "LinEnum=https://github.com/rebootuser/LinEnum.git"
-    "Hwacha=https://github.com/n00py/Hwacha.git"
-    "pivotsuite=https://github.com/RedTeamOperations/PivotSuite.git"
-    "unix-privesc-check=https://github.com/pentestmonkey/unix-privesc-check.git"
-    "LOLBAS=https://github.com/LOLBAS-Project/LOLBAS.git"
-    "Vigil=https://github.com/deadbits/vigil-llm.git"
     # Social engineering
     "SET=https://github.com/trustedsec/social-engineer-toolkit.git"
     "Zphisher=https://github.com/htr-tech/zphisher.git"
-    "SocialFish=https://github.com/UndeadSec/SocialFish.git"
     "EvilGoPhish=https://github.com/fin3ss3g0d/evilgophish.git"
     "SquarePhish=https://github.com/secureworks/squarephish.git"
     "CredMaster=https://github.com/knavesec/CredMaster.git"
-    "king-phisher=https://github.com/rsmusllp/king-phisher.git"
     "Modlishka=https://github.com/drk1wi/Modlishka.git"
-    "ReelPhish=https://github.com/mandiant/ReelPhish.git"
-    "Catphish=https://github.com/ring0lab/catphish.git"
-    # CTF / General
+    # General
     "CyberChef=https://github.com/gchq/CyberChef.git"
-    "ctf-tools=https://github.com/zardus/ctf-tools.git"
-    "CTF-Katana=https://github.com/JohnHammond/ctf-katana.git"
     "Caldera=https://github.com/mitre/caldera.git"
     "atomic-red-team=https://github.com/redcanaryco/atomic-red-team.git"
     "RedEye=https://github.com/cisagov/RedEye.git"
-    "ibombshell=https://github.com/Telefonica/ibombshell.git"
     "powercat=https://github.com/besimorhino/powercat.git"
 )
 
@@ -82,28 +57,25 @@ MISC_GIT=(
 
 # All git repo names for verify/remove
 MISC_GIT_NAMES=(
-    SecLists PayloadsAllTheThings wordlists OneListForAll Auto_Wordlists FuzzDB
-    InternalAllTheThings GTFOBins.github.io WADComs BlueTeam-Tools
-    PEASS-ng linux-exploit-suggester linux-smart-enumeration SUDO_KILLER
-    BeRoot PrivescCheck LaZagne mimipenguin PowerSploit
-    Cloakify PyExfil GD-Thief usbkill
-    LinEnum Hwacha pivotsuite unix-privesc-check LOLBAS
-    SET Zphisher SocialFish EvilGoPhish SquarePhish CredMaster king-phisher
-    Modlishka ReelPhish Catphish
-    CyberChef ctf-tools CTF-Katana
-    Caldera atomic-red-team RedEye
-    ibombshell powercat Vigil
+    SecLists PayloadsAllTheThings InternalAllTheThings
+    PEASS-ng linux-smart-enumeration SUDO_KILLER
+    PrivescCheck LaZagne mimipenguin
+    PyExfil usbkill
+    SET Zphisher EvilGoPhish SquarePhish CredMaster
+    Modlishka
+    CyberChef Caldera atomic-red-team RedEye
+    powercat
 )
-MISC_GO_BINS=(gf anew qsreplace notify)
+MISC_GO_BINS=(gf anew qsreplace notify pdtm)
 
 install_module_misc() {
-    install_apt_batch "Security tools" "${MISC_PACKAGES[@]}"
+    [[ ${#MISC_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Misc - Packages" "${MISC_PACKAGES[@]}"
 
     # Heavy packages (optional)
     if [[ "${SKIP_HEAVY:-false}" != "true" ]]; then
         install_apt_batch "Heavy tools" "${MISC_HEAVY_PACKAGES[@]}"
     else
-        log_warn "Skipping heavy packages (sagemath, gimp, audacity)"
+        log_warn "Skipping heavy packages (sagemath)"
     fi
 
     # Python tools
@@ -117,15 +89,6 @@ install_module_misc() {
 
     # Binary releases (skipped on Termux — Linux/glibc binaries)
     install_binary_releases "${BINARY_RELEASES_MISC[@]}"
-    if [[ "$PKG_MANAGER" != "pkg" ]]; then
-        if ! download_github_release "skylot/jadx" "jadx" "jadx.*\\.zip" "$GITHUB_TOOL_DIR/jadx"; then
-            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-        fi
-        if ! download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex-tools.*\\.zip" "$GITHUB_TOOL_DIR/dex2jar"; then
-            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-        fi
-    fi
-    # stegseek is installed by the stego module
 
     # Docker: C2 frameworks and OSINT (only if enabled — no git clone fallback)
     # C2 frameworks require Docker for full functionality (databases, listeners, etc.)

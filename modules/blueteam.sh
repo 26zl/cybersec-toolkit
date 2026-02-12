@@ -4,9 +4,9 @@
 # IDS/IPS, SIEM, log analysis, file integrity, threat intelligence,
 # incident response platforms, endpoint visibility
 
-BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw tiger darkstat chaosreader sentrypeer)
+BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw tiger darkstat chaosreader sentrypeer lynis rkhunter chkrootkit)
 
-BLUETEAM_PIPX=(sigma-cli)
+BLUETEAM_PIPX=(sigma-cli bandit)
 
 BLUETEAM_GIT=(
     "sigma-rules=https://github.com/SigmaHQ/sigma.git"

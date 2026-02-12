@@ -39,7 +39,6 @@ ENTERPRISE_GIT=(
     "SCShell=https://github.com/Mr-Un1k0d3r/SCShell.git"
     "krbrelayx=https://github.com/dirkjanm/krbrelayx.git"
     "nishang=https://github.com/samratashok/nishang.git"
-    "redsnarf=https://github.com/nccgroup/redsnarf.git"
     "spraykatz=https://github.com/aas-n/spraykatz.git"
     "azurehound=https://github.com/BloodHoundAD/AzureHound.git"
     "dfscoerce=https://github.com/Wh04m1001/dfscoerce.git"
@@ -64,7 +63,6 @@ ENTERPRISE_GIT=(
     "roastinthemiddle=https://github.com/Tw1sm/RITM.git"
     "lnkup=https://github.com/Plazmaz/lnkUp.git"
     "ruler=https://github.com/sensepost/ruler.git"
-    "bloodhound-quickwin=https://github.com/kaluche/bloodhound-quickwin.git"
     "bqm=https://github.com/Acceis/bqm.git"
     "cyperoth=https://github.com/seajaysec/cypheroth.git"
     "abuseACL=https://github.com/AetherBlack/abuseACL.git"
@@ -83,14 +81,14 @@ ENTERPRISE_GIT=(
 )
 
 ENTERPRISE_GO_BINS=(godap pretender)
-ENTERPRISE_GIT_NAMES=(Responder Rubeus ADRecon enum4linux-ng linWinPwn PCredz WMIOps MailSniper Invoke-Obfuscation Snaffler GraphRunner TokenTactics Invoke-TheHash SCShell krbrelayx nishang redsnarf spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bloodhound-quickwin bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
+ENTERPRISE_GIT_NAMES=(Responder Rubeus ADRecon enum4linux-ng linWinPwn PCredz WMIOps MailSniper Invoke-Obfuscation Snaffler GraphRunner TokenTactics Invoke-TheHash SCShell krbrelayx nishang spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
 
 install_module_enterprise() {
     [[ ${#ENTERPRISE_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Enterprise - Packages" "${ENTERPRISE_PACKAGES[@]}"
     install_pipx_batch "Enterprise - Python" "${ENTERPRISE_PIPX[@]}"
 
     # NetExec — install from git (PyPI package 'nxc' was removed)
-    if ! pipx list --short 2>/dev/null | grep -qi "^netexec "; then
+    if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! pipx list --short 2>/dev/null | grep -qi "^netexec "; then
         log_info "Installing NetExec from GitHub..."
         pipx install "git+https://github.com/Pennyw0rth/NetExec" 2>>"$LOG_FILE" || log_warn "Failed to install NetExec"
     fi

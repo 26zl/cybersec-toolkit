@@ -17,7 +17,6 @@ PWN_GEMS=(one_gadget seccomp-tools)
 
 PWN_GIT=(
     "exploitdb=https://gitlab.com/exploit-database/exploitdb.git"
-    "Veil=https://github.com/Veil-Framework/Veil.git"
     "RouterSploit=https://github.com/threat9/routersploit.git"
     "libc-database=https://github.com/niklasb/libc-database.git"
     "Penelope=https://github.com/brightio/penelope.git"
@@ -25,31 +24,23 @@ PWN_GIT=(
     "unicorn=https://github.com/trustedsec/unicorn.git"
     "Donut=https://github.com/TheWover/donut.git"
     "ScareCrow=https://github.com/optiv/ScareCrow.git"
-    "vulscan=https://github.com/scipag/vulscan.git"
-    "v0lt=https://github.com/P1kachu/v0lt.git"
     "Freeze=https://github.com/Tylous/Freeze.git"
     "nanodump=https://github.com/fortra/nanodump.git"
     "eviltree=https://github.com/t3l3machus/eviltree.git"
     "Hoaxshell=https://github.com/t3l3machus/hoaxshell.git"
-    "Chimera=https://github.com/tokyoneon/Chimera.git"
-    "demiguise=https://github.com/nccgroup/demiguise.git"
-    "ShellPop=https://github.com/0x00-0x00/ShellPop.git"
-    "TrevorC2=https://github.com/trustedsec/trevorc2.git"
-    "DET=https://github.com/PaulSec/DET.git"
     "QueenSono=https://github.com/ariary/QueenSono.git"
-    "ISF=https://github.com/dark-lbp/isf.git"
     "DNSExfiltrator=https://github.com/Arno0x/DNSExfiltrator.git"
     "Egress-Assess=https://github.com/FortyNorthSecurity/Egress-Assess.git"
     "Ivy=https://github.com/optiv/Ivy.git"
     "macro_pack=https://github.com/sevagas/macro_pack.git"
     "EvilClippy=https://github.com/outflanknl/EvilClippy.git"
     "inceptor=https://github.com/klezVirus/inceptor.git"
-    "villoc=https://github.com/wapiflapi/villoc.git"
+    "Villain=https://github.com/t3l3machus/Villain.git"
 )
 
 PWN_CARGO=(pwninit)
 PWN_GO_BINS=(interactsh-client)
-PWN_GIT_NAMES=(exploitdb Veil RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow vulscan v0lt Freeze nanodump eviltree Hoaxshell Chimera demiguise ShellPop TrevorC2 DET QueenSono ISF DNSExfiltrator Egress-Assess Ivy macro_pack EvilClippy inceptor villoc)
+PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow Freeze nanodump eviltree Hoaxshell QueenSono DNSExfiltrator Egress-Assess Ivy macro_pack EvilClippy inceptor Villain)
 PWN_BUILD_NAMES=(preeny AFLplusplus honggfuzz radamsa)
 
 install_module_pwn() {
@@ -73,7 +64,7 @@ install_module_pwn() {
     install_searchsploit_symlink
 
     # Metasploit (Linux only — Rapid7 installer requires root/apt)
-    if [[ "$PKG_MANAGER" != "pkg" ]]; then
+    if [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
         install_metasploit
     fi
 }

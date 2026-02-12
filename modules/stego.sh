@@ -8,7 +8,7 @@ STEGO_PACKAGES=(
     sonic-visualiser exiv2 pngtools
 )
 
-STEGO_PIPX=(stegoveritas stegcracker)
+STEGO_PIPX=(stegoveritas)
 
 STEGO_GEMS=(zsteg)
 

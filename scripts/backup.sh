@@ -139,7 +139,7 @@ backup_configs() {
     # Map: backup_subdir -> list of source paths
     local -A CONFIG_PATHS=(
         ["network"]="$HOME_DIR/.nmap $HOME_DIR/.wireshark"
-        ["web"]="$HOME_DIR/.burpsuite $HOME_DIR/.ZAP $HOME_DIR/.sqlmap"
+        ["web"]="$HOME_DIR/.ZAP $HOME_DIR/.sqlmap"
         ["wireless"]="$HOME_DIR/.aircrack-ng $HOME_DIR/.kismet"
         ["cracking"]="$HOME_DIR/.john $HOME_DIR/.hashcat"
         ["exploitation"]="$HOME_DIR/.msf4 $GITHUB_TOOL_DIR/exploitdb"
@@ -160,7 +160,7 @@ restore_configs() {
     local src="$1"
 
     # Home dir configs
-    for dir in .nmap .wireshark .burpsuite .ZAP .sqlmap .aircrack-ng .kismet \
+    for dir in .nmap .wireshark .ZAP .sqlmap .aircrack-ng .kismet \
                .john .hashcat .msf4 .autopsy; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)

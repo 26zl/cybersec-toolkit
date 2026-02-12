@@ -59,10 +59,10 @@ setup() {
     assert_success
 }
 
-@test "install.sh --list-modules shows all 18 modules" {
+@test "install.sh --list-modules shows all 19 modules" {
     run bash "$INSTALL_SH" --list-modules
     assert_success
-    local modules=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain)
+    local modules=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
     for mod in "${modules[@]}"; do
         assert_output --partial "$mod"
     done

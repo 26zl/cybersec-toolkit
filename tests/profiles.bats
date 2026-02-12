@@ -7,7 +7,7 @@
 setup() {
     load 'test_helper'
     PROFILES_DIR="$PROJECT_ROOT/profiles"
-    VALID_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain)
+    VALID_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
 }
 
 # ---------- Profile file existence -------------------------------------------
@@ -73,9 +73,9 @@ setup() {
     done
 }
 
-# ---------- full.conf includes all 18 modules --------------------------------
+# ---------- full.conf includes all 19 modules --------------------------------
 
-@test "full.conf includes all 18 modules" {
+@test "full.conf includes all 19 modules" {
     local modules_line
     modules_line=$(grep '^MODULES=' "$PROFILES_DIR/full.conf" | head -1)
     local modules_value

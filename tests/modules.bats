@@ -16,7 +16,7 @@ setup() {
 
 # ---------- Module files exist -----------------------------------------------
 
-@test "all 18 module files exist" {
+@test "all 19 module files exist" {
     for mod in "${ALL_MODULES[@]}"; do
         [[ -f "$PROJECT_ROOT/modules/${mod}.sh" ]] || { echo "Missing: modules/${mod}.sh"; return 1; }
     done
@@ -54,6 +54,7 @@ _get_prefix() {
         blueteam)   echo "BLUETEAM" ;;
         mobile)     echo "MOBILE" ;;
         blockchain) echo "BLOCKCHAIN" ;;
+        llm)        echo "LLM" ;;
     esac
 }
 
@@ -84,7 +85,7 @@ _get_prefix() {
     local git_arrays=(
         MISC_GIT NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
         FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT STEGO_GIT
-        CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT BLOCKCHAIN_GIT
+        CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT BLOCKCHAIN_GIT LLM_GIT
     )
 
     for arr_name in "${git_arrays[@]}"; do
@@ -170,7 +171,7 @@ _get_prefix() {
     local pipx_arrays=(
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
         FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
-        STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX
+        STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX LLM_PIPX
     )
 
     for arr_name in "${pipx_arrays[@]}"; do

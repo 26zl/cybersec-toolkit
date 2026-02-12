@@ -150,6 +150,13 @@ if [[ "$SKIP_GO" == "false" ]]; then
             tool_name=$(_go_bin_name "$tool")
             show_progress "$GO_CURRENT" "$GO_TOTAL" "$tool_name"
 
+            # Only update tools that are already installed
+            if ! command_exists "$tool_name"; then
+                log_debug "Skipping $tool_name (not installed)"
+                GO_SKIPPED=$((GO_SKIPPED + 1))
+                continue
+            fi
+
             # Record mtime before install to detect actual binary changes
             bin_path=""
             old_mtime=0
@@ -240,10 +247,25 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
         _collect_module_arrays "GEMS" ALL_GEMS
 
         if [[ ${#ALL_GEMS[@]} -gt 0 ]]; then
-            log_info "Updating Ruby gems (${ALL_GEMS[*]})..."
-            gem update "${ALL_GEMS[@]}" --no-document >> "$LOG_FILE" 2>&1 && \
-                log_success "Ruby gems updated" || \
-                log_warn "Ruby gem update failed"
+            # Only update gems that are already installed
+            local installed_gems
+            installed_gems=$(gem list --no-details 2>/dev/null || true)
+            local GEMS_TO_UPDATE=()
+            for _gem in "${ALL_GEMS[@]}"; do
+                if echo "$installed_gems" | grep -q "^${_gem} "; then
+                    GEMS_TO_UPDATE+=("$_gem")
+                else
+                    log_debug "Skipping gem $_gem (not installed)"
+                fi
+            done
+            if [[ ${#GEMS_TO_UPDATE[@]} -gt 0 ]]; then
+                log_info "Updating Ruby gems (${GEMS_TO_UPDATE[*]})..."
+                gem update "${GEMS_TO_UPDATE[@]}" --no-document >> "$LOG_FILE" 2>&1 && \
+                    log_success "Ruby gems updated" || \
+                    log_warn "Ruby gem update failed"
+            else
+                log_info "No installed Ruby gems to update"
+            fi
         fi
     else
         log_warn "gem not found — skipping Ruby gem updates"
@@ -268,6 +290,12 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
 
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
             for crate in "${ALL_CARGO[@]}"; do
+                # Only update crates that are already installed
+                if ! command_exists "$crate" && [[ ! -f "$HOME/.cargo/bin/$crate" ]]; then
+                    log_debug "Skipping cargo $crate (not installed)"
+                    CARGO_SKIPPED=$((CARGO_SKIPPED + 1))
+                    continue
+                fi
                 # Without --force, cargo skips if the installed version matches latest
                 cargo_output=""
                 if cargo_output=$(cargo install "$crate" 2>&1); then
@@ -388,6 +416,14 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
         msfupdate >> "$LOG_FILE" 2>&1 && \
             log_success "Metasploit updated" || \
             log_warn "Metasploit update failed"
+    fi
+
+    # npm tools (promptfoo)
+    if command_exists npm && command_exists promptfoo; then
+        log_info "Updating promptfoo (npm)..."
+        npm update -g promptfoo >> "$LOG_FILE" 2>&1 && \
+            log_success "promptfoo updated" || \
+            log_warn "promptfoo update failed"
     fi
 
     # OWASP ZAP (snap)
