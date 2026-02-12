@@ -183,7 +183,7 @@ __Debian/Ubuntu/Kali is the primary target__ -- all 590+ tools available. Fedora
 
 ### Termux quick start (experimental)
 
-> __Note:** Termux support is under development and has not been fully tested on physical Android devices. Expect rough edges.
+> __Note:__ Termux support is under development and has not been fully tested on physical Android devices. Expect rough edges.
 
 ```bash
 pkg install git
