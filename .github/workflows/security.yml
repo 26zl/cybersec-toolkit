@@ -138,9 +138,10 @@ jobs:
     runs-on: ubuntu-latest
     # Scorecard requires public repo access for GraphQL queries.
     # Skips on PRs and private repos — runs automatically once the repo is public.
+    # Uses .private (boolean, always present) instead of .visibility (string, not always populated).
     if: >-
       github.event_name != 'pull_request' &&
-      github.event.repository.visibility == 'public'
+      github.event.repository.private == false
     permissions:
       contents: read
       security-events: write
