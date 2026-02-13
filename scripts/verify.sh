@@ -31,13 +31,14 @@ Usage: sudo ./scripts/verify.sh [OPTIONS]    # Linux (requires root)
 
 Options:
   --module <name>    Verify specific module only (can be repeated)
+  --installed-only   Only check tools tracked in .versions (skip tools you never installed)
   --summary          Show only summary counts (no per-tool output)
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, enterprise, wireless, cracking, stego, cloud, containers,
-         blueteam, mobile, blockchain, llm
+         enterprise, wireless, cracking, stego, cloud, containers, blueteam,
+         mobile, blockchain, llm
 EOF
     exit 0
 fi
@@ -45,10 +46,12 @@ fi
 # Parse args
 VERIFY_MODULES=()
 SUMMARY_ONLY=false
+INSTALLED_ONLY=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --module)  [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 1; }
                    VERIFY_MODULES+=("$2"); shift 2 ;;
+        --installed-only) INSTALLED_ONLY=true; shift ;;
         --summary) SUMMARY_ONLY=true; shift ;;
         -v|--verbose) VERBOSE=true; shift ;;
         -h|--help) exec "$0" --help ;;
@@ -60,8 +63,28 @@ if [[ ${#VERIFY_MODULES[@]} -eq 0 ]]; then
     VERIFY_MODULES=("${ALL_MODULES[@]}")
 fi
 
+# --installed-only: load tracked tools from .versions file
+_INSTALLED_TOOLS=""
+if [[ "$INSTALLED_ONLY" == "true" ]]; then
+    local_versions="$SCRIPT_DIR/.versions"
+    if [[ -f "$local_versions" ]]; then
+        _INSTALLED_TOOLS=$(awk -F'|' '!/^#/{print $1}' "$local_versions")
+        log_info "Filtering by ${local_versions} ($(echo "$_INSTALLED_TOOLS" | wc -l) tracked tools)"
+    else
+        log_warn "No .versions file found — running full verification"
+        INSTALLED_ONLY=false
+    fi
+fi
+
+# _is_tracked — returns 0 if tool is in .versions (or if --installed-only is off)
+_is_tracked() {
+    [[ "$INSTALLED_ONLY" == "false" ]] && return 0
+    echo "$_INSTALLED_TOOLS" | grep -qx "$1" 2>/dev/null
+}
+
 LOG_FILE="$SCRIPT_DIR/tool_verification.log"
 : > "$LOG_FILE"
+chmod 600 "$LOG_FILE" 2>/dev/null || true
 
 TOTAL_CHECKED=0
 TOTAL_FOUND=0
@@ -71,6 +94,7 @@ TOTAL_MISSING=0
 check_cmd() {
     local tool="$1"
     local version_cmd="${2:-}"
+    _is_tracked "$tool" || return 0
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
 
     if command_exists "$tool"; then
@@ -95,6 +119,7 @@ check_cmd() {
 check_dir() {
     local name="$1"
     local path="$2"
+    _is_tracked "$name" || return 0
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
 
     if [[ -d "$path" ]]; then
@@ -110,6 +135,7 @@ check_dir() {
 
 check_pipx() {
     local tool="$1"
+    _is_tracked "$tool" || return 0
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
 
     if command_exists "$tool"; then
@@ -130,6 +156,7 @@ check_pipx() {
 # Check any-of: passes if any of the given binary names exist (for distro-varying names)
 check_cmd_any() {
     local label="$1"; shift
+    _is_tracked "$label" || return 0
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
     for candidate in "$@"; do
         if command_exists "$candidate"; then
@@ -147,6 +174,7 @@ check_cmd_any() {
 check_build() {
     local name="$1"
     local dir="$GITHUB_TOOL_DIR/$name"
+    _is_tracked "$name" || return 0
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
 
     if command_exists "$name"; then
@@ -379,20 +407,6 @@ if should_verify "forensics"; then
     check_cmd "chainsaw" || true
 fi
 
-if should_verify "malware"; then
-    echo ""
-    log_info "========== Module: malware =========="
-    log_info "Malware (packages):"
-    check_cmds yara clamscan
-    log_info "Malware (pipx):"
-    check_pipx_arr "${MALWARE_PIPX[@]}"
-    log_info "Malware (Cargo):"
-    check_cmds "${MALWARE_CARGO[@]}"
-    log_info "Malware (Binary):"
-    check_cmd "floss" || true
-    check_cmd "capa" || true
-fi
-
 if should_verify "enterprise"; then
     echo ""
     log_info "========== Module: enterprise =========="
@@ -495,7 +509,7 @@ if should_verify "blueteam"; then
     echo ""
     log_info "========== Module: blueteam =========="
     log_info "Blue Team (packages):"
-    check_cmds suricata fail2ban-client aide ufw lynis rkhunter chkrootkit
+    check_cmds suricata fail2ban-client aide ufw lynis rkhunter chkrootkit yara clamscan
     if [[ "$IS_WSL" != "true" ]]; then
         check_cmd "auditctl" || true
         check_cmd "apparmor_parser" || true
@@ -503,11 +517,16 @@ if should_verify "blueteam"; then
     [[ "$_is_kali" == "true" ]] && { check_cmd "zeek" || true; }
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"
+    log_info "Blue Team (Cargo):"
+    check_cmds "${BLUETEAM_CARGO[@]}"
     log_info "Blue Team (Git):"
     check_git_repos "${BLUETEAM_GIT_NAMES[@]}"
     log_info "Blue Team (Binary):"
     check_cmd "velociraptor" || true
     check_cmd "laurel" || true
+    check_cmd "floss" || true
+    check_cmd "capa" || true
+    check_cmd "loki" || true
 fi
 
 if should_verify "blockchain"; then

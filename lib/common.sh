@@ -16,6 +16,12 @@ VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
 LOG_FILE="${LOG_FILE:-/dev/null}"
 VERBOSE="${VERBOSE:-false}"
 PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
+# Validate PARALLEL_JOBS: must be a positive integer, clamped to 1-16
+if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
+    PARALLEL_JOBS=4
+elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
+    PARALLEL_JOBS=16
+fi
 
 # Logging
 log_message() {
@@ -96,18 +102,30 @@ log_system_environment() {
 # Args: $1 = number of modules to install
 # Returns 0 always (non-blocking), but prompts user to abort if critically low.
 check_disk_space() {
-    local num_modules="${1:-19}"
+    local num_modules="${1:-18}"
 
     # Determine check path: Termux uses $HOME, Linux uses /
     local check_path="/"
     [[ "$PKG_MANAGER" == "pkg" ]] && check_path="$HOME"
 
-    # Get available space in GB (compatible with Linux and Termux)
+    # Get available space in KB (compatible with Linux and Termux)
     local avail_kb
     avail_kb=$(df -k "$check_path" 2>/dev/null | awk 'NR==2{print $4}')
     if [[ -z "$avail_kb" || "$avail_kb" -le 0 ]] 2>/dev/null; then
         log_warn "Could not determine available disk space — skipping check"
         return 0
+    fi
+
+    # WSL fix: df / shows the virtual ext4 disk (up to 1TB), not actual free
+    # space on the Windows host drive. Check /mnt/c and use the lower value.
+    if grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
+        local host_kb
+        host_kb=$(df -k /mnt/c 2>/dev/null | awk 'NR==2{print $4}')
+        if [[ -n "$host_kb" && "$host_kb" -gt 0 ]] 2>/dev/null; then
+            if [[ "$host_kb" -lt "$avail_kb" ]]; then
+                avail_kb="$host_kb"
+            fi
+        fi
     fi
     local avail_gb=$(( avail_kb / 1048576 ))
     local avail_mb=$(( avail_kb / 1024 ))
@@ -115,7 +133,7 @@ check_disk_space() {
     # Estimate required space based on module count
     # Base: ~2GB for shared deps + runtimes (Go, Rust, Python venvs, etc.)
     # Per module: ~1.5GB average (packages + git repos + compiled tools)
-    # Full install (19 modules): ~25-30GB; lightweight (4 modules): ~5-8GB
+    # Full install (18 modules): ~25-30GB; lightweight (5 modules): ~8-10GB
     local base_gb=2
     local per_module_mb=1500
     local required_mb=$(( base_gb * 1024 + num_modules * per_module_mb ))
@@ -293,13 +311,25 @@ detect_pkg_manager() {
     export PKG_MANAGER
 }
 
+# Conditional sudo — no-op when already root (EUID=0).
+# Prevents failures in minimal containers and environments without sudo.
+# Uses env(1) so VAR=val arguments (e.g. DEBIAN_FRONTEND=noninteractive)
+# are interpreted correctly in both paths.
+maybe_sudo() {
+    if [[ $EUID -eq 0 ]]; then
+        env "$@"
+    else
+        sudo env "$@"
+    fi
+}
+
 # Package manager abstraction
 pkg_update() {
     case "$PKG_MANAGER" in
-        apt)     sudo apt-get update -qq ;;
-        dnf)     sudo dnf check-update -q || true ;;
-        pacman)  sudo pacman -Sy --noconfirm ;;
-        zypper)  sudo zypper refresh -q ;;
+        apt)     maybe_sudo apt-get update -qq ;;
+        dnf)     maybe_sudo dnf check-update -q || true ;;
+        pacman)  maybe_sudo pacman -Sy --noconfirm ;;
+        zypper)  maybe_sudo zypper refresh -q ;;
         pkg)     pkg update -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -307,16 +337,16 @@ pkg_update() {
 
 pkg_install() {
     case "$PKG_MANAGER" in
-        apt)     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@" ;;
+        apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
         dnf)
             if [[ "$1" == @* ]]; then
-                sudo dnf group install -y -q "${1#@}"
+                maybe_sudo dnf group install -y -q "${1#@}"
             else
-                sudo dnf install -y -q "$@"
+                maybe_sudo dnf install -y -q "$@"
             fi
             ;;
-        pacman)  sudo pacman -S --noconfirm --needed "$@" ;;
-        zypper)  sudo zypper install -y -q "$@" ;;
+        pacman)  maybe_sudo pacman -S --noconfirm --needed "$@" ;;
+        zypper)  maybe_sudo zypper install -y -q "$@" ;;
         pkg)     pkg install -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -324,10 +354,10 @@ pkg_install() {
 
 pkg_remove() {
     case "$PKG_MANAGER" in
-        apt)     sudo apt-get remove -y "$@" && sudo apt-get autoremove -y ;;
-        dnf)     sudo dnf remove -y "$@" ;;
-        pacman)  sudo pacman -Rns --noconfirm "$@" 2>/dev/null || true ;;
-        zypper)  sudo zypper remove -y "$@" ;;
+        apt)     maybe_sudo apt-get remove -y "$@" && maybe_sudo apt-get autoremove -y ;;
+        dnf)     maybe_sudo dnf remove -y "$@" ;;
+        pacman)  maybe_sudo pacman -Rns --noconfirm "$@" 2>/dev/null || true ;;
+        zypper)  maybe_sudo zypper remove -y "$@" ;;
         pkg)     pkg uninstall -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -335,10 +365,10 @@ pkg_remove() {
 
 pkg_upgrade() {
     case "$PKG_MANAGER" in
-        apt)     sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq ;;
-        dnf)     sudo dnf upgrade -y -q ;;
-        pacman)  sudo pacman -Syu --noconfirm ;;
-        zypper)  sudo zypper update -y -q ;;
+        apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq ;;
+        dnf)     maybe_sudo dnf upgrade -y -q ;;
+        pacman)  maybe_sudo pacman -Syu --noconfirm ;;
+        zypper)  maybe_sudo zypper update -y -q ;;
         pkg)     pkg upgrade -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -346,10 +376,10 @@ pkg_upgrade() {
 
 pkg_cleanup() {
     case "$PKG_MANAGER" in
-        apt)     sudo apt-get autoremove -y && sudo apt-get clean && sudo apt-get autoclean ;;
-        dnf)     sudo dnf autoremove -y && sudo dnf clean all ;;
-        pacman)  sudo pacman -Sc --noconfirm ;;
-        zypper)  sudo zypper clean ;;
+        apt)     maybe_sudo apt-get autoremove -y && maybe_sudo apt-get clean && maybe_sudo apt-get autoclean ;;
+        dnf)     maybe_sudo dnf autoremove -y && maybe_sudo dnf clean all ;;
+        pacman)  maybe_sudo pacman -Sc --noconfirm ;;
+        zypper)  maybe_sudo zypper clean ;;
         pkg)     pkg clean ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -375,7 +405,7 @@ snap_available() {
 
 snap_install() {
     if snap_available; then
-        sudo snap install "$@"
+        maybe_sudo snap install "$@"
     else
         log_warn "snap not available — skipping snap install for: $*"
         return 1
@@ -484,16 +514,37 @@ git_clone_or_pull() {
     fi
 }
 
-# Progress bar
+# Progress bar — adapts to terminal width to avoid wrapping on small windows.
 show_progress() {
     local current=$1
     local total=$2
     local label="${3:-}"
-    local width=40
 
     [[ "$total" -le 0 ]] && return
 
+    # Get terminal width (fallback 80)
+    local cols
+    cols=$(tput cols 2>/dev/null || echo 80)
+
     local percentage=$((current * 100 / total))
+
+    local display_label=""
+    [[ -n "$label" ]] && display_label="($label)"
+
+    # Fixed overhead: "  [" (3) + "]" (1) + " " (1) + "NNN%" (4) + " " (1) = 10
+    local overhead=10
+    local label_max=25
+    # Truncate label if it would overflow
+    if [[ ${#display_label} -gt $label_max ]]; then
+        display_label="${display_label:0:$((label_max - 1))}"
+        display_label+=")"
+    fi
+
+    # Bar width = terminal minus overhead minus label space
+    local width=$((cols - overhead - label_max))
+    [[ "$width" -lt 5 ]] && width=5
+    [[ "$width" -gt 40 ]] && width=40
+
     local filled=$((current * width / total))
     local empty=$((width - filled))
     local bar=""
@@ -502,11 +553,9 @@ show_progress() {
     for ((i = 0; i < filled; i++)); do bar+="="; done
     for ((i = 0; i < empty; i++)); do bar+=" "; done
 
-    # %-25s pads with spaces to 25 chars — ensures shorter labels overwrite
+    # %-*s pads label to label_max chars — ensures shorter labels overwrite
     # longer previous ones. Works on all terminals (no ANSI escape needed).
-    local display_label=""
-    [[ -n "$label" ]] && display_label="($label)"
-    printf "\r  ${BLUE}[${NC}%s${BLUE}]${NC} %3d%% %-25s" "$bar" "$percentage" "$display_label"
+    printf "\r  ${BLUE}[${NC}%s${BLUE}]${NC} %3d%% %-*s" "$bar" "$percentage" "$label_max" "$display_label"
 }
 
 # Banner
@@ -531,7 +580,7 @@ BANNER
 
 # Module registry (single source of truth) 
 # shellcheck disable=SC2034  # Used by all scripts that source this file
-ALL_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
+ALL_MODULES=(misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
 
 # Module name → array prefix mapping
 _module_prefix() {

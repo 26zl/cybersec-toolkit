@@ -33,12 +33,15 @@ install_module_cracking() {
     # patator: cx-Oracle dependency requires Oracle Instant Client headers (not
     # available) and setuptools (missing from pipx venvs on Python 3.12+).
     # Exclude cx-Oracle — Oracle DB brute-forcing is a niche use case.
+    # Pre-install setuptools to fix build failures on Python 3.12+ (PEP 632).
     if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! command_exists patator; then
         log_info "Installing patator (excluding cx-Oracle)..."
         local _constraint
         _constraint=$(mktemp)
         echo 'cx-Oracle>=999' > "$_constraint"
-        pipx install patator --pip-args="--constraint $_constraint" >> "$LOG_FILE" 2>&1 \
+        pipx install patator \
+            --pip-args="--constraint $_constraint" \
+            --preinstall setuptools >> "$LOG_FILE" 2>&1 \
             || { log_error "Failed pipx: patator"; TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1)); }
         rm -f "$_constraint"
     fi

@@ -13,7 +13,7 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __590+ tools__, __19 modules__, __12 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __580+ tools__, __18 modules__, __12 install methods__, one command.
 
 ---
 
@@ -29,7 +29,7 @@ cd cybersec-tools-installer
 sudo ./install.sh
 ```
 
-That installs all 590+ tools. To install a subset:
+That installs all 580+ tools. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -70,21 +70,47 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 `--tool` installs only the specified tool without running the full dependency setup.
 
+### Why does a full install take 15-45 minutes?
+
+The installer orchestrates 590+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
+
+| What takes time | Why | Typical time |
+| --- | --- | --- |
+| System packages (apt/dnf) | Downloading and unpacking ~150 `.deb`/`.rpm` files, resolving dependencies | ~40% |
+| Cargo (Rust) crates | Compiling from source — Rust has no pre-built registry binaries | ~25% |
+| Go tools | Downloading modules and compiling ~30 binaries | ~15% |
+| pipx (Python) | Creating ~40 isolated venvs, downloading wheels | ~10% |
+| Git clones | Cloning ~30 repositories | ~5% |
+| Binary releases | Downloading ~30 pre-built binaries from GitHub | ~4% |
+| Bash overhead | Array iteration, logging, progress bars | <0.1% |
+
+The installer already parallelizes where possible (`-j 4` by default). Methods with shared locks (apt, pipx, cargo) must run sequentially. To reduce install time:
+
+- Use `--profile lightweight` or `--module <name>` to install only what you need
+- Use `--skip-cargo` to skip Rust compilation (the slowest per-tool method)
+- Increase parallelism with `-j 8` for faster Go/git/binary downloads
+- Set up an [apt-cacher-ng](https://wiki.debian.org/AptCacherNg) proxy for repeated installs
+
 ---
 
 ## Profiles
 
 | Profile | Modules | Description |
 | ------- | ------- | ----------- |
-| `full` | All 19 | Complete security toolkit |
+| `full` | All 18 | Complete security toolkit |
 | `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | CTF competitions |
 | `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | Offensive security |
 | `web` | misc, networking, recon, web | Web application testing |
-| `malware` | misc, malware, forensics, reversing, mobile | Malware analysis |
 | `osint` | misc, recon | OSINT gathering |
+| `forensics` | misc, forensics, blueteam, reversing, stego, cracking | Digital forensics and incident response |
+| `pwn` | misc, pwn, reversing, crypto | Binary exploitation and reverse engineering |
+| `mobile` | misc, mobile, web, reversing | Mobile application security testing |
+| `cloud` | misc, cloud, containers, networking, recon | Cloud and container security auditing |
+| `blockchain` | misc, blockchain, web, crypto | Smart contract auditing and blockchain security |
+| `wireless` | misc, wireless, networking | WiFi, Bluetooth, and SDR security |
+| `lightweight` | misc, networking, recon, web, cracking | Hobby ethical hacking essentials (HTB, THM, bug bounty) |
 | `crackstation` | misc, cracking, crypto | Hash cracking |
-| `lightweight` | misc, networking, recon, web | Core tools, minimal footprint |
-| `blueteam` | misc, blueteam, forensics, malware, containers, networking, cloud, recon | Defensive security / IR |
+| `blueteam` | misc, blueteam, forensics, reversing, mobile, containers, networking, cloud, recon | Defensive security, IR, malware analysis |
 
 ## Modules
 
@@ -98,14 +124,13 @@ sudo ./install.sh -v                    # Verbose / debug output
 | `pwn` | ~40 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | ~32 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
-| `malware` | ~7 | YARA, ClamAV, inetsim, quark-engine, FLOSS, Capa |
 | `enterprise` | ~89 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | ~40 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | ~28 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | ~14 | Image/audio steganography, detection, StegCracker |
 | `cloud` | ~15 | AWS/Azure/GCP security auditing, Checkov |
 | `containers` | ~9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
-| `blueteam` | ~26 | IDS/IPS, SIEM, incident response, threat intelligence, hardening |
+| `blueteam` | ~34 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
 | `mobile` | ~12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
 | `blockchain` | ~5 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
 | `llm` | ~6 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
@@ -118,11 +143,11 @@ sudo ./install.sh -v                    # Verbose / debug output
 | System packages (apt/dnf/pacman/zypper) | ~163 | nmap, wireshark, john, hashcat |
 | pipx | ~111 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | ~52 | nuclei, subfinder, ffuf, httpx |
-| Binary release | ~30 | gitleaks, chainsaw, findomain, FLOSS, Capa, Syft, Kubescape |
+| Binary release | ~31 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
 | Build from source | ~15 | massdns, duplicut, AFLplusplus, honggfuzz |
 | Docker | ~8 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex |
 | Ruby gem | 6 | wpscan, evil-winrm, XSpear |
-| Cargo (Rust) | 4 | feroxbuster, RustScan, pwninit, sniffnet |
+| Cargo (Rust) | 5 | feroxbuster, RustScan, pwninit, sniffnet, yara-x |
 | Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
 | Snap | 2 | zaproxy, solc |
 | npm | 1 | promptfoo |
@@ -157,7 +182,7 @@ Non-system tools (pipx, Go, Cargo, git, binary releases) are installed to `/usr/
 
 ## Docker Images (optional)
 
-Only used with `--enable-docker`. If Docker is not installed, these are skipped silently.
+Only used with `--enable-docker`. If Docker is not installed and `--enable-docker` is set, the installer exits with an error asking you to install Docker first.
 
 | Image | Module | Flag | Description |
 | ----- | ------ | ---- | ----------- |

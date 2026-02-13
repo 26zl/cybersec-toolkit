@@ -36,7 +36,7 @@ install_module_cloud() {
         log_info "Installing Steampipe..."
         local _sp_installer
         _sp_installer=$(mktemp)
-        if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE"; then
+        if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE"; then
             if grep -q "steampipe" "$_sp_installer" 2>/dev/null; then
                 if bash "$_sp_installer" >> "$LOG_FILE" 2>&1; then
                     log_success "Steampipe installed"

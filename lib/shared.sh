@@ -29,6 +29,8 @@ SHARED_BASE_PACKAGES=(
 
     # Compiler toolchains — needed by fuzzing, build-from-source, and native extensions
     llvm llvm-dev clang lld flex bison
+    # Protobuf compiler — needed by Rust crates (yara-x) and Go tools that use protobufs
+    protobuf-compiler
 
     # Misc utilities
     dos2unix rlwrap imagemagick
@@ -163,6 +165,12 @@ ensure_cargo() {
         return 0
     fi
 
+    # rustup is a curl-pipe install — respect --skip-source
+    if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
+        log_warn "Skipping Rust toolchain install (--skip-source) — Cargo tools will not be available"
+        return 1
+    fi
+
     log_info "Installing Rust toolchain via rustup..."
 
     if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
@@ -181,6 +189,43 @@ ensure_cargo() {
     fi
 
     log_error "Failed to install Rust toolchain — Cargo tools will not be available"
+    return 1
+}
+
+# ensure_cargo_binstall — install cargo-binstall for fast pre-compiled binary downloads.
+# Downloads pre-compiled binaries instead of compiling from source (~3s vs ~20s per crate).
+# Uses the official bootstrap script (same pattern as rustup above).
+ensure_cargo_binstall() {
+    if command_exists cargo-binstall; then
+        log_debug "cargo-binstall already available"
+        return 0
+    fi
+
+    if ! command_exists cargo; then
+        log_debug "cargo not found — skipping cargo-binstall"
+        return 1
+    fi
+
+    # curl-pipe install — respect --skip-source
+    if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
+        log_debug "Skipping cargo-binstall (--skip-source)"
+        return 1
+    fi
+
+    log_info "Installing cargo-binstall for faster Rust tool downloads..."
+
+    if curl -L --proto '=https' --tlsv1.2 -sSf \
+            https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
+            | bash >> "$LOG_FILE" 2>&1; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+
+    if command_exists cargo-binstall; then
+        log_success "cargo-binstall installed"
+        return 0
+    fi
+
+    log_warn "Failed to install cargo-binstall — will compile from source instead"
     return 1
 }
 

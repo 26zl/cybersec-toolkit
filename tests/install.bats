@@ -38,14 +38,13 @@ setup() {
     assert_success
 }
 
-@test "install.sh --list-profiles shows all 9 profiles" {
+@test "install.sh --list-profiles shows all profiles" {
     run bash "$INSTALL_SH" --list-profiles
     assert_success
     assert_output --partial "full"
     assert_output --partial "ctf"
     assert_output --partial "redteam"
     assert_output --partial "web"
-    assert_output --partial "malware"
     assert_output --partial "osint"
     assert_output --partial "crackstation"
     assert_output --partial "lightweight"
@@ -59,10 +58,10 @@ setup() {
     assert_success
 }
 
-@test "install.sh --list-modules shows all 19 modules" {
+@test "install.sh --list-modules shows all 18 modules" {
     run bash "$INSTALL_SH" --list-modules
     assert_success
-    local modules=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
+    local modules=(misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
     for mod in "${modules[@]}"; do
         assert_output --partial "$mod"
     done

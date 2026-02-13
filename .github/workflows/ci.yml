@@ -31,7 +31,6 @@ jobs:
             modules/crypto.sh \
             modules/enterprise.sh \
             modules/forensics.sh \
-            modules/malware.sh \
             modules/misc.sh \
             modules/mobile.sh \
             modules/networking.sh \
@@ -107,7 +106,7 @@ jobs:
 
       - name: Validate profile configs
         run: |
-          VALID_MODULES="misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm"
+          VALID_MODULES="misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm"
           exit_code=0
 
           for conf in profiles/*.conf; do

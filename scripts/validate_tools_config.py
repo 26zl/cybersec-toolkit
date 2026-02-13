@@ -20,14 +20,14 @@ CONFIG_PATH = ROOT / "tools_config.json"
 ALL_MODULES = [
     "shared",  # pseudo-module: lib/shared.sh base dependencies
     "misc", "networking", "recon", "web", "crypto", "pwn", "reversing",
-    "forensics", "malware", "enterprise", "wireless", "cracking", "stego",
+    "forensics", "enterprise", "wireless", "cracking", "stego",
     "cloud", "containers", "blueteam", "mobile", "blockchain", "llm",
 ]
 
 MODULE_PREFIX = {
     "misc": "MISC", "networking": "NET", "recon": "RECON", "web": "WEB",
     "crypto": "CRYPTO", "pwn": "PWN", "reversing": "RE",
-    "forensics": "FORENSICS", "malware": "MALWARE", "enterprise": "ENTERPRISE",
+    "forensics": "FORENSICS", "enterprise": "ENTERPRISE",
     "wireless": "WIRELESS", "cracking": "CRACKING", "stego": "STEGO",
     "cloud": "CLOUD", "containers": "CONTAINER", "blueteam": "BLUETEAM",
     "mobile": "MOBILE", "blockchain": "BLOCKCHAIN", "llm": "LLM",
@@ -89,7 +89,7 @@ BINARY_RELEASE_MODULE = {
     "MISC": "misc", "NETWORKING": "networking", "RECON": "recon",
     "WEB": "web", "REVERSING": "reversing", "FORENSICS": "forensics",
     "ENTERPRISE": "enterprise", "BLUETEAM": "blueteam",
-    "CONTAINERS": "containers", "MALWARE": "malware", "STEGO": "stego",
+    "CONTAINERS": "containers", "STEGO": "stego",
 }
 
 # Binary release extraction from installers.sh

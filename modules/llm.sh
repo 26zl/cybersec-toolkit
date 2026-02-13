@@ -25,9 +25,12 @@ install_module_llm() {
     if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
         if ensure_node; then
             log_info "Installing promptfoo via npm..."
-            npm install -g promptfoo >> "$LOG_FILE" 2>&1 \
-                && log_success "promptfoo installed" \
-                || log_warn "Failed to install promptfoo via npm"
+            if npm install -g promptfoo >> "$LOG_FILE" 2>&1; then
+                log_success "promptfoo installed"
+                track_version "promptfoo" "npm" "latest"
+            else
+                log_warn "Failed to install promptfoo via npm"
+            fi
         else
             log_warn "Skipping promptfoo — Node.js/npm not available"
         fi

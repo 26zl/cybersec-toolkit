@@ -42,8 +42,8 @@ Options:
   -h, --help         Show this help and exit
 
 Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         malware, enterprise, wireless, cracking, stego, cloud, containers,
-         blueteam, mobile, blockchain, llm
+         enterprise, wireless, cracking, stego, cloud, containers, blueteam,
+         mobile, blockchain, llm
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems).
@@ -76,6 +76,7 @@ fi
 
 LOG_FILE="$SCRIPT_DIR/tool_removal.log"
 : > "$LOG_FILE"
+chmod 600 "$LOG_FILE" 2>/dev/null || true
 
 check_root
 print_banner

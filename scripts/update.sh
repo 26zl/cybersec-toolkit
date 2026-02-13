@@ -78,6 +78,7 @@ done
 
 LOG_FILE="$SCRIPT_DIR/tool_update.log"
 : > "$LOG_FILE"
+chmod 600 "$LOG_FILE" 2>/dev/null || true
 
 check_root
 print_banner
@@ -442,6 +443,22 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
         snap refresh ngrok >> "$LOG_FILE" 2>&1 && \
             log_success "ngrok updated" || \
             log_warn "ngrok update failed"
+    fi
+
+    # solc (snap — Solidity compiler)
+    if command_exists solc && snap_available; then
+        log_info "Updating solc..."
+        snap refresh solc >> "$LOG_FILE" 2>&1 && \
+            log_success "solc updated" || \
+            log_warn "solc update failed"
+    fi
+
+    # Foundry (foundryup)
+    if command_exists foundryup; then
+        log_info "Updating Foundry toolchain..."
+        foundryup >> "$LOG_FILE" 2>&1 && \
+            log_success "Foundry updated" || \
+            log_warn "Foundry update failed"
     fi
 else
     log_warn "Skipping special tool updates"

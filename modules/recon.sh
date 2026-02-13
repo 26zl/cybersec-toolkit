@@ -79,10 +79,11 @@ install_module_recon() {
 
     # theHarvester (requires uv — not pipx compatible)
     local _th_dir="$GITHUB_TOOL_DIR/theHarvester"
-    if [[ -d "$_th_dir/pyproject.toml" ]] || [[ -f "$_th_dir/pyproject.toml" ]]; then
+    if [[ -f "$_th_dir/pyproject.toml" ]]; then
         if ! command_exists uv; then
-            log_info "Installing uv (Python package manager)..."
-            if curl -LsSf https://astral.sh/uv/install.sh 2>>"$LOG_FILE" | sh >> "$LOG_FILE" 2>&1; then
+            if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
+                log_warn "Skipping uv install (--skip-source) — theHarvester setup skipped"
+            elif curl -LsSf https://astral.sh/uv/install.sh 2>>"$LOG_FILE" | sh >> "$LOG_FILE" 2>&1; then
                 export PATH="$HOME/.local/bin:$PATH"
                 log_success "uv installed"
             else

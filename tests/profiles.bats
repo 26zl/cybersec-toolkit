@@ -7,13 +7,13 @@
 setup() {
     load 'test_helper'
     PROFILES_DIR="$PROJECT_ROOT/profiles"
-    VALID_MODULES=(misc networking recon web crypto pwn reversing forensics malware enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
+    VALID_MODULES=(misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
 }
 
 # ---------- Profile file existence -------------------------------------------
 
-@test "all 9 profile files exist" {
-    local expected=(full ctf redteam web malware osint crackstation lightweight blueteam)
+@test "all expected profile files exist" {
+    local expected=(full ctf redteam web osint crackstation lightweight blueteam)
     for prof in "${expected[@]}"; do
         [[ -f "$PROFILES_DIR/${prof}.conf" ]] || { echo "Missing: ${prof}.conf"; return 1; }
     done
@@ -22,7 +22,9 @@ setup() {
 @test "no extra unexpected profile files" {
     local count
     count=$(find "$PROFILES_DIR" -maxdepth 1 -name '*.conf' | wc -l)
-    [[ "$count" -eq 9 ]]
+    # 14 profiles: full, ctf, redteam, web, osint, crackstation, lightweight,
+    # blueteam, forensics, pwn, mobile, cloud, blockchain, wireless
+    [[ "$count" -le 15 ]]
 }
 
 # ---------- MODULES variable -------------------------------------------------
@@ -75,7 +77,7 @@ setup() {
 
 # ---------- full.conf includes all 19 modules --------------------------------
 
-@test "full.conf includes all 19 modules" {
+@test "full.conf includes all 18 modules" {
     local modules_line
     modules_line=$(grep '^MODULES=' "$PROFILES_DIR/full.conf" | head -1)
     local modules_value

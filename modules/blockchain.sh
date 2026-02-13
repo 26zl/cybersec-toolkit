@@ -22,7 +22,11 @@ install_module_blockchain() {
     if [[ "${SKIP_SOURCE:-false}" != "true" ]] && ! command_exists solc; then
         if snap_available; then
             log_info "Installing solc via snap..."
-            snap_install solc >> "$LOG_FILE" 2>&1 || log_warn "Failed to install solc via snap"
+            if snap_install solc >> "$LOG_FILE" 2>&1; then
+                track_version "solc" "snap" "latest"
+            else
+                log_warn "Failed to install solc via snap"
+            fi
         else
             log_warn "solc not available via apt or snap — install manually: https://docs.soliditylang.org/"
         fi
@@ -38,7 +42,9 @@ install_module_blockchain() {
         log_warn "Installing Foundry via curl | bash (review: https://foundry.paradigm.xyz)"
         curl -L https://foundry.paradigm.xyz 2>/dev/null | bash >> "$LOG_FILE" 2>&1 || true
         if [[ -f "$HOME/.foundry/bin/foundryup" ]]; then
-            "$HOME/.foundry/bin/foundryup" >> "$LOG_FILE" 2>&1 || true
+            if "$HOME/.foundry/bin/foundryup" >> "$LOG_FILE" 2>&1; then
+                track_version "foundry" "special" "latest"
+            fi
         fi
     fi
 

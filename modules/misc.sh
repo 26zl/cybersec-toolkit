@@ -30,7 +30,6 @@ MISC_GIT=(
     "PEASS-ng=https://github.com/peass-ng/PEASS-ng.git"
     "linux-smart-enumeration=https://github.com/diego-treitos/linux-smart-enumeration.git"
     "SUDO_KILLER=https://github.com/TH3xACE/SUDO_KILLER.git"
-    "PrivescCheck=https://github.com/itm4n/PrivescCheck.git"
     "LaZagne=https://github.com/AlessandroZ/LaZagne.git"
     "mimipenguin=https://github.com/huntergregal/mimipenguin.git"
     "PyExfil=https://github.com/ytisf/PyExfil.git"
@@ -45,9 +44,7 @@ MISC_GIT=(
     # General
     "CyberChef=https://github.com/gchq/CyberChef.git"
     "Caldera=https://github.com/mitre/caldera.git"
-    "atomic-red-team=https://github.com/redcanaryco/atomic-red-team.git"
     "RedEye=https://github.com/cisagov/RedEye.git"
-    "powercat=https://github.com/besimorhino/powercat.git"
 )
 
 # C2 Frameworks (Docker ONLY — these require complex multi-service setup)
@@ -59,12 +56,11 @@ MISC_GIT=(
 MISC_GIT_NAMES=(
     SecLists PayloadsAllTheThings InternalAllTheThings
     PEASS-ng linux-smart-enumeration SUDO_KILLER
-    PrivescCheck LaZagne mimipenguin
+    LaZagne mimipenguin
     PyExfil usbkill
     SET Zphisher EvilGoPhish SquarePhish CredMaster
     Modlishka
-    CyberChef Caldera atomic-red-team RedEye
-    powercat
+    CyberChef Caldera RedEye
 )
 MISC_GO_BINS=(gf anew qsreplace notify pdtm)
 

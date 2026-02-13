@@ -53,16 +53,18 @@ Usage: sudo ./install.sh [OPTIONS]        # Linux (requires root)
 
 Options:
   --profile <name>     Install a predefined tool profile:
-                         full, ctf, redteam, web, malware, osint,
+                         full, ctf, redteam, web, osint, forensics,
+                         pwn, mobile, cloud, blockchain, wireless,
                          crackstation, lightweight, blueteam
   --module <name>      Install specific module(s). Can be repeated.
                          Modules: misc, networking, recon, web, crypto,
-                         pwn, reversing, forensics, malware, enterprise,
-                         wireless, cracking, stego, cloud, containers,
-                         blueteam, mobile, blockchain, llm
+                         pwn, reversing, forensics, enterprise, wireless,
+                         cracking, stego, cloud, containers, blueteam,
+                         mobile, blockchain, llm
   --tool <name>        Install a single tool by name. Can be repeated.
                          Searches all modules for a matching package,
                          pipx tool, Go binary, cargo crate, gem, or repo.
+                         Note: --skip-* flags are ignored (forces install).
   --upgrade-system     Upgrade all system packages before installing
                          (apt upgrade / dnf upgrade / pacman -Syu)
   --skip-heavy         Skip large packages (sagemath, gimp, audacity, gnuradio, etc.)
@@ -140,14 +142,13 @@ list_modules() {
     printf "  %-16s %s\n" "pwn"        "Binary exploitation, shellcode, fuzzers"
     printf "  %-16s %s\n" "reversing"  "Disassembly, debugging, binary analysis"
     printf "  %-16s %s\n" "forensics"  "Disk/memory forensics, file carving"
-    printf "  %-16s %s\n" "malware"    "Malware analysis, AV, YARA"
     printf "  %-16s %s\n" "enterprise" "AD, Kerberos, LDAP, Azure AD, lateral movement"
     printf "  %-16s %s\n" "wireless"   "WiFi, Bluetooth, SDR"
     printf "  %-16s %s\n" "cracking"   "Hash cracking, brute force, wordlists"
     printf "  %-16s %s\n" "stego"      "Steganography tools"
     printf "  %-16s %s\n" "cloud"      "AWS/Azure/GCP security"
     printf "  %-16s %s\n" "containers" "Docker/Kubernetes security"
-    printf "  %-16s %s\n" "blueteam"   "Defensive security, IDS/IPS, SIEM, IR"
+    printf "  %-16s %s\n" "blueteam"   "Defensive security, IDS/IPS, SIEM, IR, malware analysis"
     printf "  %-16s %s\n" "mobile"     "Android/iOS app testing, APK analysis"
     printf "  %-16s %s\n" "blockchain" "Smart contract auditing, analysis, reversing"
     printf "  %-16s %s\n" "llm"        "LLM red teaming, prompt injection, AI security"
@@ -183,7 +184,14 @@ while [[ $# -gt 0 ]]; do
         --include-c2)      INCLUDE_C2=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
         -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
-                           PARALLEL_JOBS="$2"; shift 2 ;;
+                           PARALLEL_JOBS="$2"
+                           # Validate: must be a positive integer, clamped to 1-16
+                           if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
+                               PARALLEL_JOBS=4
+                           elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
+                               PARALLEL_JOBS=16
+                           fi
+                           shift 2 ;;
         -v|--verbose)      VERBOSE=true; shift ;;
         --list-profiles)   list_profiles ;;
         --list-modules)    list_modules ;;
@@ -213,7 +221,7 @@ install_single_tool() {
         SHARED_BASE_PACKAGES
         MISC_PACKAGES MISC_HEAVY_PACKAGES
         NET_PACKAGES RECON_PACKAGES WEB_PACKAGES PWN_PACKAGES RE_PACKAGES
-        FORENSICS_PACKAGES MALWARE_PACKAGES WIRELESS_PACKAGES WIRELESS_HEAVY_PACKAGES
+        FORENSICS_PACKAGES WIRELESS_PACKAGES WIRELESS_HEAVY_PACKAGES
         CRACKING_PACKAGES STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES
         ENTERPRISE_PACKAGES CRYPTO_PACKAGES CLOUD_PACKAGES CONTAINER_PACKAGES
         BLOCKCHAIN_PACKAGES LLM_PACKAGES
@@ -227,7 +235,12 @@ install_single_tool() {
                 return 0
             fi
             log_info "Installing ${_tmp_pkg[*]} via $PKG_MANAGER..."
-            pkg_install "${_tmp_pkg[@]}" >> "$LOG_FILE" 2>&1 && log_success "Installed: ${_tmp_pkg[*]}" || log_error "Failed: ${_tmp_pkg[*]}"
+            if pkg_install "${_tmp_pkg[@]}" >> "$LOG_FILE" 2>&1; then
+                log_success "Installed: ${_tmp_pkg[*]}"
+                track_version "$tool" "$PKG_MANAGER" "latest"
+            else
+                log_error "Failed: ${_tmp_pkg[*]}"
+            fi
             return 0
         fi
     done
@@ -235,7 +248,7 @@ install_single_tool() {
     # pipx
     local pipx_arrs=(
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
+        FORENSICS_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
         STEGO_PIPX CLOUD_PIPX CONTAINER_PIPX BLUETEAM_PIPX MOBILE_PIPX
         BLOCKCHAIN_PIPX LLM_PIPX
     )
@@ -243,7 +256,12 @@ install_single_tool() {
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via pipx..."
             ensure_pipx
-            pipx_install "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
+            if pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
+                log_success "Installed: $tool"
+                track_version "$tool" "pipx" "latest"
+            else
+                log_error "Failed: $tool"
+            fi
             return 0
         fi
     done
@@ -263,7 +281,12 @@ install_single_tool() {
             if [[ "$goname" == "$tool" ]]; then
                 ensure_go || { log_error "Go not available — cannot install $tool"; return 1; }
                 log_info "Installing $tool via go install..."
-                go install "$gopkg" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
+                if go install "$gopkg" >> "$LOG_FILE" 2>&1; then
+                    log_success "Installed: $tool"
+                    track_version "$tool" "go" "latest"
+                else
+                    log_error "Failed: $tool"
+                fi
                 return 0
             fi
         done
@@ -271,13 +294,18 @@ install_single_tool() {
 
     # Cargo
     local cargo_arrs=(
-        WEB_CARGO NET_CARGO PWN_CARGO MALWARE_CARGO
+        WEB_CARGO NET_CARGO PWN_CARGO BLUETEAM_CARGO
     )
     for a in "${cargo_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
             log_info "Installing $tool via cargo..."
-            cargo install "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
+            if cargo install "$tool" >> "$LOG_FILE" 2>&1; then
+                log_success "Installed: $tool"
+                track_version "$tool" "cargo" "latest"
+            else
+                log_error "Failed: $tool"
+            fi
             if [[ -f "$HOME/.cargo/bin/$tool" ]]; then
                 ln -sf "$HOME/.cargo/bin/$tool" "$PIPX_BIN_DIR/$tool" 2>/dev/null || true
             fi
@@ -290,7 +318,12 @@ install_single_tool() {
     for a in "${gem_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via gem..."
-            gem install "$tool" --no-document >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
+            if gem install "$tool" --no-document >> "$LOG_FILE" 2>&1; then
+                log_success "Installed: $tool"
+                track_version "$tool" "gem" "latest"
+            else
+                log_error "Failed: $tool"
+            fi
             return 0
         fi
     done
@@ -298,7 +331,7 @@ install_single_tool() {
     # Git repos (match name= prefix)
     local git_arrs=(
         MISC_GIT NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
-        FORENSICS_GIT MALWARE_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT
+        FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT
         STEGO_GIT CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
         BLOCKCHAIN_GIT LLM_GIT
     )
@@ -312,9 +345,13 @@ install_single_tool() {
                 local url="${entry#*=}"
                 local dest="$GITHUB_TOOL_DIR/$gname"
                 log_info "Cloning $tool..."
-                git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1 || { log_error "Failed: $tool"; return 1; }
-                setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
-                log_success "Installed: $tool → $dest"
+                if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
+                    setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || log_warn "setup_git_repo failed for $tool"
+                    log_success "Installed: $tool → $dest"
+                    track_version "$tool" "git" "HEAD"
+                else
+                    log_error "Failed: $tool"
+                fi
                 return 0
             fi
         done
@@ -324,7 +361,12 @@ install_single_tool() {
     if [[ "$tool" == "promptfoo" ]]; then
         ensure_node || { log_error "Node.js/npm not available — cannot install $tool"; return 1; }
         log_info "Installing $tool via npm..."
-        npm install -g "$tool" >> "$LOG_FILE" 2>&1 && log_success "Installed: $tool" || log_error "Failed: $tool"
+        if npm install -g "$tool" >> "$LOG_FILE" 2>&1; then
+            log_success "Installed: $tool"
+            track_version "$tool" "npm" "latest"
+        else
+            log_error "Failed: $tool"
+        fi
         return 0
     fi
 
@@ -519,6 +561,7 @@ fi
 # Main installation
 LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
 : > "$LOG_FILE"
+chmod 600 "$LOG_FILE" 2>/dev/null || true
 VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {
@@ -638,6 +681,12 @@ main() {
     fi
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules installed: ${MODULES_TO_INSTALL[*]}"
+    # Count tools tracked in .versions file (excludes header/comment lines)
+    local tools_installed=0
+    if [[ -f "$VERSION_FILE" ]]; then
+        tools_installed=$(grep -cv '^#' "$VERSION_FILE" 2>/dev/null || echo 0)
+    fi
+    log_info "Tools installed: $tools_installed"
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
         log_error "Modules with failures: $TOTAL_MODULE_FAILURES"
         log_error "Total tool failures: $TOTAL_TOOL_FAILURES"
@@ -663,8 +712,8 @@ main() {
 TOTAL_MODULE_FAILURES=0
 
 install_modules() {
-    # Phase 1/4: Aggregate all tool arrays from selected modules ──
-    log_info "Phase 1/4: Aggregating tool lists from ${#MODULES_TO_INSTALL[@]} modules..."
+    # Stage 1/4: Aggregate all tool arrays from selected modules ──
+    log_info "Stage 1/4: Aggregating tool lists from ${#MODULES_TO_INSTALL[@]} modules..."
 
     local -a _ALL_APT=() _ALL_PIPX=() _ALL_GO=() _ALL_CARGO=() _ALL_GEMS=()
     local -a _ALL_GIT=() _ALL_BINARY=()
@@ -692,19 +741,21 @@ install_modules() {
     done
 
     log_info "  APT: ${#_ALL_APT[@]}, pipx: ${#_ALL_PIPX[@]}, Go: ${#_ALL_GO[@]}, Cargo: ${#_ALL_CARGO[@]}, Gems: ${#_ALL_GEMS[@]}, Git: ${#_ALL_GIT[@]}, Binary: ${#_ALL_BINARY[@]}"
-
-    # Phase 2/4: Single APT transaction for ALL packages ──
+    # Stage 2/4: Single APT transaction for ALL packages ──
     echo ""
-    log_info "Phase 2/4: Installing all system packages in one transaction..."
+    log_info "Stage 2/4: Installing all system packages in one transaction..."
     if [[ ${#_ALL_APT[@]} -gt 0 ]]; then
         install_apt_batch "All modules - Packages" "${_ALL_APT[@]}"
     fi
 
-    # Phase 3/4: Parallel non-APT batch installs ──
+    # Stage 3/4: Parallel non-APT batch installs ──
     echo ""
-    log_info "Phase 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
+    log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
     local _fail_dir
     _fail_dir=$(mktemp -d)
+
+    # Clean up child processes on interrupt (Ctrl+C / kill)
+    trap 'log_warn "Interrupted — killing background jobs..."; local _pids; _pids=$(jobs -rp 2>/dev/null); [[ -n "$_pids" ]] && kill $_pids 2>/dev/null; rm -rf "$_fail_dir"; exit 130' INT TERM
 
     # pipx (sequential within — venv lock)
     if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
@@ -762,29 +813,32 @@ install_modules() {
 
     wait
 
+    # Restore default signal handling after parallel section
+    trap - INT TERM
+
     # Sum failures from all parallel methods
-    local _phase3_failures=0
+    local _stage3_failures=0
     for _f in "$_fail_dir"/*.cnt; do
         [[ -f "$_f" ]] || continue
         local _cnt
         _cnt=$(< "$_f")
-        _phase3_failures=$((_phase3_failures + _cnt))
+        _stage3_failures=$((_stage3_failures + _cnt))
     done
-    TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + _phase3_failures))
+    TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + _stage3_failures))
     rm -rf "$_fail_dir"
 
-    # Track batch-phase failures at the module level for final summary
+    # Track batch-stage failures at the module level for final summary
     if [[ "$TOTAL_TOOL_FAILURES" -gt 0 ]]; then
-        log_warn "Batch install phases: $TOTAL_TOOL_FAILURES tool(s) failed"
+        log_warn "Batch install stages: $TOTAL_TOOL_FAILURES tool(s) failed"
         TOTAL_MODULE_FAILURES=$((TOTAL_MODULE_FAILURES + 1))
     fi
 
-    # Phase 4/4: Module-specific custom logic ──
+    # Stage 4/4: Module-specific custom logic ──
     # Set _SKIP_BATCH_REINSTALL so batch functions (apt, pipx, go, cargo, gems,
     # git, binary) return immediately — only custom logic runs (Docker, builds,
     # special installers like ZAP/Metasploit, direct download_github_release calls).
     echo ""
-    log_info "Phase 4/4: Running module-specific setup (Docker, builds, special installers)..."
+    log_info "Stage 4/4: Running module-specific setup (Docker, builds, special installers)..."
     _SKIP_BATCH_REINSTALL=true
 
     for mod in "${MODULES_TO_INSTALL[@]}"; do

@@ -16,7 +16,7 @@ setup() {
 
 # ---------- Module files exist -----------------------------------------------
 
-@test "all 19 module files exist" {
+@test "all 18 module files exist" {
     for mod in "${ALL_MODULES[@]}"; do
         [[ -f "$PROJECT_ROOT/modules/${mod}.sh" ]] || { echo "Missing: modules/${mod}.sh"; return 1; }
     done
@@ -44,7 +44,6 @@ _get_prefix() {
         pwn)        echo "PWN" ;;
         reversing)  echo "RE" ;;
         forensics)  echo "FORENSICS" ;;
-        malware)    echo "MALWARE" ;;
         enterprise) echo "ENTERPRISE" ;;
         wireless)   echo "WIRELESS" ;;
         cracking)   echo "CRACKING" ;;
@@ -170,7 +169,7 @@ _get_prefix() {
 @test "no duplicate entries in pipx arrays" {
     local pipx_arrays=(
         MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX MALWARE_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
+        FORENSICS_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
         STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX LLM_PIPX
     )
 

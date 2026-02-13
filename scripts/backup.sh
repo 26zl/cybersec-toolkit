@@ -1,29 +1,14 @@
 #!/bin/bash
 # CyberSec Tools — Config Backup/Restore Script
 # Backs up and restores tool configurations with ChaCha20 encryption (PBKDF2 key derivation).
-# Supports scheduling via cron (Linux/macOS).
+# Supports scheduling via cron. Linux and Termux only.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-# Platform paths
-case "$(uname -s)" in
-    Linux*)
-        HOME_DIR="$HOME"
-        ;;
-    Darwin*)
-        HOME_DIR="$HOME"
-        ;;
-    CYGWIN*|MINGW*|MSYS*)
-        HOME_DIR="${USERPROFILE:-$HOME}"
-        ;;
-    *)
-        echo "Unsupported operating system"
-        exit 1
-        ;;
-esac
+HOME_DIR="$HOME"
 
 # Configuration
 PBKDF2_ITERATIONS=600000
@@ -31,6 +16,7 @@ BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
 LOG_FILE="$BACKUP_DIR/backup.log"
+touch "$LOG_FILE" 2>/dev/null && chmod 600 "$LOG_FILE" 2>/dev/null || true
 
 # Helpers
 ensure_dir() {
@@ -94,6 +80,7 @@ decrypt_archive() {
     chmod 600 "$pass_file"
     printf '%s' "$passphrase" > "$pass_file"
 
+    unset passphrase
     if openssl enc -chacha20 -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
         -in "$encrypted_path" -out "$output_path" -pass file:"$pass_file" 2>/dev/null; then
         rm -f "$pass_file"
@@ -120,6 +107,7 @@ decrypt_files_legacy() {
     chmod 600 "$pass_file"
     printf '%s' "$passphrase" > "$pass_file"
 
+    unset passphrase
     while IFS= read -r -d '' file; do
         local relative_path="${file#"$source_dir"/}"
         local decrypted_path="$target_dir/${relative_path%.enc}"

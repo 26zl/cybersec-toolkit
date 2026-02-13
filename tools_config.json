@@ -114,12 +114,6 @@
     "url": "https://github.com/TH3xACE/SUDO_KILLER"
   },
   {
-    "name": "PrivescCheck",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/itm4n/PrivescCheck"
-  },
-  {
     "name": "LaZagne",
     "method": "git",
     "module": "pwn",
@@ -198,22 +192,10 @@
     "url": "https://github.com/mitre/caldera"
   },
   {
-    "name": "atomic-red-team",
-    "method": "git",
-    "module": "blueteam",
-    "url": "https://github.com/redcanaryco/atomic-red-team"
-  },
-  {
     "name": "RedEye",
     "method": "git",
     "module": "misc",
     "url": "https://github.com/cisagov/RedEye"
-  },
-  {
-    "name": "powercat",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/besimorhino/powercat"
   },
   {
     "name": "pspy",
@@ -1976,31 +1958,31 @@
   {
     "name": "yara",
     "method": "apt",
-    "module": "malware",
+    "module": "blueteam",
     "url": ""
   },
   {
     "name": "clamav",
     "method": "apt",
-    "module": "malware",
+    "module": "blueteam",
     "url": ""
   },
   {
     "name": "inetsim",
     "method": "apt",
-    "module": "malware",
+    "module": "blueteam",
     "url": ""
   },
   {
     "name": "quark-engine",
     "method": "pipx",
-    "module": "malware",
+    "module": "blueteam",
     "url": ""
   },
   {
     "name": "yara-x",
     "method": "cargo",
-    "module": "malware",
+    "module": "blueteam",
     "url": "https://github.com/VirusTotal/yara-x"
   },
   {
@@ -3228,12 +3210,6 @@
     "url": "https://github.com/stamparm/maltrail"
   },
   {
-    "name": "CIMSweep",
-    "method": "git",
-    "module": "blueteam",
-    "url": "https://github.com/PowerShellMafia/CIMSweep"
-  },
-  {
     "name": "MISP-docker",
     "method": "git",
     "module": "blueteam",
@@ -3380,14 +3356,20 @@
   {
     "name": "floss",
     "method": "binary",
-    "module": "malware",
+    "module": "blueteam",
     "url": "https://github.com/mandiant/flare-floss"
   },
   {
     "name": "capa",
     "method": "binary",
-    "module": "malware",
+    "module": "blueteam",
     "url": "https://github.com/mandiant/capa"
+  },
+  {
+    "name": "loki",
+    "method": "binary",
+    "module": "blueteam",
+    "url": "https://github.com/Neo23x0/Loki-RS"
   },
   {
     "name": "theHarvester",
