@@ -755,7 +755,8 @@ install_modules() {
     _fail_dir=$(mktemp -d)
 
     # Clean up child processes on interrupt (Ctrl+C / kill)
-    trap 'log_warn "Interrupted — killing background jobs..."; local _pids; _pids=$(jobs -rp 2>/dev/null); [[ -n "$_pids" ]] && kill $_pids 2>/dev/null; rm -rf "$_fail_dir"; exit 130' INT TERM
+    # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
+    trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; rm -rf "$_fail_dir"; exit 130' INT TERM
 
     # pipx (sequential within — venv lock)
     if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
