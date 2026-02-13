@@ -195,13 +195,59 @@ _go_bin_name() {
     echo "$base"
 }
 
+# Enable pacman ParallelDownloads (persistent, one-time)
+_PACMAN_PARALLEL_DONE=false
+_enable_pacman_parallel_downloads() {
+    [[ "$_PACMAN_PARALLEL_DONE" == "true" ]] && return 0
+    _PACMAN_PARALLEL_DONE=true
+    if [[ -f /etc/pacman.conf ]] && ! grep -q '^ParallelDownloads' /etc/pacman.conf; then
+        sed -i 's/^#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf 2>/dev/null || true
+    fi
+}
+
+# Global concurrency semaphore (FIFO-based)
+# Limits total parallel jobs across ALL batch methods to PARALLEL_JOBS.
+_GLOBAL_SEM_FIFO=""
+_GLOBAL_SEM_FD=""
+
+_init_global_semaphore() {
+    _GLOBAL_SEM_FIFO=$(mktemp -u "/tmp/cybersec_sem.XXXXXX")
+    mkfifo "$_GLOBAL_SEM_FIFO"
+    exec {_GLOBAL_SEM_FD}<>"$_GLOBAL_SEM_FIFO"
+    # Fill with N tokens
+    local i
+    for ((i = 0; i < PARALLEL_JOBS; i++)); do
+        echo "x" >&${_GLOBAL_SEM_FD}
+    done
+}
+
+_cleanup_global_semaphore() {
+    if [[ -n "${_GLOBAL_SEM_FD:-}" ]]; then
+        exec {_GLOBAL_SEM_FD}>&- 2>/dev/null || true
+        _GLOBAL_SEM_FD=""
+    fi
+    [[ -n "${_GLOBAL_SEM_FIFO:-}" ]] && rm -f "$_GLOBAL_SEM_FIFO" 2>/dev/null || true
+    _GLOBAL_SEM_FIFO=""
+}
+
 # Parallel install helpers
 
-# _wait_for_job_slot — blocks until fewer than PARALLEL_JOBS background jobs are running
+# _wait_for_job_slot — acquires a token from the global semaphore (blocks until available).
+# Falls back to job-count polling when the semaphore is not initialised.
 _wait_for_job_slot() {
-    while [[ $(jobs -rp | wc -l) -ge $PARALLEL_JOBS ]]; do
-        wait -n 2>/dev/null || sleep 0.1
-    done
+    if [[ -n "${_GLOBAL_SEM_FD:-}" ]]; then
+        read -r _ <&${_GLOBAL_SEM_FD}
+    else
+        while [[ $(jobs -rp | wc -l) -ge $PARALLEL_JOBS ]]; do
+            wait -n 2>/dev/null || sleep 0.1
+        done
+    fi
+}
+
+# _release_job_slot — returns a token to the global semaphore.
+# Must be called when a parallel job finishes (use trap EXIT in subshells).
+_release_job_slot() {
+    [[ -n "${_GLOBAL_SEM_FD:-}" ]] && echo "x" >&${_GLOBAL_SEM_FD} 2>/dev/null || true
 }
 
 # _collect_parallel_results — reads temp result files, calls track_version,
@@ -327,8 +373,8 @@ maybe_sudo() {
 pkg_update() {
     case "$PKG_MANAGER" in
         apt)     maybe_sudo apt-get update -qq ;;
-        dnf)     maybe_sudo dnf check-update -q || true ;;
-        pacman)  maybe_sudo pacman -Sy --noconfirm ;;
+        dnf)     maybe_sudo dnf check-update --setopt=max_parallel_downloads=10 -q || true ;;
+        pacman)  _enable_pacman_parallel_downloads; maybe_sudo pacman -Sy --noconfirm ;;
         zypper)  maybe_sudo zypper refresh -q ;;
         pkg)     pkg update -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
@@ -340,13 +386,13 @@ pkg_install() {
         apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
         dnf)
             if [[ "$1" == @* ]]; then
-                maybe_sudo dnf group install -y -q "${1#@}"
+                maybe_sudo dnf group install --setopt=max_parallel_downloads=10 -y -q "${1#@}"
             else
-                maybe_sudo dnf install -y -q "$@"
+                maybe_sudo dnf install --setopt=max_parallel_downloads=10 -y -q "$@"
             fi
             ;;
         pacman)  maybe_sudo pacman -S --noconfirm --needed "$@" ;;
-        zypper)  maybe_sudo zypper install -y -q "$@" ;;
+        zypper)  maybe_sudo ZYPP_MEDIANETWORK=1 zypper install -y -q "$@" ;;
         pkg)     pkg install -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac

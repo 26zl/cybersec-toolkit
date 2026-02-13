@@ -43,6 +43,7 @@ SKIP_SOURCE="${SKIP_SOURCE:-false}"
 ENABLE_DOCKER="${ENABLE_DOCKER:-false}"
 INCLUDE_C2="${INCLUDE_C2:-false}"
 REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
+FAST_MODE="${FAST_MODE:-false}"
 
 usage() {
     cat << 'EOF'
@@ -75,6 +76,8 @@ Options:
   --skip-git           Skip all git clone installs
   --skip-binary        Skip all binary release downloads
   --skip-source        Skip build-from-source, snap, npm, and curl-pipe installs
+  --fast               Skip checksum verification for faster binary downloads
+                         (mutually exclusive with --require-checksums)
   --require-checksums  Fail if a binary release has no checksum file
   --enable-docker      Pull Docker images (C2 frameworks, IR platforms, MobSF, etc.)
   --include-c2         Enable C2 frameworks (requires --enable-docker)
@@ -179,6 +182,7 @@ while [[ $# -gt 0 ]]; do
         --skip-git)        SKIP_GIT=true; shift ;;
         --skip-binary)     SKIP_BINARY=true; shift ;;
         --skip-source)     SKIP_SOURCE=true; shift ;;
+        --fast)            FAST_MODE=true; shift ;;
         --require-checksums) REQUIRE_CHECKSUMS=true; shift ;;
         --enable-docker)   ENABLE_DOCKER=true; shift ;;
         --include-c2)      INCLUDE_C2=true; shift ;;
@@ -198,6 +202,12 @@ while [[ $# -gt 0 ]]; do
         *)                 log_error "Unknown option: $1"; usage ;;
     esac
 done
+
+# --fast and --require-checksums are mutually exclusive
+if [[ "$FAST_MODE" == "true" && "$REQUIRE_CHECKSUMS" == "true" ]]; then
+    log_error "--fast and --require-checksums are mutually exclusive"
+    exit 1
+fi
 
 # Single-tool install (--tool)
 # shellcheck disable=SC2034  # Arrays read via nameref
@@ -434,7 +444,7 @@ fi
 
 # Export flags for modules
 export SKIP_HEAVY SKIP_PIPX SKIP_GO SKIP_CARGO SKIP_GEMS SKIP_GIT SKIP_BINARY SKIP_SOURCE
-export ENABLE_DOCKER INCLUDE_C2 REQUIRE_CHECKSUMS UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
+export ENABLE_DOCKER INCLUDE_C2 REQUIRE_CHECKSUMS FAST_MODE UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
 
 # Source selected modules
 for mod in "${MODULES_TO_INSTALL[@]}"; do
@@ -541,6 +551,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
     if [[ ${#_skip_flags[@]} -gt 0 ]]; then
         echo "Skipping:       ${_skip_flags[*]}"
     fi
+    echo "Fast mode:      $FAST_MODE"
     echo "Docker:         $ENABLE_DOCKER"
     echo "C2:             $INCLUDE_C2"
     echo "System upgrade: $UPGRADE_SYSTEM"
@@ -748,85 +759,102 @@ install_modules() {
         install_apt_batch "All modules - Packages" "${_ALL_APT[@]}"
     fi
 
-    # Stage 3/4: Parallel non-APT batch installs ──
+    # Stage 3/4: Non-APT batch installs ──
     echo ""
-    log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
-    local _fail_dir
-    _fail_dir=$(mktemp -d)
 
-    # Clean up child processes on interrupt (Ctrl+C / kill)
-    # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
-    trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; rm -rf "$_fail_dir"; exit 130' INT TERM
+    if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
+        # --- Parallel: launch all batches as concurrent subshells ---
+        log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
+        local _fail_dir
+        _fail_dir=$(mktemp -d)
 
-    # pipx (sequential within — venv lock)
-    if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
-        (
-            TOTAL_TOOL_FAILURES=0
-            install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
-            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
-        ) &
+        # Initialise global concurrency semaphore (shared across all batch methods)
+        _init_global_semaphore
+
+        # Clean up child processes and semaphore on interrupt (Ctrl+C / kill)
+        # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
+        trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _cleanup_global_semaphore; rm -rf "$_fail_dir"; exit 130' INT TERM
+
+        # pipx (sequential within — venv lock)
+        if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
+            (
+                TOTAL_TOOL_FAILURES=0
+                install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
+                echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
+            ) &
+        fi
+
+        # Go (parallelized within via global semaphore)
+        if [[ ${#_ALL_GO[@]} -gt 0 ]]; then
+            (
+                TOTAL_TOOL_FAILURES=0
+                install_go_batch "All modules - Go" "${_ALL_GO[@]}"
+                echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
+            ) &
+        fi
+
+        # Cargo (sequential within — registry lock)
+        if [[ ${#_ALL_CARGO[@]} -gt 0 ]]; then
+            (
+                TOTAL_TOOL_FAILURES=0
+                install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
+                echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
+            ) &
+        fi
+
+        # Gems (sequential within — gem dir lock)
+        if [[ ${#_ALL_GEMS[@]} -gt 0 ]]; then
+            (
+                TOTAL_TOOL_FAILURES=0
+                install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
+                echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
+            ) &
+        fi
+
+        # Git repos (parallelized within via global semaphore)
+        if [[ ${#_ALL_GIT[@]} -gt 0 ]]; then
+            (
+                TOTAL_TOOL_FAILURES=0
+                install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
+                echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
+            ) &
+        fi
+
+        # Binary releases (parallelized within via global semaphore)
+        if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then
+            (
+                TOTAL_TOOL_FAILURES=0
+                install_binary_releases "${_ALL_BINARY[@]}"
+                echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"
+            ) &
+        fi
+
+        wait
+
+        # Clean up global semaphore and restore default signal handling
+        _cleanup_global_semaphore
+        trap - INT TERM
+
+        # Sum failures from all parallel methods
+        local _stage3_failures=0
+        for _f in "$_fail_dir"/*.cnt; do
+            [[ -f "$_f" ]] || continue
+            local _cnt
+            _cnt=$(< "$_f")
+            _stage3_failures=$((_stage3_failures + _cnt))
+        done
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + _stage3_failures))
+        rm -rf "$_fail_dir"
+    else
+        # --- Sequential: PARALLEL_JOBS=1, run each batch inline ---
+        log_info "Stage 3/4: Installing non-APT tools sequentially (pipx, Go, Cargo, Gems, Git, Binary)..."
+        [[ ${#_ALL_PIPX[@]}   -gt 0 ]] && install_pipx_batch    "All modules - Python" "${_ALL_PIPX[@]}"
+        [[ ${#_ALL_GO[@]}     -gt 0 ]] && install_go_batch      "All modules - Go"     "${_ALL_GO[@]}"
+        [[ ${#_ALL_CARGO[@]}  -gt 0 ]] && install_cargo_batch   "All modules - Rust"   "${_ALL_CARGO[@]}"
+        [[ ${#_ALL_GEMS[@]}   -gt 0 ]] && install_gem_batch     "All modules - Ruby"   "${_ALL_GEMS[@]}"
+        [[ ${#_ALL_GIT[@]}    -gt 0 ]] && install_git_batch     "All modules - Git"    "${_ALL_GIT[@]}"
+        [[ ${#_ALL_BINARY[@]} -gt 0 ]] && install_binary_releases "${_ALL_BINARY[@]}"
     fi
-
-    # Go (already parallelized within via PARALLEL_JOBS)
-    if [[ ${#_ALL_GO[@]} -gt 0 ]]; then
-        (
-            TOTAL_TOOL_FAILURES=0
-            install_go_batch "All modules - Go" "${_ALL_GO[@]}"
-            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
-        ) &
-    fi
-
-    # Cargo (sequential within — registry lock)
-    if [[ ${#_ALL_CARGO[@]} -gt 0 ]]; then
-        (
-            TOTAL_TOOL_FAILURES=0
-            install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
-            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
-        ) &
-    fi
-
-    # Gems (sequential within — gem dir lock)
-    if [[ ${#_ALL_GEMS[@]} -gt 0 ]]; then
-        (
-            TOTAL_TOOL_FAILURES=0
-            install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
-            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
-        ) &
-    fi
-
-    # Git repos (already parallelized within via PARALLEL_JOBS)
-    if [[ ${#_ALL_GIT[@]} -gt 0 ]]; then
-        (
-            TOTAL_TOOL_FAILURES=0
-            install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
-            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
-        ) &
-    fi
-
-    # Binary releases (already parallelized within via PARALLEL_JOBS)
-    if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then
-        (
-            TOTAL_TOOL_FAILURES=0
-            install_binary_releases "${_ALL_BINARY[@]}"
-            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"
-        ) &
-    fi
-
-    wait
-
-    # Restore default signal handling after parallel section
-    trap - INT TERM
-
-    # Sum failures from all parallel methods
-    local _stage3_failures=0
-    for _f in "$_fail_dir"/*.cnt; do
-        [[ -f "$_f" ]] || continue
-        local _cnt
-        _cnt=$(< "$_f")
-        _stage3_failures=$((_stage3_failures + _cnt))
-    done
-    TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + _stage3_failures))
-    rm -rf "$_fail_dir"
 
     # Track batch-stage failures at the module level for final summary
     if [[ "$TOTAL_TOOL_FAILURES" -gt 0 ]]; then

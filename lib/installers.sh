@@ -409,6 +409,7 @@ install_pipx_batch() {
             _wait_for_job_slot
 
             (
+                trap '_release_job_slot' EXIT
                 if pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
                     printf 'ok\nlatest\n' > "$_results_dir/$tool"
                 else
@@ -491,6 +492,7 @@ install_go_batch() {
             _wait_for_job_slot
 
             (
+                trap '_release_job_slot' EXIT
                 if go install "$tool" >> "$LOG_FILE" 2>&1; then
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
                 else
@@ -871,6 +873,7 @@ install_git_batch() {
             _wait_for_job_slot
 
             (
+                trap '_release_job_slot' EXIT
                 local is_existing=false
                 [[ -d "$dest/.git" ]] && is_existing=true
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
@@ -1011,8 +1014,21 @@ for asset in data.get('assets', []):
         return 1
     fi
 
-    local checksums
-    checksums=$(curl "${_CURL_OPTS[@]}" "$checksum_url" 2>>"$LOG_FILE")
+    # Cache checksum files — multiple binaries from the same release share one file
+    _gh_api_cache_init
+    local _cksum_cache_key
+    _cksum_cache_key=$(echo "$checksum_url" | sed 's|[/:?&=]|_|g')
+    local _cksum_cache_file="$_GH_API_CACHE_DIR/checksum_${_cksum_cache_key}"
+
+    local checksums=""
+    if [[ -f "$_cksum_cache_file" ]]; then
+        checksums=$(< "$_cksum_cache_file")
+    else
+        checksums=$(curl "${_CURL_OPTS[@]}" "$checksum_url" 2>>"$LOG_FILE")
+        if [[ -n "$checksums" ]]; then
+            echo "$checksums" > "$_cksum_cache_file"
+        fi
+    fi
     if [[ -z "$checksums" ]]; then
         log_warn "Failed to download checksums for $file_name"
         return 1
@@ -1109,9 +1125,10 @@ for asset in data.get('assets', []):
     fi
 
     # Verify checksum — fail-closed on mismatch, warn-only if no checksums available
+    # --fast skips verification entirely (mutually exclusive with --require-checksums)
     local _action_label="install"
     [[ "$mode" == "update" ]] && _action_label="update"
-    if ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
+    if [[ "${FAST_MODE:-false}" != "true" ]] && ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
         if [[ -f "$tmp_dir/.checksum_mismatch" ]]; then
             log_error "Aborting $_action_label of $binary due to checksum mismatch"
             rm -rf "$tmp_dir"
@@ -1224,10 +1241,10 @@ WRAPPER
     if [[ "$mode" == "install" ]]; then
         if command_exists "$binary"; then
             log_success "Installed: $binary"
-            track_version "$binary" "binary" "${release_tag:-latest}"
+            echo "${release_tag:-latest}" > "${dest_dir}/.${binary}.vtag"
         elif [[ -f "$dest_dir/$binary" ]] || [[ -f "$dest_dir/bin/$binary" ]]; then
             log_success "Installed: $binary (in $dest_dir)"
-            track_version "$binary" "binary" "${release_tag:-latest}"
+            echo "${release_tag:-latest}" > "${dest_dir}/.${binary}.vtag"
         else
             log_error "Install failed: $binary"
             return 1
@@ -1253,6 +1270,14 @@ download_github_release() {
         return 0
     fi
     _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "install"
+    local _rc=$?
+    # Consume vtag sidecar for version tracking (written by _download_github_release_impl).
+    # The file is intentionally NOT deleted here — parallel callers read it separately.
+    local _vtag_file="${dest_dir}/.${binary}.vtag"
+    if [[ -f "$_vtag_file" ]]; then
+        track_version "$binary" "binary" "$(< "$_vtag_file")"
+    fi
+    return $_rc
 }
 
 # Download GitHub release binary (update mode — no skip)
@@ -1483,10 +1508,12 @@ install_binary_releases() {
             _wait_for_job_slot
 
             (
+                trap '_release_job_slot' EXIT
                 if download_github_release "$_repo" "$_binary" "$_pattern" "$_dest" >> "$LOG_FILE" 2>&1; then
-                    # Read the actual tag that download_github_release stored
+                    # Read version from vtag sidecar (written by _download_github_release_impl)
                     local _stored_ver=""
-                    _stored_ver=$(grep "^${_binary}|" "$VERSION_FILE" 2>/dev/null | cut -d'|' -f3)
+                    local _vtag_file="${_dest}/.${_binary}.vtag"
+                    [[ -f "$_vtag_file" ]] && { _stored_ver=$(< "$_vtag_file"); rm -f "$_vtag_file"; }
                     printf 'ok\n%s\n' "${_stored_ver:-latest}" > "$_results_dir/$_binary"
                 else
                     printf 'fail\n\n' > "$_results_dir/$_binary"
