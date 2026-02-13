@@ -283,6 +283,7 @@ fixup_package_names() {
 
 # Batch APT install with progress and distro fixup
 install_apt_batch() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
     local -a packages=("$@")
 
@@ -331,6 +332,7 @@ install_apt_batch() {
 
 # Batch pipx install
 install_pipx_batch() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
     local -a tools=("$@")
     local total=${#tools[@]}
@@ -382,6 +384,7 @@ install_pipx_batch() {
 
 # Batch Go install
 install_go_batch() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
     local -a tools=("$@")
     local total=${#tools[@]}
@@ -466,6 +469,7 @@ install_go_batch() {
 
 # Batch cargo install
 install_cargo_batch() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
     local -a crates=("$@")
     local total=${#crates[@]}
@@ -520,6 +524,7 @@ install_cargo_batch() {
 
 # Batch gem install
 install_gem_batch() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
     local -a gems=("$@")
     local total=${#gems[@]}
@@ -623,6 +628,7 @@ PYWRAP
 # Batch git clone with auto-setup
 # Usage: install_git_batch "Label" name1=url1 name2=url2 ...
 install_git_batch() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
     local -a repos=("$@")
     local total=${#repos[@]}
@@ -1263,6 +1269,7 @@ ALL_DOCKER_IMAGES=(
 # Supports parallel downloads when PARALLEL_JOBS > 1 (~3-4x faster, network I/O bound).
 # Skipped on Termux/Android — most GitHub release assets are Linux/glibc and won't run.
 install_binary_releases() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local -a entries=("$@")
     local total=${#entries[@]}
     [[ "$total" -eq 0 ]] && return 0

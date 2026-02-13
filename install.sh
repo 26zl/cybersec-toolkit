@@ -522,7 +522,9 @@ LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
 VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {
-    check_root
+    if [[ "$DRY_RUN" != "true" ]]; then
+        check_root
+    fi
     print_banner
 
     if [[ "$PKG_MANAGER" == "unknown" ]]; then
@@ -577,36 +579,41 @@ main() {
     local start_time
     start_time=$(date +%s)
 
-    # Stage 1: Refresh package lists (required for installing packages)
-    log_info "Refreshing package lists..."
-    if pkg_update >> "$LOG_FILE" 2>&1; then
-        log_success "Package lists refreshed"
-    else
-        log_warn "Package list refresh had errors (check log) — continuing"
-    fi
-
-    # Optional: full system upgrade (only with --upgrade-system)
-    if [[ "$UPGRADE_SYSTEM" == "true" ]]; then
-        log_info "Upgrading system packages (--upgrade-system)..."
-        if pkg_upgrade >> "$LOG_FILE" 2>&1; then
-            log_success "System packages upgraded"
+    # Refresh package lists (required for installing packages)
+    if [[ "$DRY_RUN" != "true" ]]; then
+        log_info "Refreshing package lists..."
+        if pkg_update >> "$LOG_FILE" 2>&1; then
+            log_success "Package lists refreshed"
         else
-            log_warn "System upgrade had errors (check log) — continuing"
+            log_warn "Package list refresh had errors (check log) — continuing"
         fi
+
+        # Optional: full system upgrade (only with --upgrade-system)
+        if [[ "$UPGRADE_SYSTEM" == "true" ]]; then
+            log_info "Upgrading system packages (--upgrade-system)..."
+            if pkg_upgrade >> "$LOG_FILE" 2>&1; then
+                log_success "System packages upgraded"
+            else
+                log_warn "System upgrade had errors (check log) — continuing"
+            fi
+        fi
+        echo ""
+
+        # Install shared base dependencies (runtimes, compilers, dev libs)
+        install_shared_deps
+        echo ""
+
+        # Ensure additional toolchains are available
+        ensure_pipx
+        ensure_go
+        ensure_cargo
+        echo ""
+    else
+        log_info "[DRY RUN] Skipping Repo Update, Shared Deps, Toolchains"
+        echo ""
     fi
-    echo ""
 
-    # Stage 2: Install shared base dependencies (runtimes, compilers, dev libs)
-    install_shared_deps
-    echo ""
-
-    # Stage 3: Ensure additional toolchains are available
-    ensure_pipx
-    ensure_go
-    ensure_cargo
-    echo ""
-
-    # Stage 4: Install modules
+    # Install modules
     install_modules
 
     # Disable debug trace before summary output
@@ -656,6 +663,130 @@ main() {
 TOTAL_MODULE_FAILURES=0
 
 install_modules() {
+    # Phase 1/4: Aggregate all tool arrays from selected modules ──
+    log_info "Phase 1/4: Aggregating tool lists from ${#MODULES_TO_INSTALL[@]} modules..."
+
+    local -a _ALL_APT=() _ALL_PIPX=() _ALL_GO=() _ALL_CARGO=() _ALL_GEMS=()
+    local -a _ALL_GIT=() _ALL_BINARY=()
+
+    for _mod in "${MODULES_TO_INSTALL[@]}"; do
+        local _pfx
+        _pfx=$(_module_prefix "$_mod")
+        local _mod_upper="${_mod^^}"
+
+        # APT packages
+        _append_module_array _ALL_APT "${_pfx}_PACKAGES"
+        if [[ "${SKIP_HEAVY:-false}" != "true" ]]; then
+            _append_module_array _ALL_APT "${_pfx}_HEAVY_PACKAGES"
+        fi
+
+        # Other batch methods
+        _append_module_array _ALL_PIPX  "${_pfx}_PIPX"
+        _append_module_array _ALL_GO    "${_pfx}_GO"
+        _append_module_array _ALL_CARGO "${_pfx}_CARGO"
+        _append_module_array _ALL_GEMS  "${_pfx}_GEMS"
+        _append_module_array _ALL_GIT   "${_pfx}_GIT"
+
+        # Binary releases (BINARY_RELEASES_<MODULE_UPPER> in installers.sh)
+        _append_module_array _ALL_BINARY "BINARY_RELEASES_${_mod_upper}"
+    done
+
+    log_info "  APT: ${#_ALL_APT[@]}, pipx: ${#_ALL_PIPX[@]}, Go: ${#_ALL_GO[@]}, Cargo: ${#_ALL_CARGO[@]}, Gems: ${#_ALL_GEMS[@]}, Git: ${#_ALL_GIT[@]}, Binary: ${#_ALL_BINARY[@]}"
+
+    # Phase 2/4: Single APT transaction for ALL packages ──
+    echo ""
+    log_info "Phase 2/4: Installing all system packages in one transaction..."
+    if [[ ${#_ALL_APT[@]} -gt 0 ]]; then
+        install_apt_batch "All modules - Packages" "${_ALL_APT[@]}"
+    fi
+
+    # Phase 3/4: Parallel non-APT batch installs ──
+    echo ""
+    log_info "Phase 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
+    local _fail_dir
+    _fail_dir=$(mktemp -d)
+
+    # pipx (sequential within — venv lock)
+    if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
+        (
+            TOTAL_TOOL_FAILURES=0
+            install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
+            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
+        ) &
+    fi
+
+    # Go (already parallelized within via PARALLEL_JOBS)
+    if [[ ${#_ALL_GO[@]} -gt 0 ]]; then
+        (
+            TOTAL_TOOL_FAILURES=0
+            install_go_batch "All modules - Go" "${_ALL_GO[@]}"
+            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
+        ) &
+    fi
+
+    # Cargo (sequential within — registry lock)
+    if [[ ${#_ALL_CARGO[@]} -gt 0 ]]; then
+        (
+            TOTAL_TOOL_FAILURES=0
+            install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
+            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
+        ) &
+    fi
+
+    # Gems (sequential within — gem dir lock)
+    if [[ ${#_ALL_GEMS[@]} -gt 0 ]]; then
+        (
+            TOTAL_TOOL_FAILURES=0
+            install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
+            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
+        ) &
+    fi
+
+    # Git repos (already parallelized within via PARALLEL_JOBS)
+    if [[ ${#_ALL_GIT[@]} -gt 0 ]]; then
+        (
+            TOTAL_TOOL_FAILURES=0
+            install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
+            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
+        ) &
+    fi
+
+    # Binary releases (already parallelized within via PARALLEL_JOBS)
+    if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then
+        (
+            TOTAL_TOOL_FAILURES=0
+            install_binary_releases "${_ALL_BINARY[@]}"
+            echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"
+        ) &
+    fi
+
+    wait
+
+    # Sum failures from all parallel methods
+    local _phase3_failures=0
+    for _f in "$_fail_dir"/*.cnt; do
+        [[ -f "$_f" ]] || continue
+        local _cnt
+        _cnt=$(< "$_f")
+        _phase3_failures=$((_phase3_failures + _cnt))
+    done
+    TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + _phase3_failures))
+    rm -rf "$_fail_dir"
+
+    # Track batch-phase failures at the module level for final summary
+    if [[ "$TOTAL_TOOL_FAILURES" -gt 0 ]]; then
+        log_warn "Batch install phases: $TOTAL_TOOL_FAILURES tool(s) failed"
+        TOTAL_MODULE_FAILURES=$((TOTAL_MODULE_FAILURES + 1))
+    fi
+
+    # Phase 4/4: Module-specific custom logic ──
+    # Set _SKIP_BATCH_REINSTALL so batch functions (apt, pipx, go, cargo, gems,
+    # git, binary) return immediately — only custom logic runs (Docker, builds,
+    # special installers like ZAP/Metasploit, direct download_github_release calls).
+    echo ""
+    log_info "Phase 4/4: Running module-specific setup (Docker, builds, special installers)..."
+    _SKIP_BATCH_REINSTALL=true
+
     for mod in "${MODULES_TO_INSTALL[@]}"; do
         echo ""
         local func_name="install_module_${mod}"
@@ -663,9 +794,7 @@ install_modules() {
         if declare -f "$func_name" > /dev/null 2>&1; then
             log_info "========== Module: $mod =========="
             local _mod_start; _mod_start=$(date +%s)
-            log_debug "install_modules: starting module '$mod'"
-            # Track failures via global counter (not return code — modules don't
-            # aggregate sub-function failures without set -e)
+            log_debug "install_modules: starting module '$mod' (custom logic)"
             local _pre_failures=$TOTAL_TOOL_FAILURES
             "$func_name"
             if [[ $TOTAL_TOOL_FAILURES -gt $_pre_failures ]]; then
@@ -679,6 +808,8 @@ install_modules() {
             log_warn "No install function for module: $mod"
         fi
     done
+
+    _SKIP_BATCH_REINSTALL=false
 }
 
 main "$@"
