@@ -247,7 +247,7 @@ _wait_for_job_slot() {
 # _release_job_slot — returns a token to the global semaphore.
 # Must be called when a parallel job finishes (use trap EXIT in subshells).
 _release_job_slot() {
-    [[ -n "${_GLOBAL_SEM_FD:-}" ]] && echo "x" >&${_GLOBAL_SEM_FD} 2>/dev/null || true
+    [[ -n "${_GLOBAL_SEM_FD:-}" ]] && { echo "x" >&"${_GLOBAL_SEM_FD}"; } 2>/dev/null || true
 }
 
 # _collect_parallel_results — reads temp result files, calls track_version,
