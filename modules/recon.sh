@@ -12,7 +12,6 @@ RECON_PIPX=(
     ssh-audit parsero
     emailharvester maryam osrframework
     censys ignorant instaloader
-    theHarvester
 )
 
 RECON_GO=(
@@ -64,11 +63,12 @@ RECON_GIT=(
     "osmedeus=https://github.com/j3ssie/osmedeus.git"
     "recon-ng=https://github.com/lanmaster53/recon-ng.git"
     "vulscan=https://github.com/scipag/vulscan.git"
+    "theHarvester=https://github.com/laramies/theHarvester.git"
 )
 
 # Binary names for verify/remove
 RECON_GO_BINS=(subfinder amass waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor subzy mosint hakrevdns smap)
-RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username Gato pwndb EyeWitness osmedeus recon-ng vulscan)
+RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username Gato pwndb EyeWitness osmedeus recon-ng vulscan theHarvester)
 RECON_BUILD_NAMES=(massdns)
 
 install_module_recon() {
@@ -76,6 +76,36 @@ install_module_recon() {
     install_pipx_batch "Recon / OSINT - Python" "${RECON_PIPX[@]}"
     install_go_batch "Recon / OSINT - Go" "${RECON_GO[@]}"
     install_git_batch "Recon / OSINT - Git" "${RECON_GIT[@]}"
+
+    # theHarvester (requires uv — not pipx compatible)
+    local _th_dir="$GITHUB_TOOL_DIR/theHarvester"
+    if [[ -d "$_th_dir/pyproject.toml" ]] || [[ -f "$_th_dir/pyproject.toml" ]]; then
+        if ! command_exists uv; then
+            log_info "Installing uv (Python package manager)..."
+            if curl -LsSf https://astral.sh/uv/install.sh 2>>"$LOG_FILE" | sh >> "$LOG_FILE" 2>&1; then
+                export PATH="$HOME/.local/bin:$PATH"
+                log_success "uv installed"
+            else
+                log_error "Failed to install uv — theHarvester setup skipped"
+            fi
+        fi
+        if command_exists uv; then
+            log_info "Setting up theHarvester with uv..."
+            if (cd "$_th_dir" && uv sync) >> "$LOG_FILE" 2>&1; then
+                # Create wrapper script
+                cat > "$PIPX_BIN_DIR/theHarvester" 2>/dev/null << THWRAP
+#!/bin/bash
+cd "$_th_dir" && exec uv run theHarvester "\$@"
+THWRAP
+                chmod +x "$PIPX_BIN_DIR/theHarvester" 2>/dev/null || true
+                log_success "theHarvester installed (uv)"
+                track_version "theHarvester" "git" "HEAD"
+            else
+                log_error "theHarvester uv sync failed"
+                TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+            fi
+        fi
+    fi
 
     # Build from source: massdns
     log_info "Building massdns from source..."

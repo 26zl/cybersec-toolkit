@@ -435,6 +435,14 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_success "OWASP ZAP updated" || \
             log_warn "OWASP ZAP update failed"
     fi
+
+    # ngrok (snap)
+    if command_exists ngrok && snap_available; then
+        log_info "Updating ngrok..."
+        snap refresh ngrok >> "$LOG_FILE" 2>&1 && \
+            log_success "ngrok updated" || \
+            log_warn "ngrok update failed"
+    fi
 else
     log_warn "Skipping special tool updates"
 fi

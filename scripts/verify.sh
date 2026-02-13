@@ -270,6 +270,8 @@ if should_verify "networking"; then
     check_cmds "${NET_CARGO[@]}"
     log_info "Networking (Binary):"
     check_cmd "ligolo-proxy" || true
+    log_info "Networking (Snap):"
+    check_cmd "ngrok" || true
 fi
 
 if should_verify "recon"; then

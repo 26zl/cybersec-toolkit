@@ -583,6 +583,12 @@ detect_arch() {
 
 detect_wsl() {
     IS_WSL=false
+    # Docker containers on WSL2 inherit "microsoft" in /proc/version
+    # but are not actually WSL — skip the check inside containers
+    if [[ -f /.dockerenv ]]; then
+        export IS_WSL
+        return
+    fi
     if [[ -f /proc/version ]] && grep -qi "microsoft" /proc/version 2>/dev/null; then
         IS_WSL=true
     fi

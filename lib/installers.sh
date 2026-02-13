@@ -228,6 +228,7 @@ fixup_package_names() {
                     golang-go)          pkg="golang" ;;
                     default-jdk)        pkg="openjdk-17" ;;
                     ruby-dev)           continue ;;  # included in ruby
+                    npm)                continue ;;  # included in nodejs
                     # Dev libraries — Termux drops the -dev suffix
                     libpcap-dev)        pkg="libpcap" ;;
                     libssl-dev)         pkg="openssl" ;;

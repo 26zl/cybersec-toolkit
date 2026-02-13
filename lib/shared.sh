@@ -15,6 +15,7 @@ SHARED_BASE_PACKAGES=(
     # Runtimes
     python3 python3-pip python3-venv python3-dev
     ruby ruby-dev golang-go default-jdk
+    nodejs npm
 
     # Dev libraries — needed by build-from-source tools and Python native extensions
     libpcap-dev libssl-dev libffi-dev
@@ -38,7 +39,7 @@ install_shared_deps() {
     install_apt_batch "Shared base dependencies" "${SHARED_BASE_PACKAGES[@]}"
 
     # Report which key runtimes are now available
-    local -a _runtimes=(python3 go ruby java cargo node)
+    local -a _runtimes=(python3 go ruby java cargo node npx)
     for _rt in "${_runtimes[@]}"; do
         if command_exists "$_rt"; then
             log_success "Runtime available: $_rt"
