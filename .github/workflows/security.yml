@@ -48,7 +48,7 @@ jobs:
                 192.0.2.*|198.51.100.*|203.0.113.*) continue ;; # RFC 5737
               esac
               echo "::error file=$f::Hardcoded IP found: $ip"
-              ((errors++))
+              errors=$((errors + 1))
             done < <(grep -nP '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b' "$f" \
               | grep -vP '^\d+:\s*#' | grep -v '127\.0\.0\.1' | grep -v '0\.0\.0\.0' \
               | grep -v '192\.0\.2\.' | grep -v '198\.51\.100\.' | grep -v '203\.0\.113\.' || true)
@@ -58,7 +58,7 @@ jobs:
             # ---------------------------------------------------
             while IFS= read -r match; do
               echo "::error file=$f::Potential hardcoded secret: $match"
-              ((errors++))
+              errors=$((errors + 1))
             done < <(grep -nPi '(API_KEY|TOKEN|PASSWORD|SECRET)\s*=\s*["\x27][^"\x27$]{8,}' "$f" \
               | grep -vP '^\d+:\s*#' || true)
 
@@ -67,7 +67,7 @@ jobs:
             # ---------------------------------------------------
             while IFS= read -r match; do
               echo "::error file=$f::Non-HTTPS URL: $match"
-              ((errors++))
+              errors=$((errors + 1))
             done < <(grep -nP 'http://' "$f" \
               | grep -vP '^\d+:\s*#' \
               | grep -v 'localhost' \
@@ -81,7 +81,7 @@ jobs:
             # ---------------------------------------------------
             while IFS= read -r match; do
               echo "::error file=$f::Unsafe eval: $match"
-              ((errors++))
+              errors=$((errors + 1))
             done < <(grep -nP '\beval\b' "$f" | grep -vP '^\d+:\s*#' || true)
 
             # ---------------------------------------------------
@@ -89,7 +89,7 @@ jobs:
             # ---------------------------------------------------
             while IFS= read -r match; do
               echo "::warning file=$f::Predictable temp file (consider mktemp): $match"
-              ((warnings++))
+              warnings=$((warnings + 1))
             done < <(grep -nP '/tmp/\w+' "$f" \
               | grep -vP '^\d+:\s*#' \
               | grep -v 'mktemp' || true)
@@ -99,19 +99,19 @@ jobs:
             # ---------------------------------------------------
             while IFS= read -r match; do
               echo "::error file=$f::Overly permissive chmod: $match"
-              ((errors++))
+              errors=$((errors + 1))
             done < <(grep -nP 'chmod\s+(777|666)' "$f" | grep -vP '^\d+:\s*#' || true)
 
             # ---------------------------------------------------
             # 7. curl|bash / wget|bash patterns
             # ---------------------------------------------------
             while IFS= read -r match; do
-              # Allowlist: rustup (TLS pinning), foundry (no alternative installer)
-              if echo "$match" | grep -qE 'rustup|foundry|paradigm\.xyz'; then
+              # Allowlist: rustup (TLS pinning), foundry (no alternative installer), uv/astral (official installer)
+              if echo "$match" | grep -qE 'rustup|foundry|paradigm\.xyz|astral\.sh'; then
                 continue
               fi
               echo "::warning file=$f::curl-pipe-bash pattern: $match"
-              ((warnings++))
+              warnings=$((warnings + 1))
             done < <(grep -nP 'curl.*\|\s*(ba)?sh|wget.*\|\s*(ba)?sh' "$f" \
               | grep -vP '^\d+:\s*#' || true)
           done
