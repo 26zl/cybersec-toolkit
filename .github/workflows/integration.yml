@@ -23,6 +23,8 @@ jobs:
             image: fedora:41
           - distro: arch
             image: archlinux:latest
+          - distro: opensuse
+            image: opensuse/tumbleweed:latest
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -41,6 +43,10 @@ jobs:
       - name: Install prerequisites (Arch)
         if: matrix.distro == 'arch'
         run: pacman -Sy --noconfirm git curl wget sudo which
+
+      - name: Install prerequisites (openSUSE)
+        if: matrix.distro == 'opensuse'
+        run: zypper --non-interactive install git curl wget sudo which
 
       - name: Bash syntax check
         run: |

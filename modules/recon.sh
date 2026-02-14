@@ -83,7 +83,16 @@ install_module_recon() {
         if ! command_exists uv; then
             if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
                 log_warn "Skipping uv install (--skip-source) — theHarvester setup skipped"
-            elif curl -LsSf https://astral.sh/uv/install.sh 2>>"$LOG_FILE" | sh >> "$LOG_FILE" 2>&1; then
+            elif {
+                local _uv_tmp
+                _uv_tmp=$(mktemp)
+                curl -fsSL https://astral.sh/uv/install.sh -o "$_uv_tmp" 2>>"$LOG_FILE" \
+                    && grep -q 'uv' "$_uv_tmp" && grep -q 'astral' "$_uv_tmp" \
+                    && sh "$_uv_tmp" >> "$LOG_FILE" 2>&1
+                local _uv_rc=$?
+                rm -f "$_uv_tmp"
+                (( _uv_rc == 0 ))
+            }; then
                 export PATH="$HOME/.local/bin:$PATH"
                 log_success "uv installed"
             else

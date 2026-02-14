@@ -40,7 +40,18 @@ install_module_blockchain() {
         log_info "Foundry already installed"
     else
         log_warn "Installing Foundry via curl | bash (review: https://foundry.paradigm.xyz)"
-        curl -L https://foundry.paradigm.xyz 2>/dev/null | bash >> "$LOG_FILE" 2>&1 || true
+        local _foundry_tmp
+        _foundry_tmp=$(mktemp)
+        if curl -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE"; then
+            if grep -q 'foundry' "$_foundry_tmp" && grep -q 'foundryup' "$_foundry_tmp"; then
+                bash "$_foundry_tmp" >> "$LOG_FILE" 2>&1 || true
+            else
+                log_error "Foundry install script failed content verification — skipping"
+            fi
+        else
+            log_error "Failed to download Foundry install script"
+        fi
+        rm -f "$_foundry_tmp"
         if [[ -f "$HOME/.foundry/bin/foundryup" ]]; then
             if "$HOME/.foundry/bin/foundryup" >> "$LOG_FILE" 2>&1; then
                 track_version "foundry" "special" "latest"

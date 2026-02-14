@@ -75,11 +75,42 @@ if [[ ${#REMOVE_MODULES[@]} -eq 0 ]]; then
 fi
 
 LOG_FILE="$SCRIPT_DIR/tool_removal.log"
-: > "$LOG_FILE"
-chmod 600 "$LOG_FILE" 2>/dev/null || true
+if : > "$LOG_FILE" 2>/dev/null; then
+    chmod 600 "$LOG_FILE" 2>/dev/null || true
+else
+    # Disk full or read-only — log to /dev/null so redirections never fail
+    LOG_FILE="/dev/null"
+fi
 
 check_root
 print_banner
+
+# When disk space is critically low, free package cache FIRST so that
+# subsequent pkg_remove calls have enough room for dpkg temp files.
+_avail_mb=0
+if [[ "$PKG_MANAGER" == "pkg" ]]; then
+    _avail_mb=$(df -Pm "$PREFIX" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
+else
+    _avail_mb=$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
+fi
+if [[ "$_avail_mb" =~ ^[0-9]+$ ]] && [[ "$_avail_mb" -lt 100 ]]; then
+    log_warn "Very low disk space (${_avail_mb}MB free) — clearing package cache first"
+    case "$PKG_MANAGER" in
+        apt)     maybe_sudo apt-get clean 2>/dev/null || true ;;
+        dnf)     maybe_sudo dnf clean all 2>/dev/null || true ;;
+        pacman)  maybe_sudo pacman -Sc --noconfirm 2>/dev/null || true ;;
+        zypper)  maybe_sudo zypper clean 2>/dev/null || true ;;
+        pkg)     pkg clean 2>/dev/null || true ;;
+    esac
+    # Re-check — if log file was /dev/null due to full disk, try again
+    if [[ "$LOG_FILE" == "/dev/null" ]]; then
+        if : > "$SCRIPT_DIR/tool_removal.log" 2>/dev/null; then
+            LOG_FILE="$SCRIPT_DIR/tool_removal.log"
+            chmod 600 "$LOG_FILE" 2>/dev/null || true
+            log_info "Disk space freed — logging to $LOG_FILE"
+        fi
+    fi
+fi
 
 if [[ "$PKG_MANAGER" == "unknown" ]]; then
     log_error "Unsupported distribution — could not detect package manager"
@@ -439,10 +470,15 @@ if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]] && [[ -d "$PIPX_HOME/venvs
     fi
 fi
 
-if pkg_cleanup >> "$LOG_FILE" 2>&1; then
-    log_success "System cleaned"
+# Skip pkg_cleanup if we already ran it early due to low disk space
+if [[ "${_avail_mb:-999}" -ge 100 ]]; then
+    if pkg_cleanup >> "$LOG_FILE" 2>&1; then
+        log_success "System cleaned"
+    else
+        log_warn "Cleanup had errors (check log)"
+    fi
 else
-    log_warn "Cleanup had errors (check log)"
+    log_info "Package cache already cleaned (low disk space path)"
 fi
 
 # Remove version tracking file on full removal

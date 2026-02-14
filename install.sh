@@ -571,8 +571,11 @@ fi
 
 # Main installation
 LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
-: > "$LOG_FILE"
-chmod 600 "$LOG_FILE" 2>/dev/null || true
+if : > "$LOG_FILE" 2>/dev/null; then
+    chmod 600 "$LOG_FILE" 2>/dev/null || true
+else
+    LOG_FILE="/dev/null"
+fi
 VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {

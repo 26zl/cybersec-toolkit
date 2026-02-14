@@ -98,6 +98,30 @@ log_system_environment() {
     log_info "=========================="
 }
 
+# _avail_disk_mb — outputs available disk space in MB on the install partition.
+# Returns 0 on success, 1 if unavailable. Used by check_disk_space and
+# low-disk-space hints in error messages.
+_avail_disk_mb() {
+    local check_path="/"
+    [[ "$PKG_MANAGER" == "pkg" ]] && check_path="${PREFIX:-$HOME}"
+    local avail_kb
+    avail_kb=$(df -Pk "$check_path" 2>/dev/null | awk 'NR==2{print $4}')
+    if [[ -z "$avail_kb" || ! "$avail_kb" =~ ^[0-9]+$ ]]; then
+        echo 0; return 1
+    fi
+    echo $(( avail_kb / 1024 ))
+}
+
+# _disk_hint — if available disk < 100MB, returns a hint string for error messages.
+# Usage: log_error "Download failed: $binary$(_disk_hint)"
+_disk_hint() {
+    local mb
+    mb=$(_avail_disk_mb 2>/dev/null) || mb=0
+    if [[ "$mb" -lt 100 ]]; then
+        echo " (disk full — only ${mb}MB free)"
+    fi
+}
+
 # Disk space check — warns if available space is below estimated requirement.
 # Args: $1 = number of modules to install
 # Returns 0 always (non-blocking), but prompts user to abort if critically low.
@@ -207,11 +231,13 @@ _enable_pacman_parallel_downloads() {
 
 # Global concurrency semaphore (FIFO-based)
 # Limits total parallel jobs across ALL batch methods to PARALLEL_JOBS.
+_GLOBAL_SEM_DIR=""
 _GLOBAL_SEM_FIFO=""
 _GLOBAL_SEM_FD=""
 
 _init_global_semaphore() {
-    _GLOBAL_SEM_FIFO=$(mktemp -u "/tmp/cybersec_sem.XXXXXX")
+    _GLOBAL_SEM_DIR=$(mktemp -d "/tmp/cybersec_sem.XXXXXX")
+    _GLOBAL_SEM_FIFO="$_GLOBAL_SEM_DIR/fifo"
     mkfifo "$_GLOBAL_SEM_FIFO"
     exec {_GLOBAL_SEM_FD}<>"$_GLOBAL_SEM_FIFO"
     # Fill with N tokens
@@ -226,7 +252,8 @@ _cleanup_global_semaphore() {
         exec {_GLOBAL_SEM_FD}>&- 2>/dev/null || true
         _GLOBAL_SEM_FD=""
     fi
-    [[ -n "${_GLOBAL_SEM_FIFO:-}" ]] && rm -f "$_GLOBAL_SEM_FIFO" 2>/dev/null || true
+    [[ -n "${_GLOBAL_SEM_DIR:-}" ]] && rm -rf "$_GLOBAL_SEM_DIR" 2>/dev/null || true
+    _GLOBAL_SEM_DIR=""
     _GLOBAL_SEM_FIFO=""
 }
 

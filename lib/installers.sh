@@ -309,7 +309,7 @@ install_apt_batch() {
     else
         # Fallback: install in small groups of 10 to isolate broken packages faster
         # than one-by-one, while still finding which specific packages fail.
-        log_warn "${label}: batch install failed — falling back to grouped install"
+        log_warn "${label}: batch install failed — falling back to grouped install$(_disk_hint)"
         local current=0 group_size=10
         local -a group=()
         for pkg in "${packages[@]}"; do
@@ -327,7 +327,7 @@ install_apt_batch() {
                         current=$((current + 1))
                         show_progress "$current" "$total" "$_g"
                         if ! pkg_install "$_g" >> "$LOG_FILE" 2>&1; then
-                            log_error "Failed: $_g"
+                            log_error "Failed: $_g$(_disk_hint)"
                             failed=$((failed + 1))
                         else
                             track_version "$_g" "$PKG_MANAGER" "system"
@@ -350,7 +350,7 @@ install_apt_batch() {
                     current=$((current + 1))
                     show_progress "$current" "$total" "$_g"
                     if ! pkg_install "$_g" >> "$LOG_FILE" 2>&1; then
-                        log_error "Failed: $_g"
+                        log_error "Failed: $_g$(_disk_hint)"
                         failed=$((failed + 1))
                     else
                         track_version "$_g" "$PKG_MANAGER" "system"
@@ -434,7 +434,7 @@ install_pipx_batch() {
                 continue
             fi
             if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
-                log_error "Failed pipx: $tool"
+                log_error "Failed pipx: $tool$(_disk_hint)"
                 failed=$((failed + 1))
             else
                 track_version "$tool" "pipx" "latest"
@@ -520,7 +520,7 @@ install_go_batch() {
                 continue
             fi
             if ! go install "$tool" >> "$LOG_FILE" 2>&1; then
-                log_error "Failed go: $name"
+                log_error "Failed go: $name$(_disk_hint)"
                 failed=$((failed + 1))
             else
                 track_version "$name" "go" "latest"
@@ -597,7 +597,7 @@ install_cargo_batch() {
         # Fall back to cargo install (compiles from source)
         if [[ "$_installed" == "false" ]]; then
             if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
-                log_error "Failed cargo: $crate"
+                log_error "Failed cargo: $crate$(_disk_hint)"
                 failed=$((failed + 1))
                 continue
             fi
@@ -657,7 +657,7 @@ install_gem_batch() {
         if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
             track_version "$gem_name" "gem" "latest"
         else
-            log_error "Failed gem: $gem_name"
+            log_error "Failed gem: $gem_name$(_disk_hint)"
             failed=$((failed + 1))
         fi
     done
@@ -905,7 +905,7 @@ install_git_batch() {
             local is_existing=false
             [[ -d "$dest/.git" ]] && is_existing=true
             if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
-                log_error "Failed git: $name"
+                log_error "Failed git: $name$(_disk_hint)"
                 failed=$((failed + 1))
             else
                 # Auto-setup: venv, requirements, symlinks
@@ -978,13 +978,13 @@ _gh_api_get() {
     fi
 
     if [[ "$http_code" != "200" ]]; then
-        log_debug "_gh_api_get: HTTP $http_code for $url"
+        log_debug "_gh_api_get: HTTP $http_code for $url$(_disk_hint)"
         rm -f "$tmp_body"
         return 1
     fi
 
-    # Cache and output
-    cp "$tmp_body" "$cache_file"
+    # Cache and output (cache write is best-effort — disk may be full)
+    cp "$tmp_body" "$cache_file" 2>/dev/null || true
     cat "$tmp_body"
     rm -f "$tmp_body"
 }
@@ -1084,7 +1084,7 @@ _download_github_release_impl() {
     local release_json
     release_json=$(_gh_api_get "$api_url")
     if [[ -z "$release_json" ]]; then
-        log_error "Could not fetch release info for $binary (API rate limit or network error)"
+        log_error "Could not fetch release info for $binary (API rate limit or network error)$(_disk_hint)"
         return 1
     fi
 
@@ -1119,7 +1119,7 @@ for asset in data.get('assets', []):
     local asset_name
     asset_name=$(basename "$download_url")
     if ! curl -sSL -o "$tmp_dir/$asset_name" "$download_url" >> "$LOG_FILE" 2>&1; then
-        log_error "Download failed: $binary"
+        log_error "Download failed: $binary$(_disk_hint)"
         rm -rf "$tmp_dir"
         return 1
     fi

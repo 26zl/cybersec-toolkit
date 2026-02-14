@@ -173,8 +173,11 @@ ensure_cargo() {
 
     log_info "Installing Rust toolchain via rustup..."
 
-    if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-            | sh -s -- -y >> "$LOG_FILE" 2>&1; then
+    local _rustup_tmp
+    _rustup_tmp=$(mktemp)
+    if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
+            && grep -q 'rustup' "$_rustup_tmp" && grep -q 'cargo' "$_rustup_tmp" \
+            && sh "$_rustup_tmp" -s -- -y >> "$LOG_FILE" 2>&1; then
         # Add cargo to PATH for the current session
         if [[ -f "$HOME/.cargo/env" ]]; then
             # shellcheck disable=SC1091  # File may not exist on all systems
@@ -182,6 +185,7 @@ ensure_cargo() {
         fi
         export PATH="$HOME/.cargo/bin:$PATH"
     fi
+    rm -f "$_rustup_tmp"
 
     if command_exists cargo; then
         log_success "Rust toolchain installed"
@@ -214,11 +218,16 @@ ensure_cargo_binstall() {
 
     log_info "Installing cargo-binstall for faster Rust tool downloads..."
 
+    local _binstall_tmp
+    _binstall_tmp=$(mktemp)
     if curl -L --proto '=https' --tlsv1.2 -sSf \
             https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
-            | bash >> "$LOG_FILE" 2>&1; then
+            -o "$_binstall_tmp" 2>>"$LOG_FILE" \
+            && grep -q 'cargo-binstall' "$_binstall_tmp" && grep -q 'binstall' "$_binstall_tmp" \
+            && bash "$_binstall_tmp" >> "$LOG_FILE" 2>&1; then
         export PATH="$HOME/.cargo/bin:$PATH"
     fi
+    rm -f "$_binstall_tmp"
 
     if command_exists cargo-binstall; then
         log_success "cargo-binstall installed"
