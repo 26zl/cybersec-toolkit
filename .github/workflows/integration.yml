@@ -68,7 +68,12 @@ jobs:
         run: |
           # Install a few fast, universally-available packages to test the real
           # install path including fixup_package_names and pkg_install.
-          bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois
+          bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois || true
+          # Show install log on failure for debugging
+          if [[ -f cybersec_install.log ]]; then
+            echo "=== Install log ==="
+            cat cybersec_install.log
+          fi
 
       - name: Verify installed tools
         run: |

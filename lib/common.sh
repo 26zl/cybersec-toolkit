@@ -425,7 +425,7 @@ pkg_install() {
             fi
             ;;
         pacman)  maybe_sudo pacman -S --noconfirm --needed "$@" ;;
-        zypper)  maybe_sudo ZYPP_MEDIANETWORK=1 zypper --non-interactive install -q "$@" ;;
+        zypper)  maybe_sudo zypper --non-interactive install -q "$@" ;;
         pkg)     pkg install -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
