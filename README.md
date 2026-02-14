@@ -143,7 +143,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | System packages (apt/dnf/pacman/zypper) | ~163 | nmap, wireshark, john, hashcat |
 | pipx | ~111 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | ~52 | nuclei, subfinder, ffuf, httpx |
-| Binary release | ~31 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
+| Binary release | ~32 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
 | Build from source | ~15 | massdns, duplicut, AFLplusplus, honggfuzz |
 | Docker | ~8 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |

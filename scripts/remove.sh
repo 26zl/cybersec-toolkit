@@ -56,6 +56,7 @@ REMOVE_MODULES=()
 REMOVE_DEPS=false
 DEEP_CLEAN=false
 AUTO_YES=false
+REMOVAL_FAILURES=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -66,7 +67,7 @@ while [[ $# -gt 0 ]]; do
         --yes)         AUTO_YES=true; shift ;;
         -v|--verbose)  VERBOSE=true; shift ;;
         -h|--help)     exec "$0" --help ;;
-        *)             shift ;;
+        *)             log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
 
@@ -126,15 +127,15 @@ fi
 
 # Confirmation
 if [[ "$AUTO_YES" == "false" ]]; then
-    echo -e "${YELLOW}${BOLD}WARNING:${NC} This will remove cybersecurity tools and their configurations."
-    echo -e "${YELLOW}[!]${NC} Modules to remove: ${REMOVE_MODULES[*]}"
+    log_warn "This will remove cybersecurity tools and their configurations."
+    log_warn "Modules to remove: ${REMOVE_MODULES[*]}"
     if [[ "$REMOVE_DEPS" == "true" ]]; then
-        echo -e "${RED}${BOLD}[!] --remove-deps: Base dependencies (python3, openssl, git, etc.) WILL be removed!${NC}"
+        log_error "--remove-deps: Base dependencies (python3, openssl, git, etc.) WILL be removed!"
     else
-        echo -e "${GREEN}[+]${NC} Base dependencies will be preserved (use --remove-deps to include)"
+        log_success "Base dependencies will be preserved (use --remove-deps to include)"
     fi
     if [[ "$DEEP_CLEAN" == "true" ]]; then
-        echo -e "${YELLOW}${BOLD}[!] --deep-clean: All caches, build artifacts, and stale files WILL be purged!${NC}"
+        log_warn "--deep-clean: All caches, build artifacts, and stale files WILL be purged!"
     fi
     echo ""
     read -rp "Proceed with removal? (y/N) " confirm
@@ -293,6 +294,7 @@ if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
             log_success "System packages: ${#PKGS_INSTALLED[@]} removed"
         else
             log_warn "Some packages failed to remove (check log)"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
         fi
     else
         log_info "All ${#PKGS_TO_REMOVE[@]} system packages already removed"
@@ -687,10 +689,19 @@ MINUTES=$(( ELAPSED / 60 ))
 SECONDS_R=$(( ELAPSED % 60 ))
 
 echo ""
-echo -e "${GREEN}${BOLD}=============================================${NC}"
-log_success "Removal complete! (${MINUTES}m ${SECONDS_R}s)"
-echo -e "${GREEN}${BOLD}=============================================${NC}"
+if [[ "$REMOVAL_FAILURES" -gt 0 ]]; then
+    _separator_line "$YELLOW"
+    log_warn "Removal finished with $REMOVAL_FAILURES failure(s) (${MINUTES}m ${SECONDS_R}s)"
+    _separator_line "$YELLOW"
+else
+    _separator_line "$GREEN"
+    log_success "Removal complete! (${MINUTES}m ${SECONDS_R}s)"
+    _separator_line "$GREEN"
+fi
 log_info "Modules removed: ${REMOVE_MODULES[*]}"
 [[ "$DEEP_CLEAN" == "true" ]] && log_info "Deep clean: enabled"
 log_info "Log file: $LOG_FILE"
 log_info "Run ./scripts/verify.sh to see remaining tools"
+
+[[ "$REMOVAL_FAILURES" -gt 0 ]] && exit 1
+exit 0

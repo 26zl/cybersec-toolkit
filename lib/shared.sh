@@ -38,6 +38,14 @@ SHARED_BASE_PACKAGES=(
 
 install_shared_deps() {
     log_info "Installing core utilities, compilers, runtimes (Python, Go, Ruby, Java), and dev libraries..."
+
+    # openSUSE: install devel_basis pattern (equivalent of build-essential)
+    # This is handled here instead of fixup_package_names() to avoid side effects
+    # in the name-translation function (which is also called during removal).
+    if [[ "$PKG_MANAGER" == "zypper" ]]; then
+        maybe_sudo zypper --non-interactive install -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
+    fi
+
     install_apt_batch "Shared base dependencies" "${SHARED_BASE_PACKAGES[@]}"
 
     # Report which key runtimes are now available
@@ -193,9 +201,9 @@ ensure_cargo() {
 
     local _rustup_tmp
     _rustup_tmp=$(mktemp)
-    if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
-            && grep -q 'rustup' "$_rustup_tmp" && grep -q 'cargo' "$_rustup_tmp" \
-            && bash "$_rustup_tmp" -s -- -y >> "$LOG_FILE" 2>&1; then
+    if curl -L --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
+            && grep -q 'rustup' "$_rustup_tmp" \
+            && sh "$_rustup_tmp" -y >> "$LOG_FILE" 2>&1; then
         # Add cargo to PATH for the current session
         if [[ -f "$HOME/.cargo/env" ]]; then
             # shellcheck disable=SC1091  # File may not exist on all systems

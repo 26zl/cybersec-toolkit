@@ -534,7 +534,9 @@ estimate_install_time() {
 # Dry run
 if [[ "$DRY_RUN" == "true" ]]; then
     echo ""
-    echo -e "${CYAN}${BOLD}=== DRY RUN ===${NC}"
+    _separator_line "$CYAN"
+    echo -e "  ${CYAN}${BOLD}DRY RUN${NC}"
+    _separator_line "$CYAN"
     echo ""
     echo "Profile:        ${PROFILE:-custom}"
     echo "Modules:        ${MODULES_TO_INSTALL[*]}"
@@ -579,9 +581,7 @@ fi
 VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {
-    if [[ "$DRY_RUN" != "true" ]]; then
-        check_root
-    fi
+    check_root
     print_banner
 
     if [[ "$PKG_MANAGER" == "unknown" ]]; then
@@ -637,39 +637,34 @@ main() {
     start_time=$(date +%s)
 
     # Refresh package lists (required for installing packages)
-    if [[ "$DRY_RUN" != "true" ]]; then
-        log_info "Refreshing package lists..."
-        if pkg_update >> "$LOG_FILE" 2>&1; then
-            log_success "Package lists refreshed"
-        else
-            log_warn "Package list refresh had errors (check log) — continuing"
-        fi
-
-        # Optional: full system upgrade (only with --upgrade-system)
-        if [[ "$UPGRADE_SYSTEM" == "true" ]]; then
-            log_info "Upgrading system packages (--upgrade-system)..."
-            if pkg_upgrade >> "$LOG_FILE" 2>&1; then
-                log_success "System packages upgraded"
-            else
-                log_warn "System upgrade had errors (check log) — continuing"
-            fi
-        fi
-        echo ""
-
-        # Install shared base dependencies (runtimes, compilers, dev libs)
-        install_shared_deps
-        echo ""
-
-        # Ensure additional toolchains are available
-        ensure_python_modern
-        ensure_pipx
-        ensure_go
-        ensure_cargo
-        echo ""
+    log_info "Refreshing package lists..."
+    if pkg_update >> "$LOG_FILE" 2>&1; then
+        log_success "Package lists refreshed"
     else
-        log_info "[DRY RUN] Skipping Repo Update, Shared Deps, Toolchains"
-        echo ""
+        log_warn "Package list refresh had errors (check log) — continuing"
     fi
+
+    # Optional: full system upgrade (only with --upgrade-system)
+    if [[ "$UPGRADE_SYSTEM" == "true" ]]; then
+        log_info "Upgrading system packages (--upgrade-system)..."
+        if pkg_upgrade >> "$LOG_FILE" 2>&1; then
+            log_success "System packages upgraded"
+        else
+            log_warn "System upgrade had errors (check log) — continuing"
+        fi
+    fi
+    echo ""
+
+    # Install shared base dependencies (runtimes, compilers, dev libs)
+    install_shared_deps
+    echo ""
+
+    # Ensure additional toolchains are available
+    ensure_python_modern
+    ensure_pipx
+    ensure_go
+    ensure_cargo
+    echo ""
 
     # Install modules
     install_modules
@@ -686,13 +681,13 @@ main() {
 
     echo ""
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
-        echo -e "${YELLOW}${BOLD}=============================================${NC}"
+        _separator_line "$YELLOW"
         log_warn "Installation finished with errors (${minutes}m ${seconds}s)"
-        echo -e "${YELLOW}${BOLD}=============================================${NC}"
+        _separator_line "$YELLOW"
     else
-        echo -e "${GREEN}${BOLD}=============================================${NC}"
+        _separator_line "$GREEN"
         log_success "Installation complete! (${minutes}m ${seconds}s)"
-        echo -e "${GREEN}${BOLD}=============================================${NC}"
+        _separator_line "$GREEN"
     fi
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules installed: ${MODULES_TO_INSTALL[*]}"
@@ -722,6 +717,9 @@ main() {
     log_info "  Update tools later:   sudo ./scripts/update.sh"
     log_info "  Backup configs:       sudo ./scripts/backup.sh"
     echo ""
+
+    # Clean up GitHub API cache
+    _gh_api_cache_cleanup 2>/dev/null || true
 
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
         exit 1
@@ -780,89 +778,95 @@ install_modules() {
         # Initialise global concurrency semaphore (shared across all batch methods)
         _init_global_semaphore
 
-        # Clean up child processes and semaphore on interrupt (Ctrl+C / kill)
+        # Initialise progress display IPC directory
+        _init_progress_dir
+
+        # Clean up child processes, semaphore, and progress on interrupt (Ctrl+C / kill)
         # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
-        trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _cleanup_global_semaphore; rm -rf "$_fail_dir"; exit 130' INT TERM
+        trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _stop_progress_display; _cleanup_global_semaphore; rm -rf "$_fail_dir"; exit 130' INT TERM
 
         # Subshells redirect stdout to /dev/null so their log_message() output
         # doesn't interleave on the terminal.  The log file still gets everything
         # because log_message() opens it explicitly via >> "$LOG_FILE".
-        local _active_methods=()
+        # Progress reporting writes to PROGRESS_DIR files, not stdout.
+        local _method_names=()
         local _job_pids=()
 
         # pipx (sequential within — venv lock)
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
-            _active_methods+=("pipx(${#_ALL_PIPX[@]})")
+            _method_names+=("pipx")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
-            ) > /dev/null &
+            ) > /dev/null 2>&1 &
             _job_pids+=($!)
         fi
 
         # Go (parallelized within via global semaphore)
         if [[ ${#_ALL_GO[@]} -gt 0 ]]; then
-            _active_methods+=("Go(${#_ALL_GO[@]})")
+            _method_names+=("Go")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_go_batch "All modules - Go" "${_ALL_GO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
-            ) > /dev/null &
+            ) > /dev/null 2>&1 &
             _job_pids+=($!)
         fi
 
         # Cargo (sequential within — registry lock)
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]]; then
-            _active_methods+=("Cargo(${#_ALL_CARGO[@]})")
+            _method_names+=("Cargo")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
-            ) > /dev/null &
+            ) > /dev/null 2>&1 &
             _job_pids+=($!)
         fi
 
         # Gems (sequential within — gem dir lock)
         if [[ ${#_ALL_GEMS[@]} -gt 0 ]]; then
-            _active_methods+=("Gems(${#_ALL_GEMS[@]})")
+            _method_names+=("Gems")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
-            ) > /dev/null &
+            ) > /dev/null 2>&1 &
             _job_pids+=($!)
         fi
 
         # Git repos (parallelized within via global semaphore)
         if [[ ${#_ALL_GIT[@]} -gt 0 ]]; then
-            _active_methods+=("Git(${#_ALL_GIT[@]})")
+            _method_names+=("Git")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
-            ) > /dev/null &
+            ) > /dev/null 2>&1 &
             _job_pids+=($!)
         fi
 
         # Binary releases (parallelized within via global semaphore)
         if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then
-            _active_methods+=("Binary(${#_ALL_BINARY[@]})")
+            _method_names+=("Binary")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_binary_releases "${_ALL_BINARY[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"
-            ) > /dev/null &
+            ) > /dev/null 2>&1 &
             _job_pids+=($!)
         fi
 
-        # Show a single spinner while all parallel methods run
-        _start_spinner "Stage 3/4: ${_active_methods[*]}"
-        # Wait only for install jobs, not the spinner background process
+        # Launch live multi-line progress display
+        if [[ ${#_method_names[@]} -gt 0 ]]; then
+            _start_progress_display "${_method_names[@]}"
+        fi
+        # Wait only for install jobs, not the display background process
         for _pid in "${_job_pids[@]}"; do
             wait "$_pid" 2>/dev/null || true
         done
-        _stop_spinner
+        _stop_progress_display
 
         # Clean up global semaphore and restore default signal handling
         _cleanup_global_semaphore
@@ -916,15 +920,28 @@ install_modules() {
     _SKIP_BATCH_REINSTALL=true
 
     for mod in "${MODULES_TO_INSTALL[@]}"; do
-        echo ""
         local func_name="install_module_${mod}"
 
         if declare -f "$func_name" > /dev/null 2>&1; then
-            log_info "========== Module: $mod =========="
             local _mod_start; _mod_start=$(date +%s)
             log_debug "install_modules: starting module '$mod' (custom logic)"
             local _pre_failures=$TOTAL_TOOL_FAILURES
-            "$func_name"
+
+            echo ""
+            log_info "━━━━━ Module: $mod ━━━━━"
+
+            # Use process substitution to get live output AND detect empty modules.
+            # >(tee file) runs tee in a subprocess while the function runs in the
+            # current process — globals like TOTAL_TOOL_FAILURES propagate correctly.
+            local _mod_buf; _mod_buf=$(mktemp)
+            "$func_name" > >(tee "$_mod_buf") 2>&1 || true
+            sleep 0.1  # let tee flush
+
+            if [[ ! -s "$_mod_buf" ]]; then
+                log_success "All tools installed via batch (Stage 3)"
+            fi
+            rm -f "$_mod_buf"
+
             if [[ $TOTAL_TOOL_FAILURES -gt $_pre_failures ]]; then
                 local _mod_fails=$((TOTAL_TOOL_FAILURES - _pre_failures))
                 log_warn "Module $mod: $_mod_fails tool(s) failed"

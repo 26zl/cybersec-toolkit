@@ -79,7 +79,12 @@ install_module_enterprise() {
     # NetExec — install from git (PyPI package 'nxc' was removed)
     if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! pipx list --short 2>/dev/null | grep -qi "^netexec "; then
         log_info "Installing NetExec from GitHub..."
-        pipx install "git+https://github.com/Pennyw0rth/NetExec" 2>>"$LOG_FILE" || log_warn "Failed to install NetExec"
+        if pipx install "git+https://github.com/Pennyw0rth/NetExec" >> "$LOG_FILE" 2>&1; then
+            log_success "NetExec installed"
+        else
+            log_error "Failed pipx: NetExec"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        fi
     fi
     install_go_batch "Enterprise - Go" "${ENTERPRISE_GO[@]}"
     install_gem_batch "Enterprise - Ruby" "${ENTERPRISE_GEMS[@]}"

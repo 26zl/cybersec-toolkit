@@ -49,6 +49,7 @@ install_module_cracking() {
             if ! pipx --help 2>&1 | grep -q -- '--preinstall'; then
                 pipx inject patator setuptools >> "$LOG_FILE" 2>&1 || true
             fi
+            log_success "patator installed"
         else
             log_error "Failed pipx: patator"
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))

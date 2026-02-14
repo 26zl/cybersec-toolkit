@@ -552,7 +552,13 @@
     "url": "https://github.com/nicocha30/ligolo-ng"
   },
   {
-    "name": "frp",
+    "name": "frpc",
+    "method": "binary",
+    "module": "networking",
+    "url": "https://github.com/fatedier/frp"
+  },
+  {
+    "name": "frps",
     "method": "binary",
     "module": "networking",
     "url": "https://github.com/fatedier/frp"

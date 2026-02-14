@@ -15,6 +15,8 @@ CONTAINER_GIT=(
 CONTAINER_GIT_NAMES=(deepce docker-bench-security peirates)
 
 install_module_containers() {
+    [[ ${#CONTAINER_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Containers - Packages" "${CONTAINER_PACKAGES[@]}"
+    [[ ${#CONTAINER_PIPX[@]} -gt 0 ]] && install_pipx_batch "Containers - Python" "${CONTAINER_PIPX[@]}"
     install_git_batch "Containers - Git" "${CONTAINER_GIT[@]}"
 
     # Binary releases (preferred over git clone)

@@ -141,7 +141,7 @@ fixup_package_names() {
                     qemu-user-static)   pkg="qemu-user-static" ;;
                     qemu-system-x86)    pkg="qemu-system-x86" ;;
                     libseccomp-dev)     pkg="libseccomp" ;;
-                    binutils-dev)       pkg="binutils-devel" ;;
+                    binutils-dev)       pkg="binutils" ;;
                     libedit-dev)        pkg="libedit" ;;
                     liblzma-dev)        pkg="xz" ;;
                     libkrb5-dev)        pkg="krb5" ;;
@@ -159,7 +159,6 @@ fixup_package_names() {
                     libpixman-1-dev)    pkg="pixman" ;;
                     libunwind-dev)      pkg="libunwind" ;;
                     libini-config-dev)  continue ;;
-                    sslsplit)           pkg="sslsplit" ;;
                 esac
                 ;;
             zypper)
@@ -167,7 +166,7 @@ fixup_package_names() {
                     netcat-openbsd)     pkg="netcat-openbsd" ;;
                     dnsutils)           pkg="bind-utils" ;;
                     build-essential)
-                        maybe_sudo zypper --non-interactive install -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
+                        # devel_basis is a zypper pattern — handled by install_shared_deps()
                         continue ;;
                     default-jdk)        pkg="java-17-openjdk-devel" ;;
                     zlib1g-dev)         pkg="zlib-devel" ;;
@@ -392,6 +391,7 @@ install_pipx_batch() {
     fi
 
     log_info "Installing ${label} ($total pipx tools)..."
+    _report_method_total "pipx" "$total"
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel mode ---
@@ -403,6 +403,7 @@ install_pipx_batch() {
             # Skip-check in main process
             if echo "$installed_pipx" | grep -qi "^${tool} "; then
                 printf 'skip\nexisting\n' > "$_results_dir/$tool"
+                _report_tool_done "pipx" "$tool" "skip"
                 continue
             fi
 
@@ -410,11 +411,14 @@ install_pipx_batch() {
 
             (
                 trap '_release_job_slot' EXIT
+                _report_tool_start "pipx" "$tool"
                 if pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
                     printf 'ok\nlatest\n' > "$_results_dir/$tool"
+                    _report_tool_done "pipx" "$tool" "ok"
                 else
                     log_error "Failed pipx: $tool"
                     printf 'fail\n\n' > "$_results_dir/$tool"
+                    _report_tool_done "pipx" "$tool" "fail"
                 fi
             ) &
         done
@@ -429,16 +433,20 @@ install_pipx_batch() {
         for tool in "${tools[@]}"; do
             current=$((current + 1))
             show_progress "$current" "$total" "$tool"
+            _report_tool_start "pipx" "$tool"
             if echo "$installed_pipx" | grep -qi "^${tool} "; then
                 skipped=$((skipped + 1))
                 track_version "$tool" "pipx" "existing"
+                _report_tool_done "pipx" "$tool" "skip"
                 continue
             fi
             if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed pipx: $tool$(_disk_hint)"
                 failed=$((failed + 1))
+                _report_tool_done "pipx" "$tool" "fail"
             else
                 track_version "$tool" "pipx" "latest"
+                _report_tool_done "pipx" "$tool" "ok"
             fi
         done
     fi
@@ -492,6 +500,7 @@ install_go_batch() {
     local _batch_start; _batch_start=$(date +%s)
 
     log_info "Installing ${label} ($total Go tools)..."
+    _report_method_total "Go" "$total"
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel mode ---
@@ -504,6 +513,7 @@ install_go_batch() {
             # Skip-check in main process
             if command_exists "$name"; then
                 printf 'skip\nexisting\n' > "$_results_dir/$name"
+                _report_tool_done "Go" "$name" "skip"
                 continue
             fi
 
@@ -511,11 +521,14 @@ install_go_batch() {
 
             (
                 trap '_release_job_slot' EXIT
+                _report_tool_start "Go" "$name"
                 if go install "$tool" >> "$LOG_FILE" 2>&1; then
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
+                    _report_tool_done "Go" "$name" "ok"
                 else
                     log_error "Failed go: $name"
                     printf 'fail\n\n' > "$_results_dir/$name"
+                    _report_tool_done "Go" "$name" "fail"
                 fi
             ) &
         done
@@ -532,17 +545,21 @@ install_go_batch() {
             local name
             name=$(_go_bin_name "$tool")
             show_progress "$current" "$total" "$name"
+            _report_tool_start "Go" "$name"
             # Skip if binary already exists (GOBIN is in PATH, so command_exists suffices)
             if command_exists "$name"; then
                 skipped=$((skipped + 1))
                 track_version "$name" "go" "existing"
+                _report_tool_done "Go" "$name" "skip"
                 continue
             fi
             if ! go install "$tool" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed go: $name$(_disk_hint)"
                 failed=$((failed + 1))
+                _report_tool_done "Go" "$name" "fail"
             else
                 track_version "$name" "go" "latest"
+                _report_tool_done "Go" "$name" "ok"
             fi
         done
     fi
@@ -592,15 +609,18 @@ install_cargo_batch() {
     else
         log_info "Installing ${label} ($total Rust tools)..."
     fi
+    _report_method_total "Cargo" "$total"
 
     # cargo uses a shared registry lock — always sequential to avoid conflicts
     local current=0 failed=0 skipped=0
     for crate in "${crates[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$crate"
+        _report_tool_start "Cargo" "$crate"
         if command_exists "$crate"; then
             skipped=$((skipped + 1))
             track_version "$crate" "cargo" "existing"
+            _report_tool_done "Cargo" "$crate" "skip"
             continue
         fi
         local _installed=false
@@ -618,6 +638,7 @@ install_cargo_batch() {
             if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed cargo: $crate$(_disk_hint)"
                 failed=$((failed + 1))
+                _report_tool_done "Cargo" "$crate" "fail"
                 continue
             fi
         fi
@@ -625,6 +646,7 @@ install_cargo_batch() {
             ln -sf "$HOME/.cargo/bin/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
         fi
         track_version "$crate" "cargo" "latest"
+        _report_tool_done "Cargo" "$crate" "ok"
     done
 
     echo ""
@@ -662,22 +684,27 @@ install_gem_batch() {
     installed_gems=$(gem list --no-details 2>/dev/null || true)
 
     log_info "Installing ${label} ($total Ruby gems)..."
+    _report_method_total "Gems" "$total"
 
     # gem uses a shared gem dir — always sequential to avoid conflicts
     local current=0 failed=0 skipped=0
     for gem_name in "${gems[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$gem_name"
+        _report_tool_start "Gems" "$gem_name"
         if echo "$installed_gems" | grep -q "^${gem_name} "; then
             skipped=$((skipped + 1))
             track_version "$gem_name" "gem" "existing"
+            _report_tool_done "Gems" "$gem_name" "skip"
             continue
         fi
         if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
             track_version "$gem_name" "gem" "latest"
+            _report_tool_done "Gems" "$gem_name" "ok"
         else
             log_error "Failed gem: $gem_name$(_disk_hint)"
             failed=$((failed + 1))
+            _report_tool_done "Gems" "$gem_name" "fail"
         fi
     done
 
@@ -887,6 +914,7 @@ install_git_batch() {
 
     local base_dir="$GITHUB_TOOL_DIR"
     log_info "Installing ${label} ($total repos)..."
+    _report_method_total "Git" "$total"
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel mode ---
@@ -901,6 +929,7 @@ install_git_batch() {
 
             (
                 trap '_release_job_slot' EXIT
+                _report_tool_start "Git" "$name"
                 local is_existing=false
                 [[ -d "$dest/.git" ]] && is_existing=true
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
@@ -910,9 +939,11 @@ install_git_batch() {
                     [[ "$is_existing" == "true" ]] && _status="skip"
                     [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && _status="${_status}:depwarn"
                     printf '%s\nHEAD\n' "$_status" > "$_results_dir/$name"
+                    _report_tool_done "Git" "$name" "ok"
                 else
                     log_error "Failed git: $name"
                     printf 'fail\n\n' > "$_results_dir/$name"
+                    _report_tool_done "Git" "$name" "fail"
                 fi
             ) &
         done
@@ -930,11 +961,13 @@ install_git_batch() {
             local url="${entry#*=}"
             local dest="$base_dir/$name"
             show_progress "$current" "$total" "$name"
+            _report_tool_start "Git" "$name"
             local is_existing=false
             [[ -d "$dest/.git" ]] && is_existing=true
             if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed git: $name$(_disk_hint)"
                 failed=$((failed + 1))
+                _report_tool_done "Git" "$name" "fail"
             else
                 # Auto-setup: venv, requirements, symlinks
                 _SETUP_GIT_DEP_WARN=false
@@ -942,6 +975,7 @@ install_git_batch() {
                 [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && dep_warns=$((dep_warns + 1))
                 [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
                 track_version "$name" "git" "HEAD"
+                _report_tool_done "Git" "$name" "ok"
             fi
         done
     fi
@@ -972,15 +1006,22 @@ _setup_curl_opts
 
 # GitHub API response cache — avoids redundant API calls and rate limit exhaustion.
 # GitHub allows 60 requests/hour unauthenticated, 5000 with a token.
-# Cache dir is per-run (cleaned up on exit).
+# Cache dir is per-run. Must be initialized BEFORE forking parallel subshells
+# so all children share the same cache and rate-limit coordination files.
 _GH_API_CACHE_DIR=""
 _gh_api_cache_init() {
     if [[ -z "$_GH_API_CACHE_DIR" ]]; then
         _GH_API_CACHE_DIR=$(mktemp -d)
     fi
 }
+_gh_api_cache_cleanup() {
+    [[ -n "${_GH_API_CACHE_DIR:-}" && -d "${_GH_API_CACHE_DIR:-}" ]] && rm -rf "$_GH_API_CACHE_DIR"
+    _GH_API_CACHE_DIR=""
+}
 
-# _gh_api_get — cached GitHub API GET with rate-limit backoff.
+# _gh_api_get — cached GitHub API GET with coordinated rate-limit backoff.
+# Uses a shared lock file so parallel subshells don't all retry simultaneously
+# when the 60 req/hr unauthenticated limit is hit.
 # Usage: _gh_api_get "https://api.github.com/repos/owner/repo/releases/latest"
 # Outputs the response body. Returns 1 on failure.
 _gh_api_get() {
@@ -998,24 +1039,79 @@ _gh_api_get() {
         return 0
     fi
 
-    # Fetch with rate-limit retry (one retry after backoff)
-    local response http_code
-    local tmp_body; tmp_body=$(mktemp)
-    http_code=$(curl "${_CURL_OPTS[@]}" -w "%{http_code}" -o "$tmp_body" "$url" 2>>"$LOG_FILE") || http_code="000"
+    # Shared rate-limit state file — parallel jobs coordinate through this.
+    # Contains the epoch timestamp when the rate limit resets.
+    local _rl_file="$_GH_API_CACHE_DIR/.rate_limit_reset"
 
-    if [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
-        log_warn "GitHub API rate limit hit — waiting 60s before retry..."
-        [[ -z "${GITHUB_TOKEN:-}" ]] && \
-            log_warn "Tip: export GITHUB_TOKEN=ghp_... to raise the limit from 60 to 5000 requests/hour"
-        sleep 60
-        http_code=$(curl "${_CURL_OPTS[@]}" -w "%{http_code}" -o "$tmp_body" "$url" 2>>"$LOG_FILE") || http_code="000"
+    # If another job already detected a rate limit, wait for the reset time
+    # before even attempting the request (avoids wasting the retry).
+    if [[ -f "$_rl_file" ]]; then
+        local _reset_ts _now _wait_secs
+        read -r _reset_ts < "$_rl_file" 2>/dev/null || _reset_ts=0
+        _now=$(date +%s)
+        if [[ "$_reset_ts" -gt "$_now" ]]; then
+            _wait_secs=$((_reset_ts - _now + 2))  # +2s safety margin
+            [[ "$_wait_secs" -gt 120 ]] && _wait_secs=120
+            log_debug "_gh_api_get: rate-limited, waiting ${_wait_secs}s (reset at $_reset_ts)"
+            sleep "$_wait_secs"
+        fi
     fi
+
+    local http_code _attempt
+    local tmp_body; tmp_body=$(mktemp)
+    local tmp_headers; tmp_headers=$(mktemp)
+
+    for _attempt in 1 2 3; do
+        http_code=$(curl "${_CURL_OPTS[@]}" -D "$tmp_headers" -w "%{http_code}" \
+            -o "$tmp_body" "$url" 2>>"$LOG_FILE") || http_code="000"
+
+        if [[ "$http_code" == "200" ]]; then
+            break
+        fi
+
+        if [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
+            # Parse X-RateLimit-Reset header (epoch timestamp) from GitHub response
+            local _reset_epoch
+            _reset_epoch=$(sed -n 's/^[Xx]-[Rr]ate[Ll]imit-[Rr]eset: *\([0-9]*\).*/\1/p' "$tmp_headers" | head -1)
+
+            if [[ -n "$_reset_epoch" && "$_reset_epoch" =~ ^[0-9]+$ ]]; then
+                # Write reset timestamp for other parallel jobs to see
+                echo "$_reset_epoch" > "$_rl_file" 2>/dev/null || true
+                local _now _wait
+                _now=$(date +%s)
+                _wait=$((_reset_epoch - _now + 2))
+                [[ "$_wait" -lt 10 ]] && _wait=10
+                [[ "$_wait" -gt 120 ]] && _wait=120
+            else
+                # No reset header — use progressive backoff
+                local _wait=$((30 * _attempt))
+            fi
+
+            if [[ "$_attempt" -eq 1 ]]; then
+                log_warn "GitHub API rate limit hit — waiting ${_wait}s before retry (attempt $_attempt/3)..."
+                [[ -z "${GITHUB_TOKEN:-}" ]] && \
+                    log_warn "Tip: export GITHUB_TOKEN=ghp_... to raise the limit from 60 to 5000 requests/hour"
+            else
+                log_debug "_gh_api_get: rate limit retry attempt $_attempt/3 — waiting ${_wait}s"
+            fi
+
+            sleep "$_wait"
+        else
+            # Non-rate-limit error (404, 500, network failure) — no retry
+            break
+        fi
+    done
+
+    rm -f "$tmp_headers"
 
     if [[ "$http_code" != "200" ]]; then
         log_debug "_gh_api_get: HTTP $http_code for $url$(_disk_hint)"
         rm -f "$tmp_body"
         return 1
     fi
+
+    # Clear rate-limit state on success (limit may have reset)
+    rm -f "$_rl_file" 2>/dev/null || true
 
     # Validate JSON before caching (guards against empty/HTML responses on 200)
     if ! python3 -c "import json,sys; json.load(sys.stdin)" < "$tmp_body" 2>/dev/null; then
@@ -1446,7 +1542,8 @@ BINARY_RELEASES_MISC=(
 BINARY_RELEASES_NETWORKING=(
     "nicocha30/ligolo-ng|ligolo-proxy|linux_amd64"
     "nicocha30/ligolo-ng|ligolo-agent|agent.*linux_amd64"
-    "fatedier/frp|frp|linux_amd64\\.tar\\.gz"
+    "fatedier/frp|frpc|linux_amd64\\.tar\\.gz"
+    "fatedier/frp|frps|linux_amd64\\.tar\\.gz"
 )
 BINARY_RELEASES_RECON=(
     "Findomain/Findomain|findomain|findomain-linux\\.zip$"
@@ -1550,6 +1647,10 @@ install_binary_releases() {
 
     log_debug "install_binary_releases: starting with $total items, PARALLEL_JOBS=$PARALLEL_JOBS"
     local _batch_start; _batch_start=$(date +%s)
+    _report_method_total "Binary" "$total"
+
+    # Initialize shared API cache before forking — all subshells inherit the same dir
+    _gh_api_cache_init
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel mode ---
@@ -1563,6 +1664,7 @@ install_binary_releases() {
             if command_exists "$_binary"; then
                 log_success "Already installed: $_binary"
                 printf 'skip\nexisting\n' > "$_results_dir/$_binary"
+                _report_tool_done "Binary" "$_binary" "skip"
                 continue
             fi
 
@@ -1570,15 +1672,18 @@ install_binary_releases() {
 
             (
                 trap '_release_job_slot' EXIT
+                _report_tool_start "Binary" "$_binary"
                 if download_github_release "$_repo" "$_binary" "$_pattern" "$_dest" >> "$LOG_FILE" 2>&1; then
                     # Read version from vtag sidecar (written by _download_github_release_impl)
                     local _stored_ver=""
                     local _vtag_file="${_dest}/.${_binary}.vtag"
                     [[ -f "$_vtag_file" ]] && { _stored_ver=$(< "$_vtag_file"); rm -f "$_vtag_file"; }
                     printf 'ok\n%s\n' "${_stored_ver:-latest}" > "$_results_dir/$_binary"
+                    _report_tool_done "Binary" "$_binary" "ok"
                 else
                     log_error "Failed binary: $_binary ($_repo)"
                     printf 'fail\n\n' > "$_results_dir/$_binary"
+                    _report_tool_done "Binary" "$_binary" "fail"
                 fi
             ) &
         done
@@ -1594,8 +1699,12 @@ install_binary_releases() {
         local failed=0
         for _entry in "${entries[@]}"; do
             IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+            _report_tool_start "Binary" "$_binary"
             if ! download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}"; then
                 failed=$((failed + 1))
+                _report_tool_done "Binary" "$_binary" "fail"
+            else
+                _report_tool_done "Binary" "$_binary" "ok"
             fi
         done
         [[ "$failed" -gt 0 ]] && TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed))

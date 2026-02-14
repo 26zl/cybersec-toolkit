@@ -190,6 +190,16 @@ setup() {
     [[ "${pkgs[0]}" == "libopenssl-devel" ]]
 }
 
+@test "fixup: zypper skips build-essential (handled by install_shared_deps)" {
+    source_libs --installers opensuse-tumbleweed zypper
+    local -a pkgs=(curl build-essential git)
+    fixup_package_names pkgs
+    local joined="${pkgs[*]}"
+    [[ "$joined" != *"build-essential"* ]]
+    [[ "$joined" != *"devel_basis"* ]]
+    [[ ${#pkgs[@]} -eq 2 ]]
+}
+
 @test "fixup: zypper removes skipped packages" {
     source_libs --installers opensuse-tumbleweed zypper
     local -a pkgs=(spooftooph cewl hashid checksec rizin)

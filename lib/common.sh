@@ -60,9 +60,21 @@ disable_debug_trace() {
     fi
 }
 
+# Reusable UI primitives
+# _separator_line — print a colored horizontal rule using Unicode box-drawing ━
+# Usage: _separator_line "$GREEN"   or   _separator_line "$YELLOW"
+_separator_line() {
+    local _color="${1:-}"
+    local _hl=$'\xe2\x94\x81'  # ━ U+2501 BOX DRAWINGS HEAVY HORIZONTAL
+    local _line=""
+    local _i
+    for ((_i = 0; _i < 45; _i++)); do _line+="$_hl"; done
+    printf '%b\n' "${_color}${BOLD}${_line}${NC}"
+}
+
 # System environment logging
 log_system_environment() {
-    log_info "=== System Environment ==="
+    log_info "━━━━━ System Environment ━━━━━"
     log_info "  Hostname: $(hostname 2>/dev/null || echo unknown)"
     log_info "  Kernel:   $(uname -r 2>/dev/null || echo unknown)"
     log_info "  Arch:     $(uname -m 2>/dev/null || echo unknown)"
@@ -72,7 +84,7 @@ log_system_environment() {
     log_info "  Shell:    BASH ${BASH_VERSION:-unknown}"
     log_info "  Disk:     $(df -h / 2>/dev/null | awk 'NR==2{print $4 " free of " $2}' || echo unknown)"
     log_info "  Memory:   $(free -h 2>/dev/null | awk '/^Mem:/{print $7 " free of " $2}' || echo unknown)"
-    log_info "=== Runtime Versions ==="
+    log_info "━━━━━ Runtime Versions ━━━━━"
     local -a _cmds=(python3 pipx go cargo ruby gem git docker curl make gcc java)
     for _cmd in "${_cmds[@]}"; do
         if command -v "$_cmd" &>/dev/null; then
@@ -96,7 +108,7 @@ log_system_environment() {
             log_info "  $_cmd: NOT FOUND"
         fi
     done
-    log_info "=========================="
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 # _avail_disk_mb — outputs available disk space in MB on the install partition.
@@ -135,18 +147,18 @@ check_disk_space() {
 
     # Get available space in KB (compatible with Linux and Termux)
     local avail_kb
-    avail_kb=$(df -k "$check_path" 2>/dev/null | awk 'NR==2{print $4}')
-    if [[ -z "$avail_kb" || "$avail_kb" -le 0 ]] 2>/dev/null; then
+    avail_kb=$(df -Pk "$check_path" 2>/dev/null | awk 'NR==2{print $4}')
+    if [[ -z "$avail_kb" || ! "$avail_kb" =~ ^[0-9]+$ ]]; then
         log_warn "Could not determine available disk space — skipping check"
         return 0
     fi
 
     # WSL fix: df / shows the virtual ext4 disk (up to 1TB), not actual free
     # space on the Windows host drive. Check /mnt/c and use the lower value.
-    if grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
+    if [[ "${IS_WSL:-false}" == "true" ]]; then
         local host_kb
-        host_kb=$(df -k /mnt/c 2>/dev/null | awk 'NR==2{print $4}')
-        if [[ -n "$host_kb" && "$host_kb" -gt 0 ]] 2>/dev/null; then
+        host_kb=$(df -Pk /mnt/c 2>/dev/null | awk 'NR==2{print $4}')
+        if [[ -n "$host_kb" && "$host_kb" =~ ^[0-9]+$ && "$host_kb" -gt 0 ]]; then
             if [[ "$host_kb" -lt "$avail_kb" ]]; then
                 avail_kb="$host_kb"
             fi
@@ -335,17 +347,19 @@ detect_pkg_manager() {
     _kernel="$(uname -s 2>/dev/null || echo unknown)"
     case "$_kernel" in
         MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            echo -e "\n${RED}[-] ERROR: Windows is not supported.${NC}"
-            echo "    This installer requires Linux or Termux (Android)."
-            echo "    Use WSL (Windows Subsystem for Linux) instead:"
-            echo "      https://learn.microsoft.com/en-us/windows/wsl/install"
+            echo ""
+            log_error "Windows is not supported."
+            log_info "  This installer requires Linux or Termux (Android)."
+            log_info "  Use WSL (Windows Subsystem for Linux) instead:"
+            log_info "    https://learn.microsoft.com/en-us/windows/wsl/install"
             exit 1
             ;;
         Darwin)
-            echo -e "\n${RED}[-] ERROR: macOS is not supported.${NC}"
-            echo "    This installer requires Linux or Termux (Android)."
-            echo "    On macOS, use a Linux VM or Docker container:"
-            echo "      docker build -t cybersec-installer . && docker run cybersec-installer"
+            echo ""
+            log_error "macOS is not supported."
+            log_info "  This installer requires Linux or Termux (Android)."
+            log_info "  On macOS, use a Linux VM or Docker container:"
+            log_info "    docker build -t cybersec-installer . && docker run cybersec-installer"
             exit 1
             ;;
     esac
@@ -418,10 +432,21 @@ pkg_install() {
     case "$PKG_MANAGER" in
         apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
         dnf)
-            if [[ "$1" == @* ]]; then
-                maybe_sudo dnf group install --setopt=max_parallel_downloads=10 -y -q "${1#@}"
-            else
-                maybe_sudo dnf install --setopt=max_parallel_downloads=10 -y -q "$@"
+            # Handle @group entries separately, then install remaining packages
+            local -a _dnf_groups=() _dnf_pkgs=()
+            local _arg
+            for _arg in "$@"; do
+                if [[ "$_arg" == @* ]]; then
+                    _dnf_groups+=("${_arg#@}")
+                else
+                    _dnf_pkgs+=("$_arg")
+                fi
+            done
+            for _arg in "${_dnf_groups[@]}"; do
+                maybe_sudo dnf group install --setopt=max_parallel_downloads=10 -y -q "$_arg"
+            done
+            if [[ ${#_dnf_pkgs[@]} -gt 0 ]]; then
+                maybe_sudo dnf install --setopt=max_parallel_downloads=10 -y -q "${_dnf_pkgs[@]}"
             fi
             ;;
         pacman)  maybe_sudo pacman -S --noconfirm --needed "$@" ;;
@@ -596,8 +621,8 @@ pipx_install() {
     if [[ -n "${PIPX_DEFAULT_PYTHON:-}" ]] && [[ "$PIPX_DEFAULT_PYTHON" != "python3" ]]; then
         _py_flag=(--python "$PIPX_DEFAULT_PYTHON")
     fi
-    if ! pipx install "${_py_flag[@]}" "$pkg" 2>>"$LOG_FILE"; then
-        pipx install "${_py_flag[@]}" "$pkg" --force 2>>"$LOG_FILE" || return 1
+    if ! pipx install "${_py_flag[@]}" "$pkg" >> "$LOG_FILE" 2>&1; then
+        pipx install "${_py_flag[@]}" "$pkg" --force >> "$LOG_FILE" 2>&1 || return 1
     fi
 }
 
@@ -614,15 +639,16 @@ git_clone_or_pull() {
     local dest="$2"
     if [[ -d "$dest/.git" ]]; then
         log_info "Updating $(basename "$dest")..."
-        git -C "$dest" pull -q 2>>"$LOG_FILE" || true
+        git -C "$dest" pull -q >> "$LOG_FILE" 2>&1 || true
     else
         mkdir -p "$(dirname "$dest")" 2>/dev/null || true
         log_info "Cloning $(basename "$dest")..."
-        git clone --depth 1 -q "$repo_url" "$dest" 2>>"$LOG_FILE"
+        git clone --depth 1 -q "$repo_url" "$dest" >> "$LOG_FILE" 2>&1
     fi
 }
 
-# Progress bar — adapts to terminal width to avoid wrapping on small windows.
+# Progress bar — Unicode block style matching Stage 3/4 display.
+# Uses █ (filled) and ░ (empty) with count/total format.
 show_progress() {
     local current=$1
     local total=$2
@@ -630,44 +656,32 @@ show_progress() {
 
     [[ "$total" -le 0 ]] && return
 
-    # Get terminal width (fallback 80)
-    local cols
-    cols=$(tput cols 2>/dev/null || echo 80)
-
-    local percentage=$((current * 100 / total))
-
-    local display_label=""
-    [[ -n "$label" ]] && display_label="($label)"
-
-    # Fixed overhead: "  [" (3) + "]" (1) + " " (1) + "NNN%" (4) + " " (1) = 10
-    local overhead=10
-    local label_max=25
-    # Truncate label if it would overflow
-    if [[ ${#display_label} -gt $label_max ]]; then
-        display_label="${display_label:0:$((label_max - 1))}"
-        display_label+=")"
+    # Non-interactive terminal (Docker, piped output): skip animated progress bar
+    if [[ ! -t 1 ]]; then
+        return
     fi
 
-    # Bar width = terminal minus overhead minus label space
-    local width=$((cols - overhead - label_max))
-    [[ "$width" -lt 5 ]] && width=5
-    [[ "$width" -gt 40 ]] && width=40
+    local _bf=$'\xe2\x96\x88'  # █ U+2588
+    local _be=$'\xe2\x96\x91'  # ░ U+2591
 
-    local filled=$((current * width / total))
-    local empty=$((width - filled))
-    local bar=""
+    # Fixed 20-char bar (matches Stage 3/4 progress display)
+    local bar_width=20
+    local filled=$((current * bar_width / total))
+    [[ "$filled" -gt "$bar_width" ]] && filled=$bar_width
+    local empty=$((bar_width - filled))
+    local bar="" i
+    for ((i = 0; i < filled; i++)); do bar+="$_bf"; done
+    for ((i = 0; i < empty; i++)); do bar+="$_be"; done
 
-    local i
-    for ((i = 0; i < filled; i++)); do bar+="="; done
-    for ((i = 0; i < empty; i++)); do bar+=" "; done
+    # Truncate label to avoid wrapping
+    [[ ${#label} -gt 25 ]] && label="${label:0:24}~"
 
-    # %-*s pads label to label_max chars — ensures shorter labels overwrite
-    # longer previous ones. Works on all terminals (no ANSI escape needed).
-    printf "\r  ${BLUE}[${NC}%s${BLUE}]${NC} %3d%% %-*s" "$bar" "$percentage" "$label_max" "$display_label"
+    printf '\r\033[K  %s %3d/%-3d  %s' "$bar" "$current" "$total" "$label"
 }
 
-# Activity spinner — shows a spinning indicator with elapsed time for
+# Activity spinner — braille dot spinner with elapsed time for
 # long-running operations that redirect output to the log file.
+# Uses the same braille characters as the Stage 3/4 progress display.
 # Usage:
 #   _start_spinner "Building AFLplusplus..."
 #   some_command >> "$LOG_FILE" 2>&1
@@ -678,13 +692,25 @@ _start_spinner() {
     local label="$1"
     # Kill any previous spinner (safety — shouldn't happen in practice)
     _stop_spinner
+
+    # Non-interactive terminal (Docker, piped output): print one static line instead
+    # of the animated spinner which would spam hundreds of lines in the log.
+    if [[ ! -t 1 ]]; then
+        printf '  ... %s\n' "$label"
+        _SPINNER_PID=""
+        return
+    fi
+
     (
-        local spin='|/-\'
+        local -a _spin=(
+            $'\xe2\xa0\x8b' $'\xe2\xa0\x99' $'\xe2\xa0\xb9' $'\xe2\xa0\xb8' $'\xe2\xa0\xbc'
+            $'\xe2\xa0\xb4' $'\xe2\xa0\xa6' $'\xe2\xa0\xa7' $'\xe2\xa0\x87' $'\xe2\xa0\x8f'
+        )
         local i=0
         local s0=$SECONDS
         while true; do
             local elapsed=$(( SECONDS - s0 ))
-            printf "\r  ${BLUE}%s${NC} %s ${DIM}(%ds)${NC}  " "${spin:$((i%4)):1}" "$label" "$elapsed"
+            printf '\r\033[K  %s %s %s(%ds)%s' "${_spin[$((i%10))]}" "$label" "$DIM" "$elapsed" "$NC"
             i=$((i + 1))
             sleep 0.3
         done
@@ -696,9 +722,293 @@ _stop_spinner() {
     if [[ -n "${_SPINNER_PID:-}" ]] && kill -0 "$_SPINNER_PID" 2>/dev/null; then
         kill "$_SPINNER_PID" 2>/dev/null
         wait "$_SPINNER_PID" 2>/dev/null || true
-        printf "\r%*s\r" "$(tput cols 2>/dev/null || echo 80)" ""
+        printf '\r\033[K'
     fi
     _SPINNER_PID=""
+}
+
+# ── Live progress display for parallel Stage 3/4 ──
+# IPC via temp files in PROGRESS_DIR: <method>.total, <method>.done, <method>.current
+# Each parallel subshell writes status; a background display loop reads and renders.
+
+_PROGRESS_DISPLAY_PID=""
+
+# _init_progress_dir — create tmpdir for IPC between batch subshells and display loop
+_init_progress_dir() {
+    PROGRESS_DIR=$(mktemp -d "/tmp/cybersec_progress.XXXXXX")
+    export PROGRESS_DIR
+}
+
+_cleanup_progress_dir() {
+    [[ -n "${PROGRESS_DIR:-}" ]] && rm -rf "$PROGRESS_DIR" 2>/dev/null || true
+    PROGRESS_DIR=""
+    export PROGRESS_DIR
+}
+
+# _report_method_total — write total tool count for a method
+# Usage: _report_method_total "pipx" 43
+_report_method_total() {
+    [[ -n "${PROGRESS_DIR:-}" ]] || return 0
+    echo "$2" > "$PROGRESS_DIR/$1.total"
+}
+
+# _report_tool_start — write currently installing tool name (overwritten per tool)
+# Usage: _report_tool_start "pipx" "dirsearch"
+_report_tool_start() {
+    [[ -n "${PROGRESS_DIR:-}" ]] || return 0
+    echo "$2" > "$PROGRESS_DIR/$1.current"
+}
+
+# _report_tool_done — append completed tool to done log (atomic for small writes)
+# Usage: _report_tool_done "pipx" "dirsearch" "ok|fail|skip" ["error msg"]
+_report_tool_done() {
+    [[ -n "${PROGRESS_DIR:-}" ]] || return 0
+    printf '%s|%s|%s\n' "$2" "$3" "${4:-}" >> "$PROGRESS_DIR/$1.done"
+}
+
+# _start_progress_display — launch background multi-line progress display
+# Args: method_name1 method_name2 ...  (e.g. "pipx" "Go" "Cargo" "Gems" "Git" "Binary")
+_start_progress_display() {
+    _stop_progress_display 2>/dev/null || true
+
+    # Store ordered method list for _stop_progress_display
+    printf '%s\n' "$@" > "$PROGRESS_DIR/.methods"
+
+    # Non-interactive terminal: skip ANSI display
+    if ! [[ -t 1 ]]; then
+        return 0
+    fi
+
+    # UTF-8 characters for rendering (using $'\xNN' hex escapes for portability)
+    local _bar_full=$'\xe2\x96\x88'   # █ U+2588
+    local _bar_empty=$'\xe2\x96\x91'  # ░ U+2591
+    local _check=$'\xe2\x9c\x93'      # ✓ U+2713
+    local _cross=$'\xe2\x9c\x97'      # ✗ U+2717
+    local _dash=$'\xe2\x80\x94'       # — U+2014
+    local -a _spin=(
+        $'\xe2\xa0\x8b' $'\xe2\xa0\x99' $'\xe2\xa0\xb9' $'\xe2\xa0\xb8' $'\xe2\xa0\xbc'
+        $'\xe2\xa0\xb4' $'\xe2\xa0\xa6' $'\xe2\xa0\xa7' $'\xe2\xa0\x87' $'\xe2\xa0\x8f'
+    )
+
+    local _pd="$PROGRESS_DIR"
+
+    (
+        local -a methods=("$@")
+        local spin_idx=0
+        local s0=$SECONDS
+        local prev_lines=0
+
+        while true; do
+            local elapsed=$(( SECONDS - s0 ))
+            spin_idx=$(( (spin_idx + 1) % 10 ))
+
+            # Move cursor up to overwrite previous output
+            [[ "$prev_lines" -gt 0 ]] && printf '\033[%dA\r' "$prev_lines"
+
+            local lines=0
+            local -a fail_lines=()
+
+            # Header
+            printf '\033[K  Stage 3/4 %s Installing tools (%ds)\n\033[K\n' "$_dash" "$elapsed"
+            lines=2
+
+            for method in "${methods[@]}"; do
+                local total=0 done_count=0 current=""
+
+                [[ -f "$_pd/$method.total" ]] && read -r total < "$_pd/$method.total" 2>/dev/null
+                if [[ -f "$_pd/$method.done" ]]; then
+                    done_count=$(wc -l < "$_pd/$method.done" 2>/dev/null)
+                    done_count=${done_count//[[:space:]]/}
+                fi
+                [[ -f "$_pd/$method.current" ]] && read -r current < "$_pd/$method.current" 2>/dev/null
+
+                # Sanitize (guard against partial writes / empty reads)
+                [[ "$total" =~ ^[0-9]+$ ]] || total=0
+                [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
+                [[ "$total" -gt 0 && "$done_count" -gt "$total" ]] && done_count=$total
+
+                # Progress bar (20 chars wide)
+                local bar_width=20 filled=0
+                [[ "$total" -gt 0 ]] && filled=$((done_count * bar_width / total))
+                [[ "$filled" -gt "$bar_width" ]] && filled=$bar_width
+                local empty=$((bar_width - filled))
+                local bar="" i
+                for ((i = 0; i < filled; i++)); do bar+="$_bar_full"; done
+                for ((i = 0; i < empty; i++)); do bar+="$_bar_empty"; done
+
+                # Status indicator
+                local status_str=""
+                if [[ "$total" -eq 0 ]]; then
+                    status_str="waiting..."
+                elif [[ "$done_count" -ge "$total" ]]; then
+                    local fc=0
+                    [[ -f "$_pd/$method.done" ]] && fc=$(grep -c '|fail|' "$_pd/$method.done" 2>/dev/null || true)
+                    [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
+                    if [[ "$fc" -gt 0 ]]; then
+                        status_str="$_check done ($fc failed)"
+                    else
+                        status_str="$_check done"
+                    fi
+                else
+                    if [[ -n "$current" ]]; then
+                        status_str="${_spin[$spin_idx]} ${current}..."
+                    else
+                        status_str="waiting..."
+                    fi
+                fi
+
+                # Truncate to avoid line wrapping
+                [[ ${#status_str} -gt 40 ]] && status_str="${status_str:0:37}..."
+
+                printf '\033[K  %-8s %s %3d/%-3d  %s\n' \
+                    "$method" "$bar" "$done_count" "$total" "$status_str"
+                lines=$((lines + 1))
+
+                # Collect failures
+                if [[ -f "$_pd/$method.done" ]]; then
+                    while IFS='|' read -r _ft _fs _fe; do
+                        [[ "$_fs" == "fail" ]] && fail_lines+=("${_ft}${_fe:+ ($_fe)}")
+                    done < <(grep '|fail|' "$_pd/$method.done" 2>/dev/null)
+                fi
+            done
+
+            # Failure section at bottom
+            if [[ ${#fail_lines[@]} -gt 0 ]]; then
+                printf '\033[K\n'
+                lines=$((lines + 1))
+                for fl in "${fail_lines[@]}"; do
+                    printf '\033[K  %s %s\n' "$_cross" "$fl"
+                    lines=$((lines + 1))
+                done
+            fi
+
+            # Clear leftover lines from previous render (fewer failures displayed now)
+            if [[ "$prev_lines" -gt "$lines" ]]; then
+                local extra=$((prev_lines - lines))
+                for ((i = 0; i < extra; i++)); do printf '\033[K\n'; done
+                printf '\033[%dA' "$extra"
+            fi
+
+            prev_lines=$lines
+            echo "$lines" > "$_pd/.lines"
+            sleep 0.3
+        done
+    ) &
+    _PROGRESS_DISPLAY_PID=$!
+}
+
+# _stop_progress_display — kill display loop, render final static state
+_stop_progress_display() {
+    if [[ -n "${_PROGRESS_DISPLAY_PID:-}" ]] && kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null; then
+        kill "$_PROGRESS_DISPLAY_PID" 2>/dev/null
+        wait "$_PROGRESS_DISPLAY_PID" 2>/dev/null || true
+    fi
+    _PROGRESS_DISPLAY_PID=""
+
+    [[ -n "${PROGRESS_DIR:-}" && -d "$PROGRESS_DIR" ]] || return 0
+
+    # UTF-8 characters (same as display loop)
+    local _bar_full=$'\xe2\x96\x88'   # █
+    local _bar_empty=$'\xe2\x96\x91'  # ░
+    local _check=$'\xe2\x9c\x93'      # ✓
+    local _cross=$'\xe2\x9c\x97'      # ✗
+    local _dash=$'\xe2\x80\x94'       # —
+
+    # Read method list and last line count
+    local -a methods=()
+    [[ -f "$PROGRESS_DIR/.methods" ]] && mapfile -t methods < "$PROGRESS_DIR/.methods"
+    [[ ${#methods[@]} -gt 0 ]] || { _cleanup_progress_dir; return 0; }
+
+    if [[ -t 1 ]]; then
+        local prev_lines=0
+        [[ -f "$PROGRESS_DIR/.lines" ]] && read -r prev_lines < "$PROGRESS_DIR/.lines" 2>/dev/null
+        [[ "$prev_lines" =~ ^[0-9]+$ ]] || prev_lines=0
+
+        if [[ "$prev_lines" -gt 0 ]]; then
+            # Overwrite the live display with final static state
+            printf '\033[%dA\r' "$prev_lines"
+
+            printf '\033[K  Stage 3/4 %s Installing tools (complete)\n\033[K\n' "$_dash"
+            local final_lines=2
+
+            for method in "${methods[@]}"; do
+                local total=0 done_count=0
+                [[ -f "$PROGRESS_DIR/$method.total" ]] && read -r total < "$PROGRESS_DIR/$method.total" 2>/dev/null
+                if [[ -f "$PROGRESS_DIR/$method.done" ]]; then
+                    done_count=$(wc -l < "$PROGRESS_DIR/$method.done" 2>/dev/null)
+                    done_count=${done_count//[[:space:]]/}
+                fi
+                [[ "$total" =~ ^[0-9]+$ ]] || total=0
+                [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
+
+                # Full bar for completed, empty for skipped
+                local bar_width=20 bar="" i filled=$bar_width
+                [[ "$total" -eq 0 ]] && filled=0
+                for ((i = 0; i < filled; i++)); do bar+="$_bar_full"; done
+                for ((i = filled; i < bar_width; i++)); do bar+="$_bar_empty"; done
+
+                local fc=0
+                [[ -f "$PROGRESS_DIR/$method.done" ]] && fc=$(grep -c '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null || true)
+                [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
+                local status_str="$_check done"
+                [[ "$fc" -gt 0 ]] && status_str="$_check done ($fc failed)"
+                [[ "$total" -eq 0 ]] && status_str="skipped"
+
+                printf '\033[K  %-8s %s %3d/%-3d  %s\n' \
+                    "$method" "$bar" "$done_count" "$total" "$status_str"
+                final_lines=$((final_lines + 1))
+            done
+
+            # Failure summary
+            local has_fails=false
+            for method in "${methods[@]}"; do
+                [[ -f "$PROGRESS_DIR/$method.done" ]] || continue
+                while IFS='|' read -r _ft _fs _fe; do
+                    if [[ "$_fs" == "fail" ]]; then
+                        if [[ "$has_fails" == "false" ]]; then
+                            printf '\033[K\n'
+                            final_lines=$((final_lines + 1))
+                            has_fails=true
+                        fi
+                        printf '\033[K  %s %s%s\n' "$_cross" "$_ft" "${_fe:+ ($_fe)}"
+                        final_lines=$((final_lines + 1))
+                    fi
+                done < <(grep '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null)
+            done
+
+            # Clear leftover lines from previous live render
+            if [[ "$prev_lines" -gt "$final_lines" ]]; then
+                local extra=$((prev_lines - final_lines))
+                for ((i = 0; i < extra; i++)); do printf '\033[K\n'; done
+            fi
+
+            echo ""  # blank line after display
+        fi
+    else
+        # Non-interactive: print plain-text summary (no ANSI escapes)
+        echo ""
+        echo "  Stage 3/4 -- Installing tools (complete)"
+        for method in "${methods[@]}"; do
+            local total=0 done_count=0
+            [[ -f "$PROGRESS_DIR/$method.total" ]] && read -r total < "$PROGRESS_DIR/$method.total" 2>/dev/null
+            if [[ -f "$PROGRESS_DIR/$method.done" ]]; then
+                done_count=$(wc -l < "$PROGRESS_DIR/$method.done" 2>/dev/null)
+                done_count=${done_count//[[:space:]]/}
+            fi
+            [[ "$total" =~ ^[0-9]+$ ]] || total=0
+            [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
+            [[ "$total" -eq 0 ]] && { printf '  %-8s  skipped\n' "$method"; continue; }
+            local fc=0
+            [[ -f "$PROGRESS_DIR/$method.done" ]] && fc=$(grep -c '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null || true)
+            [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
+            local status_str="done"
+            [[ "$fc" -gt 0 ]] && status_str="done ($fc failed)"
+            printf '  %-8s %3d/%-3d  %s\n' "$method" "$done_count" "$total" "$status_str"
+        done
+        echo ""
+    fi
+
+    _cleanup_progress_dir
 }
 
 # Banner

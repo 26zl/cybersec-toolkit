@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
         --require-checksums) REQUIRE_CHECKSUMS=true; shift ;;
         -v|--verbose)   VERBOSE=true; shift ;;
         -h|--help)      exec "$0" --help ;;
-        *)              shift ;;
+        *)              log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
 
@@ -368,7 +368,9 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         # Get latest release tag from GitHub
         local api_url="https://api.github.com/repos/$repo/releases/latest"
         local latest_tag=""
-        latest_tag=$(curl "${_CURL_OPTS[@]}" "$api_url" 2>/dev/null \
+        local _api_response=""
+        _api_response=$(_gh_api_get "$api_url" 2>/dev/null) || true
+        latest_tag=$(echo "$_api_response" \
             | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)
 
         if [[ -n "$latest_tag" && -n "$installed_ver" && "$latest_tag" == "$installed_ver" ]]; then
@@ -482,6 +484,7 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
 else
     log_warn "Skipping special tool updates"
 fi
+echo ""
 
 # 9) Docker images
 if [[ "$SKIP_DOCKER" == "false" ]]; then
@@ -496,6 +499,7 @@ if [[ "$SKIP_DOCKER" == "false" ]]; then
                     DOCKER_UPDATED=$((DOCKER_UPDATED + 1))
                 else
                     log_warn "Failed Docker: $_docker_label"
+                    UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
                 fi
             fi
         done
@@ -504,28 +508,30 @@ if [[ "$SKIP_DOCKER" == "false" ]]; then
 else
     log_warn "Skipping Docker image update"
 fi
+
 echo ""
 
 # Done
 disable_debug_trace
-
-echo ""
 END_TIME=$(date +%s)
 ELAPSED=$(( END_TIME - START_TIME ))
 MINUTES=$(( ELAPSED / 60 ))
 SECONDS_R=$(( ELAPSED % 60 ))
 
 if [[ "$UPDATE_FAILURES" -gt 0 ]]; then
-    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+    _separator_line "$YELLOW"
     log_warn "Update finished with $UPDATE_FAILURES failure(s) (${MINUTES}m ${SECONDS_R}s)"
-    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+    _separator_line "$YELLOW"
 else
-    echo -e "${GREEN}${BOLD}=============================================${NC}"
+    _separator_line "$GREEN"
     log_success "Update complete! (${MINUTES}m ${SECONDS_R}s)"
-    echo -e "${GREEN}${BOLD}=============================================${NC}"
+    _separator_line "$GREEN"
 fi
 log_info "Log file: $LOG_FILE"
 log_info "Run ./scripts/verify.sh to confirm all tools are working"
+
+# Clean up GitHub API cache
+_gh_api_cache_cleanup 2>/dev/null || true
 
 [[ "$UPDATE_FAILURES" -gt 0 ]] && exit 1
 exit 0

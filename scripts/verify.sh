@@ -55,7 +55,7 @@ while [[ $# -gt 0 ]]; do
         --summary) SUMMARY_ONLY=true; shift ;;
         -v|--verbose) VERBOSE=true; shift ;;
         -h|--help) exec "$0" --help ;;
-        *)         shift ;;
+        *)         log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
 
@@ -269,9 +269,9 @@ if [[ "$VERBOSE" == "true" ]]; then
     log_system_environment
 fi
 log_info "System Information:"
-log_message "  OS: $(uname -a)"
-log_message "  Kernel: $(uname -r)"
-log_message "  Arch: $(uname -m)"
+log_info "  OS: $(uname -a)"
+log_info "  Kernel: $(uname -r)"
+log_info "  Arch: $(uname -m)"
 echo ""
 
 # Runtime environments
@@ -290,7 +290,7 @@ check_cmd "docker" "docker --version" || true
 echo ""
 
 # Shared base dependencies (always checked regardless of module selection)
-log_info "========== Shared Dependencies =========="
+log_info "━━━━━ Shared Dependencies ━━━━━"
 log_info "Base Dependencies:"
 check_cmds git curl wget openssl python3 pip3 ruby go java cmake dos2unix rlwrap jq file
 check_cmds autoconf automake pkg-config
@@ -305,7 +305,7 @@ _is_kali=false
 # Per-module verification
 if should_verify "misc"; then
     echo ""
-    log_info "========== Module: misc =========="
+    log_info "━━━━━ Module: misc ━━━━━"
     log_info "Heavy Tools:"
     check_cmd "sage" || true
     log_info "Misc (pipx):"
@@ -328,7 +328,7 @@ fi
 
 if should_verify "networking"; then
     echo ""
-    log_info "========== Module: networking =========="
+    log_info "━━━━━ Module: networking ━━━━━"
     log_info "Networking (packages):"
     check_cmds nmap masscan netdiscover tcpdump hping3 arp-scan \
         socat p0f ncrack sslscan nbtscan onesixtyone snmpwalk smbclient \
@@ -344,13 +344,16 @@ if should_verify "networking"; then
     check_cmds "${NET_CARGO[@]}"
     log_info "Networking (Binary):"
     check_cmd "ligolo-proxy" || true
+    check_cmd "ligolo-agent" || true
+    check_cmd "frpc" || true
+    check_cmd "frps" || true
     log_info "Networking (Snap):"
     check_cmd "ngrok" || true
 fi
 
 if should_verify "recon"; then
     echo ""
-    log_info "========== Module: recon =========="
+    log_info "━━━━━ Module: recon ━━━━━"
     log_info "Recon (packages):"
     check_cmds dnsenum
     log_info "Recon (pipx):"
@@ -368,7 +371,7 @@ fi
 
 if should_verify "web"; then
     echo ""
-    log_info "========== Module: web =========="
+    log_info "━━━━━ Module: web ━━━━━"
     log_info "Web (packages):"
     check_cmds whatweb
     log_info "Web (pipx):"
@@ -390,7 +393,7 @@ fi
 
 if should_verify "crypto"; then
     echo ""
-    log_info "========== Module: crypto =========="
+    log_info "━━━━━ Module: crypto ━━━━━"
     log_info "Crypto (pipx):"
     check_pipx_arr "${CRYPTO_PIPX[@]}"
     log_info "Crypto (Git):"
@@ -401,7 +404,7 @@ fi
 
 if should_verify "pwn"; then
     echo ""
-    log_info "========== Module: pwn =========="
+    log_info "━━━━━ Module: pwn ━━━━━"
     log_info "Pwn (packages):"
     check_cmds patchelf cmake searchsploit
     log_info "Pwn (pipx):"
@@ -422,7 +425,7 @@ fi
 
 if should_verify "reversing"; then
     echo ""
-    log_info "========== Module: reversing =========="
+    log_info "━━━━━ Module: reversing ━━━━━"
     log_info "RE (packages):"
     check_cmds checksec gdb binwalk ltrace strace hexedit upx valgrind
     if [[ "$_is_kali" == "true" ]]; then
@@ -444,7 +447,7 @@ fi
 
 if should_verify "forensics"; then
     echo ""
-    log_info "========== Module: forensics =========="
+    log_info "━━━━━ Module: forensics ━━━━━"
     log_info "Forensics (packages):"
     check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk exiftool clamscan pdftotext zbarimg
     [[ "$_is_kali" == "true" ]] && { check_cmd "bulk_extractor" || true; }
@@ -458,7 +461,7 @@ fi
 
 if should_verify "enterprise"; then
     echo ""
-    log_info "========== Module: enterprise =========="
+    log_info "━━━━━ Module: enterprise ━━━━━"
     log_info "Enterprise (pipx):"
     check_pipx_arr "${ENTERPRISE_PIPX[@]}"
     log_info "Enterprise (Go):"
@@ -469,16 +472,18 @@ if should_verify "enterprise"; then
     check_git_repos "${ENTERPRISE_GIT_NAMES[@]}"
     log_info "Enterprise (Binary):"
     check_cmd "kerbrute" || true
+    log_info "Enterprise (Special):"
+    check_cmd "nxc" || true
 fi
 
 if should_verify "wireless"; then
     if [[ "$IS_WSL" == "true" ]]; then
         echo ""
-        log_info "========== Module: wireless =========="
+        log_info "━━━━━ Module: wireless ━━━━━"
         log_warn "Skipped on WSL (no wireless hardware access)"
     else
         echo ""
-        log_info "========== Module: wireless =========="
+        log_info "━━━━━ Module: wireless ━━━━━"
         log_info "Wireless (packages):"
         check_cmds aircrack-ng reaver pixiewps bully iw horst gnuradio-companion gqrx
         [[ "$_is_kali" == "true" ]] && { check_cmd "kismet" || true; }
@@ -492,7 +497,7 @@ fi
 
 if should_verify "cracking"; then
     echo ""
-    log_info "========== Module: cracking =========="
+    log_info "━━━━━ Module: cracking ━━━━━"
     log_info "Cracking (packages):"
     check_cmds john hashcat hydra medusa crunch ophcrack fcrackzip pdfcrack chntpw
     [[ "$_is_kali" == "true" ]] && { check_cmds cewl hashid || true; }
@@ -506,7 +511,7 @@ fi
 
 if should_verify "stego"; then
     echo ""
-    log_info "========== Module: stego =========="
+    log_info "━━━━━ Module: stego ━━━━━"
     log_info "Stego (packages):"
     check_cmds steghide outguess pngcheck
     check_cmd_any "sonic-visualiser" sonic-visualiser sonic_visualiser || true
@@ -522,7 +527,7 @@ fi
 
 if should_verify "cloud"; then
     echo ""
-    log_info "========== Module: cloud =========="
+    log_info "━━━━━ Module: cloud ━━━━━"
     log_info "Cloud (pipx):"
     check_pipx_arr "${CLOUD_PIPX[@]}"
     log_info "Cloud (Go):"
@@ -535,7 +540,7 @@ fi
 
 if should_verify "containers"; then
     echo ""
-    log_info "========== Module: containers =========="
+    log_info "━━━━━ Module: containers ━━━━━"
     log_info "Containers (Git):"
     check_git_repos "${CONTAINER_GIT_NAMES[@]}"
     log_info "Containers (Binary):"
@@ -544,7 +549,7 @@ fi
 
 if should_verify "mobile"; then
     echo ""
-    log_info "========== Module: mobile =========="
+    log_info "━━━━━ Module: mobile ━━━━━"
     log_info "Mobile (packages):"
     check_cmds adb scrcpy apksigner zipalign
     [[ "$_is_kali" == "true" ]] && { check_cmd "smali" || true; }
@@ -559,7 +564,7 @@ fi
 
 if should_verify "blueteam"; then
     echo ""
-    log_info "========== Module: blueteam =========="
+    log_info "━━━━━ Module: blueteam ━━━━━"
     log_info "Blue Team (packages):"
     check_cmds suricata fail2ban-client aide ufw lynis rkhunter chkrootkit yara clamscan
     if [[ "$IS_WSL" != "true" ]]; then
@@ -584,7 +589,7 @@ fi
 
 if should_verify "blockchain"; then
     echo ""
-    log_info "========== Module: blockchain =========="
+    log_info "━━━━━ Module: blockchain ━━━━━"
     log_info "Blockchain (pipx):"
     check_pipx_arr "${BLOCKCHAIN_PIPX[@]}"
     log_info "Blockchain (Git):"
@@ -609,7 +614,7 @@ fi
 
 if should_verify "llm"; then
     echo ""
-    log_info "========== Module: llm =========="
+    log_info "━━━━━ Module: llm ━━━━━"
     log_info "LLM (pipx):"
     check_pipx_arr "${LLM_PIPX[@]}"
     log_info "LLM (Git):"
@@ -621,7 +626,7 @@ fi
 # Docker images (all modules — uses centralized registry)
 if command_exists docker; then
     echo ""
-    log_info "========== Docker Images =========="
+    log_info "━━━━━ Docker Images ━━━━━"
     for _docker_entry in "${ALL_DOCKER_IMAGES[@]}"; do
         IFS='|' read -r _docker_img _docker_label <<< "$_docker_entry"
         TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
@@ -646,13 +651,13 @@ _pct=0
 [[ "$TOTAL_CHECKED" -gt 0 ]] && _pct=$((TOTAL_FOUND * 100 / TOTAL_CHECKED))
 
 if [[ "$TOTAL_MISSING" -gt 0 ]]; then
-    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+    _separator_line "$YELLOW"
     log_warn "Verification complete (${MINUTES}m ${SECONDS_R}s)"
-    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+    _separator_line "$YELLOW"
 else
-    echo -e "${GREEN}${BOLD}=============================================${NC}"
+    _separator_line "$GREEN"
     log_success "Verification complete! (${MINUTES}m ${SECONDS_R}s)"
-    echo -e "${GREEN}${BOLD}=============================================${NC}"
+    _separator_line "$GREEN"
 fi
 log_success "Found:   $TOTAL_FOUND"
 if [[ "$TOTAL_MISSING" -gt 0 ]]; then

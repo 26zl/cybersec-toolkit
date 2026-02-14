@@ -16,6 +16,7 @@ PBKDF2_ITERATIONS=600000
 BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
+[[ -d "$BACKUP_DIR" ]] || mkdir -p "$BACKUP_DIR"
 LOG_FILE="$BACKUP_DIR/backup.log"
 if : > "$LOG_FILE" 2>/dev/null; then
     chmod 644 "$LOG_FILE" 2>/dev/null || true
@@ -29,6 +30,23 @@ ensure_dir() {
 }
 
 _prompt_passphrase() {
+    # Non-interactive mode: use BACKUP_PASSPHRASE env var (for cron/scripted backups)
+    if [[ -n "${BACKUP_PASSPHRASE:-}" ]]; then
+        if [[ ${#BACKUP_PASSPHRASE} -lt 8 ]]; then
+            log_error "BACKUP_PASSPHRASE must be at least 8 characters"
+            return 1
+        fi
+        _PASSPHRASE="$BACKUP_PASSPHRASE"
+        return 0
+    fi
+
+    # Interactive mode requires a terminal
+    if [[ ! -t 0 ]]; then
+        log_error "No terminal available for passphrase input"
+        log_error "Set BACKUP_PASSPHRASE env var for non-interactive/cron use"
+        return 1
+    fi
+
     local passphrase passphrase_confirm
     read -rsp "Enter encryption passphrase: " passphrase
     echo ""
@@ -221,6 +239,12 @@ cmd_restore() {
     local backup_name
     backup_name=$(tar -tzf "$tar_file" | head -1 | cut -f1 -d"/")
 
+    if [[ -z "$backup_name" ]]; then
+        log_error "Could not determine backup directory name from archive"
+        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
+        exit 1
+    fi
+
     # Clean up decrypted tar if we created it
     [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
 
@@ -293,10 +317,21 @@ cmd_schedule() {
     local frequency="$1"
     local time="$2"
 
+    # Validate HH:MM format
+    if [[ ! "$time" =~ ^[0-9]{1,2}:[0-9]{2}$ ]]; then
+        log_error "Invalid time format. Use HH:MM (e.g., 02:00)"
+        exit 1
+    fi
+
     # Parse HH:MM
     local hour minute
     hour=$(echo "$time" | cut -d: -f1)
     minute=$(echo "$time" | cut -d: -f2)
+
+    if [[ "$hour" -gt 23 || "$minute" -gt 59 ]]; then
+        log_error "Invalid time: hour must be 0-23, minute must be 0-59"
+        exit 1
+    fi
 
     local cron_schedule
     case "$frequency" in
@@ -333,6 +368,10 @@ Commands:
   schedule <daily|weekly|monthly> <HH:MM>
                                    Schedule automatic backups via cron
   unschedule                       Remove scheduled backup
+
+Environment:
+  BACKUP_PASSPHRASE                Passphrase for non-interactive/cron encryption
+                                   (must be at least 8 characters)
 
 Options:
   -h, --help                       Show this help and exit

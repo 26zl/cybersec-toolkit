@@ -24,6 +24,7 @@ install_module_blockchain() {
             _start_spinner "Installing solc via snap..."
             if snap_install solc >> "$LOG_FILE" 2>&1; then
                 _stop_spinner
+                log_success "solc installed"
                 track_version "solc" "snap" "latest"
             else
                 _stop_spinner
@@ -39,7 +40,7 @@ install_module_blockchain() {
     if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
         log_warn "Skipping Foundry (--skip-source)"
     elif command_exists foundryup; then
-        log_info "Foundry already installed"
+        log_success "Foundry already installed"
     else
         log_warn "Installing Foundry via curl | bash (review: https://foundry.paradigm.xyz)"
         local _foundry_tmp
@@ -49,18 +50,23 @@ install_module_blockchain() {
                 bash "$_foundry_tmp" >> "$LOG_FILE" 2>&1 || true
             else
                 log_error "Foundry install script failed content verification — skipping"
+                TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             fi
         else
             log_error "Failed to download Foundry install script"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         fi
         rm -f "$_foundry_tmp"
         if [[ -f "$HOME/.foundry/bin/foundryup" ]]; then
             _start_spinner "Running foundryup..."
             if "$HOME/.foundry/bin/foundryup" >> "$LOG_FILE" 2>&1; then
                 _stop_spinner
+                log_success "Foundry installed"
                 track_version "foundry" "special" "latest"
             else
                 _stop_spinner
+                log_error "Foundry installation failed"
+                TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             fi
         fi
     fi
@@ -70,12 +76,14 @@ install_module_blockchain() {
     # from the networking module.  Access Foundry's chisel via ~/.foundry/bin/chisel.
     local _foundry_dir="$HOME/.foundry/bin"
     if [[ -d "$_foundry_dir" ]]; then
+        local _linked=0
         for _bin in foundryup forge cast anvil; do
             if [[ -f "$_foundry_dir/$_bin" ]] && [[ ! -f "$PIPX_BIN_DIR/$_bin" ]]; then
                 ln -sf "$_foundry_dir/$_bin" "$PIPX_BIN_DIR/$_bin" 2>/dev/null || true
+                _linked=$((_linked + 1))
             fi
         done
-        log_info "Foundry binaries symlinked to $PIPX_BIN_DIR"
+        [[ "$_linked" -gt 0 ]] && log_success "Symlinked $_linked Foundry binaries to $PIPX_BIN_DIR"
     fi
 
     # Docker: Echidna fuzzer (optional)

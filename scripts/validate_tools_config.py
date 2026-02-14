@@ -89,7 +89,7 @@ BINARY_RELEASE_MODULE = {
     "MISC": "misc", "NETWORKING": "networking", "RECON": "recon",
     "WEB": "web", "REVERSING": "reversing", "FORENSICS": "forensics",
     "ENTERPRISE": "enterprise", "BLUETEAM": "blueteam",
-    "CONTAINERS": "containers", "STEGO": "stego",
+    "CONTAINERS": "containers", "MOBILE": "mobile", "STEGO": "stego",
 }
 
 # Binary release extraction from installers.sh
@@ -113,6 +113,7 @@ def extract_binary_releases():
             if len(parts) < 2:
                 continue
             repo, binary = parts[0], parts[1]
+            binary = NAME_ALIASES.get(binary, binary)
             url = f"https://github.com/{repo}"
             tools.append({"name": binary, "method": "binary", "url": url, "module": module})
     return tools
