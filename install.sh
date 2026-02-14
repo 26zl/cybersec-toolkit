@@ -788,6 +788,7 @@ install_modules() {
         # doesn't interleave on the terminal.  The log file still gets everything
         # because log_message() opens it explicitly via >> "$LOG_FILE".
         local _active_methods=()
+        local _job_pids=()
 
         # pipx (sequential within — venv lock)
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
@@ -797,6 +798,7 @@ install_modules() {
                 install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
             ) > /dev/null &
+            _job_pids+=($!)
         fi
 
         # Go (parallelized within via global semaphore)
@@ -807,6 +809,7 @@ install_modules() {
                 install_go_batch "All modules - Go" "${_ALL_GO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
             ) > /dev/null &
+            _job_pids+=($!)
         fi
 
         # Cargo (sequential within — registry lock)
@@ -817,6 +820,7 @@ install_modules() {
                 install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
             ) > /dev/null &
+            _job_pids+=($!)
         fi
 
         # Gems (sequential within — gem dir lock)
@@ -827,6 +831,7 @@ install_modules() {
                 install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
             ) > /dev/null &
+            _job_pids+=($!)
         fi
 
         # Git repos (parallelized within via global semaphore)
@@ -837,6 +842,7 @@ install_modules() {
                 install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
             ) > /dev/null &
+            _job_pids+=($!)
         fi
 
         # Binary releases (parallelized within via global semaphore)
@@ -847,11 +853,15 @@ install_modules() {
                 install_binary_releases "${_ALL_BINARY[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"
             ) > /dev/null &
+            _job_pids+=($!)
         fi
 
         # Show a single spinner while all parallel methods run
         _start_spinner "Stage 3/4: ${_active_methods[*]}"
-        wait
+        # Wait only for install jobs, not the spinner background process
+        for _pid in "${_job_pids[@]}"; do
+            wait "$_pid" 2>/dev/null || true
+        done
         _stop_spinner
 
         # Clean up global semaphore and restore default signal handling

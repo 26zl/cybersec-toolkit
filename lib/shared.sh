@@ -195,7 +195,7 @@ ensure_cargo() {
     _rustup_tmp=$(mktemp)
     if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
             && grep -q 'rustup' "$_rustup_tmp" && grep -q 'cargo' "$_rustup_tmp" \
-            && sh "$_rustup_tmp" -s -- -y >> "$LOG_FILE" 2>&1; then
+            && bash "$_rustup_tmp" -s -- -y >> "$LOG_FILE" 2>&1; then
         # Add cargo to PATH for the current session
         if [[ -f "$HOME/.cargo/env" ]]; then
             # shellcheck disable=SC1091  # File may not exist on all systems

@@ -722,6 +722,10 @@ setup_git_repo() {
             python3 -m venv "$dest/venv" 2>>"$LOG_FILE" || return 0
         fi
         "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
+        # Replace abandoned pycrypto with drop-in pycryptodome (Python 3.12+ compat)
+        if grep -qi 'pycrypto' "$dest/requirements.txt" 2>/dev/null; then
+            sed -i 's/^pycrypto.*/pycryptodome/i' "$dest/requirements.txt"
+        fi
         if ! "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1; then
             log_warn "pip install failed for $name (some dependencies may be missing)"
             _SETUP_GIT_DEP_WARN=true
