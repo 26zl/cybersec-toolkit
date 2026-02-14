@@ -942,7 +942,8 @@ _stop_progress_display() {
                 [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
 
                 # Full bar for completed, empty for skipped
-                local bar_width=20 bar="" i filled=$bar_width
+                local bar_width=20 bar="" i
+                local filled=$bar_width
                 [[ "$total" -eq 0 ]] && filled=0
                 for ((i = 0; i < filled; i++)); do bar+="$_bar_full"; done
                 for ((i = filled; i < bar_width; i++)); do bar+="$_bar_empty"; done

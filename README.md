@@ -46,6 +46,13 @@ docker build -t cybersec-installer .
 docker run cybersec-installer --profile ctf
 ```
 
+**macOS (Apple Silicon):** Add `--platform linux/amd64` to both commands to run via x86 emulation:
+
+```bash
+docker build --platform linux/amd64 -t cybersec-installer .
+docker run --platform linux/amd64 cybersec-installer --profile ctf
+```
+
 ### All flags
 
 ```bash
