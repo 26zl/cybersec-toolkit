@@ -17,12 +17,7 @@ BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
 [[ -d "$BACKUP_DIR" ]] || mkdir -p "$BACKUP_DIR"
-LOG_FILE="$BACKUP_DIR/backup.log"
-if : > "$LOG_FILE" 2>/dev/null; then
-    chmod 644 "$LOG_FILE" 2>/dev/null || true
-else
-    LOG_FILE="/dev/null"
-fi
+_init_log_file "$BACKUP_DIR/backup.log"
 
 # Helpers
 ensure_dir() {
@@ -66,6 +61,19 @@ _prompt_passphrase() {
     _PASSPHRASE="$passphrase"
 }
 
+# _read_passphrase_to_file — read a decryption passphrase interactively and
+# write it to a secure temp file.  Sets _PASS_FILE to the temp file path.
+# Caller must rm -f "$_PASS_FILE" when done.
+_read_passphrase_to_file() {
+    local passphrase
+    read -rsp "Enter decryption passphrase: " passphrase
+    echo ""
+    _PASS_FILE=$(mktemp)
+    chmod 600 "$_PASS_FILE"
+    printf '%s' "$passphrase" > "$_PASS_FILE"
+    unset passphrase
+}
+
 encrypt_archive() {
     local archive_path="$1"
 
@@ -94,23 +102,15 @@ decrypt_archive() {
     local encrypted_path="$1"
     local output_path="${encrypted_path%.enc}"
 
-    local passphrase
-    read -rsp "Enter decryption passphrase: " passphrase
-    echo ""
+    _read_passphrase_to_file
 
-    local pass_file
-    pass_file=$(mktemp)
-    chmod 600 "$pass_file"
-    printf '%s' "$passphrase" > "$pass_file"
-
-    unset passphrase
     if openssl enc -chacha20 -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
-        -in "$encrypted_path" -out "$output_path" -pass file:"$pass_file" 2>/dev/null; then
-        rm -f "$pass_file"
+        -in "$encrypted_path" -out "$output_path" -pass file:"$_PASS_FILE" 2>/dev/null; then
+        rm -f "$_PASS_FILE"
         log_success "Archive decrypted: $output_path"
         return 0
     else
-        rm -f "$pass_file" "$output_path"
+        rm -f "$_PASS_FILE" "$output_path"
         log_error "Decryption failed (wrong passphrase?)"
         return 1
     fi
@@ -121,26 +121,18 @@ decrypt_files_legacy() {
     local source_dir="$1"
     local target_dir="$2"
 
-    local passphrase
-    read -rsp "Enter decryption passphrase: " passphrase
-    echo ""
+    _read_passphrase_to_file
 
-    local pass_file
-    pass_file=$(mktemp)
-    chmod 600 "$pass_file"
-    printf '%s' "$passphrase" > "$pass_file"
-
-    unset passphrase
     while IFS= read -r -d '' file; do
         local relative_path="${file#"$source_dir"/}"
         local decrypted_path="$target_dir/${relative_path%.enc}"
         ensure_dir "$(dirname "$decrypted_path")"
-        openssl enc -aes-256-cbc -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" -in "$file" -out "$decrypted_path" -pass file:"$pass_file" 2>/dev/null && \
+        openssl enc -aes-256-cbc -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" -in "$file" -out "$decrypted_path" -pass file:"$_PASS_FILE" 2>/dev/null && \
             log_success "Decrypted: $relative_path" || \
             log_warn "Failed to decrypt: $relative_path"
     done < <(find "$source_dir" -type f -name "*.enc" -print0)
 
-    rm -f "$pass_file"
+    rm -f "$_PASS_FILE"
 }
 
 # Backup config dirs (silently skip missing ones)

@@ -46,7 +46,18 @@ REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
 FAST_MODE="${FAST_MODE:-false}"
 
 usage() {
-    cat << 'EOF'
+    # Build profile and module lists dynamically from filesystem / registry
+    local _profiles=""
+    for _pf in "$SCRIPT_DIR"/profiles/*.conf; do
+        [[ -f "$_pf" ]] || continue
+        local _pn; _pn=$(basename "$_pf" .conf)
+        [[ -n "$_profiles" ]] && _profiles+=", "
+        _profiles+="$_pn"
+    done
+    local _modules="${ALL_MODULES[*]}"
+    _modules="${_modules// /, }"
+
+    cat << EOF
 CyberSec Tools Installer — Production-Grade Security Toolkit
 
 Usage: sudo ./install.sh [OPTIONS]        # Linux (requires root)
@@ -54,14 +65,9 @@ Usage: sudo ./install.sh [OPTIONS]        # Linux (requires root)
 
 Options:
   --profile <name>     Install a predefined tool profile:
-                         full, ctf, redteam, web, osint, forensics,
-                         pwn, mobile, cloud, blockchain, wireless,
-                         crackstation, lightweight, blueteam
+                         ${_profiles}
   --module <name>      Install specific module(s). Can be repeated.
-                         Modules: misc, networking, recon, web, crypto,
-                         pwn, reversing, forensics, enterprise, wireless,
-                         cracking, stego, cloud, containers, blueteam,
-                         mobile, blockchain, llm
+                         Modules: ${_modules}
   --tool <name>        Install a single tool by name. Can be repeated.
                          Searches all modules for a matching package,
                          pipx tool, Go binary, cargo crate, gem, or repo.
@@ -137,24 +143,9 @@ list_profiles() {
 list_modules() {
     echo "Available modules:"
     echo ""
-    printf "  %-16s %s\n" "misc"       "Security tools, utilities, resources, C2, social engineering"
-    printf "  %-16s %s\n" "networking" "Port scanning, packet capture, tunneling, MITM"
-    printf "  %-16s %s\n" "recon"      "Subdomain enum, OSINT, intelligence gathering"
-    printf "  %-16s %s\n" "web"        "Web app testing, fuzzing, scanning"
-    printf "  %-16s %s\n" "crypto"     "Cryptography analysis, cipher cracking"
-    printf "  %-16s %s\n" "pwn"        "Binary exploitation, shellcode, fuzzers"
-    printf "  %-16s %s\n" "reversing"  "Disassembly, debugging, binary analysis"
-    printf "  %-16s %s\n" "forensics"  "Disk/memory forensics, file carving"
-    printf "  %-16s %s\n" "enterprise" "AD, Kerberos, LDAP, Azure AD, lateral movement"
-    printf "  %-16s %s\n" "wireless"   "WiFi, Bluetooth, SDR"
-    printf "  %-16s %s\n" "cracking"   "Hash cracking, brute force, wordlists"
-    printf "  %-16s %s\n" "stego"      "Steganography tools"
-    printf "  %-16s %s\n" "cloud"      "AWS/Azure/GCP security"
-    printf "  %-16s %s\n" "containers" "Docker/Kubernetes security"
-    printf "  %-16s %s\n" "blueteam"   "Defensive security, IDS/IPS, SIEM, IR, malware analysis"
-    printf "  %-16s %s\n" "mobile"     "Android/iOS app testing, APK analysis"
-    printf "  %-16s %s\n" "blockchain" "Smart contract auditing, analysis, reversing"
-    printf "  %-16s %s\n" "llm"        "LLM red teaming, prompt injection, AI security"
+    for mod in "${ALL_MODULES[@]}"; do
+        printf "  %-16s %s\n" "$mod" "${MODULE_DESCRIPTIONS[$mod]:-}"
+    done
     echo ""
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
         echo "Usage: ./install.sh --module <name> [--module <name> ...]"
@@ -189,7 +180,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)         DRY_RUN=true; shift ;;
         -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
                            PARALLEL_JOBS="$2"
-                           # Validate: must be a positive integer, clamped to 1-16
+                           # Validation handled by lib/common.sh on next source
                            if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
                                PARALLEL_JOBS=4
                            elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
@@ -584,18 +575,8 @@ main() {
     check_root
     print_banner
 
-    if [[ "$PKG_MANAGER" == "unknown" ]]; then
-        log_error "Unsupported distribution — could not detect package manager"
-        log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
-        exit 1
-    fi
-
-    # Verbose mode: log system environment and enable bash trace
-    if [[ "$VERBOSE" == "true" ]]; then
-        log_info "Verbose mode enabled"
-        log_system_environment
-        enable_debug_trace
-    fi
+    _check_pkg_manager
+    _setup_verbose
 
     # Termux: Docker and snap are not available
     if [[ "$PKG_MANAGER" == "pkg" ]] && [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then

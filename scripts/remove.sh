@@ -17,14 +17,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/shared.sh"
-
-# Source all modules to get tool arrays (ALL_MODULES defined in lib/common.sh)
-for mod in "${ALL_MODULES[@]}"; do
-    source "$SCRIPT_DIR/modules/${mod}.sh"
-done
+_source_all_modules "$SCRIPT_DIR"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    cat << 'EOF'
+    cat << EOF
 CyberSec Tools — Removal Script
 
 Usage: sudo ./scripts/remove.sh [OPTIONS]    # Linux (requires root)
@@ -41,9 +37,7 @@ Options:
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
-Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         enterprise, wireless, cracking, stego, cloud, containers, blueteam,
-         mobile, blockchain, llm
+Modules: $(IFS=', '; echo "${ALL_MODULES[*]}")
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems).
@@ -75,13 +69,7 @@ if [[ ${#REMOVE_MODULES[@]} -eq 0 ]]; then
     REMOVE_MODULES=("${ALL_MODULES[@]}")
 fi
 
-LOG_FILE="$SCRIPT_DIR/tool_removal.log"
-if : > "$LOG_FILE" 2>/dev/null; then
-    chmod 644 "$LOG_FILE" 2>/dev/null || true
-else
-    # Disk full or read-only — log to /dev/null so redirections never fail
-    LOG_FILE="/dev/null"
-fi
+_init_log_file "$SCRIPT_DIR/tool_removal.log"
 
 check_root
 print_banner
@@ -113,17 +101,8 @@ if [[ "$_avail_mb" =~ ^[0-9]+$ ]] && [[ "$_avail_mb" -lt 100 ]]; then
     fi
 fi
 
-if [[ "$PKG_MANAGER" == "unknown" ]]; then
-    log_error "Unsupported distribution — could not detect package manager"
-    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
-    exit 1
-fi
-
-if [[ "$VERBOSE" == "true" ]]; then
-    log_info "Verbose mode enabled"
-    log_system_environment
-    enable_debug_trace
-fi
+_check_pkg_manager
+_setup_verbose
 
 # Confirmation
 if [[ "$AUTO_YES" == "false" ]]; then
@@ -683,21 +662,8 @@ fi
 
 disable_debug_trace
 
-END_TIME=$(date +%s)
-ELAPSED=$(( END_TIME - START_TIME ))
-MINUTES=$(( ELAPSED / 60 ))
-SECONDS_R=$(( ELAPSED % 60 ))
-
-echo ""
-if [[ "$REMOVAL_FAILURES" -gt 0 ]]; then
-    _separator_line "$YELLOW"
-    log_warn "Removal finished with $REMOVAL_FAILURES failure(s) (${MINUTES}m ${SECONDS_R}s)"
-    _separator_line "$YELLOW"
-else
-    _separator_line "$GREEN"
-    log_success "Removal complete! (${MINUTES}m ${SECONDS_R}s)"
-    _separator_line "$GREEN"
-fi
+_print_completion_banner "$START_TIME" "$REMOVAL_FAILURES" \
+    "$(if [[ "$REMOVAL_FAILURES" -gt 0 ]]; then echo "Removal finished with $REMOVAL_FAILURES failure(s)"; else echo "Removal complete!"; fi)"
 log_info "Modules removed: ${REMOVE_MODULES[*]}"
 [[ "$DEEP_CLEAN" == "true" ]] && log_info "Deep clean: enabled"
 log_info "Log file: $LOG_FILE"

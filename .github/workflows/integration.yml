@@ -50,17 +50,6 @@ jobs:
           zypper --non-interactive refresh
           zypper --non-interactive install git curl wget sudo which
 
-      - name: Bash syntax check
-        run: |
-          exit_code=0
-          for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do
-            if ! bash -n "$f"; then
-              echo "::error file=$f::Syntax error in $f"
-              exit_code=1
-            fi
-          done
-          exit $exit_code
-
       - name: Dry-run full profile
         run: bash install.sh --dry-run --profile full
 

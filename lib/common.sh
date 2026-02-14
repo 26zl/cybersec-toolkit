@@ -60,6 +60,28 @@ disable_debug_trace() {
     fi
 }
 
+# _init_log_file — safely initialize a log file with disk-full fallback.
+# Sets LOG_FILE to /dev/null if the file cannot be created.
+# Usage: _init_log_file "/path/to/logfile.log"
+_init_log_file() {
+    local path="$1"
+    if : > "$path" 2>/dev/null; then
+        chmod 644 "$path" 2>/dev/null || true
+        LOG_FILE="$path"
+    else
+        LOG_FILE="/dev/null"
+    fi
+}
+
+# _setup_verbose — common verbose mode setup (log environment + enable trace).
+# Usage: _setup_verbose
+_setup_verbose() {
+    [[ "$VERBOSE" == "true" ]] || return 0
+    log_info "Verbose mode enabled"
+    log_system_environment
+    enable_debug_trace
+}
+
 # Reusable UI primitives
 # _separator_line — print a colored horizontal rule using Unicode box-drawing ━
 # Usage: _separator_line "$GREEN"   or   _separator_line "$YELLOW"
@@ -70,6 +92,28 @@ _separator_line() {
     local _i
     for ((_i = 0; _i < 45; _i++)); do _line+="$_hl"; done
     printf '%b\n' "${_color}${BOLD}${_line}${NC}"
+}
+
+# _print_completion_banner — print elapsed time and success/failure banner.
+# Usage: _print_completion_banner "$START_TIME" "$FAILURE_COUNT" "Verification"
+_print_completion_banner() {
+    local start_time="$1" failure_count="$2" label="$3"
+    local end_time elapsed minutes seconds_r
+    end_time=$(date +%s)
+    elapsed=$(( end_time - start_time ))
+    minutes=$(( elapsed / 60 ))
+    seconds_r=$(( elapsed % 60 ))
+
+    echo ""
+    if [[ "$failure_count" -gt 0 ]]; then
+        _separator_line "$YELLOW"
+        log_warn "$label (${minutes}m ${seconds_r}s)"
+        _separator_line "$YELLOW"
+    else
+        _separator_line "$GREEN"
+        log_success "$label (${minutes}m ${seconds_r}s)"
+        _separator_line "$GREEN"
+    fi
 }
 
 # System environment logging
@@ -141,17 +185,13 @@ _disk_hint() {
 check_disk_space() {
     local num_modules="${1:-18}"
 
-    # Determine check path: Termux uses $HOME, Linux uses /
-    local check_path="/"
-    [[ "$PKG_MANAGER" == "pkg" ]] && check_path="$HOME"
-
-    # Get available space in KB (compatible with Linux and Termux)
-    local avail_kb
-    avail_kb=$(df -Pk "$check_path" 2>/dev/null | awk 'NR==2{print $4}')
-    if [[ -z "$avail_kb" || ! "$avail_kb" =~ ^[0-9]+$ ]]; then
+    local avail_mb
+    avail_mb=$(_avail_disk_mb 2>/dev/null) || avail_mb=0
+    if [[ "$avail_mb" -eq 0 ]]; then
         log_warn "Could not determine available disk space — skipping check"
         return 0
     fi
+    local avail_kb=$(( avail_mb * 1024 ))
 
     # WSL fix: df / shows the virtual ext4 disk (up to 1TB), not actual free
     # space on the Windows host drive. Check /mnt/c and use the lower value.
@@ -549,6 +589,16 @@ check_root() {
     [[ "$PKG_MANAGER" == "pkg" ]] && return 0
     if [[ $EUID -ne 0 ]]; then
         log_error "This script must be run as root or with sudo."
+        exit 1
+    fi
+}
+
+# _check_pkg_manager — fail early if the distro/package manager is unsupported.
+# Usage: _check_pkg_manager
+_check_pkg_manager() {
+    if [[ "$PKG_MANAGER" == "unknown" ]]; then
+        log_error "Unsupported distribution — could not detect package manager"
+        log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
         exit 1
     fi
 }
@@ -1032,9 +1082,31 @@ BANNER
     echo ""
 }
 
-# Module registry (single source of truth) 
+# Module registry (single source of truth)
 # shellcheck disable=SC2034  # Used by all scripts that source this file
 ALL_MODULES=(misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
+
+# Module descriptions (single source of truth for --list-modules and help text)
+declare -A MODULE_DESCRIPTIONS=(
+    [misc]="Security tools, utilities, resources, C2, social engineering"
+    [networking]="Port scanning, packet capture, tunneling, MITM"
+    [recon]="Subdomain enum, OSINT, intelligence gathering"
+    [web]="Web app testing, fuzzing, scanning"
+    [crypto]="Cryptography analysis, cipher cracking"
+    [pwn]="Binary exploitation, shellcode, fuzzers"
+    [reversing]="Disassembly, debugging, binary analysis"
+    [forensics]="Disk/memory forensics, file carving"
+    [enterprise]="AD, Kerberos, LDAP, Azure AD, lateral movement"
+    [wireless]="WiFi, Bluetooth, SDR"
+    [cracking]="Hash cracking, brute force, wordlists"
+    [stego]="Steganography tools"
+    [cloud]="AWS/Azure/GCP security"
+    [containers]="Docker/Kubernetes security"
+    [blueteam]="Defensive security, IDS/IPS, SIEM, IR, malware analysis"
+    [mobile]="Android/iOS app testing, APK analysis"
+    [blockchain]="Smart contract auditing, analysis, reversing"
+    [llm]="LLM red teaming, prompt injection, AI security"
+)
 
 # Module name → array prefix mapping
 _module_prefix() {
@@ -1067,6 +1139,15 @@ _collect_module_arrays() {
     for _mod in "${ALL_MODULES[@]}"; do
         _prefix=$(_module_prefix "$_mod")
         _append_module_array _cma_dest "${_prefix}_${_suffix}"
+    done
+}
+
+# _source_all_modules — source every module file listed in ALL_MODULES.
+# Usage: _source_all_modules "$SCRIPT_DIR"
+_source_all_modules() {
+    local _sam_dir="$1"
+    for _sam_mod in "${ALL_MODULES[@]}"; do
+        source "$_sam_dir/modules/${_sam_mod}.sh"
     done
 }
 

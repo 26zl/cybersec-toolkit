@@ -57,6 +57,20 @@ install_shared_deps() {
     done
 }
 
+# _version_ge — compare two major.minor version strings.
+# Returns 0 (true) if $1 >= $2, 1 (false) otherwise.
+# Usage: _version_ge "1.23" "1.21" && echo "ok"
+_version_ge() {
+    local cur="$1" min="$2"
+    local cur_major cur_minor min_major min_minor
+    cur_major=${cur%%.*}
+    cur_minor=${cur#*.}; cur_minor=${cur_minor%%.*}
+    min_major=${min%%.*}
+    min_minor=${min#*.}; min_minor=${min_minor%%.*}
+    [[ "$cur_major" -gt "$min_major" ]] && return 0
+    [[ "$cur_major" -eq "$min_major" && "$cur_minor" -ge "$min_minor" ]]
+}
+
 # ensure_go — install modern Go from go.dev when the system package is too old.
 # Many security tools (projectdiscovery, etc.) require Go >= 1.21.
 # Ubuntu 22.04 ships Go 1.18, Debian 12 ships Go 1.19 — both too old.
@@ -68,14 +82,7 @@ ensure_go() {
         local current
         current=$(go version 2>/dev/null | awk '{print $3}' | sed 's/^go//')
         if [[ -n "$current" ]]; then
-            # Compare major.minor against minimum
-            local cur_major cur_minor min_major min_minor
-            cur_major=${current%%.*}
-            cur_minor=${current#*.}; cur_minor=${cur_minor%%.*}
-            min_major=${GO_MIN_VERSION%%.*}
-            min_minor=${GO_MIN_VERSION#*.}; min_minor=${min_minor%%.*}
-            if [[ "$cur_major" -gt "$min_major" ]] || \
-               { [[ "$cur_major" -eq "$min_major" ]] && [[ "$cur_minor" -ge "$min_minor" ]]; }; then
+            if _version_ge "$current" "$GO_MIN_VERSION"; then
                 log_success "Go $current available (>= $GO_MIN_VERSION)"
                 return 0
             fi
@@ -282,13 +289,7 @@ ensure_python_modern() {
     fi
 
     if [[ -n "$cur_version" ]]; then
-        local cur_major cur_minor min_major min_minor
-        cur_major=${cur_version%%.*}
-        cur_minor=${cur_version#*.}
-        min_major=${PYTHON_MIN_VERSION%%.*}
-        min_minor=${PYTHON_MIN_VERSION#*.}
-        if [[ "$cur_major" -gt "$min_major" ]] || \
-           { [[ "$cur_major" -eq "$min_major" ]] && [[ "$cur_minor" -ge "$min_minor" ]]; }; then
+        if _version_ge "$cur_version" "$PYTHON_MIN_VERSION"; then
             log_success "Python $cur_version available (>= $PYTHON_MIN_VERSION)"
             export PIPX_DEFAULT_PYTHON="python3"
             return 0

@@ -16,14 +16,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/shared.sh"
-
-# Source all modules to get tool arrays (ALL_MODULES defined in lib/common.sh)
-for mod in "${ALL_MODULES[@]}"; do
-    source "$SCRIPT_DIR/modules/${mod}.sh"
-done
+_source_all_modules "$SCRIPT_DIR"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    cat << 'EOF'
+    cat << EOF
 CyberSec Tools — Verification Script
 
 Usage: sudo ./scripts/verify.sh [OPTIONS]    # Linux
@@ -36,9 +32,7 @@ Options:
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
-Modules: misc, networking, recon, web, crypto, pwn, reversing, forensics,
-         enterprise, wireless, cracking, stego, cloud, containers, blueteam,
-         mobile, blockchain, llm
+Modules: $(IFS=', '; echo "${ALL_MODULES[*]}")
 EOF
     exit 0
 fi
@@ -82,9 +76,7 @@ _is_tracked() {
     echo "$_INSTALLED_TOOLS" | grep -qx "$1" 2>/dev/null
 }
 
-LOG_FILE="$SCRIPT_DIR/tool_verification.log"
-: > "$LOG_FILE"
-chmod 644 "$LOG_FILE" 2>/dev/null || true
+_init_log_file "$SCRIPT_DIR/tool_verification.log"
 
 TOTAL_CHECKED=0
 TOTAL_FOUND=0
@@ -264,10 +256,7 @@ if [[ "$PKG_MANAGER" == "unknown" ]]; then
     log_warn "Unknown distribution — package-level checks may be inaccurate"
 fi
 
-if [[ "$VERBOSE" == "true" ]]; then
-    log_info "Verbose mode enabled"
-    log_system_environment
-fi
+_setup_verbose
 log_info "System Information:"
 log_info "  OS: $(uname -a)"
 log_info "  Kernel: $(uname -r)"
@@ -641,24 +630,13 @@ if command_exists docker; then
 fi
 
 # Summary
-END_TIME=$(date +%s)
-ELAPSED=$(( END_TIME - START_TIME ))
-MINUTES=$(( ELAPSED / 60 ))
-SECONDS_R=$(( ELAPSED % 60 ))
+disable_debug_trace
 
-echo ""
 _pct=0
 [[ "$TOTAL_CHECKED" -gt 0 ]] && _pct=$((TOTAL_FOUND * 100 / TOTAL_CHECKED))
 
-if [[ "$TOTAL_MISSING" -gt 0 ]]; then
-    _separator_line "$YELLOW"
-    log_warn "Verification complete (${MINUTES}m ${SECONDS_R}s)"
-    _separator_line "$YELLOW"
-else
-    _separator_line "$GREEN"
-    log_success "Verification complete! (${MINUTES}m ${SECONDS_R}s)"
-    _separator_line "$GREEN"
-fi
+_print_completion_banner "$START_TIME" "$TOTAL_MISSING" \
+    "$(if [[ "$TOTAL_MISSING" -gt 0 ]]; then echo "Verification complete"; else echo "Verification complete!"; fi)"
 log_success "Found:   $TOTAL_FOUND"
 if [[ "$TOTAL_MISSING" -gt 0 ]]; then
     log_error "Missing: $TOTAL_MISSING"

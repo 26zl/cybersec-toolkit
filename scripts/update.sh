@@ -16,11 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/shared.sh"
-
-# Source all modules to get tool arrays (ALL_MODULES defined in lib/common.sh)
-for mod in "${ALL_MODULES[@]}"; do
-    source "$SCRIPT_DIR/modules/${mod}.sh"
-done
+_source_all_modules "$SCRIPT_DIR"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     cat << 'EOF'
@@ -76,24 +72,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-LOG_FILE="$SCRIPT_DIR/tool_update.log"
-: > "$LOG_FILE"
-chmod 644 "$LOG_FILE" 2>/dev/null || true
+_init_log_file "$SCRIPT_DIR/tool_update.log"
 
 check_root
 print_banner
 
-if [[ "$PKG_MANAGER" == "unknown" ]]; then
-    log_error "Unsupported distribution — could not detect package manager"
-    log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
-    exit 1
-fi
-
-if [[ "$VERBOSE" == "true" ]]; then
-    log_info "Verbose mode enabled"
-    log_system_environment
-    enable_debug_trace
-fi
+_check_pkg_manager
+_setup_verbose
 
 START_TIME=$(date +%s)
 UPDATE_FAILURES=0
@@ -513,20 +498,9 @@ echo ""
 
 # Done
 disable_debug_trace
-END_TIME=$(date +%s)
-ELAPSED=$(( END_TIME - START_TIME ))
-MINUTES=$(( ELAPSED / 60 ))
-SECONDS_R=$(( ELAPSED % 60 ))
 
-if [[ "$UPDATE_FAILURES" -gt 0 ]]; then
-    _separator_line "$YELLOW"
-    log_warn "Update finished with $UPDATE_FAILURES failure(s) (${MINUTES}m ${SECONDS_R}s)"
-    _separator_line "$YELLOW"
-else
-    _separator_line "$GREEN"
-    log_success "Update complete! (${MINUTES}m ${SECONDS_R}s)"
-    _separator_line "$GREEN"
-fi
+_print_completion_banner "$START_TIME" "$UPDATE_FAILURES" \
+    "$(if [[ "$UPDATE_FAILURES" -gt 0 ]]; then echo "Update finished with $UPDATE_FAILURES failure(s)"; else echo "Update complete!"; fi)"
 log_info "Log file: $LOG_FILE"
 log_info "Run ./scripts/verify.sh to confirm all tools are working"
 

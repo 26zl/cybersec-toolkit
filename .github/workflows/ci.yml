@@ -106,7 +106,8 @@ jobs:
 
       - name: Validate profile configs
         run: |
-          VALID_MODULES="misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm"
+          # Extract valid modules dynamically from lib/common.sh (single source of truth)
+          VALID_MODULES=$(grep '^ALL_MODULES=' lib/common.sh | sed 's/ALL_MODULES=(//' | sed 's/)//')
           exit_code=0
 
           for conf in profiles/*.conf; do
