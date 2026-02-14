@@ -46,11 +46,22 @@ docker build -t cybersec-installer .
 docker run cybersec-installer --profile ctf
 ```
 
-**macOS (Apple Silicon):** Add `--platform linux/amd64` to both commands to run via x86 emulation:
+__macOS (Apple Silicon):__ Add `--platform linux/amd64` to both commands to run via x86 emulation:
 
 ```bash
 docker build --platform linux/amd64 -t cybersec-installer .
 docker run --platform linux/amd64 cybersec-installer --profile ctf
+```
+
+__Termux (Android, experimental):__
+
+> __Note:__ Termux support is under development and has not been fully tested on physical Android devices. Expect rough edges.
+
+```bash
+pkg install git
+git clone https://github.com/26zl/cybersec-tools-installer.git
+cd cybersec-tools-installer
+./install.sh --profile lightweight
 ```
 
 ### All flags
@@ -213,17 +224,6 @@ __Debian/Ubuntu/Kali is the primary target__ -- all 570+ tools available. Fedora
 | __Termux__ (Android) | Under development -- not fully tested on physical devices. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
 | __Windows__ (native) | Not supported. Use WSL. |
 | __macOS__ | Not supported. Use Docker container. |
-
-### Termux quick start (experimental)
-
-> __Note:__ Termux support is under development and has not been fully tested on physical Android devices. Expect rough edges.
-
-```bash
-pkg install git
-git clone https://github.com/26zl/cybersec-tools-installer.git
-cd cybersec-tools-installer
-./install.sh --profile lightweight
-```
 
 ## Supply Chain Model
 
