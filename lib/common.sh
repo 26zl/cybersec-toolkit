@@ -408,7 +408,7 @@ pkg_update() {
         apt)     maybe_sudo apt-get update -qq ;;
         dnf)     maybe_sudo dnf check-update --setopt=max_parallel_downloads=10 -q || true ;;
         pacman)  _enable_pacman_parallel_downloads; maybe_sudo pacman -Sy --noconfirm ;;
-        zypper)  maybe_sudo zypper refresh -q ;;
+        zypper)  maybe_sudo zypper --non-interactive refresh -q ;;
         pkg)     pkg update -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -425,7 +425,7 @@ pkg_install() {
             fi
             ;;
         pacman)  maybe_sudo pacman -S --noconfirm --needed "$@" ;;
-        zypper)  maybe_sudo ZYPP_MEDIANETWORK=1 zypper install -y -q "$@" ;;
+        zypper)  maybe_sudo ZYPP_MEDIANETWORK=1 zypper --non-interactive install -q "$@" ;;
         pkg)     pkg install -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -436,7 +436,7 @@ pkg_remove() {
         apt)     maybe_sudo apt-get remove -y "$@" && maybe_sudo apt-get autoremove -y ;;
         dnf)     maybe_sudo dnf remove -y "$@" ;;
         pacman)  maybe_sudo pacman -Rns --noconfirm "$@" 2>/dev/null || true ;;
-        zypper)  maybe_sudo zypper remove -y "$@" ;;
+        zypper)  maybe_sudo zypper --non-interactive remove "$@" ;;
         pkg)     pkg uninstall -y "$@" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac
@@ -447,7 +447,7 @@ pkg_upgrade() {
         apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq ;;
         dnf)     maybe_sudo dnf upgrade -y -q ;;
         pacman)  maybe_sudo pacman -Syu --noconfirm ;;
-        zypper)  maybe_sudo zypper update -y -q ;;
+        zypper)  maybe_sudo zypper --non-interactive update -q ;;
         pkg)     pkg upgrade -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac

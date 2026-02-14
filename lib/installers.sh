@@ -167,7 +167,7 @@ fixup_package_names() {
                     netcat-openbsd)     pkg="netcat-openbsd" ;;
                     dnsutils)           pkg="bind-utils" ;;
                     build-essential)
-                        maybe_sudo zypper install -y -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
+                        maybe_sudo zypper --non-interactive install -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
                         continue ;;
                     default-jdk)        pkg="java-17-openjdk-devel" ;;
                     zlib1g-dev)         pkg="zlib-devel" ;;
