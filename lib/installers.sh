@@ -1362,24 +1362,28 @@ track_version() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
-    # Use flock with atomic temp-file replacement to prevent corruption.
-    # The entire read-filter-append-rename happens under a single lock.
-    (
-        flock -x 200
-
-        # Create version file if it doesn't exist
+    # Inner logic shared between locked and unlocked paths
+    _tv_write() {
         if [[ ! -f "$version_file" ]]; then
             echo "# tool|method|version|last_updated" > "$version_file"
             chmod 644 "$version_file" 2>/dev/null || true
         fi
-
-        # Atomic update: write filtered content + new entry to temp file, then rename
         local tmp_file
         tmp_file=$(mktemp "${version_file}.XXXXXX")
         grep -v "^${tool}|" "$version_file" > "$tmp_file" 2>/dev/null || true
         echo "${tool}|${method}|${version}|${timestamp}" >> "$tmp_file"
         mv -f "$tmp_file" "$version_file"
-    ) 200>"${version_file}.lock"
+    }
+
+    # Use flock when available (parallel safety), fall back to direct write
+    if command -v flock &>/dev/null; then
+        (
+            flock -x 200
+            _tv_write
+        ) 200>"${version_file}.lock"
+    else
+        _tv_write
+    fi
 }
 
 # Build from source helper
