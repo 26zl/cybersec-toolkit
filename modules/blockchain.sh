@@ -21,10 +21,12 @@ install_module_blockchain() {
     # solc (Solidity compiler) — not in standard repos, use snap if available
     if [[ "${SKIP_SOURCE:-false}" != "true" ]] && ! command_exists solc; then
         if snap_available; then
-            log_info "Installing solc via snap..."
+            _start_spinner "Installing solc via snap..."
             if snap_install solc >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
                 track_version "solc" "snap" "latest"
             else
+                _stop_spinner
                 log_warn "Failed to install solc via snap"
             fi
         else
@@ -53,8 +55,12 @@ install_module_blockchain() {
         fi
         rm -f "$_foundry_tmp"
         if [[ -f "$HOME/.foundry/bin/foundryup" ]]; then
+            _start_spinner "Running foundryup..."
             if "$HOME/.foundry/bin/foundryup" >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
                 track_version "foundry" "special" "latest"
+            else
+                _stop_spinner
             fi
         fi
     fi

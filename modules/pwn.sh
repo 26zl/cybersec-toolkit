@@ -32,15 +32,12 @@ PWN_GIT=(
     "DNSExfiltrator=https://github.com/Arno0x/DNSExfiltrator.git"
     "Egress-Assess=https://github.com/FortyNorthSecurity/Egress-Assess.git"
     "Ivy=https://github.com/optiv/Ivy.git"
-    "macro_pack=https://github.com/sevagas/macro_pack.git"
-    "EvilClippy=https://github.com/outflanknl/EvilClippy.git"
-    "inceptor=https://github.com/klezVirus/inceptor.git"
     "Villain=https://github.com/t3l3machus/Villain.git"
 )
 
 PWN_CARGO=(pwninit)
 PWN_GO_BINS=(interactsh-client)
-PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow Freeze nanodump eviltree Hoaxshell QueenSono DNSExfiltrator Egress-Assess Ivy macro_pack EvilClippy inceptor Villain)
+PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow Freeze nanodump eviltree Hoaxshell QueenSono DNSExfiltrator Egress-Assess Ivy Villain)
 PWN_BUILD_NAMES=(preeny AFLplusplus honggfuzz radamsa)
 
 install_module_pwn() {
@@ -56,7 +53,10 @@ install_module_pwn() {
     # Build from source
     log_info "Building pwn tools from source..."
     build_from_source "preeny" "https://github.com/zardus/preeny.git" "make" || true
-    build_from_source "AFLplusplus" "https://github.com/AFLplusplus/AFLplusplus.git" "make distrib" || true
+    # 'make source-only' builds the core afl-fuzz binary without optional QEMU/FRIDA/
+    # unicorn sub-modules that require extra dependencies and often fail on VMs.
+    # 'make distrib' would build everything but many optional targets fail.
+    build_from_source "AFLplusplus" "https://github.com/AFLplusplus/AFLplusplus.git" "make source-only" || true
     build_from_source "honggfuzz" "https://github.com/google/honggfuzz.git" "make" || true
     build_from_source "radamsa" "https://gitlab.com/akihe/radamsa.git" "make" || true
 

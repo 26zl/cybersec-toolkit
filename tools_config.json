@@ -1470,18 +1470,6 @@
     "url": "https://github.com/optiv/Ivy"
   },
   {
-    "name": "macro_pack",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/sevagas/macro_pack"
-  },
-  {
-    "name": "inceptor",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/klezVirus/inceptor"
-  },
-  {
     "name": "pwninit",
     "method": "cargo",
     "module": "pwn",
@@ -1980,7 +1968,7 @@
     "url": ""
   },
   {
-    "name": "yara-x",
+    "name": "yara-x-cli",
     "method": "cargo",
     "module": "blueteam",
     "url": "https://github.com/VirusTotal/yara-x"
@@ -2178,18 +2166,6 @@
     "url": "https://github.com/lgandx/Responder"
   },
   {
-    "name": "Rubeus",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/GhostPack/Rubeus"
-  },
-  {
-    "name": "ADRecon",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/adrecon/ADRecon"
-  },
-  {
     "name": "enum4linux-ng",
     "method": "git",
     "module": "enterprise",
@@ -2208,64 +2184,10 @@
     "url": "https://github.com/lgandx/PCredz"
   },
   {
-    "name": "WMIOps",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/FortyNorthSecurity/WMIOps"
-  },
-  {
-    "name": "MailSniper",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/dafthack/MailSniper"
-  },
-  {
-    "name": "Invoke-Obfuscation",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/danielbohannon/Invoke-Obfuscation"
-  },
-  {
-    "name": "Snaffler",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/SnaffCon/Snaffler"
-  },
-  {
-    "name": "GraphRunner",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/dafthack/GraphRunner"
-  },
-  {
-    "name": "TokenTactics",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/rvrsh3ll/TokenTactics"
-  },
-  {
-    "name": "Invoke-TheHash",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Kevin-Robertson/Invoke-TheHash"
-  },
-  {
-    "name": "SCShell",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Mr-Un1k0d3r/SCShell"
-  },
-  {
     "name": "krbrelayx",
     "method": "git",
     "module": "enterprise",
     "url": "https://github.com/dirkjanm/krbrelayx"
-  },
-  {
-    "name": "nishang",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/samratashok/nishang"
   },
   {
     "name": "spraykatz",
@@ -2710,12 +2632,6 @@
     "method": "git",
     "module": "wireless",
     "url": "https://github.com/soxrok2212/PSKracker"
-  },
-  {
-    "name": "pwnagotchi",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/evilsocket/pwnagotchi"
   },
   {
     "name": "eaphammer",
@@ -3442,12 +3358,6 @@
     "method": "git",
     "module": "web",
     "url": "https://github.com/tarunkant/Gopherus"
-  },
-  {
-    "name": "EvilClippy",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/outflanknl/EvilClippy"
   },
   {
     "name": "pwndb",

@@ -9,7 +9,7 @@ BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw tiger d
 
 BLUETEAM_PIPX=(sigma-cli bandit quark-engine)
 
-BLUETEAM_CARGO=(yara-x)
+BLUETEAM_CARGO=(yara-x-cli)
 
 BLUETEAM_GIT=(
     "sigma-rules=https://github.com/SigmaHQ/sigma.git"
@@ -24,6 +24,12 @@ install_module_blueteam() {
     install_apt_batch "Blue Team - Packages" "${BLUETEAM_PACKAGES[@]}"
     install_pipx_batch "Blue Team - Python" "${BLUETEAM_PIPX[@]}"
     install_cargo_batch "Blue Team - Cargo" "${BLUETEAM_CARGO[@]}"
+
+    # yara-x-cli installs its binary as 'yr' — symlink to PATH
+    if [[ -f "$HOME/.cargo/bin/yr" ]] && [[ ! -f "$PIPX_BIN_DIR/yr" ]]; then
+        ln -sf "$HOME/.cargo/bin/yr" "$PIPX_BIN_DIR/yr" 2>/dev/null || true
+    fi
+
     install_git_batch "Blue Team - Git" "${BLUETEAM_GIT[@]}"
 
     # Binary releases (Velociraptor, Laurel, FLOSS, Capa, Loki)

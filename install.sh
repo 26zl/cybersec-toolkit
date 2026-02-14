@@ -371,9 +371,9 @@ install_single_tool() {
     if [[ "$tool" == "promptfoo" ]]; then
         ensure_node || { log_error "Node.js/npm not available — cannot install $tool"; return 1; }
         log_info "Installing $tool via npm..."
-        if npm install -g "$tool" >> "$LOG_FILE" 2>&1; then
+        if npm install -g "$tool@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1; then
             log_success "Installed: $tool"
-            track_version "$tool" "npm" "latest"
+            track_version "$tool" "npm" "$PROMPTFOO_VERSION"
         else
             log_error "Failed: $tool"
         fi
@@ -572,7 +572,7 @@ fi
 # Main installation
 LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
 if : > "$LOG_FILE" 2>/dev/null; then
-    chmod 600 "$LOG_FILE" 2>/dev/null || true
+    chmod 644 "$LOG_FILE" 2>/dev/null || true
 else
     LOG_FILE="/dev/null"
 fi
@@ -661,6 +661,7 @@ main() {
         echo ""
 
         # Ensure additional toolchains are available
+        ensure_python_modern
         ensure_pipx
         ensure_go
         ensure_cargo
@@ -715,6 +716,11 @@ main() {
     log_info "  Cargo tools:      $PIPX_BIN_DIR/ (symlinked)"
     log_info "  GitHub repos:     $GITHUB_TOOL_DIR/"
     log_info "  Binary releases:  $PIPX_BIN_DIR/"
+    echo ""
+    log_info "Next steps:"
+    log_info "  Verify installation:  sudo ./scripts/verify.sh"
+    log_info "  Update tools later:   sudo ./scripts/update.sh"
+    log_info "  Backup configs:       sudo ./scripts/backup.sh"
     echo ""
 
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
@@ -778,76 +784,102 @@ install_modules() {
         # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
         trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _cleanup_global_semaphore; rm -rf "$_fail_dir"; exit 130' INT TERM
 
+        # Subshells redirect stdout to /dev/null so their log_message() output
+        # doesn't interleave on the terminal.  The log file still gets everything
+        # because log_message() opens it explicitly via >> "$LOG_FILE".
+        local _active_methods=()
+
         # pipx (sequential within — venv lock)
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
+            _active_methods+=("pipx(${#_ALL_PIPX[@]})")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
-            ) &
+            ) > /dev/null &
         fi
 
         # Go (parallelized within via global semaphore)
         if [[ ${#_ALL_GO[@]} -gt 0 ]]; then
+            _active_methods+=("Go(${#_ALL_GO[@]})")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_go_batch "All modules - Go" "${_ALL_GO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
-            ) &
+            ) > /dev/null &
         fi
 
         # Cargo (sequential within — registry lock)
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]]; then
+            _active_methods+=("Cargo(${#_ALL_CARGO[@]})")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
-            ) &
+            ) > /dev/null &
         fi
 
         # Gems (sequential within — gem dir lock)
         if [[ ${#_ALL_GEMS[@]} -gt 0 ]]; then
+            _active_methods+=("Gems(${#_ALL_GEMS[@]})")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
-            ) &
+            ) > /dev/null &
         fi
 
         # Git repos (parallelized within via global semaphore)
         if [[ ${#_ALL_GIT[@]} -gt 0 ]]; then
+            _active_methods+=("Git(${#_ALL_GIT[@]})")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
-            ) &
+            ) > /dev/null &
         fi
 
         # Binary releases (parallelized within via global semaphore)
         if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then
+            _active_methods+=("Binary(${#_ALL_BINARY[@]})")
             (
                 TOTAL_TOOL_FAILURES=0
                 install_binary_releases "${_ALL_BINARY[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"
-            ) &
+            ) > /dev/null &
         fi
 
+        # Show a single spinner while all parallel methods run
+        _start_spinner "Stage 3/4: ${_active_methods[*]}"
         wait
+        _stop_spinner
 
         # Clean up global semaphore and restore default signal handling
         _cleanup_global_semaphore
         trap - INT TERM
 
-        # Sum failures from all parallel methods
+        # Sum failures from all parallel methods and print clean summary
         local _stage3_failures=0
         for _f in "$_fail_dir"/*.cnt; do
             [[ -f "$_f" ]] || continue
-            local _cnt
+            local _cnt _method
             _cnt=$(< "$_f")
+            _method=$(basename "$_f" .cnt)
             _stage3_failures=$((_stage3_failures + _cnt))
+            if [[ "$_cnt" -gt 0 ]]; then
+                log_warn "  ${_method}: ${_cnt} failure(s)"
+            else
+                log_success "  ${_method}: OK"
+            fi
         done
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + _stage3_failures))
         rm -rf "$_fail_dir"
+
+        if [[ "$_stage3_failures" -gt 0 ]]; then
+            log_warn "Stage 3/4 complete: ${_stage3_failures} tool(s) failed (see log for details)"
+        else
+            log_success "Stage 3/4 complete: all tools installed"
+        fi
     else
         # --- Sequential: PARALLEL_JOBS=1, run each batch inline ---
         log_info "Stage 3/4: Installing non-APT tools sequentially (pipx, Go, Cargo, Gems, Git, Binary)..."
@@ -859,10 +891,10 @@ install_modules() {
         [[ ${#_ALL_BINARY[@]} -gt 0 ]] && install_binary_releases "${_ALL_BINARY[@]}"
     fi
 
-    # Track batch-stage failures at the module level for final summary
-    if [[ "$TOTAL_TOOL_FAILURES" -gt 0 ]]; then
-        log_warn "Batch install stages: $TOTAL_TOOL_FAILURES tool(s) failed"
-        TOTAL_MODULE_FAILURES=$((TOTAL_MODULE_FAILURES + 1))
+    # Track batch-stage failures (not counted as a module — tools span multiple modules)
+    local _batch_failures=$TOTAL_TOOL_FAILURES
+    if [[ "$_batch_failures" -gt 0 ]]; then
+        log_warn "Batch install stages: $_batch_failures tool(s) failed (see log for details)"
     fi
 
     # Stage 4/4: Module-specific custom logic ──

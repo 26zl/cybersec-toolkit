@@ -26,8 +26,8 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     cat << 'EOF'
 CyberSec Tools — Verification Script
 
-Usage: sudo ./scripts/verify.sh [OPTIONS]    # Linux (requires root)
-       ./scripts/verify.sh [OPTIONS]          # Termux (no root needed)
+Usage: sudo ./scripts/verify.sh [OPTIONS]    # Linux
+       ./scripts/verify.sh [OPTIONS]          # Termux
 
 Options:
   --module <name>    Verify specific module only (can be repeated)
@@ -66,10 +66,10 @@ fi
 # --installed-only: load tracked tools from .versions file
 _INSTALLED_TOOLS=""
 if [[ "$INSTALLED_ONLY" == "true" ]]; then
-    local_versions="$SCRIPT_DIR/.versions"
-    if [[ -f "$local_versions" ]]; then
-        _INSTALLED_TOOLS=$(awk -F'|' '!/^#/{print $1}' "$local_versions")
-        log_info "Filtering by ${local_versions} ($(echo "$_INSTALLED_TOOLS" | wc -l) tracked tools)"
+    _versions_file="$SCRIPT_DIR/.versions"
+    if [[ -f "$_versions_file" ]]; then
+        _INSTALLED_TOOLS=$(awk -F'|' '!/^#/{print $1}' "$_versions_file")
+        log_info "Filtering by ${_versions_file} ($(echo "$_INSTALLED_TOOLS" | wc -l) tracked tools)"
     else
         log_warn "No .versions file found — running full verification"
         INSTALLED_ONLY=false
@@ -84,7 +84,7 @@ _is_tracked() {
 
 LOG_FILE="$SCRIPT_DIR/tool_verification.log"
 : > "$LOG_FILE"
-chmod 600 "$LOG_FILE" 2>/dev/null || true
+chmod 644 "$LOG_FILE" 2>/dev/null || true
 
 TOTAL_CHECKED=0
 TOTAL_FOUND=0
@@ -133,24 +133,69 @@ check_dir() {
     fi
 }
 
+# Pipx package name → binary name mapping (only for tools where they differ).
+# Most pipx packages install a binary with the same name — these are the exceptions.
+declare -A _PIPX_BIN_NAMES=(
+    [arsenal-cli]="arsenal"
+    [sherlock-project]="sherlock"
+    [osrframework]="usufy"
+    [raccoon-scanner]="raccoon"
+    [factordb-python]="factordb"
+    [z3-solver]="z3"
+    [pwntools]="pwn"
+    [boofuzz]="boo"
+    [frida-tools]="frida"
+    [volatility3]="vol"
+    [oletools]="olevba"
+    [mvt]="mvt-android"
+    [hachoir]="hachoir-metadata"
+    [peepdf-3]="peepdf"
+    [impacket]="impacket-secretsdump"
+    [certipy-ad]="certipy"
+    [bloodhound]="bloodhound-python"
+    [ldapsearchad]="ldapsearch-ad.py"
+    [sipvicious]="sipvicious_svmap"
+    [scoutsuite]="scout"
+    [sigma-cli]="sigma"
+    [quark-engine]="quark"
+    [slither-analyzer]="slither"
+    [mythril]="myth"
+)
+
 check_pipx() {
     local tool="$1"
     _is_tracked "$tool" || return 0
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
 
+    # 1. Check if package name is a valid command
     if command_exists "$tool"; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
         [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed (pipx/PATH)"
         return 0
-    elif command_exists pipx && pipx list --short 2>/dev/null | grep -qi "^${tool} "; then
-        TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed (pipx)"
-        return 0
-    else
-        TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$tool — NOT installed"
-        return 1
     fi
+
+    # 2. Check mapped binary name (many pipx packages install under a different name)
+    local _bin="${_PIPX_BIN_NAMES[$tool]:-}"
+    if [[ -n "$_bin" ]] && command_exists "$_bin"; then
+        TOTAL_FOUND=$((TOTAL_FOUND + 1))
+        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed ($_bin)"
+        return 0
+    fi
+
+    # 3. Fallback: check pipx package list (handles normalized names)
+    if command_exists pipx; then
+        # Normalize hyphens/underscores for PEP 503 compatibility
+        local _norm="${tool//-/_}"
+        if pipx list --short 2>/dev/null | sed 's/-/_/g' | grep -qi "^${_norm} "; then
+            TOTAL_FOUND=$((TOTAL_FOUND + 1))
+            [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed (pipx)"
+            return 0
+        fi
+    fi
+
+    TOTAL_MISSING=$((TOTAL_MISSING + 1))
+    [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$tool — NOT installed"
+    return 1
 }
 
 # Check any-of: passes if any of the given binary names exist (for distro-varying names)
@@ -213,6 +258,7 @@ should_verify() { [[ " ${VERIFY_MODULES[*]} " =~ " $1 " ]]; }
 
 # System info
 print_banner
+START_TIME=$(date +%s)
 
 if [[ "$PKG_MANAGER" == "unknown" ]]; then
     log_warn "Unknown distribution — package-level checks may be inaccurate"
@@ -335,6 +381,9 @@ if should_verify "web"; then
     check_cmds "${WEB_GEMS[@]}"
     log_info "Web (Git):"
     check_git_repos "${WEB_GIT_NAMES[@]}"
+    log_info "Web (Binary):"
+    check_cmd "ysoserial" || true
+    check_cmd "kr" || true
     log_info "Web (Special):"
     check_cmd "zaproxy" || true
 fi
@@ -503,6 +552,9 @@ if should_verify "mobile"; then
     check_pipx_arr "${MOBILE_PIPX[@]}"
     log_info "Mobile (Git):"
     check_git_repos "${MOBILE_GIT_NAMES[@]}"
+    log_info "Mobile (Binary):"
+    check_cmd "jadx" || true
+    check_cmd "d2j-dex2jar" || true
 fi
 
 if should_verify "blueteam"; then
@@ -518,7 +570,8 @@ if should_verify "blueteam"; then
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"
     log_info "Blue Team (Cargo):"
-    check_cmds "${BLUETEAM_CARGO[@]}"
+    # yara-x-cli installs binary as 'yr'
+    check_cmd "yr" || true
     log_info "Blue Team (Git):"
     check_git_repos "${BLUETEAM_GIT_NAMES[@]}"
     log_info "Blue Team (Binary):"
@@ -583,14 +636,46 @@ if command_exists docker; then
 fi
 
 # Summary
+END_TIME=$(date +%s)
+ELAPSED=$(( END_TIME - START_TIME ))
+MINUTES=$(( ELAPSED / 60 ))
+SECONDS_R=$(( ELAPSED % 60 ))
+
 echo ""
-echo -e "${BOLD}=============================================${NC}"
-log_info "Verification Summary"
-echo -e "  ${GREEN}Found:${NC}   $TOTAL_FOUND"
-echo -e "  ${RED}Missing:${NC} $TOTAL_MISSING"
-echo -e "  Total checked: $TOTAL_CHECKED"
-local_pct=0
-[[ "$TOTAL_CHECKED" -gt 0 ]] && local_pct=$((TOTAL_FOUND * 100 / TOTAL_CHECKED))
-echo -e "  Coverage: ${local_pct}%"
-echo -e "${BOLD}=============================================${NC}"
-log_info "Details saved to: $LOG_FILE"
+_pct=0
+[[ "$TOTAL_CHECKED" -gt 0 ]] && _pct=$((TOTAL_FOUND * 100 / TOTAL_CHECKED))
+
+if [[ "$TOTAL_MISSING" -gt 0 ]]; then
+    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+    log_warn "Verification complete (${MINUTES}m ${SECONDS_R}s)"
+    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+else
+    echo -e "${GREEN}${BOLD}=============================================${NC}"
+    log_success "Verification complete! (${MINUTES}m ${SECONDS_R}s)"
+    echo -e "${GREEN}${BOLD}=============================================${NC}"
+fi
+log_success "Found:   $TOTAL_FOUND"
+if [[ "$TOTAL_MISSING" -gt 0 ]]; then
+    log_error "Missing: $TOTAL_MISSING"
+else
+    log_success "Missing: 0"
+fi
+log_info    "Total checked: $TOTAL_CHECKED"
+# Color-code coverage percentage
+if [[ "$_pct" -ge 80 ]]; then
+    log_success "Coverage: ${_pct}%"
+elif [[ "$_pct" -ge 50 ]]; then
+    log_warn "Coverage: ${_pct}%"
+else
+    log_error "Coverage: ${_pct}%"
+fi
+# Actionable tips based on results
+if [[ "$TOTAL_MISSING" -gt 0 ]] && [[ "$INSTALLED_ONLY" == "false" ]]; then
+    log_info "Tip: Use --installed-only to only check tools you actually installed"
+    log_info "     Use --module <name> to verify a specific module"
+fi
+log_info "Log file: $LOG_FILE"
+
+# Exit with non-zero if any tools are missing (useful for CI)
+[[ "$TOTAL_MISSING" -gt 0 ]] && exit 1
+exit 0

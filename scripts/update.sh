@@ -78,7 +78,7 @@ done
 
 LOG_FILE="$SCRIPT_DIR/tool_update.log"
 : > "$LOG_FILE"
-chmod 600 "$LOG_FILE" 2>/dev/null || true
+chmod 644 "$LOG_FILE" 2>/dev/null || true
 
 check_root
 print_banner
@@ -96,6 +96,7 @@ if [[ "$VERBOSE" == "true" ]]; then
 fi
 
 START_TIME=$(date +%s)
+UPDATE_FAILURES=0
 
 # 1) System packages
 if [[ "$SKIP_SYSTEM" == "false" ]]; then
@@ -104,6 +105,7 @@ if [[ "$SKIP_SYSTEM" == "false" ]]; then
         log_success "System packages updated"
     else
         log_warn "System package update had errors (check log) — continuing"
+        UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
     fi
 else
     log_warn "Skipping system package update"
@@ -118,6 +120,7 @@ if [[ "$SKIP_PIPX" == "false" ]]; then
             log_success "pipx packages updated"
         else
             log_warn "Some pipx packages failed to update (check log)"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
         fi
     else
         log_warn "pipx not found — skipping Python tool updates"
@@ -142,7 +145,8 @@ if [[ "$SKIP_GO" == "false" ]]; then
         GO_TOTAL=${#ALL_GO_TOOLS[@]}
         GO_CURRENT=0
         GO_UPDATED=0
-        GO_SKIPPED=0
+        GO_LATEST=0
+        GO_NOT_INSTALLED=0
         GO_FAILED=0
 
         if [[ "$GO_TOTAL" -eq 0 ]]; then
@@ -157,7 +161,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
             # Only update tools that are already installed
             if ! command_exists "$tool_name"; then
                 log_debug "Skipping $tool_name (not installed)"
-                GO_SKIPPED=$((GO_SKIPPED + 1))
+                GO_NOT_INSTALLED=$((GO_NOT_INSTALLED + 1))
                 continue
             fi
 
@@ -177,7 +181,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
                     track_version "$tool_name" "go" "latest"
                 else
                     log_debug "Already latest: $tool_name"
-                    GO_SKIPPED=$((GO_SKIPPED + 1))
+                    GO_LATEST=$((GO_LATEST + 1))
                 fi
             else
                 log_warn "Failed: $tool_name"
@@ -185,7 +189,8 @@ if [[ "$SKIP_GO" == "false" ]]; then
             fi
         done
         echo ""
-        log_success "Go tools: $GO_UPDATED updated, $GO_SKIPPED already latest, $GO_FAILED failed ($GO_TOTAL total)"
+        log_success "Go tools: $GO_UPDATED updated, $GO_LATEST already latest, $GO_NOT_INSTALLED skipped (not installed), $GO_FAILED failed"
+        UPDATE_FAILURES=$((UPDATE_FAILURES + GO_FAILED))
     else
         log_warn "Go not found — skipping Go tool updates"
     fi
@@ -263,9 +268,12 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
             done
             if [[ ${#GEMS_TO_UPDATE[@]} -gt 0 ]]; then
                 log_info "Updating Ruby gems (${GEMS_TO_UPDATE[*]})..."
-                gem update "${GEMS_TO_UPDATE[@]}" --no-document >> "$LOG_FILE" 2>&1 && \
-                    log_success "Ruby gems updated" || \
+                if gem update "${GEMS_TO_UPDATE[@]}" --no-document >> "$LOG_FILE" 2>&1; then
+                    log_success "Ruby gems updated"
+                else
                     log_warn "Ruby gem update failed"
+                    UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
+                fi
             else
                 log_info "No installed Ruby gems to update"
             fi
@@ -288,7 +296,8 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
             CARGO_TOTAL=${#ALL_CARGO[@]}
             CARGO_UPDATED=0
-            CARGO_SKIPPED=0
+            CARGO_LATEST=0
+            CARGO_NOT_INSTALLED=0
             CARGO_FAILED=0
 
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
@@ -296,7 +305,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                 # Only update crates that are already installed
                 if ! command_exists "$crate" && [[ ! -f "$HOME/.cargo/bin/$crate" ]]; then
                     log_debug "Skipping cargo $crate (not installed)"
-                    CARGO_SKIPPED=$((CARGO_SKIPPED + 1))
+                    CARGO_NOT_INSTALLED=$((CARGO_NOT_INSTALLED + 1))
                     continue
                 fi
                 # Without --force, cargo skips if the installed version matches latest
@@ -304,7 +313,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                 if cargo_output=$(cargo install "$crate" 2>&1); then
                     if echo "$cargo_output" | grep -q "already installed"; then
                         log_debug "Already latest: $crate"
-                        CARGO_SKIPPED=$((CARGO_SKIPPED + 1))
+                        CARGO_LATEST=$((CARGO_LATEST + 1))
                     else
                         log_success "Updated cargo: $crate"
                         CARGO_UPDATED=$((CARGO_UPDATED + 1))
@@ -317,7 +326,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                     # cargo install exits non-zero for "already installed" on some versions
                     if echo "$cargo_output" | grep -q "already installed"; then
                         log_debug "Already latest: $crate"
-                        CARGO_SKIPPED=$((CARGO_SKIPPED + 1))
+                        CARGO_LATEST=$((CARGO_LATEST + 1))
                     else
                         log_warn "Failed cargo: $crate"
                         CARGO_FAILED=$((CARGO_FAILED + 1))
@@ -325,7 +334,8 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                 fi
                 echo "$cargo_output" >> "$LOG_FILE"
             done
-            log_success "Cargo tools: $CARGO_UPDATED updated, $CARGO_SKIPPED already latest, $CARGO_FAILED failed ($CARGO_TOTAL total)"
+            log_success "Cargo tools: $CARGO_UPDATED updated, $CARGO_LATEST already latest, $CARGO_NOT_INSTALLED skipped (not installed), $CARGO_FAILED failed"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + CARGO_FAILED))
         fi
     else
         log_warn "cargo not found — skipping Cargo tool updates"
@@ -395,12 +405,9 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         update_binary "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}"
     done
 
-    # Non-registry binaries (custom destinations not suited for registry)
-    update_binary "skylot/jadx" "jadx" "jadx.*\\.zip" "$GITHUB_TOOL_DIR/jadx"
-    update_binary "pxb1988/dex2jar" "d2j-dex2jar" "dex2jar.*\\.zip" "$GITHUB_TOOL_DIR/dex2jar"
-
     if [[ "$BIN_TOTAL" -gt 0 ]]; then
         log_success "Binary releases: $BIN_UPDATED updated, $BIN_SKIPPED already latest, $BIN_FAILED failed ($BIN_TOTAL total)"
+        UPDATE_FAILURES=$((UPDATE_FAILURES + BIN_FAILED))
     else
         log_info "No binary releases found to update"
     fi
@@ -413,8 +420,13 @@ echo ""
 if [[ "$SKIP_SPECIAL" == "false" ]]; then
     log_info "Updating special tools..."
 
-    # Metasploit
-    if command_exists msfupdate; then
+    # Metasploit (snap takes priority, then msfupdate for Rapid7/apt installs)
+    if snap_available && snap list metasploit-framework &>/dev/null 2>&1; then
+        log_info "Updating Metasploit (snap)..."
+        snap refresh metasploit-framework >> "$LOG_FILE" 2>&1 && \
+            log_success "Metasploit updated" || \
+            log_warn "Metasploit update failed"
+    elif command_exists msfupdate; then
         log_info "Updating Metasploit..."
         msfupdate >> "$LOG_FILE" 2>&1 && \
             log_success "Metasploit updated" || \
@@ -424,8 +436,8 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
     # npm tools (promptfoo)
     if command_exists npm && command_exists promptfoo; then
         log_info "Updating promptfoo (npm)..."
-        npm update -g promptfoo >> "$LOG_FILE" 2>&1 && \
-            log_success "promptfoo updated" || \
+        npm install -g "promptfoo@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1 && \
+            { log_success "promptfoo updated"; track_version "promptfoo" "npm" "$PROMPTFOO_VERSION"; } || \
             log_warn "promptfoo update failed"
     fi
 
@@ -459,6 +471,14 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
         foundryup >> "$LOG_FILE" 2>&1 && \
             log_success "Foundry updated" || \
             log_warn "Foundry update failed"
+    fi
+
+    # Steampipe (self-update)
+    if command_exists steampipe; then
+        log_info "Updating Steampipe..."
+        steampipe update check >> "$LOG_FILE" 2>&1 && \
+            log_success "Steampipe updated" || \
+            log_warn "Steampipe update failed"
     fi
 else
     log_warn "Skipping special tool updates"
@@ -496,7 +516,17 @@ ELAPSED=$(( END_TIME - START_TIME ))
 MINUTES=$(( ELAPSED / 60 ))
 SECONDS_R=$(( ELAPSED % 60 ))
 
-echo -e "${GREEN}${BOLD}=============================================${NC}"
-log_success "Update complete! (${MINUTES}m ${SECONDS_R}s)"
-echo -e "${GREEN}${BOLD}=============================================${NC}"
+if [[ "$UPDATE_FAILURES" -gt 0 ]]; then
+    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+    log_warn "Update finished with $UPDATE_FAILURES failure(s) (${MINUTES}m ${SECONDS_R}s)"
+    echo -e "${YELLOW}${BOLD}=============================================${NC}"
+else
+    echo -e "${GREEN}${BOLD}=============================================${NC}"
+    log_success "Update complete! (${MINUTES}m ${SECONDS_R}s)"
+    echo -e "${GREEN}${BOLD}=============================================${NC}"
+fi
 log_info "Log file: $LOG_FILE"
+log_info "Run ./scripts/verify.sh to confirm all tools are working"
+
+[[ "$UPDATE_FAILURES" -gt 0 ]] && exit 1
+exit 0

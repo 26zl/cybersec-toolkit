@@ -25,7 +25,6 @@ WIRELESS_GIT=(
     "hostapd-mana=https://github.com/sensepost/hostapd-mana.git"
     "wifiphisher=https://github.com/wifiphisher/wifiphisher.git"
     "PSKracker=https://github.com/soxrok2212/PSKracker.git"
-    "pwnagotchi=https://github.com/evilsocket/pwnagotchi.git"
     "eaphammer=https://github.com/s0lst1c3/eaphammer.git"
     "wifipumpkin3=https://github.com/P0cL4bs/wifipumpkin3.git"
     "proxmark3=https://github.com/RfidResearchGroup/proxmark3.git"
@@ -34,7 +33,7 @@ WIRELESS_GIT=(
     "libnfc-crypto1-crack=https://github.com/droidnewbie2/acr122uNFC.git"
 )
 
-WIRELESS_GIT_NAMES=(wifite2 fluxion airgeddon hostapd-mana wifiphisher PSKracker pwnagotchi eaphammer wifipumpkin3 proxmark3 mousejack mfdread libnfc-crypto1-crack)
+WIRELESS_GIT_NAMES=(wifite2 fluxion airgeddon hostapd-mana wifiphisher PSKracker eaphammer wifipumpkin3 proxmark3 mousejack mfdread libnfc-crypto1-crack)
 
 install_module_wireless() {
     install_apt_batch "Wireless - Packages" "${WIRELESS_PACKAGES[@]}"

@@ -38,10 +38,13 @@ install_module_cloud() {
         _sp_installer=$(mktemp)
         if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE"; then
             if grep -q "steampipe" "$_sp_installer" 2>/dev/null; then
+                _start_spinner "Installing Steampipe..."
                 if bash "$_sp_installer" >> "$LOG_FILE" 2>&1; then
+                    _stop_spinner
                     log_success "Steampipe installed"
                     track_version "steampipe" "special" "latest"
                 else
+                    _stop_spinner
                     log_error "Steampipe install failed"
                     TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
                 fi

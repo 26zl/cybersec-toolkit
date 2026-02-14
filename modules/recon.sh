@@ -39,7 +39,7 @@ RECON_GO=(
     "github.com/x1sec/commit-stream@latest"
     "github.com/j3ssie/metabigor@latest"
     "github.com/PentestPad/subzy@latest"
-    "github.com/alpkeskin/mosint/v3@latest"
+    "github.com/alpkeskin/mosint/v3/cmd/mosint@latest"
     "github.com/hakluke/hakrevdns@latest"
     "github.com/s0md3v/smap/cmd/smap@latest"
 )
@@ -100,8 +100,9 @@ install_module_recon() {
             fi
         fi
         if command_exists uv; then
-            log_info "Setting up theHarvester with uv..."
+            _start_spinner "Setting up theHarvester with uv..."
             if (cd "$_th_dir" && uv sync) >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
                 # Create wrapper script
                 cat > "$PIPX_BIN_DIR/theHarvester" 2>/dev/null << THWRAP
 #!/bin/bash
@@ -111,6 +112,7 @@ THWRAP
                 log_success "theHarvester installed (uv)"
                 track_version "theHarvester" "git" "HEAD"
             else
+                _stop_spinner
                 log_error "theHarvester uv sync failed"
                 TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             fi

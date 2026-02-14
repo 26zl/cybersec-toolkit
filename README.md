@@ -13,7 +13,7 @@
               Tools Installer
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __580+ tools__, __18 modules__, __12 install methods__, one command.
+The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __570+ tools__, __18 modules__, __12 install methods__, one command.
 
 ---
 
@@ -29,7 +29,7 @@ cd cybersec-tools-installer
 sudo ./install.sh
 ```
 
-That installs all 580+ tools. To install a subset:
+That installs all 570+ tools. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -72,7 +72,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 ### Why does a full install take 15-45 minutes?
 
-The installer orchestrates 590+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
+The installer orchestrates 570+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
 
 | What takes time | Why | Typical time |
 | --- | --- | --- |
@@ -116,21 +116,21 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | ~32 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
-| `networking` | ~53 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `misc` | ~30 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
+| `networking` | ~54 | Port scanning, packet capture, tunneling, MITM, protocol tools |
 | `recon` | ~76 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | ~49 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | ~13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | ~40 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `pwn` | ~37 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | ~32 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
-| `enterprise` | ~89 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
-| `wireless` | ~40 | WiFi cracking, Bluetooth, SDR, rogue AP |
+| `enterprise` | ~78 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
+| `wireless` | ~39 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | ~28 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | ~14 | Image/audio steganography, detection, StegCracker |
 | `cloud` | ~15 | AWS/Azure/GCP security auditing, Checkov |
 | `containers` | ~9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
-| `blueteam` | ~34 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
+| `blueteam` | ~32 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
 | `mobile` | ~12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
 | `blockchain` | ~5 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
 | `llm` | ~6 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
@@ -139,17 +139,17 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
-| Git clone | ~194 | GitHub repos with auto-setup, resources, wordlists |
+| Git clone | ~175 | GitHub repos with auto-setup, resources, wordlists |
 | System packages (apt/dnf/pacman/zypper) | ~163 | nmap, wireshark, john, hashcat |
 | pipx | ~111 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | ~52 | nuclei, subfinder, ffuf, httpx |
 | Binary release | ~31 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
 | Build from source | ~15 | massdns, duplicut, AFLplusplus, honggfuzz |
 | Docker | ~8 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex |
-| Ruby gem | 6 | wpscan, evil-winrm, XSpear |
-| Cargo (Rust) | 5 | feroxbuster, RustScan, pwninit, sniffnet, yara-x |
+| Ruby gem | 6 | wpscan, evil-winrm, brakeman |
+| Cargo (Rust) | 4 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
-| Snap | 2 | zaproxy, solc |
+| Snap | 3 | zaproxy, solc, ngrok |
 | npm | 1 | promptfoo |
 
 ---
@@ -197,7 +197,7 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 590+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
+__Debian/Ubuntu/Kali is the primary target__ -- all 570+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
 
 | Platform | Status |
 | -------- | ------ |

@@ -76,7 +76,7 @@ fi
 
 LOG_FILE="$SCRIPT_DIR/tool_removal.log"
 if : > "$LOG_FILE" 2>/dev/null; then
-    chmod 600 "$LOG_FILE" 2>/dev/null || true
+    chmod 644 "$LOG_FILE" 2>/dev/null || true
 else
     # Disk full or read-only — log to /dev/null so redirections never fail
     LOG_FILE="/dev/null"
@@ -106,7 +106,7 @@ if [[ "$_avail_mb" =~ ^[0-9]+$ ]] && [[ "$_avail_mb" -lt 100 ]]; then
     if [[ "$LOG_FILE" == "/dev/null" ]]; then
         if : > "$SCRIPT_DIR/tool_removal.log" 2>/dev/null; then
             LOG_FILE="$SCRIPT_DIR/tool_removal.log"
-            chmod 600 "$LOG_FILE" 2>/dev/null || true
+            chmod 644 "$LOG_FILE" 2>/dev/null || true
             log_info "Disk space freed — logging to $LOG_FILE"
         fi
     fi
@@ -144,6 +144,8 @@ if [[ "$AUTO_YES" == "false" ]]; then
         exit 0
     fi
 fi
+
+START_TIME=$(date +%s)
 
 # shellcheck disable=SC2076  # Intentional literal match, not regex
 should_remove() { [[ " ${REMOVE_MODULES[*]} " =~ " $1 " ]]; }
@@ -185,12 +187,14 @@ done
 # 1) pipx tools — must run BEFORE system packages remove python3-pipx
 if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
     if command_exists pipx; then
-        # Cache installed list once
-        installed_pipx=$(pipx list --short 2>/dev/null || true)
+        # Cache installed list once, normalized to underscores for PEP 503 matching
+        installed_pipx=$(pipx list --short 2>/dev/null | sed 's/-/_/g' || true)
         pipx_removed=0
         pipx_skipped=0
         for tool in "${PIPX_TO_REMOVE[@]}"; do
-            if echo "$installed_pipx" | grep -qi "^${tool} "; then
+            # Normalize hyphens → underscores (PEP 503: pip/pipx normalize package names)
+            _norm="${tool//-/_}"
+            if echo "$installed_pipx" | grep -qi "^${_norm} "; then
                 pipx_remove "$tool" >> "$LOG_FILE" 2>&1
                 log_success "Removed pipx: $tool"
                 pipx_removed=$((pipx_removed + 1))
@@ -205,19 +209,23 @@ if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
         log_warn "pipx not found — removing pipx tools by cleaning up files directly"
         pipx_removed=0
         for tool in "${PIPX_TO_REMOVE[@]}"; do
-            # Remove binary from PIPX_BIN_DIR
-            if [[ -f "$PIPX_BIN_DIR/$tool" ]] || [[ -L "$PIPX_BIN_DIR/$tool" ]]; then
-                rm -f "$PIPX_BIN_DIR/$tool"
-                log_success "Removed: $PIPX_BIN_DIR/$tool"
-                pipx_removed=$((pipx_removed + 1))
-            fi
-            # Remove venv from PIPX_HOME
-            if [[ -d "$PIPX_HOME/venvs/$tool" ]]; then
-                rm -rf "$PIPX_HOME/venvs/$tool"
-                log_debug "Removed venv: $PIPX_HOME/venvs/$tool"
-            fi
+            _removed=false
+            # Try exact name, then normalized (hyphens → underscores, and vice versa)
+            for _variant in "$tool" "${tool//-/_}" "${tool//_/-}"; do
+                if [[ -f "$PIPX_BIN_DIR/$_variant" ]] || [[ -L "$PIPX_BIN_DIR/$_variant" ]]; then
+                    rm -f "$PIPX_BIN_DIR/$_variant"
+                    log_success "Removed: $PIPX_BIN_DIR/$_variant"
+                    _removed=true
+                fi
+                if [[ -d "$PIPX_HOME/venvs/$_variant" ]]; then
+                    rm -rf "$PIPX_HOME/venvs/$_variant"
+                    log_debug "Removed venv: $PIPX_HOME/venvs/$_variant"
+                    _removed=true
+                fi
+            done
+            [[ "$_removed" == "true" ]] && pipx_removed=$((pipx_removed + 1))
         done
-        log_info "pipx (file cleanup): $pipx_removed binaries removed"
+        log_info "pipx (file cleanup): $pipx_removed tools removed"
     fi
 else
     log_info "No pipx tools to remove"
@@ -362,13 +370,23 @@ for bin in "${BINARY_TOOLS[@]}"; do
     fi
 done
 log_info "Binary releases: $bin_removed removed, $bin_skipped already removed"
-# Jar wrappers and directories
+# Jar wrappers and custom dest directories used by binary releases
 for jar_bin in ysoserial jd-gui; do
     [[ -f "$PIPX_BIN_DIR/$jar_bin" ]] && rm -f "$PIPX_BIN_DIR/$jar_bin" 2>/dev/null || true
 done
-rm -rf "$GITHUB_TOOL_DIR/cybersec-jars" 2>/dev/null
-rm -rf "$GITHUB_TOOL_DIR/jadx" 2>/dev/null
-rm -rf "$GITHUB_TOOL_DIR/dex2jar" 2>/dev/null
+# Clean up custom destination directories from BINARY_RELEASES_* entries
+for _br_mod in "${REMOVE_MODULES[@]}"; do
+    _br_arr="BINARY_RELEASES_${_br_mod^^}"
+    declare -p "$_br_arr" &>/dev/null || continue
+    declare -n _br_ref="$_br_arr"
+    for _br_entry in "${_br_ref[@]}"; do
+        IFS='|' read -r _br_repo _br_binary _br_pattern _br_dest <<< "$_br_entry"
+        if [[ -n "${_br_dest:-}" ]] && [[ "$_br_dest" != "$PIPX_BIN_DIR" ]] && [[ -d "$_br_dest" ]]; then
+            rm -rf "$_br_dest" 2>/dev/null
+            log_success "Removed: $_br_dest"
+        fi
+    done
+done
 echo ""
 
 # 8) Special tools
@@ -378,10 +396,14 @@ log_info "Removing special tools..."
 [[ -L "$PIPX_BIN_DIR/searchsploit" ]] && rm -f "$PIPX_BIN_DIR/searchsploit" 2>/dev/null && \
     log_success "Removed searchsploit symlink"
 
-# Metasploit
+# Metasploit (snap or system package)
 if should_remove "pwn" && command_exists msfconsole; then
     log_info "Removing Metasploit..."
-    pkg_remove metasploit-framework >> "$LOG_FILE" 2>&1 || true
+    if snap_available && snap list metasploit-framework &>/dev/null 2>&1; then
+        snap remove metasploit-framework >> "$LOG_FILE" 2>&1 || true
+    else
+        pkg_remove metasploit-framework >> "$LOG_FILE" 2>&1 || true
+    fi
     log_success "Metasploit removed"
 fi
 
@@ -419,6 +441,27 @@ if should_remove "blockchain"; then
     fi
 fi
 
+# Steampipe (curl-pipe installer — installed by cloud module)
+if should_remove "cloud" && command_exists steampipe; then
+    log_info "Removing Steampipe..."
+    rm -f /usr/local/bin/steampipe 2>/dev/null
+    [[ -d "$HOME/.steampipe" ]] && rm -rf "$HOME/.steampipe"
+    log_success "Steampipe removed"
+fi
+
+# uv + theHarvester wrapper (installed by recon module)
+if should_remove "recon"; then
+    # theHarvester wrapper script (not cleaned by git repo removal)
+    [[ -f "$PIPX_BIN_DIR/theHarvester" ]] && rm -f "$PIPX_BIN_DIR/theHarvester" 2>/dev/null && \
+        log_success "Removed theHarvester wrapper"
+    # uv (Python package manager — installed for theHarvester)
+    if command_exists uv; then
+        rm -f "$HOME/.local/bin/uv" "$HOME/.local/bin/uvx" 2>/dev/null
+        [[ -d "$HOME/.local/share/uv" ]] && rm -rf "$HOME/.local/share/uv"
+        log_success "Removed uv"
+    fi
+fi
+
 # npm tools (promptfoo)
 if should_remove "llm" && command_exists npm; then
     if npm list -g promptfoo &>/dev/null; then
@@ -444,15 +487,15 @@ fi
 
 # Go SDK installed by ensure_go (only with --remove-deps)
 if [[ "$REMOVE_DEPS" == "true" ]]; then
-    local_go_root=""
+    _go_root=""
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
-        local_go_root="$PREFIX/lib/go"
+        _go_root="$PREFIX/lib/go"
     else
-        local_go_root="/usr/local/go"
+        _go_root="/usr/local/go"
     fi
-    if [[ -d "$local_go_root" ]]; then
-        rm -rf "$local_go_root"
-        log_success "Removed Go SDK from $local_go_root"
+    if [[ -d "$_go_root" ]]; then
+        rm -rf "$_go_root"
+        log_success "Removed Go SDK from $_go_root"
     fi
 fi
 echo ""
@@ -463,8 +506,8 @@ log_info "Cleaning up..."
 # Clean up empty PIPX_HOME on full removal
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]] && [[ -d "$PIPX_HOME/venvs" ]]; then
     # Count remaining venvs — if none left, remove PIPX_HOME
-    local_remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-    if [[ "$local_remaining" -eq 0 ]]; then
+    _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    if [[ "$_remaining" -eq 0 ]]; then
         rm -rf "$PIPX_HOME"
         log_success "Removed empty PIPX_HOME ($PIPX_HOME)"
     fi
@@ -638,10 +681,16 @@ fi
 
 disable_debug_trace
 
+END_TIME=$(date +%s)
+ELAPSED=$(( END_TIME - START_TIME ))
+MINUTES=$(( ELAPSED / 60 ))
+SECONDS_R=$(( ELAPSED % 60 ))
+
 echo ""
 echo -e "${GREEN}${BOLD}=============================================${NC}"
-log_success "Removal complete!"
+log_success "Removal complete! (${MINUTES}m ${SECONDS_R}s)"
 echo -e "${GREEN}${BOLD}=============================================${NC}"
 log_info "Modules removed: ${REMOVE_MODULES[*]}"
 [[ "$DEEP_CLEAN" == "true" ]] && log_info "Deep clean: enabled"
 log_info "Log file: $LOG_FILE"
+log_info "Run ./scripts/verify.sh to see remaining tools"

@@ -65,11 +65,6 @@ install_module_web() {
 
     # Binary releases (skipped on Termux — Linux/glibc binaries)
     install_binary_releases "${BINARY_RELEASES_WEB[@]}"
-    if [[ "$PKG_MANAGER" != "pkg" ]]; then
-        if ! download_github_release "assetnote/kiterunner" "kr" "linux_amd64"; then
-            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-        fi
-    fi
 
     # Docker (optional) — BeEF is in ALL_DOCKER_IMAGES (centralized registry)
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then

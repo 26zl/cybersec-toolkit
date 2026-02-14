@@ -9,6 +9,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 # Configurable defaults (GITHUB_TOOL_DIR set after distro detection — see path block below)
@@ -282,7 +283,7 @@ _release_job_slot() {
 # Result file format: line 1 = "ok"/"skip"/"fail", line 2 = version string
 _collect_parallel_results() {
     local rdir="$1" method="$2"
-    _par_failed=0; _par_skipped=0
+    _par_failed=0; _par_skipped=0; _par_dep_warns=0
     for _rf in "$rdir"/*; do
         [[ -f "$_rf" ]] || continue
         local _rname _rstatus _rver
@@ -290,10 +291,15 @@ _collect_parallel_results() {
         _rstatus=$(head -1 "$_rf")
         _rver=$(sed -n '2p' "$_rf")
         case "$_rstatus" in
-            ok)   track_version "$_rname" "$method" "$_rver" ;;
-            skip) _par_skipped=$((_par_skipped + 1))
-                  track_version "$_rname" "$method" "$_rver" ;;
-            fail) _par_failed=$((_par_failed + 1)) ;;
+            ok)            track_version "$_rname" "$method" "$_rver" ;;
+            ok:depwarn)    track_version "$_rname" "$method" "$_rver"
+                           _par_dep_warns=$((_par_dep_warns + 1)) ;;
+            skip)          _par_skipped=$((_par_skipped + 1))
+                           track_version "$_rname" "$method" "$_rver" ;;
+            skip:depwarn)  _par_skipped=$((_par_skipped + 1))
+                           _par_dep_warns=$((_par_dep_warns + 1))
+                           track_version "$_rname" "$method" "$_rver" ;;
+            fail)          _par_failed=$((_par_failed + 1)) ;;
         esac
     done
     rm -rf "$rdir"
@@ -476,6 +482,29 @@ snap_available() {
     command -v snap &>/dev/null
 }
 
+# ensure_snap — install snapd if not present (apt-based distros only).
+# Other distros (Fedora/Arch/openSUSE) require manual snapd setup with
+# systemd service activation, so we skip auto-install there.
+ensure_snap() {
+    if snap_available; then
+        return 0
+    fi
+
+    # Termux: snap not supported
+    [[ "$PKG_MANAGER" == "pkg" ]] && return 1
+
+    if [[ "$PKG_MANAGER" == "apt" ]]; then
+        log_info "snapd not found — installing..."
+        if pkg_install snapd >> "$LOG_FILE" 2>&1; then
+            log_success "snapd installed"
+            return 0
+        fi
+        log_warn "Failed to install snapd"
+    fi
+
+    return 1
+}
+
 snap_install() {
     if snap_available; then
         maybe_sudo snap install "$@"
@@ -563,7 +592,13 @@ pipx_install() {
     if pipx list --short 2>/dev/null | grep -qi "^${pkg} "; then
         return 0
     fi
-    pipx install "$pkg" 2>>"$LOG_FILE" || pipx install "$pkg" --force 2>>"$LOG_FILE"
+    local -a _py_flag=()
+    if [[ -n "${PIPX_DEFAULT_PYTHON:-}" ]] && [[ "$PIPX_DEFAULT_PYTHON" != "python3" ]]; then
+        _py_flag=(--python "$PIPX_DEFAULT_PYTHON")
+    fi
+    if ! pipx install "${_py_flag[@]}" "$pkg" 2>>"$LOG_FILE"; then
+        pipx install "${_py_flag[@]}" "$pkg" --force 2>>"$LOG_FILE" || return 1
+    fi
 }
 
 pipx_remove() {
@@ -629,6 +664,41 @@ show_progress() {
     # %-*s pads label to label_max chars — ensures shorter labels overwrite
     # longer previous ones. Works on all terminals (no ANSI escape needed).
     printf "\r  ${BLUE}[${NC}%s${BLUE}]${NC} %3d%% %-*s" "$bar" "$percentage" "$label_max" "$display_label"
+}
+
+# Activity spinner — shows a spinning indicator with elapsed time for
+# long-running operations that redirect output to the log file.
+# Usage:
+#   _start_spinner "Building AFLplusplus..."
+#   some_command >> "$LOG_FILE" 2>&1
+#   _stop_spinner
+_SPINNER_PID=""
+
+_start_spinner() {
+    local label="$1"
+    # Kill any previous spinner (safety — shouldn't happen in practice)
+    _stop_spinner
+    (
+        local spin='|/-\'
+        local i=0
+        local s0=$SECONDS
+        while true; do
+            local elapsed=$(( SECONDS - s0 ))
+            printf "\r  ${BLUE}%s${NC} %s ${DIM}(%ds)${NC}  " "${spin:$((i%4)):1}" "$label" "$elapsed"
+            i=$((i + 1))
+            sleep 0.3
+        done
+    ) &
+    _SPINNER_PID=$!
+}
+
+_stop_spinner() {
+    if [[ -n "${_SPINNER_PID:-}" ]] && kill -0 "$_SPINNER_PID" 2>/dev/null; then
+        kill "$_SPINNER_PID" 2>/dev/null
+        wait "$_SPINNER_PID" 2>/dev/null || true
+        printf "\r%*s\r" "$(tput cols 2>/dev/null || echo 80)" ""
+    fi
+    _SPINNER_PID=""
 }
 
 # Banner

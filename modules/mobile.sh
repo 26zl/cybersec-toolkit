@@ -18,15 +18,8 @@ install_module_mobile() {
     install_pipx_batch "Mobile - Python" "${MOBILE_PIPX[@]}"
     install_git_batch "Mobile - Git" "${MOBILE_GIT[@]}"
 
-    # Android RE tools (skipped on Termux — Linux/glibc binaries)
-    if [[ "$PKG_MANAGER" != "pkg" ]]; then
-        if ! download_github_release "skylot/jadx" "jadx" "jadx.*\\.zip" "$GITHUB_TOOL_DIR/jadx"; then
-            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-        fi
-        if ! download_github_release "pxb1988/dex2jar" "d2j-dex2jar" "dex-tools.*\\.zip" "$GITHUB_TOOL_DIR/dex2jar"; then
-            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-        fi
-    fi
+    # Binary releases (jadx, dex2jar — skipped on Termux)
+    install_binary_releases "${BINARY_RELEASES_MOBILE[@]}"
 
     # Docker: MobSF (optional)
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then

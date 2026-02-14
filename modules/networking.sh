@@ -51,11 +51,13 @@ install_module_networking() {
     if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
         if ! command_exists ngrok; then
             if snap_available; then
-                log_info "Installing ngrok via snap..."
+                _start_spinner "Installing ngrok via snap..."
                 if snap_install ngrok >> "$LOG_FILE" 2>&1; then
+                    _stop_spinner
                     log_success "ngrok installed"
                     track_version "ngrok" "snap" "latest"
                 else
+                    _stop_spinner
                     log_error "ngrok snap install failed"
                     TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
                 fi

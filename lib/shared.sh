@@ -99,9 +99,11 @@ ensure_go() {
 
     # Verify SHA256 against go.dev published hash
     log_info "Verifying Go tarball checksum..."
-    local expected_hash
-    expected_hash=$(curl -fsSL "https://go.dev/dl/?mode=json" 2>>"$LOG_FILE" \
-        | python3 -c "
+    local expected_hash=""
+    local tmp_json
+    tmp_json=$(mktemp)
+    if curl -fsSL "https://go.dev/dl/?mode=json" -o "$tmp_json" 2>>"$LOG_FILE"; then
+        expected_hash=$(python3 -c "
 import json, sys
 for rel in json.load(sys.stdin):
     if rel['version'] == 'go${GO_INSTALL_VERSION}':
@@ -110,7 +112,9 @@ for rel in json.load(sys.stdin):
                 print(f['sha256'])
                 break
         break
-" 2>>"$LOG_FILE")
+" < "$tmp_json" 2>>"$LOG_FILE")
+    fi
+    rm -f "$tmp_json"
 
     if [[ -n "$expected_hash" ]]; then
         local actual_hash
@@ -159,10 +163,24 @@ for rel in json.load(sys.stdin):
 }
 
 # ensure_cargo — install Rust toolchain via rustup if cargo is not present.
+# Also handles the case where rustup is installed (via apt) but no default
+# toolchain is configured — `cargo` shim exists but can't actually run.
 ensure_cargo() {
     if command_exists cargo; then
-        log_success "cargo already installed"
-        return 0
+        # Verify cargo actually works (rustup shim without default toolchain fails)
+        if cargo --version >> "$LOG_FILE" 2>&1; then
+            log_success "cargo already installed"
+            return 0
+        fi
+        # rustup shim exists but no toolchain — install default
+        log_warn "cargo shim found but no default toolchain — running rustup default stable..."
+        if command_exists rustup && rustup default stable >> "$LOG_FILE" 2>&1; then
+            if cargo --version >> "$LOG_FILE" 2>&1; then
+                log_success "Rust stable toolchain configured"
+                return 0
+            fi
+        fi
+        log_warn "Failed to configure rustup default — reinstalling via rustup.rs"
     fi
 
     # rustup is a curl-pipe install — respect --skip-source
@@ -238,17 +256,154 @@ ensure_cargo_binstall() {
     return 1
 }
 
-# ensure_node — install Node.js + npm via system package if not present.
-# Required for npm-based tools (e.g., promptfoo).
-ensure_node() {
-    if command_exists node && command_exists npm; then
-        log_success "Node.js + npm already installed"
+# ensure_python_modern — install a modern Python (>= PYTHON_MIN_VERSION) alongside
+# the system Python when needed.  Some pipx tools have transitive dependencies
+# requiring Python 3.11+ (e.g., sectools>=1.5.0).  Follows the ensure_go()/
+# ensure_cargo() pattern: detect, install if needed, export PIPX_DEFAULT_PYTHON.
+#
+# Fully dynamic — version range derived from PYTHON_MIN_VERSION / PYTHON_TRY_MAX.
+# Package names constructed per-distro from the version number (no hardcoded names).
+PYTHON_MIN_VERSION="${PYTHON_MIN_VERSION:-3.11}"
+PYTHON_TRY_MAX="${PYTHON_TRY_MAX:-3.13}"
+
+ensure_python_modern() {
+    # Parse current python3 version (major.minor)
+    local cur_version=""
+    if command_exists python3; then
+        cur_version=$(python3 --version 2>/dev/null | awk '{print $2}' | cut -d. -f1,2)
+    fi
+
+    if [[ -n "$cur_version" ]]; then
+        local cur_major cur_minor min_major min_minor
+        cur_major=${cur_version%%.*}
+        cur_minor=${cur_version#*.}
+        min_major=${PYTHON_MIN_VERSION%%.*}
+        min_minor=${PYTHON_MIN_VERSION#*.}
+        if [[ "$cur_major" -gt "$min_major" ]] || \
+           { [[ "$cur_major" -eq "$min_major" ]] && [[ "$cur_minor" -ge "$min_minor" ]]; }; then
+            log_success "Python $cur_version available (>= $PYTHON_MIN_VERSION)"
+            export PIPX_DEFAULT_PYTHON="python3"
+            return 0
+        fi
+        log_warn "System Python $cur_version is too old (need >= $PYTHON_MIN_VERSION) — installing newer Python..."
+    else
+        log_warn "Python not found — skipping modern Python check"
+        return 1
+    fi
+
+    # Build dynamic version list: from PYTHON_TRY_MAX down to PYTHON_MIN_VERSION
+    local _max_minor=${PYTHON_TRY_MAX#*.}
+    local _min_minor=${PYTHON_MIN_VERSION#*.}
+    local -a _try_versions=()
+    local _m
+    for ((_m = _max_minor; _m >= _min_minor; _m--)); do
+        _try_versions+=("3.${_m}")
+    done
+
+    # Install a newer Python per distro — try each version (newest first)
+    case "$PKG_MANAGER" in
+        apt)
+            log_info "Adding deadsnakes PPA for newer Python..."
+            if command_exists add-apt-repository; then
+                add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1 || true
+                pkg_update >> "$LOG_FILE" 2>&1 || true
+            fi
+            for _v in "${_try_versions[@]}"; do
+                if pkg_install "python${_v}" "python${_v}-venv" >> "$LOG_FILE" 2>&1; then
+                    break
+                fi
+            done
+            ;;
+        dnf)
+            for _v in "${_try_versions[@]}"; do
+                if pkg_install "python${_v}" >> "$LOG_FILE" 2>&1; then
+                    break
+                fi
+            done
+            ;;
+        pacman)
+            # Arch always has latest Python — should not reach here
+            ;;
+        zypper)
+            # zypper uses no dot: python312, python311, etc.
+            for _v in "${_try_versions[@]}"; do
+                local _zyp_name="python${_v//./}"
+                if pkg_install "$_zyp_name" >> "$LOG_FILE" 2>&1; then
+                    break
+                fi
+            done
+            ;;
+        pkg)
+            # Termux always has latest Python — should not reach here
+            ;;
+    esac
+
+    # Find the best available python3.X binary (prefer newest)
+    local _py_bin=""
+    for _v in "${_try_versions[@]}"; do
+        if command -v "python${_v}" &>/dev/null; then
+            _py_bin="$(command -v "python${_v}")"
+            break
+        fi
+    done
+
+    if [[ -n "$_py_bin" ]]; then
+        local _found_ver
+        _found_ver=$("$_py_bin" --version 2>/dev/null | awk '{print $2}' | cut -d. -f1,2)
+        export PIPX_DEFAULT_PYTHON="$_py_bin"
+        log_success "pipx will use Python $_found_ver ($_py_bin)"
         return 0
     fi
 
-    log_info "Node.js/npm not found — installing via $PKG_MANAGER..."
+    log_warn "Could not install Python >= $PYTHON_MIN_VERSION — pipx will use system Python $cur_version"
+    export PIPX_DEFAULT_PYTHON="python3"
+    return 0
+}
 
-    # Package names vary by distro
+# ensure_node — install Node.js + npm, preferring Node.js 18+ LTS.
+# Required for npm-based tools (e.g., promptfoo needs native modules that
+# require Node.js 18+).  Ubuntu 22.04 ships Node.js 12 which is too old.
+NODE_MIN_VERSION="${NODE_MIN_VERSION:-18}"
+
+ensure_node() {
+    if command_exists node && command_exists npm; then
+        # Check if installed Node.js meets minimum version
+        local cur_major
+        cur_major=$(node --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)
+        if [[ -n "$cur_major" ]] && [[ "$cur_major" -ge "$NODE_MIN_VERSION" ]]; then
+            log_success "Node.js $(node --version 2>/dev/null) + npm already installed"
+            return 0
+        fi
+        log_warn "System Node.js v${cur_major} is too old (need >= $NODE_MIN_VERSION) — upgrading..."
+    else
+        log_info "Node.js/npm not found — installing..."
+    fi
+
+    # On apt-based systems, use NodeSource for modern Node.js
+    if [[ "$PKG_MANAGER" == "apt" ]]; then
+        log_info "Installing Node.js ${NODE_MIN_VERSION}.x LTS from NodeSource..."
+        local _ns_tmp
+        _ns_tmp=$(mktemp)
+        if curl -fsSL "https://deb.nodesource.com/setup_${NODE_MIN_VERSION}.x" -o "$_ns_tmp" 2>>"$LOG_FILE" \
+                && grep -q 'nodesource' "$_ns_tmp"; then
+            if bash "$_ns_tmp" >> "$LOG_FILE" 2>&1; then
+                pkg_install nodejs >> "$LOG_FILE" 2>&1 || true
+            fi
+        fi
+        rm -f "$_ns_tmp"
+
+        if command_exists node; then
+            local _new_ver
+            _new_ver=$(node --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)
+            if [[ -n "$_new_ver" ]] && [[ "$_new_ver" -ge "$NODE_MIN_VERSION" ]]; then
+                log_success "Node.js $(node --version 2>/dev/null) + npm installed via NodeSource"
+                return 0
+            fi
+        fi
+        log_warn "NodeSource setup failed — falling back to system package"
+    fi
+
+    # Fallback: system package (may be too old for some tools)
     local -a _node_pkgs
     case "$PKG_MANAGER" in
         apt)    _node_pkgs=(nodejs npm) ;;

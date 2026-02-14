@@ -24,21 +24,10 @@ ENTERPRISE_GEMS=(evil-winrm)
 
 ENTERPRISE_GIT=(
     "Responder=https://github.com/lgandx/Responder.git"
-    "Rubeus=https://github.com/GhostPack/Rubeus.git"
-    "ADRecon=https://github.com/adrecon/ADRecon.git"
     "enum4linux-ng=https://github.com/cddmp/enum4linux-ng.git"
     "linWinPwn=https://github.com/lefayjey/linWinPwn.git"
     "PCredz=https://github.com/lgandx/PCredz.git"
-    "WMIOps=https://github.com/FortyNorthSecurity/WMIOps.git"
-    "MailSniper=https://github.com/dafthack/MailSniper.git"
-    "Invoke-Obfuscation=https://github.com/danielbohannon/Invoke-Obfuscation.git"
-    "Snaffler=https://github.com/SnaffCon/Snaffler.git"
-    "GraphRunner=https://github.com/dafthack/GraphRunner.git"
-    "TokenTactics=https://github.com/rvrsh3ll/TokenTactics.git"
-    "Invoke-TheHash=https://github.com/Kevin-Robertson/Invoke-TheHash.git"
-    "SCShell=https://github.com/Mr-Un1k0d3r/SCShell.git"
     "krbrelayx=https://github.com/dirkjanm/krbrelayx.git"
-    "nishang=https://github.com/samratashok/nishang.git"
     "spraykatz=https://github.com/aas-n/spraykatz.git"
     "azurehound=https://github.com/BloodHoundAD/AzureHound.git"
     "dfscoerce=https://github.com/Wh04m1001/dfscoerce.git"
@@ -81,7 +70,7 @@ ENTERPRISE_GIT=(
 )
 
 ENTERPRISE_GO_BINS=(godap pretender)
-ENTERPRISE_GIT_NAMES=(Responder Rubeus ADRecon enum4linux-ng linWinPwn PCredz WMIOps MailSniper Invoke-Obfuscation Snaffler GraphRunner TokenTactics Invoke-TheHash SCShell krbrelayx nishang spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
+ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
 
 install_module_enterprise() {
     [[ ${#ENTERPRISE_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Enterprise - Packages" "${ENTERPRISE_PACKAGES[@]}"

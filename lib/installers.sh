@@ -413,6 +413,7 @@ install_pipx_batch() {
                 if pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
                     printf 'ok\nlatest\n' > "$_results_dir/$tool"
                 else
+                    log_error "Failed pipx: $tool"
                     printf 'fail\n\n' > "$_results_dir/$tool"
                 fi
             ) &
@@ -440,6 +441,23 @@ install_pipx_batch() {
                 track_version "$tool" "pipx" "latest"
             fi
         done
+    fi
+
+    # Safety net: older pipx versions (e.g. 1.0.0 on Ubuntu 22.04) may ignore
+    # PIPX_BIN_DIR and place binaries in ~/.local/bin instead of /usr/local/bin.
+    # Symlink any that are missing from PIPX_BIN_DIR.
+    local _fallback_dir="$HOME/.local/bin"
+    if [[ -d "$_fallback_dir" ]] && [[ "$_fallback_dir" != "$PIPX_BIN_DIR" ]]; then
+        local _symlinked=0
+        for _f in "$_fallback_dir"/*; do
+            [[ -f "$_f" ]] && [[ -x "$_f" ]] || continue
+            local _bname
+            _bname=$(basename "$_f")
+            if [[ ! -f "$PIPX_BIN_DIR/$_bname" ]] && [[ ! -L "$PIPX_BIN_DIR/$_bname" ]]; then
+                ln -sf "$_f" "$PIPX_BIN_DIR/$_bname" 2>/dev/null && _symlinked=$((_symlinked + 1))
+            fi
+        done
+        [[ "$_symlinked" -gt 0 ]] && log_info "Symlinked $_symlinked pipx binaries from $_fallback_dir → $PIPX_BIN_DIR"
     fi
 
     echo ""
@@ -496,6 +514,7 @@ install_go_batch() {
                 if go install "$tool" >> "$LOG_FILE" 2>&1; then
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
                 else
+                    log_error "Failed go: $name"
                     printf 'fail\n\n' > "$_results_dir/$name"
                 fi
             ) &
@@ -690,6 +709,7 @@ setup_git_repo() {
     name=$(basename "$dest")
     local name_lower="${name,,}"
     local name_under="${name_lower//-/_}"
+    _SETUP_GIT_DEP_WARN=false
 
     # Early exit: don't clobber existing wrappers
     [[ -f "$PIPX_BIN_DIR/$name_lower" ]] && return 0
@@ -702,7 +722,10 @@ setup_git_repo() {
             python3 -m venv "$dest/venv" 2>>"$LOG_FILE" || return 0
         fi
         "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
-        "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1 || true
+        if ! "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1; then
+            log_warn "pip install failed for $name (some dependencies may be missing)"
+            _SETUP_GIT_DEP_WARN=true
+        fi
 
         # Symlink venv entry points to PATH
         if [[ -d "$dest/venv/bin" ]]; then
@@ -877,13 +900,14 @@ install_git_batch() {
                 local is_existing=false
                 [[ -d "$dest/.git" ]] && is_existing=true
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
+                    _SETUP_GIT_DEP_WARN=false
                     setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || log_warn "setup_git_repo failed for $(basename "$dest")"
-                    if [[ "$is_existing" == "true" ]]; then
-                        printf 'skip\nHEAD\n' > "$_results_dir/$name"
-                    else
-                        printf 'ok\nHEAD\n' > "$_results_dir/$name"
-                    fi
+                    local _status="ok"
+                    [[ "$is_existing" == "true" ]] && _status="skip"
+                    [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && _status="${_status}:depwarn"
+                    printf '%s\nHEAD\n' "$_status" > "$_results_dir/$name"
                 else
+                    log_error "Failed git: $name"
                     printf 'fail\n\n' > "$_results_dir/$name"
                 fi
             ) &
@@ -891,11 +915,11 @@ install_git_batch() {
         wait
 
         _collect_parallel_results "$_results_dir" "git"
-        # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
-        local failed=$_par_failed skipped=$_par_skipped
+        # shellcheck disable=SC2154  # _par_failed/_par_skipped/_par_dep_warns set by _collect_parallel_results
+        local failed=$_par_failed skipped=$_par_skipped dep_warns=$_par_dep_warns
     else
         # Sequential mode (original)
-        local current=0 failed=0 skipped=0
+        local current=0 failed=0 skipped=0 dep_warns=0
         for entry in "${repos[@]}"; do
             current=$((current + 1))
             local name="${entry%%=*}"
@@ -909,7 +933,9 @@ install_git_batch() {
                 failed=$((failed + 1))
             else
                 # Auto-setup: venv, requirements, symlinks
+                _SETUP_GIT_DEP_WARN=false
                 setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
+                [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && dep_warns=$((dep_warns + 1))
                 [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
                 track_version "$name" "git" "HEAD"
             fi
@@ -917,7 +943,9 @@ install_git_batch() {
     fi
 
     echo ""
-    log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} updated, ${failed} failed"
+    local _git_summary="${label}: $((total - failed - skipped))/$total new, ${skipped} updated, ${failed} failed"
+    [[ "${dep_warns:-0}" -gt 0 ]] && _git_summary+=", ${dep_warns} with dependency warnings"
+    log_success "$_git_summary"
 
     local _batch_elapsed=$(( $(date +%s) - _batch_start ))
     log_debug "install_git_batch: '$label' completed in ${_batch_elapsed}s"
@@ -973,12 +1001,21 @@ _gh_api_get() {
 
     if [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
         log_warn "GitHub API rate limit hit — waiting 60s before retry..."
+        [[ -z "${GITHUB_TOKEN:-}" ]] && \
+            log_warn "Tip: export GITHUB_TOKEN=ghp_... to raise the limit from 60 to 5000 requests/hour"
         sleep 60
         http_code=$(curl "${_CURL_OPTS[@]}" -w "%{http_code}" -o "$tmp_body" "$url" 2>>"$LOG_FILE") || http_code="000"
     fi
 
     if [[ "$http_code" != "200" ]]; then
         log_debug "_gh_api_get: HTTP $http_code for $url$(_disk_hint)"
+        rm -f "$tmp_body"
+        return 1
+    fi
+
+    # Validate JSON before caching (guards against empty/HTML responses on 200)
+    if ! python3 -c "import json,sys; json.load(sys.stdin)" < "$tmp_body" 2>/dev/null; then
+        log_debug "_gh_api_get: invalid JSON response for $url"
         rm -f "$tmp_body"
         return 1
     fi
@@ -1303,11 +1340,13 @@ docker_pull() {
         return 1
     fi
 
-    log_info "Pulling Docker image: $name..."
+    _start_spinner "Pulling Docker image: $name..."
     if docker pull "$image" >> "$LOG_FILE" 2>&1; then
+        _stop_spinner
         log_success "Docker: $name ready"
         track_version "$name" "docker" "$image"
     else
+        _stop_spinner
         log_error "Docker pull failed: $name"
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         return 1
@@ -1329,7 +1368,10 @@ track_version() {
         flock -x 200
 
         # Create version file if it doesn't exist
-        [[ -f "$version_file" ]] || echo "# tool|method|version|last_updated" > "$version_file"
+        if [[ ! -f "$version_file" ]]; then
+            echo "# tool|method|version|last_updated" > "$version_file"
+            chmod 644 "$version_file" 2>/dev/null || true
+        fi
 
         # Atomic update: write filtered content + new entry to temp file, then rename
         local tmp_file
@@ -1358,7 +1400,9 @@ build_from_source() {
         return 0
     fi
 
+    _start_spinner "Building $name..."
     if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
+        _stop_spinner
         log_error "Clone failed: $name"
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         return 1
@@ -1366,10 +1410,14 @@ build_from_source() {
     # Run build in a subshell to avoid changing the caller's working directory.
     # Uses bash -c to support multi-step commands (e.g. "cmake . && make").
     if (cd "$dest" && bash -c "$build_cmd") >> "$LOG_FILE" 2>&1; then
+        _stop_spinner
         log_success "Built: $name"
         track_version "$name" "source" "HEAD"
     else
+        _stop_spinner
         log_error "Build failed: $name"
+        log_error "  Check the log for details: $LOG_FILE"
+        log_error "  Use --skip-source to skip all build-from-source tools"
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         return 1
     fi
@@ -1393,11 +1441,12 @@ BINARY_RELEASES_NETWORKING=(
     "fatedier/frp|frp|linux_amd64\\.tar\\.gz"
 )
 BINARY_RELEASES_RECON=(
-    "Findomain/Findomain|findomain|linux"
+    "Findomain/Findomain|findomain|findomain-linux\\.zip$"
     "sundowndev/phoneinfoga|phoneinfoga|Linux_x86_64\\.tar\\.gz"
 )
 BINARY_RELEASES_WEB=(
     "frohoff/ysoserial|ysoserial|ysoserial-all.jar|${GITHUB_TOOL_DIR}/cybersec-jars"
+    "assetnote/kiterunner|kr|linux_amd64"
 )
 BINARY_RELEASES_REVERSING=(
     "0vercl0k/rp|rp-lin|rp-lin"
@@ -1423,6 +1472,10 @@ BINARY_RELEASES_CONTAINERS=(
     "Shopify/kubeaudit|kubeaudit|linux_amd64\\.tar\\.gz"
     "kubescape/kubescape|kubescape|linux_amd64\\.tar\\.gz"
     "cdk-team/CDK|cdk|cdk_linux_amd64"
+)
+BINARY_RELEASES_MOBILE=(
+    "skylot/jadx|jadx|jadx.*\\.zip|${GITHUB_TOOL_DIR}/jadx"
+    "pxb1988/dex2jar|d2j-dex2jar|dex-tools.*\\.zip|${GITHUB_TOOL_DIR}/dex2jar"
 )
 BINARY_RELEASES_STEGO=(
     "RickdeJager/stegseek|stegseek|\\.deb"
@@ -1516,6 +1569,7 @@ install_binary_releases() {
                     [[ -f "$_vtag_file" ]] && { _stored_ver=$(< "$_vtag_file"); rm -f "$_vtag_file"; }
                     printf 'ok\n%s\n' "${_stored_ver:-latest}" > "$_results_dir/$_binary"
                 else
+                    log_error "Failed binary: $_binary ($_repo)"
                     printf 'fail\n\n' > "$_results_dir/$_binary"
                 fi
             ) &
@@ -1551,57 +1605,80 @@ install_searchsploit_symlink() {
 }
 
 # Metasploit
+# Install order: apt (Kali/Parrot repos) → snap → Rapid7 script → apt.metasploit.com repo
 install_metasploit() {
     if command_exists msfconsole; then
         log_success "Metasploit already installed"
         return 0
     fi
 
-    # Prefer system package (available on Debian/Kali/Parrot with their repos)
     log_info "Installing Metasploit Framework..."
+
+    # 1) Prefer system package (available on Debian/Kali/Parrot with their repos)
     if [[ "$PKG_MANAGER" == "apt" ]]; then
+        _start_spinner "Installing Metasploit via apt..."
         if pkg_install metasploit-framework >> "$LOG_FILE" 2>&1; then
+            _stop_spinner
             log_success "Metasploit installed via apt"
             track_version "metasploit" "$PKG_MANAGER" "system"
             return 0
         fi
-        log_warn "metasploit-framework not in apt repos — trying official installer"
+        _stop_spinner
+        log_warn "metasploit-framework not in apt repos — trying snap"
     fi
 
-    # Fallback: official Rapid7 installer script (with basic verification)
+    # 2) Snap — primary method for standard Ubuntu/Debian
+    if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
+        if ensure_snap; then
+            _start_spinner "Installing Metasploit via snap..."
+            if snap_install metasploit-framework >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
+                log_success "Metasploit installed via snap"
+                track_version "metasploit" "snap" "latest"
+                return 0
+            fi
+            _stop_spinner
+            log_warn "Metasploit snap install failed — trying Rapid7 installer"
+        else
+            log_warn "snap not available — trying Rapid7 installer"
+        fi
+    fi
+
+    # 3) Fallback: official Rapid7 installer script (with basic verification)
     local tmp_installer
     tmp_installer=$(mktemp)
     local msf_url="https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb"
     if ! curl -fsSL "$msf_url" -o "$tmp_installer" 2>> "$LOG_FILE"; then
         log_error "Failed to download Metasploit installer"
         rm -f "$tmp_installer"
-        return 1
-    fi
-
-    # Content verification — check multiple Rapid7/Metasploit-specific markers
-    # to reduce risk of running a spoofed script. A legitimate msfupdate.erb
-    # contains all of these strings.
-    local _msf_checks=0
-    grep -q "metasploit" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-    grep -q "rapid7" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-    grep -q "msfupdate\|msfconsole\|metasploit-framework" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-    grep -q "apt\|dpkg\|yum\|rpm" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-    if [[ "$_msf_checks" -lt 3 ]]; then
-        log_error "Metasploit installer content verification failed (only $_msf_checks/4 markers matched) — aborting"
-        rm -f "$tmp_installer"
-        return 1
-    fi
-
-    chmod 755 "$tmp_installer"
-    if "$tmp_installer" >> "$LOG_FILE" 2>&1; then
-        log_success "Metasploit installed via Rapid7 script"
-        track_version "metasploit" "special" "latest"
-        rm -f "$tmp_installer"
-        return 0
+        # Don't return yet — try apt.metasploit.com repo below
+    else
+        # Content verification — check multiple Rapid7/Metasploit-specific markers
+        # to reduce risk of running a spoofed script. A legitimate msfupdate.erb
+        # contains all of these strings.
+        local _msf_checks=0
+        grep -q "metasploit" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
+        grep -q "rapid7" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
+        grep -q "msfupdate\|msfconsole\|metasploit-framework" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
+        grep -q "apt\|dpkg\|yum\|rpm" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
+        if [[ "$_msf_checks" -lt 3 ]]; then
+            log_error "Metasploit installer content verification failed (only $_msf_checks/4 markers matched) — skipping"
+        else
+            chmod 755 "$tmp_installer"
+            _start_spinner "Installing Metasploit via Rapid7 installer..."
+            if "$tmp_installer" >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
+                log_success "Metasploit installed via Rapid7 script"
+                track_version "metasploit" "special" "latest"
+                rm -f "$tmp_installer"
+                return 0
+            fi
+            _stop_spinner
+        fi
     fi
     rm -f "$tmp_installer"
 
-    # Second fallback: manually add apt.metasploit.com repo (modern signed-by keyring)
+    # 4) Last resort: manually add apt.metasploit.com repo (modern signed-by keyring)
     if [[ "$PKG_MANAGER" == "apt" ]]; then
         log_warn "Rapid7 script failed — trying manual apt.metasploit.com repo setup"
         local _keyring="/usr/share/keyrings/metasploit-framework.gpg"
@@ -1624,16 +1701,18 @@ install_metasploit() {
             echo "deb [signed-by=$_keyring] https://apt.metasploit.com/ xenial main" \
                 > /etc/apt/sources.list.d/metasploit-framework.list
             pkg_update >> "$LOG_FILE" 2>&1
+            _start_spinner "Installing Metasploit via apt.metasploit.com..."
             if pkg_install metasploit-framework >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
                 log_success "Metasploit installed via apt.metasploit.com"
                 track_version "metasploit" "$PKG_MANAGER" "latest"
                 return 0
             fi
+            _stop_spinner
         fi
     fi
 
     log_error "All Metasploit installation methods failed"
-    rm -f "$tmp_installer"
     TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
     return 1
 }
@@ -1646,11 +1725,13 @@ install_zap() {
         return 0
     fi
     if snap_available; then
-        log_info "Installing OWASP ZAP via snap..."
+        _start_spinner "Installing OWASP ZAP via snap..."
         if snap_install zaproxy --classic >> "$LOG_FILE" 2>&1; then
+            _stop_spinner
             log_success "OWASP ZAP installed"
             track_version "zaproxy" "snap" "latest"
         else
+            _stop_spinner
             log_error "OWASP ZAP snap install failed"
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             return 1

@@ -37,7 +37,7 @@ install_module_reversing() {
         log_warn "Skipping x86-only build-from-source tools on ARM: rappel, xrop"
     else
         build_from_source "rappel" "https://github.com/yrp604/rappel.git" "make" || true
-        build_from_source "xrop" "https://github.com/acama/xrop.git" "git submodule update --init --recursive && make" || true
+        build_from_source "xrop" "https://github.com/acama/xrop.git" "cmake . && make" || true
     fi
 
     # Binary releases
@@ -45,7 +45,13 @@ install_module_reversing() {
 
     # Setup pwndbg (if cloned)
     if [[ -d "$GITHUB_TOOL_DIR/pwndbg" && -f "$GITHUB_TOOL_DIR/pwndbg/setup.sh" ]]; then
-        log_info "Setting up pwndbg..."
-        (cd "$GITHUB_TOOL_DIR/pwndbg" && ./setup.sh >> "$LOG_FILE" 2>&1) || true
+        _start_spinner "Setting up pwndbg..."
+        if (cd "$GITHUB_TOOL_DIR/pwndbg" && ./setup.sh >> "$LOG_FILE" 2>&1); then
+            _stop_spinner
+            log_success "pwndbg setup complete"
+        else
+            _stop_spinner
+            log_warn "pwndbg setup had errors (check log) — continuing"
+        fi
     fi
 }

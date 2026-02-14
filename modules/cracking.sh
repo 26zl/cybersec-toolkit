@@ -39,10 +39,20 @@ install_module_cracking() {
         local _constraint
         _constraint=$(mktemp)
         echo 'cx-Oracle>=999' > "$_constraint"
-        pipx install patator \
-            --pip-args="--constraint $_constraint" \
-            --preinstall setuptools >> "$LOG_FILE" 2>&1 \
-            || { log_error "Failed pipx: patator"; TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1)); }
+        # --preinstall requires pipx >= 1.4.0 (Ubuntu 22.04 ships older)
+        local _pipx_args=(install patator --pip-args="--constraint $_constraint")
+        if pipx --help 2>&1 | grep -q -- '--preinstall'; then
+            _pipx_args+=(--preinstall setuptools)
+        fi
+        if pipx "${_pipx_args[@]}" >> "$LOG_FILE" 2>&1; then
+            # On older pipx without --preinstall, inject setuptools into patator's venv
+            if ! pipx --help 2>&1 | grep -q -- '--preinstall'; then
+                pipx inject patator setuptools >> "$LOG_FILE" 2>&1 || true
+            fi
+        else
+            log_error "Failed pipx: patator"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        fi
         rm -f "$_constraint"
     fi
 

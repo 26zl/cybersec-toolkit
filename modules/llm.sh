@@ -3,6 +3,8 @@
 # Module: LLM Security
 # LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning
 
+PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-0.107.4}"
+
 LLM_PACKAGES=()
 
 LLM_PIPX=(garak)
@@ -24,12 +26,15 @@ install_module_llm() {
     # promptfoo — LLM red teaming & testing (npm package)
     if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
         if ensure_node; then
-            log_info "Installing promptfoo via npm..."
-            if npm install -g promptfoo >> "$LOG_FILE" 2>&1; then
+            _start_spinner "Installing promptfoo via npm..."
+            if npm install -g "promptfoo@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
                 log_success "promptfoo installed"
-                track_version "promptfoo" "npm" "latest"
+                track_version "promptfoo" "npm" "$PROMPTFOO_VERSION"
             else
-                log_warn "Failed to install promptfoo via npm"
+                _stop_spinner
+                log_error "Failed npm: promptfoo"
+                TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             fi
         else
             log_warn "Skipping promptfoo — Node.js/npm not available"

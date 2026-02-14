@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools — Config Backup/Restore Script
 # Backs up and restores tool configurations with ChaCha20 encryption (PBKDF2 key derivation).
 # Supports scheduling via cron. Linux and Termux only.
@@ -16,7 +17,11 @@ BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
 LOG_FILE="$BACKUP_DIR/backup.log"
-touch "$LOG_FILE" 2>/dev/null && chmod 600 "$LOG_FILE" 2>/dev/null || true
+if : > "$LOG_FILE" 2>/dev/null; then
+    chmod 644 "$LOG_FILE" 2>/dev/null || true
+else
+    LOG_FILE="/dev/null"
+fi
 
 # Helpers
 ensure_dir() {
@@ -314,16 +319,24 @@ cmd_unschedule() {
 }
 
 show_usage() {
-    echo "Usage: ./scripts/backup.sh <command> [args]"
-    echo ""
-    echo "Commands:"
-    echo "  backup                           Create encrypted backup"
-    echo "  restore <backup_file>            Restore from backup (.tar.gz.enc or .tar.gz)"
-    echo "  list                             List available backups"
-    echo "  delete <backup_file>             Delete a specific backup"
-    echo "  delete --all                     Delete all backups"
-    echo "  schedule <daily|weekly|monthly> <HH:MM>"
-    echo "  unschedule                       Remove scheduled backup"
+    cat << 'EOF'
+CyberSec Tools — Config Backup/Restore Script
+
+Usage: ./scripts/backup.sh <command> [args]
+
+Commands:
+  backup                           Create encrypted backup
+  restore <backup_file>            Restore from backup (.tar.gz.enc or .tar.gz)
+  list                             List available backups
+  delete <backup_file>             Delete a specific backup
+  delete --all                     Delete all backups
+  schedule <daily|weekly|monthly> <HH:MM>
+                                   Schedule automatic backups via cron
+  unschedule                       Remove scheduled backup
+
+Options:
+  -h, --help                       Show this help and exit
+EOF
 }
 
 # Main
