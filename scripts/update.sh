@@ -294,7 +294,6 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
         _collect_module_arrays "CARGO" ALL_CARGO
 
         if [[ ${#ALL_CARGO[@]} -gt 0 ]]; then
-            CARGO_TOTAL=${#ALL_CARGO[@]}
             CARGO_UPDATED=0
             CARGO_LATEST=0
             CARGO_NOT_INSTALLED=0

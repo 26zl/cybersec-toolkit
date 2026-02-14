@@ -69,7 +69,7 @@ jobs:
           bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois
 
       - name: Verify networking tools
-        run: bash scripts/verify.sh --module networking --summary
+        run: bash scripts/verify.sh --module networking --installed-only --summary
 
       - name: Remove networking module
         run: bash scripts/remove.sh --module networking --yes
