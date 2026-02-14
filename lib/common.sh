@@ -1087,6 +1087,7 @@ BANNER
 ALL_MODULES=(misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
 
 # Module descriptions (single source of truth for --list-modules and help text)
+# shellcheck disable=SC2034  # Used by install.sh list_modules()
 declare -A MODULE_DESCRIPTIONS=(
     [misc]="Security tools, utilities, resources, C2, social engineering"
     [networking]="Port scanning, packet capture, tunneling, MITM"
@@ -1147,6 +1148,7 @@ _collect_module_arrays() {
 _source_all_modules() {
     local _sam_dir="$1"
     for _sam_mod in "${ALL_MODULES[@]}"; do
+        # shellcheck source=/dev/null
         source "$_sam_dir/modules/${_sam_mod}.sh"
     done
 }
