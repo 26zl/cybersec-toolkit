@@ -42,7 +42,11 @@ jobs:
 
       - name: Install prerequisites (Arch)
         if: matrix.distro == 'arch'
-        run: pacman -Sy --noconfirm git curl wget sudo which
+        run: |
+          # Full upgrade first — archlinux:latest images go stale and partial
+          # syncs break on package splits (e.g. gcc-libs → libgcc + libstdc++)
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git curl wget sudo which
 
       - name: Install prerequisites (openSUSE)
         if: matrix.distro == 'opensuse'
