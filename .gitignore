@@ -33,6 +33,7 @@ venv/
 
 # Runtime artifacts
 .versions
+.install_sessions/
 *.bak
 *.backup
 *.tar.gz

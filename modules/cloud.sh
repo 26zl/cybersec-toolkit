@@ -35,7 +35,7 @@ install_module_cloud() {
     if [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
         log_info "Installing Steampipe..."
         local _sp_installer
-        _sp_installer=$(mktemp)
+        _sp_installer=$(mktemp); _register_cleanup "$_sp_installer"
         if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE"; then
             if grep -q "steampipe" "$_sp_installer" 2>/dev/null; then
                 _start_spinner "Installing Steampipe..."

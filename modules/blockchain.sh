@@ -44,7 +44,7 @@ install_module_blockchain() {
     else
         log_warn "Installing Foundry via curl | bash (review: https://foundry.paradigm.xyz)"
         local _foundry_tmp
-        _foundry_tmp=$(mktemp)
+        _foundry_tmp=$(mktemp); _register_cleanup "$_foundry_tmp"
         if curl -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE"; then
             if grep -q 'foundry' "$_foundry_tmp" && grep -q 'foundryup' "$_foundry_tmp"; then
                 bash "$_foundry_tmp" >> "$LOG_FILE" 2>&1 || true

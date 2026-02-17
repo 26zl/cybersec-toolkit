@@ -37,7 +37,7 @@ install_module_cracking() {
     if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! command_exists patator; then
         log_info "Installing patator (excluding cx-Oracle)..."
         local _constraint
-        _constraint=$(mktemp)
+        _constraint=$(mktemp); _register_cleanup "$_constraint"
         echo 'cx-Oracle>=999' > "$_constraint"
         # --preinstall requires pipx >= 1.4.0 (Ubuntu 22.04 ships older)
         local _pipx_args=(install patator --pip-args="--constraint $_constraint")

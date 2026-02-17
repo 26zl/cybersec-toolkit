@@ -44,6 +44,7 @@ ENABLE_DOCKER="${ENABLE_DOCKER:-false}"
 INCLUDE_C2="${INCLUDE_C2:-false}"
 REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
 FAST_MODE="${FAST_MODE:-false}"
+ROLLBACK_TARGET=""
 
 usage() {
     # Build profile and module lists dynamically from filesystem / registry
@@ -92,6 +93,9 @@ Options:
   -v, --verbose        Enable debug logging and system environment dump
   --list-profiles      List available profiles and exit
   --list-modules       List available modules and exit
+  --list-sessions      List install sessions and exit
+  --rollback <id|last> Rollback tools installed in a session
+  --version            Show installer version and exit
   -h, --help           Show this help and exit
 
 All runtimes (Python, Go, Ruby, Rust, Java) and dev libraries are
@@ -190,6 +194,10 @@ while [[ $# -gt 0 ]]; do
         -v|--verbose)      VERBOSE=true; shift ;;
         --list-profiles)   list_profiles ;;
         --list-modules)    list_modules ;;
+        --list-sessions)   _list_sessions; exit 0 ;;
+        --rollback)        [[ $# -lt 2 ]] && { log_error "--rollback requires a session ID or 'last'"; exit 1; }
+                           ROLLBACK_TARGET="$2"; shift 2 ;;
+        --version)         echo "cybersec-tools-installer ${INSTALLER_VERSION:-unknown}"; exit 0 ;;
         *)                 log_error "Unknown option: $1"; usage ;;
     esac
 done
@@ -396,6 +404,139 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     exit 0
 fi
 
+# Rollback a previous install session
+if [[ -n "$ROLLBACK_TARGET" ]]; then
+    check_root
+    LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
+    _init_log_file "$LOG_FILE"
+
+    local_session_dir="$SCRIPT_DIR/.install_sessions"
+
+    if [[ "$ROLLBACK_TARGET" == "last" ]]; then
+        # Find the most recent manifest
+        # shellcheck disable=SC2012  # Filenames are controlled (timestamp_pid.manifest)
+        ROLLBACK_FILE=$(ls -1t "$local_session_dir"/*.manifest 2>/dev/null | head -1)
+        if [[ -z "$ROLLBACK_FILE" ]]; then
+            log_error "No install sessions found"
+            exit 1
+        fi
+    else
+        ROLLBACK_FILE="$local_session_dir/${ROLLBACK_TARGET}.manifest"
+        if [[ ! -f "$ROLLBACK_FILE" ]]; then
+            log_error "Session not found: $ROLLBACK_TARGET"
+            log_info "Use --list-sessions to see available sessions"
+            exit 1
+        fi
+    fi
+
+    ROLLBACK_SESSION=$(basename "$ROLLBACK_FILE" .manifest)
+    log_info "Rolling back session: $ROLLBACK_SESSION"
+
+    # Parse installed tools from manifest (skip comments and failed entries)
+    declare -a RB_TOOLS=()
+    declare -a RB_METHODS=()
+    while IFS='|' read -r rb_tool rb_method rb_action _; do
+        [[ "$rb_tool" == \#* ]] && continue
+        [[ "$rb_action" == "installed" ]] || continue
+        RB_TOOLS+=("$rb_tool")
+        RB_METHODS+=("$rb_method")
+    done < "$ROLLBACK_FILE"
+
+    if [[ ${#RB_TOOLS[@]} -eq 0 ]]; then
+        log_warn "No installed tools found in session $ROLLBACK_SESSION"
+        exit 0
+    fi
+
+    echo ""
+    log_info "Tools to remove (${#RB_TOOLS[@]}):"
+    for i in "${!RB_TOOLS[@]}"; do
+        echo "  - ${RB_TOOLS[$i]} (${RB_METHODS[$i]})"
+    done
+    echo ""
+
+    # Confirm
+    if [[ -t 0 ]]; then
+        read -rp "$(echo -e "${YELLOW}[!]${NC} Proceed with rollback? [y/N] ")" _rb_answer
+        case "$_rb_answer" in
+            [yY]|[yY][eE][sS]) ;;
+            *) log_info "Rollback cancelled."; exit 0 ;;
+        esac
+    fi
+
+    # Remove in reverse dependency order: gems → cargo → go → pipx → git → binary
+    # APT packages are skipped (too risky — use scripts/remove.sh)
+    rb_removed=0
+    rb_skipped=0
+    for i in "${!RB_TOOLS[@]}"; do
+        rb_tool="${RB_TOOLS[$i]}"
+        rb_method="${RB_METHODS[$i]}"
+        case "$rb_method" in
+            pipx)
+                if command_exists pipx; then
+                    pipx uninstall "$rb_tool" >> "$LOG_FILE" 2>&1 && rb_removed=$((rb_removed + 1)) || true
+                fi
+                ;;
+            go)
+                rb_bin="$GOBIN/$rb_tool"
+                if [[ -f "$rb_bin" ]]; then
+                    rm -f "$rb_bin" && rb_removed=$((rb_removed + 1))
+                fi
+                ;;
+            cargo)
+                if command_exists cargo; then
+                    cargo uninstall "$rb_tool" >> "$LOG_FILE" 2>&1 || true
+                fi
+                rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
+                rm -f "$HOME/.cargo/bin/$rb_tool" 2>/dev/null || true
+                rb_removed=$((rb_removed + 1))
+                ;;
+            gem)
+                if command_exists gem; then
+                    gem uninstall "$rb_tool" -x --force >> "$LOG_FILE" 2>&1 && rb_removed=$((rb_removed + 1)) || true
+                fi
+                ;;
+            git)
+                rb_dir="$GITHUB_TOOL_DIR/$rb_tool"
+                if [[ -d "$rb_dir" ]]; then
+                    rm -rf "$rb_dir" && rb_removed=$((rb_removed + 1))
+                fi
+                # Remove symlink/wrapper
+                rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
+                rm -f "$PIPX_BIN_DIR/${rb_tool,,}" 2>/dev/null || true
+                ;;
+            binary)
+                rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
+                rb_removed=$((rb_removed + 1))
+                ;;
+            apt|dnf|pacman|zypper|pkg)
+                log_info "  Skipping APT package: $rb_tool (use scripts/remove.sh)"
+                rb_skipped=$((rb_skipped + 1))
+                continue
+                ;;
+            *)
+                log_info "  Skipping $rb_tool ($rb_method — unknown method)"
+                rb_skipped=$((rb_skipped + 1))
+                continue
+                ;;
+        esac
+
+        # Remove from .versions file
+        if [[ -f "$SCRIPT_DIR/.versions" ]]; then
+            _tmp_ver=$(mktemp)
+            grep -v "^${rb_tool}|" "$SCRIPT_DIR/.versions" > "$_tmp_ver" 2>/dev/null || true
+            mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
+        fi
+        log_success "Removed: $rb_tool ($rb_method)"
+    done
+
+    echo ""
+    log_success "Rollback complete: $rb_removed removed, $rb_skipped skipped (APT/unknown)"
+
+    # Rename the manifest to indicate it was rolled back
+    mv "$ROLLBACK_FILE" "${ROLLBACK_FILE%.manifest}.rolled_back" 2>/dev/null || true
+    exit 0
+fi
+
 # Resolve modules to install
 MODULES_TO_INSTALL=()
 
@@ -573,6 +714,7 @@ VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {
     check_root
+    trap '_global_cleanup; exit 130' INT TERM
     print_banner
 
     _check_pkg_manager
@@ -611,6 +753,9 @@ main() {
     # Pre-flight disk space check
     check_disk_space "${#MODULES_TO_INSTALL[@]}"
 
+    # Initialize session tracking for rollback support
+    _init_session "${PROFILE:-full}" "${MODULES_TO_INSTALL[*]}"
+    log_info "Session: $_SESSION_ID"
     log_info "Starting installation..."
     echo ""
 
@@ -693,17 +838,23 @@ main() {
     log_info "  GitHub repos:     $GITHUB_TOOL_DIR/"
     log_info "  Binary releases:  $PIPX_BIN_DIR/"
     echo ""
+    [[ -n "${_SESSION_ID:-}" ]] && log_info "Session ID: $_SESSION_ID"
     log_info "Next steps:"
     log_info "  Verify installation:  sudo ./scripts/verify.sh"
     log_info "  Update tools later:   sudo ./scripts/update.sh"
     log_info "  Backup configs:       sudo ./scripts/backup.sh"
+    log_info "  Rollback this run:    sudo ./install.sh --rollback $_SESSION_ID"
     echo ""
 
     # Clean up GitHub API cache
     _gh_api_cache_cleanup 2>/dev/null || true
 
+    # Finalize session manifest
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
+        _finalize_session "partial"
         exit 1
+    else
+        _finalize_session "complete"
     fi
 }
 
@@ -754,7 +905,7 @@ install_modules() {
         # --- Parallel: launch all batches as concurrent subshells ---
         log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
         local _fail_dir
-        _fail_dir=$(mktemp -d)
+        _fail_dir=$(mktemp -d); _register_cleanup "$_fail_dir"
 
         # Initialise global concurrency semaphore (shared across all batch methods)
         _init_global_semaphore
@@ -764,7 +915,7 @@ install_modules() {
 
         # Clean up child processes, semaphore, and progress on interrupt (Ctrl+C / kill)
         # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
-        trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _stop_progress_display; _cleanup_global_semaphore; rm -rf "$_fail_dir"; exit 130' INT TERM
+        trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _stop_progress_display; _global_cleanup; exit 130' INT TERM
 
         # Subshells redirect stdout to /dev/null so their log_message() output
         # doesn't interleave on the terminal.  The log file still gets everything
@@ -849,9 +1000,9 @@ install_modules() {
         done
         _stop_progress_display
 
-        # Clean up global semaphore and restore default signal handling
+        # Clean up global semaphore and restore main signal handler
         _cleanup_global_semaphore
-        trap - INT TERM
+        trap '_global_cleanup; exit 130' INT TERM
 
         # Sum failures from all parallel methods and print clean summary
         local _stage3_failures=0
@@ -914,7 +1065,7 @@ install_modules() {
             # Use process substitution to get live output AND detect empty modules.
             # >(tee file) runs tee in a subprocess while the function runs in the
             # current process — globals like TOTAL_TOOL_FAILURES propagate correctly.
-            local _mod_buf; _mod_buf=$(mktemp)
+            local _mod_buf; _mod_buf=$(mktemp); _register_cleanup "$_mod_buf"
             "$func_name" > >(tee "$_mod_buf") 2>&1 || true
             sleep 0.1  # let tee flush
 

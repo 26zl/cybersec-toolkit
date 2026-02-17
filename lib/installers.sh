@@ -328,6 +328,7 @@ install_apt_batch() {
                         if ! pkg_install "$_g" >> "$LOG_FILE" 2>&1; then
                             log_error "Failed: $_g$(_disk_hint)"
                             failed=$((failed + 1))
+                            track_session "$_g" "$PKG_MANAGER" "failed" 2>/dev/null || true
                         else
                             track_version "$_g" "$PKG_MANAGER" "system"
                         fi
@@ -397,7 +398,7 @@ install_pipx_batch() {
         # --- Parallel mode ---
         # pipx venvs are isolated per-package, so parallel installs are safe.
         # pip's download cache has built-in locking for concurrent access.
-        local _results_dir; _results_dir=$(mktemp -d)
+        local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for tool in "${tools[@]}"; do
             # Skip-check in main process
@@ -443,6 +444,7 @@ install_pipx_batch() {
             if ! pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed pipx: $tool$(_disk_hint)"
                 failed=$((failed + 1))
+                track_session "$tool" "pipx" "failed" 2>/dev/null || true
                 _report_tool_done "pipx" "$tool" "fail"
             else
                 track_version "$tool" "pipx" "latest"
@@ -504,7 +506,7 @@ install_go_batch() {
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel mode ---
-        local _results_dir; _results_dir=$(mktemp -d)
+        local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for tool in "${tools[@]}"; do
             local name
@@ -522,7 +524,7 @@ install_go_batch() {
             (
                 trap '_release_job_slot' EXIT
                 _report_tool_start "Go" "$name"
-                if go install "$tool" >> "$LOG_FILE" 2>&1; then
+                if _as_builder "GOPATH='$GOPATH' GOBIN='$GOBIN' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
                     _report_tool_done "Go" "$name" "ok"
                 else
@@ -553,9 +555,10 @@ install_go_batch() {
                 _report_tool_done "Go" "$name" "skip"
                 continue
             fi
-            if ! go install "$tool" >> "$LOG_FILE" 2>&1; then
+            if ! _as_builder "GOPATH='$GOPATH' GOBIN='$GOBIN' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed go: $name$(_disk_hint)"
                 failed=$((failed + 1))
+                track_session "$name" "go" "failed" 2>/dev/null || true
                 _report_tool_done "Go" "$name" "fail"
             else
                 track_version "$name" "go" "latest"
@@ -626,7 +629,7 @@ install_cargo_batch() {
         local _installed=false
         # Try cargo-binstall first (downloads pre-compiled binary, ~3s vs ~20s)
         if [[ "$_use_binstall" == "true" ]]; then
-            if cargo binstall "$crate" --no-confirm >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(command -v cargo) binstall $crate --no-confirm" >> "$LOG_FILE" 2>&1; then
                 _installed=true
                 log_debug "Installed $crate via cargo-binstall"
             else
@@ -635,9 +638,10 @@ install_cargo_batch() {
         fi
         # Fall back to cargo install (compiles from source)
         if [[ "$_installed" == "false" ]]; then
-            if ! cargo install "$crate" >> "$LOG_FILE" 2>&1; then
+            if ! _as_builder "$(command -v cargo) install $crate" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed cargo: $crate$(_disk_hint)"
                 failed=$((failed + 1))
+                track_session "$crate" "cargo" "failed" 2>/dev/null || true
                 _report_tool_done "Cargo" "$crate" "fail"
                 continue
             fi
@@ -698,12 +702,13 @@ install_gem_batch() {
             _report_tool_done "Gems" "$gem_name" "skip"
             continue
         fi
-        if gem install "$gem_name" --no-document >> "$LOG_FILE" 2>&1; then
+        if _as_builder "$(command -v gem) install $gem_name --no-document" >> "$LOG_FILE" 2>&1; then
             track_version "$gem_name" "gem" "latest"
             _report_tool_done "Gems" "$gem_name" "ok"
         else
             log_error "Failed gem: $gem_name$(_disk_hint)"
             failed=$((failed + 1))
+            track_session "$gem_name" "gem" "failed" 2>/dev/null || true
             _report_tool_done "Gems" "$gem_name" "fail"
         fi
     done
@@ -918,7 +923,7 @@ install_git_batch() {
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel mode ---
-        local _results_dir; _results_dir=$(mktemp -d)
+        local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for entry in "${repos[@]}"; do
             local name="${entry%%=*}"
@@ -967,6 +972,7 @@ install_git_batch() {
             if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed git: $name$(_disk_hint)"
                 failed=$((failed + 1))
+                track_session "$name" "git" "failed" 2>/dev/null || true
                 _report_tool_done "Git" "$name" "fail"
             else
                 # Auto-setup: venv, requirements, symlinks
@@ -1012,6 +1018,7 @@ _GH_API_CACHE_DIR=""
 _gh_api_cache_init() {
     if [[ -z "$_GH_API_CACHE_DIR" ]]; then
         _GH_API_CACHE_DIR=$(mktemp -d)
+        _register_cleanup "$_GH_API_CACHE_DIR"
     fi
 }
 _gh_api_cache_cleanup() {
@@ -1058,8 +1065,8 @@ _gh_api_get() {
     fi
 
     local http_code _attempt
-    local tmp_body; tmp_body=$(mktemp)
-    local tmp_headers; tmp_headers=$(mktemp)
+    local tmp_body; tmp_body=$(mktemp); _register_cleanup "$tmp_body"
+    local tmp_headers; tmp_headers=$(mktemp); _register_cleanup "$tmp_headers"
 
     for _attempt in 1 2 3; do
         http_code=$(curl "${_CURL_OPTS[@]}" -D "$tmp_headers" -w "%{http_code}" \
@@ -1252,7 +1259,7 @@ for asset in data.get('assets', []):
     log_debug "_download_github_release_impl[$mode]: URL=$download_url"
 
     local tmp_dir
-    tmp_dir=$(mktemp -d)
+    tmp_dir=$(mktemp -d); _register_cleanup "$tmp_dir"
     local asset_name
     asset_name=$(basename "$download_url")
     if ! curl -sSL -o "$tmp_dir/$asset_name" "$download_url" >> "$LOG_FILE" 2>&1; then
@@ -1462,6 +1469,9 @@ track_version() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
+    # Record in session manifest (if a session is active)
+    track_session "$tool" "$method" "installed" 2>/dev/null || true
+
     # Inner logic shared between locked and unlocked paths
     _tv_write() {
         if [[ ! -f "$version_file" ]]; then
@@ -1512,8 +1522,8 @@ build_from_source() {
         return 1
     fi
     # Run build in a subshell to avoid changing the caller's working directory.
-    # Uses bash -c to support multi-step commands (e.g. "cmake . && make").
-    if (cd "$dest" && bash -c "$build_cmd") >> "$LOG_FILE" 2>&1; then
+    # Uses _as_builder for privilege dropping (build as user, not root).
+    if (cd "$dest" && _as_builder "$build_cmd") >> "$LOG_FILE" 2>&1; then
         _stop_spinner
         log_success "Built: $name"
         track_version "$name" "source" "HEAD"
@@ -1654,7 +1664,7 @@ install_binary_releases() {
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel mode ---
-        local _results_dir; _results_dir=$(mktemp -d)
+        local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for _entry in "${entries[@]}"; do
             IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
@@ -1763,7 +1773,7 @@ install_metasploit() {
 
     # 3) Fallback: official Rapid7 installer script (with basic verification)
     local tmp_installer
-    tmp_installer=$(mktemp)
+    tmp_installer=$(mktemp); _register_cleanup "$tmp_installer"
     local msf_url="https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb"
     if ! curl -fsSL "$msf_url" -o "$tmp_installer" 2>> "$LOG_FILE"; then
         log_error "Failed to download Metasploit installer"
@@ -1800,7 +1810,7 @@ install_metasploit() {
         log_warn "Rapid7 script failed — trying manual apt.metasploit.com repo setup"
         local _keyring="/usr/share/keyrings/metasploit-framework.gpg"
         local _tmp_key
-        _tmp_key=$(mktemp)
+        _tmp_key=$(mktemp); _register_cleanup "$_tmp_key"
         if curl -fsSL "https://apt.metasploit.com/metasploit-framework.gpg.key" -o "$_tmp_key" 2>>"$LOG_FILE"; then
             # Verify GPG key fingerprint before trusting
             local _fp

@@ -85,7 +85,7 @@ install_module_recon() {
                 log_warn "Skipping uv install (--skip-source) — theHarvester setup skipped"
             elif {
                 local _uv_tmp
-                _uv_tmp=$(mktemp)
+                _uv_tmp=$(mktemp); _register_cleanup "$_uv_tmp"
                 curl -fsSL https://astral.sh/uv/install.sh -o "$_uv_tmp" 2>>"$LOG_FILE" \
                     && grep -q 'uv' "$_uv_tmp" && grep -q 'astral' "$_uv_tmp" \
                     && sh "$_uv_tmp" >> "$LOG_FILE" 2>&1

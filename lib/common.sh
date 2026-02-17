@@ -17,12 +17,100 @@ VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
 LOG_FILE="${LOG_FILE:-/dev/null}"
 VERBOSE="${VERBOSE:-false}"
 PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
+# Installer version (read from VERSION file at repo root)
+INSTALLER_VERSION=""
+if [[ -f "${SCRIPT_DIR:-.}/VERSION" ]]; then
+    INSTALLER_VERSION=$(< "${SCRIPT_DIR:-.}/VERSION")
+    INSTALLER_VERSION="${INSTALLER_VERSION%%[[:space:]]}"  # strip trailing whitespace/newline
+fi
 # Validate PARALLEL_JOBS: must be a positive integer, clamped to 1-16
 if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
     PARALLEL_JOBS=4
 elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
     PARALLEL_JOBS=16
 fi
+
+# Temp file cleanup registry — tracks all mktemp paths for SIGINT/SIGTERM cleanup.
+# Every mktemp call should be followed by: _register_cleanup "$var"
+_CLEANUP_PATHS=()
+
+_register_cleanup() { _CLEANUP_PATHS+=("$1"); }
+
+_global_cleanup() {
+    for p in "${_CLEANUP_PATHS[@]+"${_CLEANUP_PATHS[@]}"}"; do
+        [[ -e "$p" ]] && rm -rf "$p" 2>/dev/null || true
+    done
+    _cleanup_global_semaphore 2>/dev/null || true
+    _cleanup_progress_dir 2>/dev/null || true
+    type -t _gh_api_cache_cleanup &>/dev/null && _gh_api_cache_cleanup 2>/dev/null || true
+}
+
+# ── Session tracking for rollback ──
+# Each install run creates a manifest in .install_sessions/<id>.manifest
+# Used by --rollback and --list-sessions.
+_SESSION_FILE=""
+_SESSION_ID=""
+
+_init_session() {
+    local profile="${1:-full}"
+    local modules="${2:-}"
+    local session_dir="${SCRIPT_DIR:-.}/.install_sessions"
+    mkdir -p "$session_dir" 2>/dev/null || true
+    _SESSION_ID="$(date '+%Y%m%d_%H%M%S')_$$"
+    _SESSION_FILE="$session_dir/${_SESSION_ID}.manifest"
+    {
+        echo "# Session: $_SESSION_ID"
+        echo "# Started: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "# Version: ${INSTALLER_VERSION:-unknown}"
+        echo "# Profile: $profile"
+        echo "# Modules: $modules"
+        echo "# tool|method|action|timestamp"
+    } > "$_SESSION_FILE"
+    chmod 644 "$_SESSION_FILE" 2>/dev/null || true
+}
+
+_finalize_session() {
+    local status="${1:-complete}"
+    [[ -n "$_SESSION_FILE" && -f "$_SESSION_FILE" ]] || return 0
+    {
+        echo "# Finished: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "# Status: $status"
+    } >> "$_SESSION_FILE"
+}
+
+# track_session — record a tool action (installed/failed) in the current session manifest.
+# Usage: track_session "nmap" "apt" "installed"
+track_session() {
+    [[ -n "$_SESSION_FILE" && -f "$_SESSION_FILE" ]] || return 0
+    local tool="$1" method="$2" action="$3"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "${tool}|${method}|${action}|${timestamp}" >> "$_SESSION_FILE"
+}
+
+_list_sessions() {
+    local session_dir="${SCRIPT_DIR:-.}/.install_sessions"
+    if [[ ! -d "$session_dir" ]] || [[ -z "$(ls -A "$session_dir" 2>/dev/null)" ]]; then
+        echo "No install sessions found."
+        return 0
+    fi
+    echo "Install sessions:"
+    echo ""
+    printf "  %-26s %-10s %-14s %-8s %s\n" "SESSION ID" "STATUS" "PROFILE" "TOOLS" "STARTED"
+    printf "  %-26s %-10s %-14s %-8s %s\n" "--------------------------" "----------" "--------------" "--------" "-------------------"
+    for f in "$session_dir"/*.manifest; do
+        [[ -f "$f" ]] || continue
+        local sid started profile status tool_count
+        sid=$(basename "$f" .manifest)
+        started=$(sed -n 's/^# Started: //p' "$f")
+        profile=$(sed -n 's/^# Profile: //p' "$f")
+        status=$(sed -n 's/^# Status: //p' "$f")
+        [[ -z "$status" ]] && status="interrupted"
+        tool_count=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
+        printf "  %-26s %-10s %-14s %-8s %s\n" "$sid" "$status" "$profile" "$tool_count" "$started"
+    done
+    echo ""
+}
 
 # Logging
 log_message() {
@@ -290,6 +378,7 @@ _GLOBAL_SEM_FD=""
 
 _init_global_semaphore() {
     _GLOBAL_SEM_DIR=$(mktemp -d "/tmp/cybersec_sem.XXXXXX")
+    _register_cleanup "$_GLOBAL_SEM_DIR"
     _GLOBAL_SEM_FIFO="$_GLOBAL_SEM_DIR/fifo"
     mkfifo "$_GLOBAL_SEM_FIFO"
     exec {_GLOBAL_SEM_FD}<>"$_GLOBAL_SEM_FIFO"
@@ -593,6 +682,19 @@ check_root() {
     fi
 }
 
+# _as_builder — run a command as $SUDO_USER instead of root (privilege dropping).
+# Build/download steps run as the original user; install/symlink steps stay as root.
+# Falls back to running as root when:
+#   - SUDO_USER is not set (direct root login / Docker)
+#   - Running on Termux (no root)
+# Usage: _as_builder "go install github.com/foo/bar@latest"
+_as_builder() {
+    if [[ "$PKG_MANAGER" == "pkg" ]] || [[ -z "${SUDO_USER:-}" ]] || [[ "${SUDO_USER:-}" == "root" ]]; then
+        bash -c "$1"; return $?
+    fi
+    sudo -H -u "$SUDO_USER" bash -c "$1"
+}
+
 # _check_pkg_manager — fail early if the distro/package manager is unsupported.
 # Usage: _check_pkg_manager
 _check_pkg_manager() {
@@ -683,17 +785,17 @@ pipx_remove() {
     fi
 }
 
-# Git clone helper
+# Git clone helper — clones/pulls as $SUDO_USER when available (privilege dropping)
 git_clone_or_pull() {
     local repo_url="$1"
     local dest="$2"
     if [[ -d "$dest/.git" ]]; then
         log_info "Updating $(basename "$dest")..."
-        git -C "$dest" pull -q >> "$LOG_FILE" 2>&1 || true
+        _as_builder "git -C '$dest' pull -q" >> "$LOG_FILE" 2>&1 || true
     else
         mkdir -p "$(dirname "$dest")" 2>/dev/null || true
         log_info "Cloning $(basename "$dest")..."
-        git clone --depth 1 -q "$repo_url" "$dest" >> "$LOG_FILE" 2>&1
+        _as_builder "git clone --depth 1 -q '$repo_url' '$dest'" >> "$LOG_FILE" 2>&1
     fi
 }
 
@@ -786,6 +888,7 @@ _PROGRESS_DISPLAY_PID=""
 # _init_progress_dir — create tmpdir for IPC between batch subshells and display loop
 _init_progress_dir() {
     PROGRESS_DIR=$(mktemp -d "/tmp/cybersec_progress.XXXXXX")
+    _register_cleanup "$PROGRESS_DIR"
     export PROGRESS_DIR
 }
 
@@ -1072,7 +1175,7 @@ print_banner() {
 / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
 \____/\__, /_.___/\___/_/   /____/\___/\___/
      /____/
-              Tools Installer
+              Tools Installer${INSTALLER_VERSION:+  v${INSTALLER_VERSION}}
 BANNER
     echo -e "${NC}"
     log_info "Distro: $DISTRO_NAME ($DISTRO_ID)"
