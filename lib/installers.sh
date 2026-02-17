@@ -1002,10 +1002,19 @@ install_git_batch() {
 # This avoids the word-splitting problem with echoing options as a string
 # (the Authorization header contains spaces that must not be split).
 _CURL_OPTS=()
+# Security: GITHUB_TOKEN is passed via a temporary netrc file instead of a
+# command-line -H header to prevent the token from appearing in process listings
+# and bash debug trace (set -x) output written to the log file.
+_GH_NETRC_FILE=""
 _setup_curl_opts() {
     _CURL_OPTS=(-sSL)
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-        _CURL_OPTS+=(-H "Authorization: token $GITHUB_TOKEN")
+        _GH_NETRC_FILE=$(mktemp "${TMPDIR:-/tmp}/gh-netrc.XXXXXX")
+        chmod 600 "$_GH_NETRC_FILE"
+        printf 'machine github.com\nlogin x-access-token\npassword %s\n' "$GITHUB_TOKEN" > "$_GH_NETRC_FILE"
+        printf 'machine api.github.com\nlogin x-access-token\npassword %s\n' "$GITHUB_TOKEN" >> "$_GH_NETRC_FILE"
+        _register_cleanup "$_GH_NETRC_FILE"
+        _CURL_OPTS+=(--netrc-file "$_GH_NETRC_FILE")
     fi
 }
 _setup_curl_opts
@@ -1608,6 +1617,7 @@ ALL_DOCKER_IMAGES=(
     "strangebee/thehive:latest|TheHive"
     "thehiveproject/cortex:latest|Cortex"
     "trailofbits/echidna|Echidna"
+    "vxcontrol/pentagi:latest|PentAGI"
 )
 
 # install_binary_releases — install all binary releases from a registry array.

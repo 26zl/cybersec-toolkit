@@ -77,6 +77,7 @@ sudo ./install.sh --skip-gems           # Skip all Ruby gem installs
 sudo ./install.sh --skip-git            # Skip all git clone installs
 sudo ./install.sh --skip-binary         # Skip all binary release downloads
 sudo ./install.sh --skip-source         # Skip build-from-source, snap, npm, and curl-pipe installs
+sudo ./install.sh --fast                # Skip checksum verification (see Security note below)
 sudo ./install.sh --require-checksums   # Fail if binary release has no checksum file
 sudo ./install.sh --upgrade-system      # Upgrade system packages before installing
 sudo ./install.sh --enable-docker       # Pull Docker images
@@ -230,7 +231,7 @@ This installer downloads and runs code from the internet. On Linux it runs as ro
 
 - __System packages__: GPG-signed by your distro's repos (apt, dnf, pacman, zypper, pkg)
 - __pipx/Go/Cargo/Gem/npm__: Downloads from registries (no signature verification, pipx isolated in venvs)
-- __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch. Use `--require-checksums` to also fail when no checksum file is published
+- __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch. Use `--require-checksums` to also fail when no checksum file is published. __Warning:__ `--fast` disables _all_ checksum verification, including for releases that do publish checksums — do not use in production or CI environments
 - __Go SDK__: SHA256 verified against go.dev published hashes when available; warns on API failure, hard-fails with `--require-checksums`
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
 - __Build from source__: Runs `make` (as root on Linux) -- review what you're building
@@ -240,6 +241,8 @@ The `.versions` file logs what was installed and when.
 ## Known Limitations
 
 Checksum verification is best-effort by default. Some upstream releases do not publish checksums or signatures, so downloads may proceed without cryptographic verification in those cases. Use `--require-checksums` to fail-closed when no checksum file is available. Go SDK downloads are SHA256-verified against go.dev when the API is reachable; use `--require-checksums` to hard-fail if it is not.
+
+`--fast` skips __all__ checksum verification for binary releases (both SHA256 checks and the missing-checksum warning), including releases that _do_ publish checksums. This trades integrity verification for speed. It is mutually exclusive with `--require-checksums`. Do not use `--fast` in CI pipelines or environments where supply-chain integrity matters.
 
 ## License
 

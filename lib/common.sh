@@ -2,7 +2,15 @@
 # common.sh — Shared library for cybersec-tools-installer
 # Source this file: source "$SCRIPT_DIR/lib/common.sh"
 
-# Colors 
+# Bash 4.3+ required for local -n (nameref) used throughout the codebase
+if [[ -z "${BASH_VERSION:-}" ]] || [[ "${BASH_VERSINFO[0]}" -lt 4 ]] || \
+   [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -lt 3 ]]; then
+    echo "ERROR: bash 4.3+ is required (found: ${BASH_VERSION:-none})" >&2
+    echo "  On macOS: brew install bash" >&2
+    exit 1
+fi
+
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -154,7 +162,7 @@ disable_debug_trace() {
 _init_log_file() {
     local path="$1"
     if : > "$path" 2>/dev/null; then
-        chmod 644 "$path" 2>/dev/null || true
+        chmod 600 "$path" 2>/dev/null || true
         LOG_FILE="$path"
     else
         LOG_FILE="/dev/null"

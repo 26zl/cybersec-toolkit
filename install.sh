@@ -520,11 +520,22 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                 ;;
         esac
 
-        # Remove from .versions file
+        # Remove from .versions file (use flock for parallel safety, matching track_version)
         if [[ -f "$SCRIPT_DIR/.versions" ]]; then
-            _tmp_ver=$(mktemp)
-            grep -v "^${rb_tool}|" "$SCRIPT_DIR/.versions" > "$_tmp_ver" 2>/dev/null || true
-            mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
+            _rb_versions_write() {
+                local _tmp_ver
+                _tmp_ver=$(mktemp "${SCRIPT_DIR}/.versions.XXXXXX")
+                grep -v "^${rb_tool}|" "$SCRIPT_DIR/.versions" > "$_tmp_ver" 2>/dev/null || true
+                mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
+            }
+            if command -v flock &>/dev/null; then
+                (
+                    flock -x 200
+                    _rb_versions_write
+                ) 200>"${SCRIPT_DIR}/.versions.lock"
+            else
+                _rb_versions_write
+            fi
         fi
         log_success "Removed: $rb_tool ($rb_method)"
     done
@@ -706,7 +717,7 @@ fi
 # Main installation
 LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
 if : > "$LOG_FILE" 2>/dev/null; then
-    chmod 644 "$LOG_FILE" 2>/dev/null || true
+    chmod 600 "$LOG_FILE" 2>/dev/null || true
 else
     LOG_FILE="/dev/null"
 fi

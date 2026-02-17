@@ -3436,5 +3436,23 @@
     "method": "git",
     "module": "llm",
     "url": "https://github.com/KeygraphHQ/shannon.git"
+  },
+  {
+    "name": "cai-framework",
+    "method": "pipx",
+    "module": "llm",
+    "url": "https://github.com/aliasrobotics/cai"
+  },
+  {
+    "name": "pentagi",
+    "method": "git",
+    "module": "llm",
+    "url": "https://github.com/vxcontrol/pentagi.git"
+  },
+  {
+    "name": "pentagi",
+    "method": "docker",
+    "module": "llm",
+    "url": "https://github.com/vxcontrol/pentagi"
   }
 ]

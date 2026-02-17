@@ -71,6 +71,36 @@ _version_ge() {
     [[ "$cur_major" -eq "$min_major" && "$cur_minor" -ge "$min_minor" ]]
 }
 
+# _validate_curl_pipe — validate a downloaded script before execution.
+# Checks: non-empty file, minimum size, and multiple required keywords.
+# Usage: _validate_curl_pipe "$file" "keyword1" "keyword2" ...
+# Returns 0 if all checks pass, 1 otherwise.
+_validate_curl_pipe() {
+    local file="$1"; shift
+    local -a keywords=("$@")
+    # File must exist and be non-empty
+    if [[ ! -s "$file" ]]; then
+        log_warn "Downloaded script is empty or missing: $file"
+        return 1
+    fi
+    # Minimum 512 bytes — a real install script is always larger
+    local _size
+    _size=$(wc -c < "$file")
+    if [[ "$_size" -lt 512 ]]; then
+        log_warn "Downloaded script is suspiciously small (${_size} bytes): $file"
+        return 1
+    fi
+    # Must contain ALL required keywords (not just one)
+    local kw
+    for kw in "${keywords[@]}"; do
+        if ! grep -q "$kw" "$file"; then
+            log_warn "Downloaded script missing expected keyword '$kw': $file"
+            return 1
+        fi
+    done
+    return 0
+}
+
 # ensure_go — install modern Go from go.dev when the system package is too old.
 # Many security tools (projectdiscovery, etc.) require Go >= 1.21.
 # Ubuntu 22.04 ships Go 1.18, Debian 12 ships Go 1.19 — both too old.
@@ -209,7 +239,7 @@ ensure_cargo() {
     local _rustup_tmp
     _rustup_tmp=$(mktemp); _register_cleanup "$_rustup_tmp"
     if curl -L --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
-            && grep -q 'rustup' "$_rustup_tmp" \
+            && _validate_curl_pipe "$_rustup_tmp" 'rustup' 'RUSTUP' 'sh' \
             && _as_builder "sh '$_rustup_tmp' -y" >> "$LOG_FILE" 2>&1; then
         # Add cargo to PATH for the current session
         if [[ -f "$HOME/.cargo/env" ]]; then
@@ -256,7 +286,7 @@ ensure_cargo_binstall() {
     if curl -L --proto '=https' --tlsv1.2 -sSf \
             https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
             -o "$_binstall_tmp" 2>>"$LOG_FILE" \
-            && grep -q 'cargo-binstall' "$_binstall_tmp" && grep -q 'binstall' "$_binstall_tmp" \
+            && _validate_curl_pipe "$_binstall_tmp" 'cargo-binstall' 'install' 'github.com' \
             && _as_builder "bash '$_binstall_tmp'" >> "$LOG_FILE" 2>&1; then
         export PATH="$HOME/.cargo/bin:$PATH"
     fi
@@ -394,7 +424,7 @@ ensure_node() {
         local _ns_tmp
         _ns_tmp=$(mktemp); _register_cleanup "$_ns_tmp"
         if curl -fsSL "https://deb.nodesource.com/setup_${NODE_MIN_VERSION}.x" -o "$_ns_tmp" 2>>"$LOG_FILE" \
-                && grep -q 'nodesource' "$_ns_tmp"; then
+                && _validate_curl_pipe "$_ns_tmp" 'nodesource' 'nodejs' 'apt'; then
             if bash "$_ns_tmp" >> "$LOG_FILE" 2>&1; then
                 pkg_install nodejs >> "$LOG_FILE" 2>&1 || true
             fi

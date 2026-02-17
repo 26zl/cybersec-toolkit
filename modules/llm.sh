@@ -7,16 +7,17 @@ PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-0.107.4}"
 
 LLM_PACKAGES=()
 
-LLM_PIPX=(garak)
+LLM_PIPX=(garak cai-framework)
 
 LLM_GIT=(
     "FuzzyAI=https://github.com/cyberark/FuzzyAI.git"
     "pallms=https://github.com/mik0w/pallms.git"
     "Vigil=https://github.com/deadbits/vigil-llm.git"
     "shannon=https://github.com/KeygraphHQ/shannon.git"
+    "pentagi=https://github.com/vxcontrol/pentagi.git"
 )
 
-LLM_GIT_NAMES=(FuzzyAI pallms Vigil shannon)
+LLM_GIT_NAMES=(FuzzyAI pallms Vigil shannon pentagi)
 
 install_module_llm() {
     [[ ${#LLM_PACKAGES[@]} -gt 0 ]] && install_apt_batch "LLM - Packages" "${LLM_PACKAGES[@]}"
