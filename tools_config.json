@@ -3450,7 +3450,7 @@
     "url": "https://github.com/vxcontrol/pentagi.git"
   },
   {
-    "name": "pentagi",
+    "name": "pentagi-docker",
     "method": "docker",
     "module": "llm",
     "url": "https://github.com/vxcontrol/pentagi"
