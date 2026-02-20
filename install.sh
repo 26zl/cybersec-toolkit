@@ -197,7 +197,7 @@ while [[ $# -gt 0 ]]; do
         --list-sessions)   _list_sessions; exit 0 ;;
         --rollback)        [[ $# -lt 2 ]] && { log_error "--rollback requires a session ID or 'last'"; exit 1; }
                            ROLLBACK_TARGET="$2"; shift 2 ;;
-        --version)         echo "cybersec-tools-installer ${INSTALLER_VERSION:-unknown}"; exit 0 ;;
+        --version)         echo "cybersec-toolkit ${INSTALLER_VERSION:-unknown}"; exit 0 ;;
         *)                 log_error "Unknown option: $1"; usage ;;
     esac
 done
@@ -921,6 +921,7 @@ main() {
     log_info "  Verify installation:  sudo ./scripts/verify.sh"
     log_info "  Update tools later:   sudo ./scripts/update.sh"
     log_info "  Backup configs:       sudo ./scripts/backup.sh"
+    log_info "  MCP server (AI):      See mcp_server/README.md"
     log_info "  Rollback this run:    sudo ./install.sh --rollback $_SESSION_ID"
     echo ""
 

@@ -33,7 +33,7 @@ jobs:
           errors=0
           warnings=0
 
-          echo "=== Cybersec Tools Installer — Security Scan ==="
+          echo "=== Cybersec Toolkit — Security Scan ==="
           echo ""
 
           for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do

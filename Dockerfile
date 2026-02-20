@@ -1,7 +1,7 @@
-FROM ubuntu:24.04@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b
+FROM ubuntu:24.04
 
 LABEL maintainer="26zl" \
-      description="Cybersec Tools Installer — 570+ security tools, one command"
+      description="Cybersec Toolkit — 577 security tools, one command"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -10,12 +10,17 @@ ENV DEBIAN_FRONTEND=noninteractive
 # and dev libraries automatically via SHARED_BASE_PACKAGES.
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
-        git curl wget sudo ca-certificates \
+        git curl wget sudo ca-certificates python3 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt/cybersec-tools-installer
+WORKDIR /opt/cybersec-toolkit
 COPY . .
 RUN chmod +x install.sh scripts/*.sh
+
+# MCP server: install uv + resolve dependencies so `uv run` works offline.
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && export PATH="$HOME/.local/bin:$PATH" \
+    && cd mcp_server && uv sync
 
 ENTRYPOINT ["./install.sh"]
 CMD ["--dry-run", "--profile", "full"]

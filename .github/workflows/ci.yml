@@ -77,6 +77,7 @@ jobs:
             !docs/TOOL_ANALYSIS.md
             !tests/bats/**/*.md
             !tests/test_helper/**/*.md
+            !mcp_server/.venv/**/*.md
 
   tests:
     name: Tests (bats-core)
@@ -97,6 +98,27 @@ jobs:
 
       - name: Cross-validate tools_config.json against module arrays
         run: python3 scripts/validate_tools_config.py
+
+  mcp-server-check:
+    name: MCP Server Import Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.3.1
+
+      - name: Verify MCP server imports and tool count
+        run: |
+          cd mcp_server && uv sync --quiet
+          uv run python -c "
+          import sys; sys.path.insert(0, '..')
+          from mcp_server.server import mcp, _db
+          assert _db.total_tools > 500, f'Expected 500+ tools, got {_db.total_tools}'
+          print(f'MCP server OK: {_db.total_tools} tools, {mcp.name}')
+          "
+
+      - name: Validate MCP data in sync with bash sources
+        run: python3 scripts/validate_mcp_sync.py
 
   profile-validate:
     name: Validate Profiles

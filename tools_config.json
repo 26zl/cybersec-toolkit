@@ -98,7 +98,7 @@
   {
     "name": "PEASS-ng",
     "method": "git",
-    "module": "pwn",
+    "module": "misc",
     "url": "https://github.com/peass-ng/PEASS-ng"
   },
   {
@@ -116,7 +116,7 @@
   {
     "name": "LaZagne",
     "method": "git",
-    "module": "pwn",
+    "module": "misc",
     "url": "https://github.com/AlessandroZ/LaZagne"
   },
   {
@@ -188,7 +188,7 @@
   {
     "name": "Caldera",
     "method": "git",
-    "module": "enterprise",
+    "module": "misc",
     "url": "https://github.com/mitre/caldera"
   },
   {

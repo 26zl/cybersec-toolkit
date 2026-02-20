@@ -1,6 +1,6 @@
-[![CI](https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/ci.yml)
-[![Integration](https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/integration.yml)
-[![Security](https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-tools-installer/actions/workflows/security.yml)
+[![CI](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml)
+[![Integration](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml)
+[![Security](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml)
 
 ```text
    ______      __              _____
@@ -9,10 +9,10 @@
 / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
 \____/\__, /_.___/\___/_/   /____/\___/\___/
      /____/
-              Tools Installer
+              Toolkit
 ```
 
-The most comprehensive automated installer for cybersecurity tools on Linux and Termux (Android). __570+ tools__, __18 modules__, __12 install methods__, one command.
+The most comprehensive modular installer and AI-integrated toolkit for cybersecurity tools on Linux and Termux (Android). __577 tools__, __18 modules__, __14 profiles__, __12 install methods__, plus an __MCP server__ for AI-assisted hacking.
 
 ---
 
@@ -23,12 +23,12 @@ All required runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pi
 > __Docker__ is the one exception — install it manually if you want C2 frameworks, MobSF, BeEF, BloodHound, TheHive, or Cortex (`--enable-docker`). See [Docker install docs](https://docs.docker.com/engine/install/).
 
 ```bash
-git clone https://github.com/26zl/cybersec-tools-installer.git
-cd cybersec-tools-installer
+git clone https://github.com/26zl/cybersec-toolkit.git
+cd cybersec-toolkit
 sudo ./install.sh
 ```
 
-That installs all 570+ tools. To install a subset:
+That installs all 577 tools. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -41,15 +41,15 @@ sudo ./install.sh --dry-run --profile ctf              # Preview without install
 ### Try in Docker
 
 ```bash
-docker build -t cybersec-installer .
-docker run cybersec-installer --profile ctf
+docker build -t cybersec-toolkit .
+docker run cybersec-toolkit --profile ctf
 ```
 
 __macOS (Apple Silicon):__ Add `--platform linux/amd64` to both commands to run via x86 emulation:
 
 ```bash
-docker build --platform linux/amd64 -t cybersec-installer .
-docker run --platform linux/amd64 cybersec-installer --profile ctf
+docker build --platform linux/amd64 -t cybersec-toolkit .
+docker run --platform linux/amd64 cybersec-toolkit --profile ctf
 ```
 
 __Termux (Android, experimental):__
@@ -58,8 +58,8 @@ __Termux (Android, experimental):__
 
 ```bash
 pkg install git
-git clone https://github.com/26zl/cybersec-tools-installer.git
-cd cybersec-tools-installer
+git clone https://github.com/26zl/cybersec-toolkit.git
+cd cybersec-toolkit
 ./install.sh --profile lightweight
 ```
 
@@ -90,7 +90,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 ### Why does a full install take 15-45 minutes?
 
-The installer orchestrates 570+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
+The installer orchestrates 577 tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
 
 | What takes time | Why | Typical time |
 | --- | --- | --- |
@@ -134,15 +134,15 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | ~30 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
-| `networking` | ~54 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `misc` | ~33 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
+| `networking` | ~55 | Port scanning, packet capture, tunneling, MITM, protocol tools |
 | `recon` | ~76 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | ~49 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | ~13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | ~37 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `pwn` | ~35 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | ~32 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
-| `enterprise` | ~78 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
+| `enterprise` | ~77 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | ~39 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | ~28 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | ~14 | Image/audio steganography, detection, StegCracker |
@@ -150,20 +150,20 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | `containers` | ~9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
 | `blueteam` | ~32 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
 | `mobile` | ~12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
-| `blockchain` | ~5 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
-| `llm` | ~6 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
+| `blockchain` | ~6 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
+| `llm` | ~9 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
 
 ## Install Methods
 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
-| Git clone | ~175 | GitHub repos with auto-setup, resources, wordlists |
+| Git clone | ~176 | GitHub repos with auto-setup, resources, wordlists |
 | System packages (apt/dnf/pacman/zypper) | ~163 | nmap, wireshark, john, hashcat |
-| pipx | ~111 | sqlmap, impacket, bloodhound, volatility3 |
+| pipx | ~113 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | ~52 | nuclei, subfinder, ffuf, httpx |
 | Binary release | ~32 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
 | Build from source | ~15 | massdns, duplicut, AFLplusplus, honggfuzz |
-| Docker | ~8 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex |
+| Docker | ~9 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
 | Cargo (Rust) | 4 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
@@ -185,6 +185,99 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `scripts/backup.sh` | Backup/restore tool configs | `sudo ./scripts/backup.sh backup` |
 
 `--deep-clean` removes Go module/build cache, Cargo registry, pip/pipx/npm/gem caches, orphaned pipx venvs, stale symlinks, and log files. Add `--remove-deps` to also purge Rustup toolchains.
+
+## MCP Server (AI Integration)
+
+[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is an open standard that lets AI assistants use external tools. This project includes an MCP server that gives any MCP-capable AI (Claude Code, Claude Desktop, Cursor, etc.) full read access to the 577-tool registry — plus the ability to check installs, recommend profiles, and execute tools. The AI becomes an interactive partner for ethical hacking: it knows every tool, which ones you have installed, and can run them for you.
+
+### What the AI can do
+
+| Tool | What it does |
+| ---- | ------------ |
+| `list_tools` | List/filter all 577 tools by module, method, or install status (includes URLs) |
+| `check_installed` | Check if a tool is installed (5 detection strategies) |
+| `get_tool_info` | Full details: method, module, URL, install/update/remove commands |
+| `get_module_info` | Deep-dive a module: all tools, install status, which profiles use it |
+| `get_profile_tools` | See every tool a profile installs, grouped by module |
+| `suggest_for_ctf` | Curated tool recommendations for 13 CTF challenge categories |
+| `recommend_install` | Natural-language → profile/module/tool recommendation |
+| `list_profiles` | All 14 profiles with tool counts and install commands |
+| `run_tool` | Execute installed tools safely (sanitized args, network policy, timeout) |
+
+### Quick Start
+
+Requires [uv](https://docs.astral.sh/uv/). Add to `.mcp.json` in the project root:
+
+```json
+{
+  "mcpServers": {
+    "cybersec-tools": {
+      "command": "uv",
+      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py"]
+    }
+  }
+}
+```
+
+Restart Claude Code. The 9 tools appear in `/mcp`.
+
+### Connect from WSL (e.g. Kali Linux)
+
+The MCP server runs over stdio, so it works from any environment that Claude Code can spawn. To use tools installed inside WSL:
+
+```json
+{
+  "mcpServers": {
+    "cybersec-tools": {
+      "command": "wsl",
+      "args": [
+        "-d", "kali-linux",
+        "bash", "-lc",
+        "cd /path/to/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
+      ]
+    }
+  }
+}
+```
+
+### Connect from Docker
+
+```json
+{
+  "mcpServers": {
+    "cybersec-tools": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "cybersec-toolkit",
+        "bash", "-c",
+        "export PATH=\"$HOME/.local/bin:$PATH\" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
+      ]
+    }
+  }
+}
+```
+
+### Usage Examples
+
+Once connected, just talk to the AI naturally:
+
+- __"Which tools do I need for a web CTF?"__ -- suggests top tools with install status
+- __"What does the CTF profile install?"__ -- lists all 264 tools grouped by module
+- __"Tell me about the web module"__ -- 49 tools, methods breakdown, which profiles include it
+- __"How do I install sqlmap?"__ -- install/update/remove commands for the right module
+- __"I want to do bug bounty hunting"__ -- recommends the `web` profile
+- __"Is nmap installed?"__ -- multi-strategy detection (PATH, .versions, pipx, /opt, docker)
+- __"Run nmap --version"__ -- executes with output capture, network policy enforcement
+
+### Test the Server
+
+```bash
+cd mcp_server && uv run fastmcp dev server.py
+```
+
+This opens a web-based MCP Inspector for interactively testing each tool.
+
+See [`mcp_server/README.md`](mcp_server/README.md) for Claude Desktop setup and full documentation.
 
 ## Tool Locations
 
@@ -212,10 +305,11 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 | `trailofbits/echidna` | blockchain | `--enable-docker` | Echidna smart contract fuzzer |
 | `strangebee/thehive:latest` | blueteam | `--enable-docker` | TheHive IR platform |
 | `thehiveproject/cortex:latest` | blueteam | `--enable-docker` | Cortex analysis |
+| `vxcontrol/pentagi:latest` | llm | `--enable-docker` | PentAGI autonomous pentesting |
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 570+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
+__Debian/Ubuntu/Kali is the primary target__ -- all 577 tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
 
 | Platform | Status |
 | -------- | ------ |

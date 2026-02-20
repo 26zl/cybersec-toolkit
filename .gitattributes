@@ -1,7 +1,15 @@
-# Force LF line endings for all shell scripts (prevents CRLF issues on Linux)
+# Force LF line endings for all text files in this repo.
+# Prevents CRLF breakage when shell scripts are checked out on Windows.
+* text=auto eol=lf
+
+# Explicitly mark script types as text (safety net)
 *.sh text eol=lf
 *.bats text eol=lf
 *.conf text eol=lf
-
-# Ensure these root scripts also get LF
-install.sh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf

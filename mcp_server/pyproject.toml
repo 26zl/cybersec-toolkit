@@ -1,0 +1,18 @@
+[project]
+name = "cybersec-tools-mcp"
+version = "1.0.0"
+description = "MCP server for the cybersec-toolkit — query 577 tools, get recommendations, execute safely"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=3.0.0,<4.0.0",
+]
+
+[project.scripts]
+cybersec-mcp = "server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["*.py"]

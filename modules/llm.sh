@@ -24,6 +24,11 @@ install_module_llm() {
     install_pipx_batch "LLM - Python" "${LLM_PIPX[@]}"
     install_git_batch "LLM - Git" "${LLM_GIT[@]}"
 
+    # Docker: PentAGI autonomous pentesting (optional)
+    if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
+        docker_pull "vxcontrol/pentagi:latest" "PentAGI" || true
+    fi
+
     # promptfoo — LLM red teaming & testing (npm package)
     if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
         if ensure_node; then

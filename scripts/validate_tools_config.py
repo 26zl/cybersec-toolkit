@@ -291,8 +291,8 @@ def extract_module_tools(module_name):
         name = m.group(1)
         tools.append({"name": name, "method": "snap", "url": ""})
 
-    # npm install -g <package>
-    for m in re.finditer(r'npm\s+install\s+-g\s+([\w][\w@/-]*)', clean):
+    # npm install -g "package@version" or npm install -g package
+    for m in re.finditer(r'npm\s+install\s+-g\s+"?([^"\s]+)"?', clean):
         name = m.group(1).split("@")[0]
         tools.append({"name": name, "method": "npm", "url": ""})
 
@@ -368,6 +368,12 @@ def validate():
     # Tools in JSON but not in modules → WARNING (function-call tools may not parse)
     for (name, method), mod in sorted(config_tools.items()):
         if (name, method) not in module_tools:
+            # Docker tools may use a "-docker" suffix in config when the base
+            # name already exists as a git clone (e.g. pentagi-docker vs pentagi).
+            if name.endswith("-docker") and method == "docker":
+                base = name[: -len("-docker")]
+                if (base, method) in module_tools:
+                    continue
             alt = [m for (n, m) in module_tools if n == name]
             if not alt:
                 print(f"WARNING: '{name}' ({method}) in tools_config.json but not found in modules/{mod}.sh arrays")

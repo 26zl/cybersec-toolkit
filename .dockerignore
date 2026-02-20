@@ -3,3 +3,5 @@ tests/
 .github/
 *.log
 .versions
+mcp_server/.venv/
+mcp_server/__pycache__/
