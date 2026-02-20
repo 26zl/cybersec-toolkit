@@ -3234,6 +3234,12 @@
     "url": "https://github.com/ethereum/solidity"
   },
   {
+    "name": "solc-select",
+    "method": "pipx",
+    "module": "blockchain",
+    "url": "https://github.com/crytic/solc-select"
+  },
+  {
     "name": "slither-analyzer",
     "method": "pipx",
     "module": "blockchain",

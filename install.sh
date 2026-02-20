@@ -653,7 +653,7 @@ estimate_install_time() {
         local _mod_list
         _mod_list=$(IFS='|'; echo "${MODULES_TO_INSTALL[*]}")
         # tools_config.json has consistent field order: name, method, module, url
-        eval "$(awk -v mods="$_mod_list" '
+        read -r snap_count special_count docker_count < <(awk -v mods="$_mod_list" '
             /"method"/ { gsub(/[",]/, ""); method=$2 }
             /"module"/ {
                 gsub(/[",]/, ""); mod=$2
@@ -663,8 +663,8 @@ estimate_install_time() {
                     if (method == "docker")  docker++
                 }
             }
-            END { printf "snap_count=%d special_count=%d docker_count=%d\n", snap+0, special+0, docker+0 }
-        ' "$_config")"
+            END { printf "%d %d %d\n", snap+0, special+0, docker+0 }
+        ' "$_config")
         # Exclude docker tools when Docker is disabled
         [[ "${ENABLE_DOCKER:-false}" != "true" ]] && docker_count=0
     fi
