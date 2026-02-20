@@ -645,24 +645,89 @@ estimate_install_time() {
         build_count=$((build_count + $(_count_array "${prefix}_BUILD_NAMES")))
     done
 
-    local total=$((apt_count + pipx_count + go_count + cargo_count + gem_count + git_count + binary_count + build_count))
+    # Count snap/special/docker tools from tools_config.json for selected modules
+    local snap_count=0 special_count=0 docker_count=0
+    local _config="${SCRIPT_DIR:-.}/tools_config.json"
+    if [[ -f "$_config" ]]; then
+        # Build "|"-separated module pattern for awk
+        local _mod_list
+        _mod_list=$(IFS='|'; echo "${MODULES_TO_INSTALL[*]}")
+        # tools_config.json has consistent field order: name, method, module, url
+        eval "$(awk -v mods="$_mod_list" '
+            /"method"/ { gsub(/[",]/, ""); method=$2 }
+            /"module"/ {
+                gsub(/[",]/, ""); mod=$2
+                if (mod ~ "^(" mods ")$") {
+                    if (method == "snap")    snap++
+                    if (method == "special") special++
+                    if (method == "docker")  docker++
+                }
+            }
+            END { printf "snap_count=%d special_count=%d docker_count=%d\n", snap+0, special+0, docker+0 }
+        ' "$_config")"
+        # Exclude docker tools when Docker is disabled
+        [[ "${ENABLE_DOCKER:-false}" != "true" ]] && docker_count=0
+    fi
 
-    # Per-method time benchmarks (seconds) — min/max for range estimate
+    local total=$((apt_count + pipx_count + go_count + cargo_count + gem_count + git_count + binary_count + build_count + snap_count + special_count + docker_count))
+
+    # ── Stage 2: APT (sequential, single batch install) ──
     local apt_min=0 apt_max=0
     if [[ "$apt_count" -gt 0 ]]; then
-        apt_min=$((30 + apt_count / 10))    # batch install + resolution overhead
-        apt_max=$((60 + apt_count / 5))
+        apt_min=$((60 + apt_count * 2))      # dep resolution + download + unpack
+        apt_max=$((120 + apt_count * 4))
     fi
-    local pipx_min=$((pipx_count * 3))      pipx_max=$((pipx_count * 6))
-    local go_min=$((go_count * 4))           go_max=$((go_count * 8))
-    local cargo_min=$((cargo_count * 10))    cargo_max=$((cargo_count * 25))
-    local gem_min=$((gem_count * 2))         gem_max=$((gem_count * 5))
-    local git_min=$((git_count * 2))         git_max=$((git_count * 5))
-    local binary_min=$((binary_count * 3))   binary_max=$((binary_count * 8))
-    local build_min=$((build_count * 8))     build_max=$((build_count * 20))
 
-    local total_min_s=$((apt_min + pipx_min + go_min + cargo_min + gem_min + git_min + binary_min + build_min))
-    local total_max_s=$((apt_max + pipx_max + go_max + cargo_max + gem_max + git_max + binary_max + build_max))
+    # ── Stage 3: Non-APT batches (run in PARALLEL when PARALLEL_JOBS > 1) ──
+    # Per-method benchmarks (seconds per tool).  pipx and Cargo run
+    # sequentially within their batch; Go/Git/Binary use a shared semaphore.
+    local pipx_min=$((pipx_count * 8))       pipx_max=$((pipx_count * 20))
+    local go_min=$((go_count * 5))           go_max=$((go_count * 15))
+    local cargo_min=$((cargo_count * 25))    cargo_max=$((cargo_count * 75))
+    local gem_min=$((gem_count * 3))         gem_max=$((gem_count * 8))
+    local git_min=$((git_count * 5))         git_max=$((git_count * 15))
+    local binary_min=$((binary_count * 3))   binary_max=$((binary_count * 10))
+
+    # Go/Git/Binary share the global semaphore — divide by PARALLEL_JOBS
+    local pj=${PARALLEL_JOBS:-4}
+    if [[ "$pj" -gt 1 ]]; then
+        go_min=$(( (go_min + pj - 1) / pj ))
+        go_max=$(( (go_max + pj - 1) / pj ))
+        git_min=$(( (git_min + pj - 1) / pj ))
+        git_max=$(( (git_max + pj - 1) / pj ))
+        binary_min=$(( (binary_min + pj - 1) / pj ))
+        binary_max=$(( (binary_max + pj - 1) / pj ))
+    fi
+
+    # Stage 3 methods run concurrently — wall-clock is the slowest batch
+    local stage3_min stage3_max
+    stage3_min=$pipx_min
+    for v in $go_min $cargo_min $gem_min $git_min $binary_min; do
+        (( v > stage3_min )) && stage3_min=$v
+    done
+    stage3_max=$pipx_max
+    for v in $go_max $cargo_max $gem_max $git_max $binary_max; do
+        (( v > stage3_max )) && stage3_max=$v
+    done
+
+    # When PARALLEL_JOBS=1, batches run sequentially — sum them instead
+    if [[ "$pj" -le 1 ]]; then
+        stage3_min=$((pipx_min + go_min + cargo_min + gem_min + git_min + binary_min))
+        stage3_max=$((pipx_max + go_max + cargo_max + gem_max + git_max + binary_max))
+    fi
+
+    # ── Stage 4: Custom installers + build-from-source (sequential) ──
+    # Build from source: compile time per tool
+    local stage4_min=$((build_count * 15))     stage4_max=$((build_count * 45))
+    # Snap installs: snapd bootstrap + each snap is slow
+    stage4_min=$((stage4_min + snap_count * 30))   stage4_max=$((stage4_max + snap_count * 120))
+    # Special installers: multi-method fallbacks, curl|bash builds, complex setup
+    stage4_min=$((stage4_min + special_count * 60))  stage4_max=$((stage4_max + special_count * 300))
+    # Docker pulls: image download + extract
+    stage4_min=$((stage4_min + docker_count * 30))   stage4_max=$((stage4_max + docker_count * 120))
+
+    local total_min_s=$((apt_min + stage3_min + stage4_min))
+    local total_max_s=$((apt_max + stage3_max + stage4_max))
 
     # Round up to minutes
     local min_minutes=$(( (total_min_s + 59) / 60 ))
@@ -670,6 +735,8 @@ estimate_install_time() {
 
     log_warn "Estimated install time: ~${min_minutes}-${max_minutes} minutes (${#MODULES_TO_INSTALL[@]} modules, ${total}+ tools)"
     log_info "  Breakdown: ${apt_count} apt, ${pipx_count} pipx, ${go_count} go, ${cargo_count} cargo, ${gem_count} gem, ${git_count} git, ${binary_count} binary, ${build_count} source"
+    [[ $((snap_count + special_count + docker_count)) -gt 0 ]] && \
+        log_info "  Custom: ${snap_count} snap, ${special_count} special, ${docker_count} docker"
     log_info "  Speed depends on network bandwidth, disk I/O, and CPU cores"
     echo ""
 }

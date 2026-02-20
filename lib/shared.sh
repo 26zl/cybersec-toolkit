@@ -23,7 +23,7 @@ SHARED_BASE_PACKAGES=(
     libglib2.0-dev libreadline-dev libsqlite3-dev libcurl4-openssl-dev
     libseccomp-dev binutils-dev libedit-dev liblzma-dev
     libkrb5-dev libsctp-dev libnfnetlink-dev
-    libgmp-dev libecm-dev
+    libcapstone-dev libgmp-dev libecm-dev
     libldap2-dev libsasl2-dev
     libpixman-1-dev libunwind-dev libini-config-dev
 

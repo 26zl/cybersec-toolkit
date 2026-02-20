@@ -649,11 +649,21 @@ snap_available() {
 # systemd service activation, so we skip auto-install there.
 ensure_snap() {
     if snap_available; then
+        # Even if snap binary exists, snapd daemon can't run in Docker (needs systemd)
+        if [[ "$IS_DOCKER" == "true" ]]; then
+            log_warn "snap cannot work inside Docker (no systemd) — skipping"
+            return 1
+        fi
         return 0
     fi
 
     # Termux: snap not supported
     [[ "$PKG_MANAGER" == "pkg" ]] && return 1
+
+    # Docker: snapd requires systemd — don't waste time installing it
+    if [[ "$IS_DOCKER" == "true" ]]; then
+        return 1
+    fi
 
     if [[ "$PKG_MANAGER" == "apt" ]]; then
         log_info "snapd not found — installing..."
@@ -1183,8 +1193,8 @@ print_banner() {
 / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
 \____/\__, /_.___/\___/_/   /____/\___/\___/
      /____/
-              Tools Installer${INSTALLER_VERSION:+  v${INSTALLER_VERSION}}
 BANNER
+    echo "              Tools Installer${INSTALLER_VERSION:+  v${INSTALLER_VERSION}}"
     echo -e "${NC}"
     log_info "Distro: $DISTRO_NAME ($DISTRO_ID)"
     log_info "Package manager: $PKG_MANAGER"
@@ -1280,16 +1290,18 @@ detect_arch() {
 
 detect_wsl() {
     IS_WSL=false
+    IS_DOCKER=false
     # Docker containers on WSL2 inherit "microsoft" in /proc/version
     # but are not actually WSL — skip the check inside containers
-    if [[ -f /.dockerenv ]]; then
-        export IS_WSL
+    if [[ -f /.dockerenv ]] || grep -qsw docker /proc/1/cgroup 2>/dev/null; then
+        IS_DOCKER=true
+        export IS_WSL IS_DOCKER
         return
     fi
     if [[ -f /proc/version ]] && grep -qi "microsoft" /proc/version 2>/dev/null; then
         IS_WSL=true
     fi
-    export IS_WSL
+    export IS_WSL IS_DOCKER
 }
 
 # Auto-init on source

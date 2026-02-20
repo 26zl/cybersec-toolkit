@@ -47,10 +47,12 @@ install_module_networking() {
     # RustScan (Rust-based port scanner)
     install_cargo_batch "Networking - Rust" "${NET_CARGO[@]}" || true
 
-    # ngrok (tunneling — snap)
+    # ngrok (tunneling — snap; binary fallback in Docker)
     if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
         if ! command_exists ngrok; then
-            if snap_available; then
+            if [[ "$IS_DOCKER" == "true" ]]; then
+                log_warn "ngrok requires snap (unavailable in Docker) — install manually: https://ngrok.com/download"
+            elif snap_available; then
                 _start_spinner "Installing ngrok via snap..."
                 if snap_install ngrok >> "$LOG_FILE" 2>&1; then
                     _stop_spinner

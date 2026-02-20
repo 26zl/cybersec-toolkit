@@ -1764,8 +1764,8 @@ install_metasploit() {
         log_warn "metasploit-framework not in apt repos — trying snap"
     fi
 
-    # 2) Snap — primary method for standard Ubuntu/Debian
-    if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
+    # 2) Snap — primary method for standard Ubuntu/Debian (not available in Docker)
+    if [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$IS_DOCKER" != "true" ]]; then
         if ensure_snap; then
             _start_spinner "Installing Metasploit via snap..."
             if snap_install metasploit-framework >> "$LOG_FILE" 2>&1; then
@@ -1822,9 +1822,32 @@ install_metasploit() {
         local _tmp_key
         _tmp_key=$(mktemp); _register_cleanup "$_tmp_key"
         if curl -fsSL "https://apt.metasploit.com/metasploit-framework.gpg.key" -o "$_tmp_key" 2>>"$LOG_FILE"; then
+            # Verify downloaded key is non-empty before processing
+            if [[ ! -s "$_tmp_key" ]]; then
+                log_error "Metasploit GPG key download produced empty file"
+                rm -f "$_tmp_key"
+                return 1
+            fi
             # Verify GPG key fingerprint before trusting
-            local _fp
-            _fp=$(gpg --with-colons --show-keys "$_tmp_key" 2>/dev/null | awk -F: '/^fpr:/{print $10; exit}')
+            # Try --show-keys (GnuPG >= 2.2.8), fall back to --with-fingerprint
+            local _fp=""
+            local _gpg_tmp; _gpg_tmp=$(mktemp -d); _register_cleanup "$_gpg_tmp"
+            _fp=$(gpg --homedir "$_gpg_tmp" --with-colons --show-keys "$_tmp_key" 2>/dev/null \
+                | awk -F: '/^fpr:/{print $10; exit}') || true
+            if [[ -z "$_fp" ]]; then
+                _fp=$(gpg --homedir "$_gpg_tmp" --with-colons --import-options show-only --import "$_tmp_key" 2>/dev/null \
+                    | awk -F: '/^fpr:/{print $10; exit}') || true
+            fi
+            if [[ -z "$_fp" ]]; then
+                _fp=$(gpg --homedir "$_gpg_tmp" --with-fingerprint "$_tmp_key" 2>/dev/null \
+                    | grep -oE '[A-F0-9 ]{40,}' | tr -d ' ' | head -1) || true
+            fi
+            rm -rf "$_gpg_tmp"
+            if [[ -z "$_fp" ]]; then
+                log_error "Could not extract Metasploit GPG key fingerprint — skipping repo setup"
+                rm -f "$_tmp_key"
+                return 1
+            fi
             if [[ "$_fp" != "CEC43851245B2886296060A827FF0E3B4BAE526D" ]]; then
                 log_error "Metasploit GPG key fingerprint mismatch (got: $_fp) — refusing to trust"
                 rm -f "$_tmp_key"
@@ -1859,6 +1882,10 @@ install_metasploit() {
 install_zap() {
     if command_exists zaproxy; then
         log_success "OWASP ZAP already installed"
+        return 0
+    fi
+    if [[ "$IS_DOCKER" == "true" ]]; then
+        log_warn "OWASP ZAP requires snap (unavailable in Docker) — skipping"
         return 0
     fi
     if snap_available; then

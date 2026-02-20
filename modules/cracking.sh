@@ -31,30 +31,21 @@ install_module_cracking() {
     install_pipx_batch "Cracking - Python" "${CRACKING_PIPX[@]}"
 
     # patator: cx-Oracle dependency requires Oracle Instant Client headers (not
-    # available) and setuptools (missing from pipx venvs on Python 3.12+).
-    # Exclude cx-Oracle — Oracle DB brute-forcing is a niche use case.
-    # Pre-install setuptools to fix build failures on Python 3.12+ (PEP 632).
+    # available).  Install without deps, then inject everything except cx-Oracle.
+    # Also inject setuptools (missing from pipx venvs on Python 3.12+, PEP 632).
     if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! command_exists patator; then
         log_info "Installing patator (excluding cx-Oracle)..."
-        local _constraint
-        _constraint=$(mktemp); _register_cleanup "$_constraint"
-        echo 'cx-Oracle>=999' > "$_constraint"
-        # --preinstall requires pipx >= 1.4.0 (Ubuntu 22.04 ships older)
-        local _pipx_args=(install patator --pip-args="--constraint $_constraint")
-        if pipx --help 2>&1 | grep -q -- '--preinstall'; then
-            _pipx_args+=(--preinstall setuptools)
-        fi
-        if pipx "${_pipx_args[@]}" >> "$LOG_FILE" 2>&1; then
-            # On older pipx without --preinstall, inject setuptools into patator's venv
-            if ! pipx --help 2>&1 | grep -q -- '--preinstall'; then
-                pipx inject patator setuptools >> "$LOG_FILE" 2>&1 || true
-            fi
+        if pipx install patator --pip-args='--no-deps' >> "$LOG_FILE" 2>&1; then
+            # Inject all patator deps except cx-Oracle (Oracle DB brute-forcing is niche)
+            pipx inject patator setuptools paramiko pycurl ajpy impacket \
+                psycopg2-binary pycryptodomex dnspython IPy pysnmp >> "$LOG_FILE" 2>&1 || true
+            # Optional deps that may fail without system headers — don't count as errors
+            pipx inject patator mysqlclient >> "$LOG_FILE" 2>&1 || log_debug "patator: mysqlclient skipped (needs libmysqlclient-dev)"
             log_success "patator installed"
         else
             log_error "Failed pipx: patator"
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         fi
-        rm -f "$_constraint"
     fi
 
     install_git_batch "Cracking - Git" "${CRACKING_GIT[@]}"
