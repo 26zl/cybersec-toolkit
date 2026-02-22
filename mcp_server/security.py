@@ -102,8 +102,18 @@ def _is_safe_target(value: str) -> bool:
             # Can't resolve — treat as potentially external
             return False
 
-    # Not a recognizable target — allow (it's probably a flag value or file path)
-    return True
+    # Not a recognizable IP/hostname — could be a decimal IP, bare hostname, etc.
+    # Try DNS resolution as a last resort to catch targets like "google" or "134744072"
+    try:
+        info = socket.getaddrinfo(value, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        for _, _, _, _, sockaddr in info:
+            addr = ipaddress.ip_address(sockaddr[0])
+            if not any(addr in net for net in _SAFE_NETWORKS):
+                return False
+        return True
+    except (socket.gaierror, OSError, ValueError):
+        # Can't resolve — not a network target, allow (flag value or file path)
+        return True
 
 
 def check_policy(tool_name: str, arg_list: list[str]) -> None:
@@ -138,8 +148,8 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
         elif "=" in arg and arg.split("=", 1)[0] in target_flags:
             value = arg.split("=", 1)[1]
             i += 1
-        elif not arg.startswith("-") and ("." in arg or ":" in arg):
-            # Positional arg that looks like a target
+        elif not arg.startswith("-") and not arg.startswith("/"):
+            # Positional arg that could be a target (hostname, IP, URL, decimal IP)
             value = arg
             i += 1
         else:

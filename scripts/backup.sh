@@ -226,13 +226,26 @@ cmd_restore() {
         exit 1
     fi
 
-    log_info "Extracting backup..."
-    tar -xzf "$tar_file" -C "$BACKUP_DIR"
+    # Validate archive contents before extracting (block path traversal)
     local backup_name
     backup_name=$(tar -tzf "$tar_file" | head -1 | cut -f1 -d"/")
 
     if [[ -z "$backup_name" ]]; then
         log_error "Could not determine backup directory name from archive"
+        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
+        exit 1
+    fi
+
+    # Reject archives containing path traversal or absolute paths
+    if tar -tzf "$tar_file" | grep -qE '(^/|\.\.)'; then
+        log_error "Archive contains unsafe paths (absolute or ../) — aborting"
+        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
+        exit 1
+    fi
+
+    log_info "Extracting backup..."
+    if ! tar -xzf "$tar_file" -C "$BACKUP_DIR"; then
+        log_error "Failed to extract backup archive"
         [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
         exit 1
     fi
@@ -336,8 +349,19 @@ cmd_schedule() {
             ;;
     esac
 
-    (crontab -l 2>/dev/null | grep -v "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $SCRIPT_DIR/scripts/backup.sh backup") | crontab -
+    if [[ -z "${BACKUP_PASSPHRASE:-}" ]]; then
+        log_error "BACKUP_PASSPHRASE env var must be set for scheduled backups"
+        log_info "Example: export BACKUP_PASSPHRASE='your-passphrase-here'"
+        log_info "Store it in a root-only file: echo 'BACKUP_PASSPHRASE=...' > /etc/cybersec-backup.env && chmod 600 /etc/cybersec-backup.env"
+        exit 1
+    fi
+
+    local cron_cmd="BACKUP_PASSPHRASE='$BACKUP_PASSPHRASE' $SCRIPT_DIR/scripts/backup.sh backup"
+    (crontab -l 2>/dev/null | grep -v "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd") | crontab -
     log_success "Backup scheduled: $frequency at $time"
+    log_warn "Passphrase is embedded in crontab. For better security, use an env file:"
+    log_info "  echo 'BACKUP_PASSPHRASE=...' > /etc/cybersec-backup.env && chmod 600 /etc/cybersec-backup.env"
+    log_info "  Then edit crontab manually to source it: . /etc/cybersec-backup.env && $SCRIPT_DIR/scripts/backup.sh backup"
 }
 
 cmd_unschedule() {
