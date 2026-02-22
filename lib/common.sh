@@ -727,7 +727,7 @@ _chown_for_builder() {
 # Returns root's $HOME when not privilege-dropping.
 _builder_home() {
     if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
-        eval echo "~${SUDO_USER}"
+        getent passwd "$SUDO_USER" | cut -d: -f6
     else
         echo "$HOME"
     fi
