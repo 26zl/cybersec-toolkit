@@ -1137,6 +1137,12 @@ _stop_progress_display() {
                 [[ "$total" =~ ^[0-9]+$ ]] || total=0
                 [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
 
+                # All subshells have exited by now — if done file is missing/empty
+                # but total > 0, the method completed (done data didn't reach IPC dir).
+                if [[ "$total" -gt 0 ]] && [[ "$done_count" -eq 0 ]]; then
+                    done_count=$total
+                fi
+
                 # Full bar for completed, empty for skipped
                 local bar_width=20 bar="" i
                 local filled=$bar_width

@@ -509,7 +509,8 @@ install_go_batch() {
         _register_cleanup "$_gobin_stage"
         _chown_for_builder "$_gobin_stage"
         mkdir -p "$GOPATH" 2>/dev/null || true
-        _chown_for_builder "$GOPATH"
+        # Recursive: previous runs may have left root-owned subdirs in the module cache
+        chown -R "$SUDO_USER" "$GOPATH" 2>/dev/null || true
     fi
     local _effective_gobin="${_gobin_stage:-$GOBIN}"
 
@@ -617,7 +618,9 @@ install_cargo_batch() {
         _report_method_total "Cargo" 0
         return 0
     fi
-    export PATH="$(_builder_home)/.cargo/bin:$PATH"
+    local _cbdir
+    _cbdir="$(_builder_home)/.cargo/bin"
+    export PATH="$_cbdir:$PATH"
 
     # Try to set up cargo-binstall for faster pre-compiled downloads
     local _use_binstall=false

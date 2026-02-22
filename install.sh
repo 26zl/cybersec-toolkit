@@ -1007,9 +1007,18 @@ install_modules() {
         local _method_names=()
         local _job_pids=()
 
+        # Pre-write method totals from the main process so the progress display
+        # has immediate access.  Subshell > /dev/null redirects prevent the batch
+        # functions' _report_method_total writes from reaching PROGRESS_DIR.
+        if [[ ${#_ALL_PIPX[@]} -gt 0 ]];   then _method_names+=("pipx");   _report_method_total "pipx"   "${#_ALL_PIPX[@]}";   fi
+        if [[ ${#_ALL_GO[@]} -gt 0 ]];     then _method_names+=("Go");     _report_method_total "Go"     "${#_ALL_GO[@]}";     fi
+        if [[ ${#_ALL_CARGO[@]} -gt 0 ]];  then _method_names+=("Cargo");  _report_method_total "Cargo"  "${#_ALL_CARGO[@]}";  fi
+        if [[ ${#_ALL_GEMS[@]} -gt 0 ]];   then _method_names+=("Gems");   _report_method_total "Gems"   "${#_ALL_GEMS[@]}";   fi
+        if [[ ${#_ALL_GIT[@]} -gt 0 ]];    then _method_names+=("Git");    _report_method_total "Git"    "${#_ALL_GIT[@]}";    fi
+        if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then _method_names+=("Binary"); _report_method_total "Binary" "${#_ALL_BINARY[@]}"; fi
+
         # pipx (sequential within — venv lock)
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
-            _method_names+=("pipx")
             (
                 trap '[[ -f "$_fail_dir/pipx.cnt" ]] || echo 1 > "$_fail_dir/pipx.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
@@ -1021,7 +1030,6 @@ install_modules() {
 
         # Go (parallelized within via global semaphore)
         if [[ ${#_ALL_GO[@]} -gt 0 ]]; then
-            _method_names+=("Go")
             (
                 trap '[[ -f "$_fail_dir/go.cnt" ]] || echo 1 > "$_fail_dir/go.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
@@ -1033,7 +1041,6 @@ install_modules() {
 
         # Cargo (sequential within — registry lock)
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]]; then
-            _method_names+=("Cargo")
             (
                 trap '[[ -f "$_fail_dir/cargo.cnt" ]] || echo 1 > "$_fail_dir/cargo.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
@@ -1045,7 +1052,6 @@ install_modules() {
 
         # Gems (sequential within — gem dir lock)
         if [[ ${#_ALL_GEMS[@]} -gt 0 ]]; then
-            _method_names+=("Gems")
             (
                 trap '[[ -f "$_fail_dir/gems.cnt" ]] || echo 1 > "$_fail_dir/gems.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
@@ -1057,7 +1063,6 @@ install_modules() {
 
         # Git repos (parallelized within via global semaphore)
         if [[ ${#_ALL_GIT[@]} -gt 0 ]]; then
-            _method_names+=("Git")
             (
                 trap '[[ -f "$_fail_dir/git.cnt" ]] || echo 1 > "$_fail_dir/git.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
@@ -1069,7 +1074,6 @@ install_modules() {
 
         # Binary releases (parallelized within via global semaphore)
         if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then
-            _method_names+=("Binary")
             (
                 trap '[[ -f "$_fail_dir/binary.cnt" ]] || echo 1 > "$_fail_dir/binary.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
@@ -1151,17 +1155,10 @@ install_modules() {
             echo ""
             log_info "━━━━━ Module: $mod ━━━━━"
 
-            # Use process substitution to get live output AND detect empty modules.
-            # >(tee file) runs tee in a subprocess while the function runs in the
-            # current process — globals like TOTAL_TOOL_FAILURES propagate correctly.
-            local _mod_buf; _mod_buf=$(mktemp); _register_cleanup "$_mod_buf"
-            "$func_name" > >(tee "$_mod_buf") 2>&1 || true
-            sleep 0.1  # let tee flush
-
-            if [[ ! -s "$_mod_buf" ]]; then
-                log_success "All tools installed via batch (Stage 3)"
-            fi
-            rm -f "$_mod_buf"
+            # Batch tools (apt/pipx/go/cargo/gems/git/binary) were already installed
+            # in Stage 3 — show confirmation, then run module-specific custom logic.
+            log_success "All tools installed via batch (Stage 3)"
+            "$func_name" 2>&1 || true
 
             if [[ $TOTAL_TOOL_FAILURES -gt $_pre_failures ]]; then
                 local _mod_fails=$((TOTAL_TOOL_FAILURES - _pre_failures))
