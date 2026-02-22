@@ -55,3 +55,6 @@ results.sarif
 # Bats test artifacts
 tests/tmp/
 tests/.bats-run-*
+
+#mcp
+.mcp.json
