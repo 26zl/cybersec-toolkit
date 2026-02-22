@@ -713,6 +713,26 @@ _as_builder() {
     sudo -H -u "$SUDO_USER" bash -c "$1"
 }
 
+# _chown_for_builder — make directories writable by $SUDO_USER before privilege-dropped operations.
+# Root creates system directories (/opt, /usr/local/bin) but _as_builder runs as $SUDO_USER,
+# who cannot write to root-owned dirs.  Call this after mkdir to hand ownership to the builder.
+# No-op when not privilege-dropping (Termux, direct root login, Docker).
+# Usage: _chown_for_builder /opt/toolname [/opt/go ...]
+_chown_for_builder() {
+    [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]] || return 0
+    chown "$SUDO_USER" "$@" 2>/dev/null || true
+}
+
+# _builder_home — resolve $SUDO_USER's home directory (not root's $HOME).
+# Returns root's $HOME when not privilege-dropping.
+_builder_home() {
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
+        eval echo "~${SUDO_USER}"
+    else
+        echo "$HOME"
+    fi
+}
+
 # _check_pkg_manager — fail early if the distro/package manager is unsupported.
 # Usage: _check_pkg_manager
 _check_pkg_manager() {
@@ -804,6 +824,8 @@ pipx_remove() {
 }
 
 # Git clone helper — clones/pulls as $SUDO_USER when available (privilege dropping)
+# Creates the destination directory as root, then chowns it to $SUDO_USER so the
+# privilege-dropped git clone can write into it.
 git_clone_or_pull() {
     local repo_url="$1"
     local dest="$2"
@@ -811,7 +833,8 @@ git_clone_or_pull() {
         log_info "Updating $(basename "$dest")..."
         _as_builder "git -C '$dest' pull -q" >> "$LOG_FILE" 2>&1 || true
     else
-        mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+        mkdir -p "$dest" 2>/dev/null || true
+        _chown_for_builder "$dest"
         log_info "Cloning $(basename "$dest")..."
         _as_builder "git clone --depth 1 -q '$repo_url' '$dest'" >> "$LOG_FILE" 2>&1
     fi
@@ -1009,7 +1032,9 @@ _start_progress_display() {
 
                 # Status indicator
                 local status_str=""
-                if [[ "$total" -eq 0 ]]; then
+                if [[ "$total" -eq 0 ]] && [[ -f "$_pd/$method.total" ]]; then
+                    status_str="skipped"
+                elif [[ "$total" -eq 0 ]]; then
                     status_str="waiting..."
                 elif [[ "$done_count" -ge "$total" ]]; then
                     local fc=0
@@ -1329,6 +1354,8 @@ else
     # pipx: install venvs to /opt/pipx, binaries to /usr/local/bin
     export PIPX_HOME="/opt/pipx"
     export PIPX_BIN_DIR="/usr/local/bin"
-    # Cargo: keep in root's home but symlink to /usr/local/bin after install
-    export PATH="/usr/local/bin:$HOME/.cargo/bin:$PATH"
+    # Cargo: rustup installs to $SUDO_USER's home via _as_builder, but $HOME is root's.
+    # Include both so command_exists cargo works regardless of who installed rustup.
+    _BUILDER_CARGO="$(_builder_home)/.cargo/bin"
+    export PATH="/usr/local/bin:$HOME/.cargo/bin:${_BUILDER_CARGO}:$PATH"
 fi

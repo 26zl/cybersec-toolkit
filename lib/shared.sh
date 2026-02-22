@@ -241,12 +241,15 @@ ensure_cargo() {
     if curl -L --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_rustup_tmp" 'rustup' 'RUSTUP' 'sh' \
             && _as_builder "sh '$_rustup_tmp' -y" >> "$LOG_FILE" 2>&1; then
-        # Add cargo to PATH for the current session
-        if [[ -f "$HOME/.cargo/env" ]]; then
-            # shellcheck disable=SC1091  # File may not exist on all systems
-            source "$HOME/.cargo/env"
+        # Add cargo to PATH for the current session.
+        # _as_builder installs rustup to $SUDO_USER's home, not root's $HOME.
+        local _cargo_home
+        _cargo_home="$(_builder_home)/.cargo"
+        if [[ -f "$_cargo_home/env" ]]; then
+            # shellcheck disable=SC1090  # Path is dynamic (builder's home)
+            source "$_cargo_home/env"
         fi
-        export PATH="$HOME/.cargo/bin:$PATH"
+        export PATH="$_cargo_home/bin:$PATH"
     fi
     rm -f "$_rustup_tmp"
 
@@ -288,7 +291,7 @@ ensure_cargo_binstall() {
             -o "$_binstall_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_binstall_tmp" 'cargo-binstall' 'install' 'github.com' \
             && _as_builder "bash '$_binstall_tmp'" >> "$LOG_FILE" 2>&1; then
-        export PATH="$HOME/.cargo/bin:$PATH"
+        export PATH="$(_builder_home)/.cargo/bin:$PATH"
     fi
     rm -f "$_binstall_tmp"
 

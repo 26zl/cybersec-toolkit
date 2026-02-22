@@ -378,6 +378,7 @@ install_pipx_batch() {
 
     if [[ "${SKIP_PIPX:-false}" == "true" ]]; then
         log_warn "Skipping ${label} (--skip-pipx)"
+        _report_method_total "pipx" 0
         return 0
     fi
 
@@ -489,14 +490,28 @@ install_go_batch() {
 
     if [[ "${SKIP_GO:-false}" == "true" ]]; then
         log_warn "Skipping ${label} (--skip-go)"
+        _report_method_total "Go" 0
         return 0
     fi
 
     if ! command_exists go; then
         log_warn "Go not found — skipping ${label}"
+        _report_method_total "Go" 0
         return 0
     fi
     # GOPATH and GOBIN are set in common.sh (GOPATH=$GOPATH, GOBIN=$GOBIN)
+    # When privilege-dropping via _as_builder, $SUDO_USER cannot write to root-owned
+    # GOBIN (/usr/local/bin) or GOPATH (/opt/go).  Use a staging GOBIN that $SUDO_USER
+    # owns, then move completed binaries to the real GOBIN as root.
+    local _gobin_stage=""
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
+        _gobin_stage=$(mktemp -d "/tmp/cybersec-gobin.XXXXXX")
+        _register_cleanup "$_gobin_stage"
+        _chown_for_builder "$_gobin_stage"
+        mkdir -p "$GOPATH" 2>/dev/null || true
+        _chown_for_builder "$GOPATH"
+    fi
+    local _effective_gobin="${_gobin_stage:-$GOBIN}"
 
     log_debug "install_go_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
@@ -524,7 +539,10 @@ install_go_batch() {
             (
                 trap '_release_job_slot' EXIT
                 _report_tool_start "Go" "$name"
-                if _as_builder "GOPATH='$GOPATH' GOBIN='$GOBIN' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
+                if _as_builder "GOPATH='$GOPATH' GOBIN='$_effective_gobin' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
+                    # Move binary from staging dir to system GOBIN (runs as root)
+                    [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$name" ]] \
+                        && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
                     _report_tool_done "Go" "$name" "ok"
                 else
@@ -555,12 +573,15 @@ install_go_batch() {
                 _report_tool_done "Go" "$name" "skip"
                 continue
             fi
-            if ! _as_builder "GOPATH='$GOPATH' GOBIN='$GOBIN' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
+            if ! _as_builder "GOPATH='$GOPATH' GOBIN='$_effective_gobin' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed go: $name$(_disk_hint)"
                 failed=$((failed + 1))
                 track_session "$name" "go" "failed" 2>/dev/null || true
                 _report_tool_done "Go" "$name" "fail"
             else
+                # Move binary from staging dir to system GOBIN (runs as root)
+                [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$name" ]] \
+                    && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"
                 track_version "$name" "go" "latest"
                 _report_tool_done "Go" "$name" "ok"
             fi
@@ -586,15 +607,17 @@ install_cargo_batch() {
 
     if [[ "${SKIP_CARGO:-false}" == "true" ]]; then
         log_warn "Skipping ${label} (--skip-cargo)"
+        _report_method_total "Cargo" 0
         return 0
     fi
 
     if ! command_exists cargo; then
         log_warn "Cargo not found — skipping ${label}"
         log_warn "Install Rust first: https://rustup.rs/"
+        _report_method_total "Cargo" 0
         return 0
     fi
-    export PATH="$HOME/.cargo/bin:$PATH"
+    export PATH="$(_builder_home)/.cargo/bin:$PATH"
 
     # Try to set up cargo-binstall for faster pre-compiled downloads
     local _use_binstall=false
@@ -646,8 +669,9 @@ install_cargo_batch() {
                 continue
             fi
         fi
-        if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-            ln -sf "$HOME/.cargo/bin/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
+        local _cargo_bin_dir; _cargo_bin_dir="$(_builder_home)/.cargo/bin"
+        if [[ -f "$_cargo_bin_dir/$crate" ]]; then
+            ln -sf "$_cargo_bin_dir/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
         fi
         track_version "$crate" "cargo" "latest"
         _report_tool_done "Cargo" "$crate" "ok"
@@ -672,11 +696,13 @@ install_gem_batch() {
 
     if [[ "${SKIP_GEMS:-false}" == "true" ]]; then
         log_warn "Skipping ${label} (--skip-gems)"
+        _report_method_total "Gems" 0
         return 0
     fi
 
     if ! command_exists gem; then
         log_warn "Ruby gem not found — skipping ${label}"
+        _report_method_total "Gems" 0
         return 0
     fi
 
@@ -911,6 +937,7 @@ install_git_batch() {
 
     if [[ "${SKIP_GIT:-false}" == "true" ]]; then
         log_warn "Skipping ${label} (--skip-git)"
+        _report_method_total "Git" 0
         return 0
     fi
 
@@ -1632,12 +1659,14 @@ install_binary_releases() {
 
     if [[ "${SKIP_BINARY:-false}" == "true" ]]; then
         log_warn "Skipping binary releases (--skip-binary)"
+        _report_method_total "Binary" 0
         return 0
     fi
 
     # Termux: GitHub release binaries are almost always Linux/glibc — skip entirely
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
         log_warn "Skipping $total binary release(s) on Termux (Linux/glibc binaries)"
+        _report_method_total "Binary" 0
         return 0
     fi
 
