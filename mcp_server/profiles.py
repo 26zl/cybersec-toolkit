@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import sys
 from pathlib import Path
 from typing import Optional
@@ -508,9 +509,9 @@ def _build_install_commands(
     """Build the install.sh commands for given modules/tools."""
     commands = []
     if modules:
-        module_args = " ".join(f"--module {m}" for m in modules)
+        module_args = " ".join(f"--module {shlex.quote(m)}" for m in modules)
         commands.append(f"{_SUDO}./install.sh {module_args}")
     if tools:
-        tool_args = " ".join(f"--tool {t}" for t in tools)
+        tool_args = " ".join(f"--tool {shlex.quote(t)}" for t in tools)
         commands.append(f"{_SUDO}./install.sh {tool_args}")
     return commands

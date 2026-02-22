@@ -1,3464 +1,579 @@
 [
-  {
-    "name": "lynis",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "rkhunter",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "chkrootkit",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "sagemath",
-    "method": "apt",
-    "module": "misc",
-    "url": ""
-  },
-  {
-    "name": "arsenal-cli",
-    "method": "pipx",
-    "module": "misc",
-    "url": ""
-  },
-  {
-    "name": "sploitscan",
-    "method": "pipx",
-    "module": "misc",
-    "url": ""
-  },
-  {
-    "name": "faraday-cli",
-    "method": "pipx",
-    "module": "misc",
-    "url": ""
-  },
-  {
-    "name": "gf",
-    "method": "go",
-    "module": "misc",
-    "url": "https://github.com/tomnomnom/gf"
-  },
-  {
-    "name": "anew",
-    "method": "go",
-    "module": "misc",
-    "url": "https://github.com/tomnomnom/anew"
-  },
-  {
-    "name": "qsreplace",
-    "method": "go",
-    "module": "misc",
-    "url": "https://github.com/tomnomnom/qsreplace"
-  },
-  {
-    "name": "gitleaks",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/gitleaks/gitleaks"
-  },
-  {
-    "name": "notify",
-    "method": "go",
-    "module": "misc",
-    "url": "https://github.com/projectdiscovery/notify"
-  },
-  {
-    "name": "pdtm",
-    "method": "go",
-    "module": "misc",
-    "url": "https://github.com/projectdiscovery/pdtm"
-  },
-  {
-    "name": "SecLists",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/danielmiessler/SecLists"
-  },
-  {
-    "name": "PayloadsAllTheThings",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/swisskyrepo/PayloadsAllTheThings"
-  },
-  {
-    "name": "InternalAllTheThings",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/swisskyrepo/InternalAllTheThings"
-  },
-  {
-    "name": "PEASS-ng",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/peass-ng/PEASS-ng"
-  },
-  {
-    "name": "linux-smart-enumeration",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/diego-treitos/linux-smart-enumeration"
-  },
-  {
-    "name": "SUDO_KILLER",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/TH3xACE/SUDO_KILLER"
-  },
-  {
-    "name": "LaZagne",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/AlessandroZ/LaZagne"
-  },
-  {
-    "name": "mimipenguin",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/huntergregal/mimipenguin"
-  },
-  {
-    "name": "PyExfil",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/ytisf/PyExfil"
-  },
-  {
-    "name": "usbkill",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/hephaest0s/usbkill"
-  },
-  {
-    "name": "Vigil",
-    "method": "git",
-    "module": "llm",
-    "url": "https://github.com/deadbits/vigil-llm.git"
-  },
-  {
-    "name": "SET",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/trustedsec/social-engineer-toolkit"
-  },
-  {
-    "name": "Zphisher",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/htr-tech/zphisher"
-  },
-  {
-    "name": "EvilGoPhish",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/fin3ss3g0d/evilgophish"
-  },
-  {
-    "name": "SquarePhish",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/secureworks/squarephish"
-  },
-  {
-    "name": "CredMaster",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/knavesec/CredMaster"
-  },
-  {
-    "name": "Modlishka",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/drk1wi/Modlishka"
-  },
-  {
-    "name": "CyberChef",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/gchq/CyberChef"
-  },
-  {
-    "name": "Caldera",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/mitre/caldera"
-  },
-  {
-    "name": "RedEye",
-    "method": "git",
-    "module": "misc",
-    "url": "https://github.com/cisagov/RedEye"
-  },
-  {
-    "name": "pspy",
-    "method": "binary",
-    "module": "misc",
-    "url": "https://github.com/DominicBreuker/pspy"
-  },
-  {
-    "name": "gophish",
-    "method": "binary",
-    "module": "misc",
-    "url": "https://github.com/gophish/gophish"
-  },
-  {
-    "name": "jadx",
-    "method": "binary",
-    "module": "mobile",
-    "url": "https://github.com/skylot/jadx"
-  },
-  {
-    "name": "dex2jar",
-    "method": "binary",
-    "module": "mobile",
-    "url": "https://github.com/pxb1988/dex2jar"
-  },
-  {
-    "name": "sliver-server",
-    "method": "binary",
-    "module": "misc",
-    "url": "https://github.com/BishopFox/sliver"
-  },
-  {
-    "name": "sliver-client",
-    "method": "binary",
-    "module": "misc",
-    "url": "https://github.com/BishopFox/sliver"
-  },
-  {
-    "name": "trufflehog",
-    "method": "binary",
-    "module": "recon",
-    "url": "https://github.com/trufflesecurity/trufflehog"
-  },
-  {
-    "name": "empire",
-    "method": "docker",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "spiderfoot",
-    "method": "docker",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "nmap",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "masscan",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "netdiscover",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "tcpdump",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "hping3",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "arp-scan",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "iftop",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "iptraf-ng",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "whois",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "dnsutils",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "traceroute",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "netcat-openbsd",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "socat",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "p0f",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "ncrack",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "sslscan",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "nbtscan",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "onesixtyone",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "snmp",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "smbclient",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "iodine",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "redsocks",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "stunnel4",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "zmap",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "mitmproxy",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "wireshark-common",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "tshark",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "sslsplit",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "tor",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "proxychains4",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "macchanger",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "snort",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "yersinia",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "fping",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "ngrep",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "dns2tcp",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "tcpflow",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "tcpreplay",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "netsniff-ng",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "arping",
-    "method": "apt",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "sshuttle",
-    "method": "pipx",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "smbmap",
-    "method": "pipx",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "chisel",
-    "method": "go",
-    "module": "networking",
-    "url": "https://github.com/jpillora/chisel"
-  },
-  {
-    "name": "bettercap",
-    "method": "git",
-    "module": "networking",
-    "url": "https://github.com/bettercap/bettercap"
-  },
-  {
-    "name": "dnscat2",
-    "method": "git",
-    "module": "networking",
-    "url": "https://github.com/iagox86/dnscat2"
-  },
-  {
-    "name": "nipe",
-    "method": "git",
-    "module": "networking",
-    "url": "https://github.com/htrgouvea/nipe"
-  },
-  {
-    "name": "PRET",
-    "method": "git",
-    "module": "networking",
-    "url": "https://github.com/RUB-NDS/PRET"
-  },
-  {
-    "name": "pwnat",
-    "method": "git",
-    "module": "networking",
-    "url": "https://github.com/samyk/pwnat"
-  },
-  {
-    "name": "ligolo-proxy",
-    "method": "binary",
-    "module": "networking",
-    "url": "https://github.com/nicocha30/ligolo-ng"
-  },
-  {
-    "name": "ligolo-agent",
-    "method": "binary",
-    "module": "networking",
-    "url": "https://github.com/nicocha30/ligolo-ng"
-  },
-  {
-    "name": "frpc",
-    "method": "binary",
-    "module": "networking",
-    "url": "https://github.com/fatedier/frp"
-  },
-  {
-    "name": "frps",
-    "method": "binary",
-    "module": "networking",
-    "url": "https://github.com/fatedier/frp"
-  },
-  {
-    "name": "rustscan",
-    "method": "cargo",
-    "module": "networking",
-    "url": ""
-  },
-  {
-    "name": "ngrok",
-    "method": "snap",
-    "module": "networking",
-    "url": "https://ngrok.com/"
-  },
-  {
-    "name": "dnsenum",
-    "method": "apt",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "dnstwist",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "holehe",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "h8mail",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "social-analyzer",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "maigret",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "ghunt",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "shodan",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "socialscan",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "maltego-trx",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "dnsrecon",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "sherlock-project",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "bbot",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "onionsearch",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "crosslinked",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "toutatis",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "ssh-audit",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "parsero",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "emailharvester",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "maryam",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "osrframework",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "censys",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "ignorant",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "instaloader",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "recon-ng",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/lanmaster53/recon-ng"
-  },
-  {
-    "name": "subfinder",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/subfinder"
-  },
-  {
-    "name": "amass",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/owasp-amass/amass"
-  },
-  {
-    "name": "waybackurls",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/tomnomnom/waybackurls"
-  },
-  {
-    "name": "gau",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/lc/gau"
-  },
-  {
-    "name": "hakrawler",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/hakluke/hakrawler"
-  },
-  {
-    "name": "httprobe",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/tomnomnom/httprobe"
-  },
-  {
-    "name": "unfurl",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/tomnomnom/unfurl"
-  },
-  {
-    "name": "meg",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/tomnomnom/meg"
-  },
-  {
-    "name": "puredns",
-    "method": "go",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "shuffledns",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/shuffledns"
-  },
-  {
-    "name": "github-subdomains",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/gwen001/github-subdomains"
-  },
-  {
-    "name": "hakcheckurl",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/hakluke/hakcheckurl"
-  },
-  {
-    "name": "chaos",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/chaos-client"
-  },
-  {
-    "name": "uncover",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/uncover"
-  },
-  {
-    "name": "asnmap",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/asnmap"
-  },
-  {
-    "name": "mapcidr",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/mapcidr"
-  },
-  {
-    "name": "alterx",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/alterx"
-  },
-  {
-    "name": "dnsx",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/dnsx"
-  },
-  {
-    "name": "gowitness",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/sensepost/gowitness"
-  },
-  {
-    "name": "naabu",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/naabu"
-  },
-  {
-    "name": "httpx",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/projectdiscovery/httpx"
-  },
-  {
-    "name": "commit-stream",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/x1sec/commit-stream"
-  },
-  {
-    "name": "metabigor",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/j3ssie/metabigor"
-  },
-  {
-    "name": "phoneinfoga",
-    "method": "binary",
-    "module": "recon",
-    "url": "https://github.com/sundowndev/phoneinfoga"
-  },
-  {
-    "name": "subzy",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/PentestPad/subzy"
-  },
-  {
-    "name": "reconftw",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/six2dez/reconftw"
-  },
-  {
-    "name": "nmapAutomator",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/21y4d/nmapAutomator"
-  },
-  {
-    "name": "axiom",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/pry0cc/axiom"
-  },
-  {
-    "name": "Sn1per",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/1N3/Sn1per"
-  },
-  {
-    "name": "blackbird",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/p1ngul1n0/blackbird"
-  },
-  {
-    "name": "GooFuzz",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/m3n0sd0n4ld/GooFuzz"
-  },
-  {
-    "name": "Telepathy",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/jordanwildon/Telepathy"
-  },
-  {
-    "name": "iKy",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/kennbroorg/iKy"
-  },
-  {
-    "name": "certSniff",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/A-poc/certSniff"
-  },
-  {
-    "name": "linkedin2username",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/initstring/linkedin2username"
-  },
-  {
-    "name": "Gato",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/praetorian-inc/gato"
-  },
-  {
-    "name": "EyeWitness",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/FortyNorthSecurity/EyeWitness"
-  },
-  {
-    "name": "osmedeus",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/j3ssie/osmedeus"
-  },
-  {
-    "name": "massdns",
-    "method": "source",
-    "module": "recon",
-    "url": "https://github.com/blechschmidt/massdns"
-  },
-  {
-    "name": "findomain",
-    "method": "binary",
-    "module": "recon",
-    "url": "https://github.com/Findomain/Findomain"
-  },
-  {
-    "name": "whatweb",
-    "method": "apt",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "sqlmap",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "wafw00f",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "sslyze",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "arjun",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "droopescan",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "mitmproxy2swagger",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "commix",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "raccoon-scanner",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "git-dumper",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "corscanner",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "xsrfprobe",
-    "method": "pipx",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "nuclei",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/projectdiscovery/nuclei"
-  },
-  {
-    "name": "katana",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/projectdiscovery/katana"
-  },
-  {
-    "name": "ffuf",
-    "method": "go",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "crlfuzz",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/dwisiswant0/crlfuzz"
-  },
-  {
-    "name": "dalfox",
-    "method": "go",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "kxss",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/Emoe/kxss"
-  },
-  {
-    "name": "cariddi",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/edoardottt/cariddi"
-  },
-  {
-    "name": "Gxss",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/KathanP19/Gxss"
-  },
-  {
-    "name": "webanalyze",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/rverton/webanalyze"
-  },
-  {
-    "name": "jaeles",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/jaeles-project/jaeles"
-  },
-  {
-    "name": "proxify",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/projectdiscovery/proxify"
-  },
-  {
-    "name": "tlsx",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/projectdiscovery/tlsx"
-  },
-  {
-    "name": "jsluice",
-    "method": "go",
-    "module": "web",
-    "url": "https://github.com/BishopFox/jsluice"
-  },
-  {
-    "name": "feroxbuster",
-    "method": "cargo",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "wpscan",
-    "method": "gem",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "XSStrike",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/s0md3v/XSStrike"
-  },
-  {
-    "name": "jwt_tool",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/ticarpi/jwt_tool"
-  },
-  {
-    "name": "smuggler",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/defparam/smuggler"
-  },
-  {
-    "name": "testssl.sh",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/drwetter/testssl.sh"
-  },
-  {
-    "name": "CMSmap",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/dionach/CMSmap"
-  },
-  {
-    "name": "PhpSploit",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/nil0x42/phpsploit"
-  },
-  {
-    "name": "phpggc",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/ambionics/phpggc"
-  },
-  {
-    "name": "PadBuster",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/AonCyberLabs/PadBuster"
-  },
-  {
-    "name": "h2csmuggler",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/BishopFox/h2csmuggler"
-  },
-  {
-    "name": "pp-finder",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/yeswehack/pp-finder"
-  },
-  {
-    "name": "symfony-exploits",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/ambionics/symfony-exploits"
-  },
-  {
-    "name": "tomcatwardeployer",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/mgeeky/tomcatwardeployer"
-  },
-  {
-    "name": "XXEinjector",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/enjoiz/XXEinjector"
-  },
-  {
-    "name": "paramspider",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/devanshbatham/ParamSpider"
-  },
-  {
-    "name": "ysoserial",
-    "method": "binary",
-    "module": "web",
-    "url": "https://github.com/frohoff/ysoserial"
-  },
-  {
-    "name": "kr",
-    "method": "binary",
-    "module": "web",
-    "url": "https://github.com/assetnote/kiterunner"
-  },
-  {
-    "name": "beef",
-    "method": "docker",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "zaproxy",
-    "method": "snap",
-    "module": "web",
-    "url": "https://github.com/zaproxy/zaproxy"
-  },
-  {
-    "name": "codext",
-    "method": "pipx",
-    "module": "crypto",
-    "url": ""
-  },
-  {
-    "name": "xortool",
-    "method": "pipx",
-    "module": "crypto",
-    "url": ""
-  },
-  {
-    "name": "factordb-python",
-    "method": "pipx",
-    "module": "crypto",
-    "url": ""
-  },
-  {
-    "name": "z3-solver",
-    "method": "pipx",
-    "module": "crypto",
-    "url": ""
-  },
-  {
-    "name": "RsaCtfTool",
-    "method": "git",
-    "module": "crypto",
-    "url": "https://github.com/RsaCtfTool/RsaCtfTool"
-  },
-  {
-    "name": "rsatool",
-    "method": "git",
-    "module": "crypto",
-    "url": "https://github.com/ius/rsatool"
-  },
-  {
-    "name": "hash_extender",
-    "method": "source",
-    "module": "crypto",
-    "url": "https://github.com/iagox86/hash_extender"
-  },
-  {
-    "name": "PkCrack",
-    "method": "source",
-    "module": "crypto",
-    "url": "https://github.com/keyunluo/pkcrack"
-  },
-  {
-    "name": "yafu",
-    "method": "source",
-    "module": "crypto",
-    "url": "https://github.com/bbuhrow/yafu"
-  },
-  {
-    "name": "fastcoll",
-    "method": "source",
-    "module": "crypto",
-    "url": "https://github.com/upbit/clone-fastcoll"
-  },
-  {
-    "name": "msieve",
-    "method": "source",
-    "module": "crypto",
-    "url": "https://github.com/radii/msieve"
-  },
-  {
-    "name": "pemcrack",
-    "method": "source",
-    "module": "crypto",
-    "url": "https://github.com/robertdavidgraham/pemcrack"
-  },
-  {
-    "name": "exploitdb",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://gitlab.com/exploit-database/exploitdb"
-  },
-  {
-    "name": "patchelf",
-    "method": "apt",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "spike",
-    "method": "apt",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "pwntools",
-    "method": "pipx",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "ROPgadget",
-    "method": "pipx",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "ropper",
-    "method": "pipx",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "boofuzz",
-    "method": "pipx",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "pwncat-cs",
-    "method": "pipx",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "scapy",
-    "method": "pipx",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "interactsh-client",
-    "method": "go",
-    "module": "pwn",
-    "url": "https://github.com/projectdiscovery/interactsh"
-  },
-  {
-    "name": "one_gadget",
-    "method": "gem",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "seccomp-tools",
-    "method": "gem",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "RouterSploit",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/threat9/routersploit"
-  },
-  {
-    "name": "libc-database",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/niklasb/libc-database"
-  },
-  {
-    "name": "Penelope",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/brightio/penelope"
-  },
-  {
-    "name": "ShellNoob",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/reyammer/shellnoob"
-  },
-  {
-    "name": "unicorn",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/trustedsec/unicorn"
-  },
-  {
-    "name": "Donut",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/TheWover/donut"
-  },
-  {
-    "name": "ScareCrow",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/optiv/ScareCrow"
-  },
-  {
-    "name": "vulscan",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/scipag/vulscan"
-  },
-  {
-    "name": "Freeze",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/Tylous/Freeze"
-  },
-  {
-    "name": "nanodump",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/fortra/nanodump"
-  },
-  {
-    "name": "eviltree",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/t3l3machus/eviltree"
-  },
-  {
-    "name": "Hoaxshell",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/t3l3machus/hoaxshell"
-  },
-  {
-    "name": "QueenSono",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/ariary/QueenSono"
-  },
-  {
-    "name": "DNSExfiltrator",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/Arno0x/DNSExfiltrator"
-  },
-  {
-    "name": "Egress-Assess",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/FortyNorthSecurity/Egress-Assess"
-  },
-  {
-    "name": "Ivy",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/optiv/Ivy"
-  },
-  {
-    "name": "pwninit",
-    "method": "cargo",
-    "module": "pwn",
-    "url": ""
-  },
-  {
-    "name": "preeny",
-    "method": "source",
-    "module": "pwn",
-    "url": "https://github.com/zardus/preeny"
-  },
-  {
-    "name": "AFLplusplus",
-    "method": "source",
-    "module": "pwn",
-    "url": "https://github.com/AFLplusplus/AFLplusplus"
-  },
-  {
-    "name": "honggfuzz",
-    "method": "source",
-    "module": "pwn",
-    "url": "https://github.com/google/honggfuzz"
-  },
-  {
-    "name": "radamsa",
-    "method": "source",
-    "module": "pwn",
-    "url": "https://gitlab.com/akihe/radamsa"
-  },
-  {
-    "name": "metasploit",
-    "method": "special",
-    "module": "pwn",
-    "url": "https://github.com/rapid7/metasploit-framework"
-  },
-  {
-    "name": "radare2",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "ghidra",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "checksec",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "rizin",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "gdb",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "binwalk",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "binutils",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "qemu-user-static",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "qemu-system-x86",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "valgrind",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "rr",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "ltrace",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "strace",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "hexedit",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "upx-ucl",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "nasm",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "edb-debugger",
-    "method": "apt",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "angr",
-    "method": "pipx",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "frida-tools",
-    "method": "pipx",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "uncompyle6",
-    "method": "pipx",
-    "module": "reversing",
-    "url": ""
-  },
-  {
-    "name": "pwndbg",
-    "method": "git",
-    "module": "reversing",
-    "url": "https://github.com/pwndbg/pwndbg"
-  },
-  {
-    "name": "GEF",
-    "method": "git",
-    "module": "reversing",
-    "url": "https://github.com/hugsy/gef"
-  },
-  {
-    "name": "peda",
-    "method": "git",
-    "module": "reversing",
-    "url": "https://github.com/longld/peda"
-  },
-  {
-    "name": "decomp2dbg",
-    "method": "git",
-    "module": "reversing",
-    "url": "https://github.com/mahaloz/decomp2dbg"
-  },
-  {
-    "name": "Qiling",
-    "method": "git",
-    "module": "reversing",
-    "url": "https://github.com/qilingframework/qiling"
-  },
-  {
-    "name": "Krakatau",
-    "method": "git",
-    "module": "reversing",
-    "url": "https://github.com/Storyyeller/Krakatau"
-  },
-  {
-    "name": "pyinstxtractor",
-    "method": "git",
-    "module": "reversing",
-    "url": "https://github.com/extremecoders-re/pyinstxtractor"
-  },
-  {
-    "name": "ELFkickers",
-    "method": "source",
-    "module": "reversing",
-    "url": "https://github.com/BR903/ELFkickers"
-  },
-  {
-    "name": "rappel",
-    "method": "source",
-    "module": "reversing",
-    "url": "https://github.com/yrp604/rappel"
-  },
-  {
-    "name": "xrop",
-    "method": "source",
-    "module": "reversing",
-    "url": "https://github.com/acama/xrop"
-  },
-  {
-    "name": "rp-lin",
-    "method": "binary",
-    "module": "reversing",
-    "url": "https://github.com/0vercl0k/rp"
-  },
-  {
-    "name": "jd-gui",
-    "method": "binary",
-    "module": "reversing",
-    "url": "https://github.com/java-decompiler/jd-gui"
-  },
-  {
-    "name": "autopsy",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "sleuthkit",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "foremost",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "scalpel",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "dc3dd",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "dcfldd",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "testdisk",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "extundelete",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "bulk-extractor",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "libimage-exiftool-perl",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "forensics-extra",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "samdump2",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "dislocker",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "ssdeep",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "unhide",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "hashdeep",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "recoverjpeg",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "galleta",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "pasco",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "mac-robber",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "vinetto",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "guymager",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "magicrescue",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "memdump",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "rifiuti2",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "scrounge-ntfs",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "ext3grep",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "ext4magic",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "volatility3",
-    "method": "pipx",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "oletools",
-    "method": "pipx",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "usbrip",
-    "method": "pipx",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "mvt",
-    "method": "pipx",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "hachoir",
-    "method": "pipx",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "unblob",
-    "method": "pipx",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "peepdf-3",
-    "method": "pipx",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "RegRipper",
-    "method": "git",
-    "module": "forensics",
-    "url": "https://github.com/keydet89/RegRipper3.0"
-  },
-  {
-    "name": "Depix",
-    "method": "git",
-    "module": "forensics",
-    "url": "https://github.com/spipm/Depix"
-  },
-  {
-    "name": "dvcs-ripper",
-    "method": "git",
-    "module": "forensics",
-    "url": "https://github.com/kost/dvcs-ripper"
-  },
-  {
-    "name": "firefox_decrypt",
-    "method": "git",
-    "module": "forensics",
-    "url": "https://github.com/unode/firefox_decrypt"
-  },
-  {
-    "name": "firmware-mod-kit",
-    "method": "git",
-    "module": "forensics",
-    "url": "https://github.com/rampageX/firmware-mod-kit"
-  },
-  {
-    "name": "chainsaw",
-    "method": "binary",
-    "module": "forensics",
-    "url": "https://github.com/WithSecureLabs/chainsaw"
-  },
-  {
-    "name": "yara",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "clamav",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "inetsim",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "quark-engine",
-    "method": "pipx",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "yara-x-cli",
-    "method": "cargo",
-    "module": "blueteam",
-    "url": "https://github.com/VirusTotal/yara-x"
-  },
-  {
-    "name": "impacket",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "certipy-ad",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "coercer",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "bloodhound",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "mitm6",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "lsassy",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "sprayhound",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "ldapdomaindump",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "pypykatz",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "adidnsdump",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "dploot",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "bloodyad",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "hekatomb",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "donpapi",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "certsync",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "masky",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "pywhisker",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "autobloody",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "krbjack",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "roadtx",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "pywerview",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "pysnaffler",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "powerview",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "aclpwn",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "netexec",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": "https://github.com/Pennyw0rth/NetExec"
-  },
-  {
-    "name": "ldeep",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "smbclientng",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "ldapsearchad",
-    "method": "pipx",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "godap",
-    "method": "go",
-    "module": "enterprise",
-    "url": "https://github.com/Macmod/godap"
-  },
-  {
-    "name": "pretender",
-    "method": "go",
-    "module": "enterprise",
-    "url": "https://github.com/RedTeamPentesting/pretender"
-  },
-  {
-    "name": "evil-winrm",
-    "method": "gem",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "Responder",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/lgandx/Responder"
-  },
-  {
-    "name": "enum4linux-ng",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/cddmp/enum4linux-ng"
-  },
-  {
-    "name": "linWinPwn",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/lefayjey/linWinPwn"
-  },
-  {
-    "name": "PCredz",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/lgandx/PCredz"
-  },
-  {
-    "name": "krbrelayx",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/dirkjanm/krbrelayx"
-  },
-  {
-    "name": "spraykatz",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/aas-n/spraykatz"
-  },
-  {
-    "name": "azurehound",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/BloodHoundAD/AzureHound"
-  },
-  {
-    "name": "dfscoerce",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Wh04m1001/dfscoerce"
-  },
-  {
-    "name": "petitpotam",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/topotam/PetitPotam"
-  },
-  {
-    "name": "shadowcoerce",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/ShutdownRepo/shadowcoerce"
-  },
-  {
-    "name": "noPac",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Ridter/noPac"
-  },
-  {
-    "name": "zerologon",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/SecuraBV/CVE-2020-1472"
-  },
-  {
-    "name": "ntlm_theft",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Greenwolf/ntlm_theft"
-  },
-  {
-    "name": "ntlmv1-multi",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/evilmog/ntlmv1-multi"
-  },
-  {
-    "name": "PassTheCert",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/AlmondOffSec/PassTheCert"
-  },
-  {
-    "name": "pkinittools",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/dirkjanm/PKINITtools"
-  },
-  {
-    "name": "privexchange",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/dirkjanm/PrivExchange"
-  },
-  {
-    "name": "GPOddity",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/synacktiv/GPOddity"
-  },
-  {
-    "name": "gmsadumper",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/micahvandeusen/gMSADumper"
-  },
-  {
-    "name": "ExtractBitlockerKeys",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/p0dalirius/ExtractBitlockerKeys"
-  },
-  {
-    "name": "PXEThief",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/blurbdust/PXEThief"
-  },
-  {
-    "name": "sccmsecrets",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/synacktiv/SCCMSecrets"
-  },
-  {
-    "name": "sccmwtf",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/xpn/sccmwtf"
-  },
-  {
-    "name": "cmloot",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/shelltrail/cmloot"
-  },
-  {
-    "name": "pywsus",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/GoSecure/pywsus"
-  },
-  {
-    "name": "RemoteMonologue",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/3lp4tr0n/RemoteMonologue"
-  },
-  {
-    "name": "roastinthemiddle",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Tw1sm/RITM"
-  },
-  {
-    "name": "lnkup",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Plazmaz/lnkUp"
-  },
-  {
-    "name": "ruler",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/sensepost/ruler"
-  },
-  {
-    "name": "bqm",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Acceis/bqm"
-  },
-  {
-    "name": "cyperoth",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/seajaysec/cypheroth"
-  },
-  {
-    "name": "abuseACL",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/AetherBlack/abuseACL"
-  },
-  {
-    "name": "asrepcatcher",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Yaxxine7/ASRepCatcher"
-  },
-  {
-    "name": "conpass",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/login-securite/conpass"
-  },
-  {
-    "name": "freeipscanner",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/scrt/freeipscanner"
-  },
-  {
-    "name": "goldencopy",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/Dramelac/GoldenCopy"
-  },
-  {
-    "name": "keytabextract",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/sosdave/KeyTabExtract"
-  },
-  {
-    "name": "ldaprelayscan",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/zyn3rgy/LdapRelayScan"
-  },
-  {
-    "name": "LDAPWordlistHarvester",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/p0dalirius/pyLDAPWordlistHarvester"
-  },
-  {
-    "name": "rusthound",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/NH-RED-TEAM/RustHound"
-  },
-  {
-    "name": "rusthound-ce",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/g0h4n/RustHound-CE"
-  },
-  {
-    "name": "GoExec",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/FalconOpsLLC/goexec"
-  },
-  {
-    "name": "GoMapEnum",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/nodauf/GoMapEnum"
-  },
-  {
-    "name": "gosecretsdump",
-    "method": "git",
-    "module": "enterprise",
-    "url": "https://github.com/c-sto/gosecretsdump"
-  },
-  {
-    "name": "kerbrute",
-    "method": "binary",
-    "module": "enterprise",
-    "url": "https://github.com/ropnop/kerbrute"
-  },
-  {
-    "name": "bloodhound-ce",
-    "method": "docker",
-    "module": "enterprise",
-    "url": ""
-  },
-  {
-    "name": "aircrack-ng",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "reaver",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "kismet",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "pixiewps",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "bully",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "iw",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "wireless-tools",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "rfkill",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "horst",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "bluez",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "spooftooph",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "gnuradio",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "gqrx-sdr",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "mdk4",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "hcxtools",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "cowpatty",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "crackle",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "asleap",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "fern-wifi-cracker",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "hackrf",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "hcxdumptool",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "mfcuk",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "mfoc",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "rtl-433",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "libnfc-dev",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "avrdude",
-    "method": "apt",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "sipvicious",
-    "method": "pipx",
-    "module": "wireless",
-    "url": ""
-  },
-  {
-    "name": "wifite2",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/derv82/wifite2"
-  },
-  {
-    "name": "fluxion",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/FluxionNetwork/fluxion"
-  },
-  {
-    "name": "airgeddon",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/v1s1t0r1sh3r3/airgeddon"
-  },
-  {
-    "name": "hostapd-mana",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/sensepost/hostapd-mana"
-  },
-  {
-    "name": "wifiphisher",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/wifiphisher/wifiphisher"
-  },
-  {
-    "name": "PSKracker",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/soxrok2212/PSKracker"
-  },
-  {
-    "name": "eaphammer",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/s0lst1c3/eaphammer"
-  },
-  {
-    "name": "wifipumpkin3",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/P0cL4bs/wifipumpkin3"
-  },
-  {
-    "name": "proxmark3",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/RfidResearchGroup/proxmark3"
-  },
-  {
-    "name": "mousejack",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/BastilleResearch/mousejack"
-  },
-  {
-    "name": "mfdread",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/zhovner/mfdread"
-  },
-  {
-    "name": "libnfc-crypto1-crack",
-    "method": "git",
-    "module": "wireless",
-    "url": "https://github.com/droidnewbie2/acr122uNFC"
-  },
-  {
-    "name": "john",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "hashcat",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "hydra",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "medusa",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "crunch",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "ophcrack",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "chntpw",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "fcrackzip",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "pdfcrack",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "cewl",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "hashid",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "bruteforce-luks",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "maskprocessor",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "princeprocessor",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "statsprocessor",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "sucrack",
-    "method": "apt",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "search-that-hash",
-    "method": "pipx",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "name-that-hash",
-    "method": "pipx",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "trevorspray",
-    "method": "pipx",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "patator",
-    "method": "pipx",
-    "module": "cracking",
-    "url": ""
-  },
-  {
-    "name": "DefaultCreds-cheat-sheet",
-    "method": "git",
-    "module": "cracking",
-    "url": "https://github.com/ihebski/DefaultCreds-cheat-sheet"
-  },
-  {
-    "name": "pipal",
-    "method": "git",
-    "module": "cracking",
-    "url": "https://github.com/digininja/pipal"
-  },
-  {
-    "name": "Hob0Rules",
-    "method": "git",
-    "module": "cracking",
-    "url": "https://github.com/praetorian-inc/Hob0Rules"
-  },
-  {
-    "name": "Pantagrule",
-    "method": "git",
-    "module": "cracking",
-    "url": "https://github.com/rarecoil/pantagrule"
-  },
-  {
-    "name": "OneRuleToRuleThemStill",
-    "method": "git",
-    "module": "cracking",
-    "url": "https://github.com/stealthsploit/OneRuleToRuleThemStill"
-  },
-  {
-    "name": "username-anarchy",
-    "method": "git",
-    "module": "cracking",
-    "url": "https://github.com/urbanadventurer/username-anarchy"
-  },
-  {
-    "name": "gpp-decrypt",
-    "method": "git",
-    "module": "cracking",
-    "url": "https://github.com/t0thkr1s/gpp-decrypt"
-  },
-  {
-    "name": "duplicut",
-    "method": "source",
-    "module": "cracking",
-    "url": "https://github.com/nil0x42/duplicut"
-  },
-  {
-    "name": "steghide",
-    "method": "apt",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "stegsnow",
-    "method": "apt",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "outguess",
-    "method": "apt",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "pngcheck",
-    "method": "apt",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "sonic-visualiser",
-    "method": "apt",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "exiv2",
-    "method": "apt",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "pngtools",
-    "method": "apt",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "stegoveritas",
-    "method": "pipx",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "zsteg",
-    "method": "gem",
-    "module": "stego",
-    "url": ""
-  },
-  {
-    "name": "stegsolve",
-    "method": "git",
-    "module": "stego",
-    "url": "https://github.com/Giotino/stegsolve"
-  },
-  {
-    "name": "openstego",
-    "method": "git",
-    "module": "stego",
-    "url": "https://github.com/syvaidya/openstego"
-  },
-  {
-    "name": "stegextract",
-    "method": "git",
-    "module": "stego",
-    "url": "https://github.com/evyatarmeged/stegextract"
-  },
-  {
-    "name": "stegosaurus",
-    "method": "git",
-    "module": "stego",
-    "url": "https://github.com/AngelKitty/stegosaurus"
-  },
-  {
-    "name": "stegseek",
-    "method": "binary",
-    "module": "stego",
-    "url": "https://github.com/RickdeJager/stegseek"
-  },
-  {
-    "name": "kube-hunter",
-    "method": "pipx",
-    "module": "cloud",
-    "url": ""
-  },
-  {
-    "name": "pacu",
-    "method": "pipx",
-    "module": "cloud",
-    "url": ""
-  },
-  {
-    "name": "cloudsplaining",
-    "method": "pipx",
-    "module": "cloud",
-    "url": ""
-  },
-  {
-    "name": "prowler",
-    "method": "pipx",
-    "module": "cloud",
-    "url": ""
-  },
-  {
-    "name": "scoutsuite",
-    "method": "pipx",
-    "module": "cloud",
-    "url": ""
-  },
-  {
-    "name": "s3scanner",
-    "method": "pipx",
-    "module": "cloud",
-    "url": ""
-  },
-  {
-    "name": "roadrecon",
-    "method": "pipx",
-    "module": "cloud",
-    "url": ""
-  },
-  {
-    "name": "cloudfox",
-    "method": "go",
-    "module": "cloud",
-    "url": "https://github.com/BishopFox/cloudfox"
-  },
-  {
-    "name": "cloudlist",
-    "method": "go",
-    "module": "cloud",
-    "url": "https://github.com/projectdiscovery/cloudlist"
-  },
-  {
-    "name": "CloudBrute",
-    "method": "git",
-    "module": "cloud",
-    "url": "https://github.com/0xsha/CloudBrute"
-  },
-  {
-    "name": "enumerate-iam",
-    "method": "git",
-    "module": "cloud",
-    "url": "https://github.com/andresriancho/enumerate-iam"
-  },
-  {
-    "name": "GCPBucketBrute",
-    "method": "git",
-    "module": "cloud",
-    "url": "https://github.com/RhinoSecurityLabs/GCPBucketBrute"
-  },
-  {
-    "name": "cloud_enum",
-    "method": "git",
-    "module": "cloud",
-    "url": "https://github.com/initstring/cloud_enum"
-  },
-  {
-    "name": "deepce",
-    "method": "git",
-    "module": "containers",
-    "url": "https://github.com/stealthcopter/deepce"
-  },
-  {
-    "name": "docker-bench-security",
-    "method": "git",
-    "module": "containers",
-    "url": "https://github.com/docker/docker-bench-security"
-  },
-  {
-    "name": "peirates",
-    "method": "git",
-    "module": "containers",
-    "url": "https://github.com/inguardians/peirates"
-  },
-  {
-    "name": "trivy",
-    "method": "binary",
-    "module": "containers",
-    "url": "https://github.com/aquasecurity/trivy"
-  },
-  {
-    "name": "grype",
-    "method": "binary",
-    "module": "containers",
-    "url": "https://github.com/anchore/grype"
-  },
-  {
-    "name": "kubeaudit",
-    "method": "binary",
-    "module": "containers",
-    "url": "https://github.com/Shopify/kubeaudit"
-  },
-  {
-    "name": "cdk",
-    "method": "binary",
-    "module": "containers",
-    "url": "https://github.com/cdk-team/CDK"
-  },
-  {
-    "name": "suricata",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "fail2ban",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "aide",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "auditd",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "zeek",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "apparmor-utils",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "ufw",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "tiger",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "darkstat",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "chaosreader",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "sentrypeer",
-    "method": "apt",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "sigma-cli",
-    "method": "pipx",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "sigma-rules",
-    "method": "git",
-    "module": "blueteam",
-    "url": "https://github.com/SigmaHQ/sigma"
-  },
-  {
-    "name": "maltrail",
-    "method": "git",
-    "module": "blueteam",
-    "url": "https://github.com/stamparm/maltrail"
-  },
-  {
-    "name": "MISP-docker",
-    "method": "git",
-    "module": "blueteam",
-    "url": "https://github.com/MISP/misp-docker"
-  },
-  {
-    "name": "wazuh-docker",
-    "method": "git",
-    "module": "blueteam",
-    "url": "https://github.com/wazuh/wazuh-docker"
-  },
-  {
-    "name": "velociraptor",
-    "method": "binary",
-    "module": "blueteam",
-    "url": "https://github.com/Velocidex/velociraptor"
-  },
-  {
-    "name": "laurel",
-    "method": "binary",
-    "module": "blueteam",
-    "url": "https://github.com/threathunters-io/laurel"
-  },
-  {
-    "name": "thehive",
-    "method": "docker",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "cortex",
-    "method": "docker",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "adb",
-    "method": "apt",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "smali",
-    "method": "apt",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "scrcpy",
-    "method": "apt",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "apksigner",
-    "method": "apt",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "zipalign",
-    "method": "apt",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "androguard",
-    "method": "pipx",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "apkleaks",
-    "method": "pipx",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "objection",
-    "method": "pipx",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "apktool",
-    "method": "git",
-    "module": "mobile",
-    "url": "https://github.com/iBotPeaches/Apktool"
-  },
-  {
-    "name": "mobsf",
-    "method": "docker",
-    "module": "mobile",
-    "url": ""
-  },
-  {
-    "name": "solc",
-    "method": "snap",
-    "module": "blockchain",
-    "url": "https://github.com/ethereum/solidity"
-  },
-  {
-    "name": "solc-select",
-    "method": "pipx",
-    "module": "blockchain",
-    "url": "https://github.com/crytic/solc-select"
-  },
-  {
-    "name": "slither-analyzer",
-    "method": "pipx",
-    "module": "blockchain",
-    "url": ""
-  },
-  {
-    "name": "mythril",
-    "method": "pipx",
-    "module": "blockchain",
-    "url": ""
-  },
-  {
-    "name": "echidna",
-    "method": "docker",
-    "module": "blockchain",
-    "url": ""
-  },
-  {
-    "name": "foundry",
-    "method": "special",
-    "module": "blockchain",
-    "url": "https://github.com/foundry-rs/foundry"
-  },
-  {
-    "name": "checkov",
-    "method": "pipx",
-    "module": "cloud",
-    "url": "https://github.com/bridgecrewio/checkov"
-  },
-  {
-    "name": "syft",
-    "method": "binary",
-    "module": "containers",
-    "url": "https://github.com/anchore/syft"
-  },
-  {
-    "name": "kubescape",
-    "method": "binary",
-    "module": "containers",
-    "url": "https://github.com/kubescape/kubescape"
-  },
-  {
-    "name": "floss",
-    "method": "binary",
-    "module": "blueteam",
-    "url": "https://github.com/mandiant/flare-floss"
-  },
-  {
-    "name": "capa",
-    "method": "binary",
-    "module": "blueteam",
-    "url": "https://github.com/mandiant/capa"
-  },
-  {
-    "name": "loki",
-    "method": "binary",
-    "module": "blueteam",
-    "url": "https://github.com/Neo23x0/Loki-RS"
-  },
-  {
-    "name": "theHarvester",
-    "method": "pipx",
-    "module": "recon",
-    "url": ""
-  },
-  {
-    "name": "mosint",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/alpkeskin/mosint"
-  },
-  {
-    "name": "hakrevdns",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/hakluke/hakrevdns"
-  },
-  {
-    "name": "smap",
-    "method": "go",
-    "module": "recon",
-    "url": "https://github.com/s0md3v/smap"
-  },
-  {
-    "name": "Villain",
-    "method": "git",
-    "module": "pwn",
-    "url": "https://github.com/t3l3machus/Villain"
-  },
-  {
-    "name": "steampipe",
-    "method": "special",
-    "module": "cloud",
-    "url": "https://github.com/turbot/steampipe"
-  },
-  {
-    "name": "evilginx",
-    "method": "binary",
-    "module": "misc",
-    "url": "https://github.com/kgretzky/evilginx2"
-  },
-  {
-    "name": "poppler-utils",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "zbar-tools",
-    "method": "apt",
-    "module": "forensics",
-    "url": ""
-  },
-  {
-    "name": "Corsy",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/s0md3v/Corsy"
-  },
-  {
-    "name": "NoSQLMap",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/codingo/NoSQLMap"
-  },
-  {
-    "name": "Gopherus",
-    "method": "git",
-    "module": "web",
-    "url": "https://github.com/tarunkant/Gopherus"
-  },
-  {
-    "name": "pwndb",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/davidtavarez/pwndb"
-  },
-  {
-    "name": "dnschef",
-    "method": "git",
-    "module": "networking",
-    "url": "https://github.com/iphelix/dnschef"
-  },
-  {
-    "name": "cribdrag",
-    "method": "git",
-    "module": "crypto",
-    "url": "https://github.com/SpiderLabs/cribdrag"
-  },
-  {
-    "name": "robin",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/apurvsinghgautam/robin"
-  },
-  {
-    "name": "stringcheese",
-    "method": "git",
-    "module": "recon",
-    "url": "https://github.com/MathisHammel/stringcheese"
-  },
-  {
-    "name": "bandit",
-    "method": "pipx",
-    "module": "blueteam",
-    "url": ""
-  },
-  {
-    "name": "brakeman",
-    "method": "gem",
-    "module": "web",
-    "url": ""
-  },
-  {
-    "name": "garak",
-    "method": "pipx",
-    "module": "llm",
-    "url": ""
-  },
-  {
-    "name": "FuzzyAI",
-    "method": "git",
-    "module": "llm",
-    "url": "https://github.com/cyberark/FuzzyAI.git"
-  },
-  {
-    "name": "promptfoo",
-    "method": "npm",
-    "module": "llm",
-    "url": "https://github.com/promptfoo/promptfoo"
-  },
-  {
-    "name": "pallms",
-    "method": "git",
-    "module": "llm",
-    "url": "https://github.com/mik0w/pallms.git"
-  },
-  {
-    "name": "shannon",
-    "method": "git",
-    "module": "llm",
-    "url": "https://github.com/KeygraphHQ/shannon.git"
-  },
-  {
-    "name": "cai-framework",
-    "method": "pipx",
-    "module": "llm",
-    "url": "https://github.com/aliasrobotics/cai"
-  },
-  {
-    "name": "pentagi",
-    "method": "git",
-    "module": "llm",
-    "url": "https://github.com/vxcontrol/pentagi.git"
-  },
-  {
-    "name": "pentagi-docker",
-    "method": "docker",
-    "module": "llm",
-    "url": "https://github.com/vxcontrol/pentagi"
-  }
+  {"name": "lynis", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "rkhunter", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "chkrootkit", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "sagemath", "method": "apt", "module": "misc", "url": ""},
+  {"name": "arsenal-cli", "method": "pipx", "module": "misc", "url": ""},
+  {"name": "sploitscan", "method": "pipx", "module": "misc", "url": ""},
+  {"name": "faraday-cli", "method": "pipx", "module": "misc", "url": ""},
+  {"name": "gf", "method": "go", "module": "misc", "url": "https://github.com/tomnomnom/gf"},
+  {"name": "anew", "method": "go", "module": "misc", "url": "https://github.com/tomnomnom/anew"},
+  {"name": "qsreplace", "method": "go", "module": "misc", "url": "https://github.com/tomnomnom/qsreplace"},
+  {"name": "gitleaks", "method": "go", "module": "recon", "url": "https://github.com/gitleaks/gitleaks"},
+  {"name": "notify", "method": "go", "module": "misc", "url": "https://github.com/projectdiscovery/notify"},
+  {"name": "pdtm", "method": "go", "module": "misc", "url": "https://github.com/projectdiscovery/pdtm"},
+  {"name": "SecLists", "method": "git", "module": "misc", "url": "https://github.com/danielmiessler/SecLists"},
+  {"name": "PayloadsAllTheThings", "method": "git", "module": "misc", "url": "https://github.com/swisskyrepo/PayloadsAllTheThings"},
+  {"name": "InternalAllTheThings", "method": "git", "module": "misc", "url": "https://github.com/swisskyrepo/InternalAllTheThings"},
+  {"name": "PEASS-ng", "method": "git", "module": "misc", "url": "https://github.com/peass-ng/PEASS-ng"},
+  {"name": "linux-smart-enumeration", "method": "git", "module": "misc", "url": "https://github.com/diego-treitos/linux-smart-enumeration"},
+  {"name": "SUDO_KILLER", "method": "git", "module": "misc", "url": "https://github.com/TH3xACE/SUDO_KILLER"},
+  {"name": "LaZagne", "method": "git", "module": "misc", "url": "https://github.com/AlessandroZ/LaZagne"},
+  {"name": "mimipenguin", "method": "git", "module": "misc", "url": "https://github.com/huntergregal/mimipenguin"},
+  {"name": "PyExfil", "method": "git", "module": "misc", "url": "https://github.com/ytisf/PyExfil"},
+  {"name": "usbkill", "method": "git", "module": "misc", "url": "https://github.com/hephaest0s/usbkill"},
+  {"name": "Vigil", "method": "git", "module": "llm", "url": "https://github.com/deadbits/vigil-llm.git"},
+  {"name": "SET", "method": "git", "module": "misc", "url": "https://github.com/trustedsec/social-engineer-toolkit"},
+  {"name": "Zphisher", "method": "git", "module": "misc", "url": "https://github.com/htr-tech/zphisher"},
+  {"name": "EvilGoPhish", "method": "git", "module": "misc", "url": "https://github.com/fin3ss3g0d/evilgophish"},
+  {"name": "SquarePhish", "method": "git", "module": "misc", "url": "https://github.com/secureworks/squarephish"},
+  {"name": "CredMaster", "method": "git", "module": "misc", "url": "https://github.com/knavesec/CredMaster"},
+  {"name": "Modlishka", "method": "git", "module": "misc", "url": "https://github.com/drk1wi/Modlishka"},
+  {"name": "CyberChef", "method": "git", "module": "misc", "url": "https://github.com/gchq/CyberChef"},
+  {"name": "Caldera", "method": "git", "module": "misc", "url": "https://github.com/mitre/caldera"},
+  {"name": "RedEye", "method": "git", "module": "misc", "url": "https://github.com/cisagov/RedEye"},
+  {"name": "pspy", "method": "binary", "module": "misc", "url": "https://github.com/DominicBreuker/pspy"},
+  {"name": "gophish", "method": "binary", "module": "misc", "url": "https://github.com/gophish/gophish"},
+  {"name": "jadx", "method": "binary", "module": "mobile", "url": "https://github.com/skylot/jadx"},
+  {"name": "dex2jar", "method": "binary", "module": "mobile", "url": "https://github.com/pxb1988/dex2jar"},
+  {"name": "sliver-server", "method": "binary", "module": "misc", "url": "https://github.com/BishopFox/sliver"},
+  {"name": "sliver-client", "method": "binary", "module": "misc", "url": "https://github.com/BishopFox/sliver"},
+  {"name": "trufflehog", "method": "binary", "module": "recon", "url": "https://github.com/trufflesecurity/trufflehog"},
+  {"name": "empire", "method": "docker", "module": "pwn", "url": ""},
+  {"name": "spiderfoot", "method": "docker", "module": "recon", "url": ""},
+  {"name": "nmap", "method": "apt", "module": "networking", "url": ""},
+  {"name": "masscan", "method": "apt", "module": "networking", "url": ""},
+  {"name": "netdiscover", "method": "apt", "module": "networking", "url": ""},
+  {"name": "tcpdump", "method": "apt", "module": "networking", "url": ""},
+  {"name": "hping3", "method": "apt", "module": "networking", "url": ""},
+  {"name": "arp-scan", "method": "apt", "module": "networking", "url": ""},
+  {"name": "iftop", "method": "apt", "module": "networking", "url": ""},
+  {"name": "iptraf-ng", "method": "apt", "module": "networking", "url": ""},
+  {"name": "whois", "method": "apt", "module": "networking", "url": ""},
+  {"name": "dnsutils", "method": "apt", "module": "networking", "url": ""},
+  {"name": "traceroute", "method": "apt", "module": "networking", "url": ""},
+  {"name": "netcat-openbsd", "method": "apt", "module": "networking", "url": ""},
+  {"name": "socat", "method": "apt", "module": "networking", "url": ""},
+  {"name": "p0f", "method": "apt", "module": "networking", "url": ""},
+  {"name": "ncrack", "method": "apt", "module": "networking", "url": ""},
+  {"name": "sslscan", "method": "apt", "module": "networking", "url": ""},
+  {"name": "nbtscan", "method": "apt", "module": "networking", "url": ""},
+  {"name": "onesixtyone", "method": "apt", "module": "networking", "url": ""},
+  {"name": "snmp", "method": "apt", "module": "networking", "url": ""},
+  {"name": "smbclient", "method": "apt", "module": "networking", "url": ""},
+  {"name": "iodine", "method": "apt", "module": "networking", "url": ""},
+  {"name": "redsocks", "method": "apt", "module": "networking", "url": ""},
+  {"name": "stunnel4", "method": "apt", "module": "networking", "url": ""},
+  {"name": "zmap", "method": "apt", "module": "networking", "url": ""},
+  {"name": "mitmproxy", "method": "apt", "module": "networking", "url": ""},
+  {"name": "wireshark-common", "method": "apt", "module": "networking", "url": ""},
+  {"name": "tshark", "method": "apt", "module": "networking", "url": ""},
+  {"name": "sslsplit", "method": "apt", "module": "networking", "url": ""},
+  {"name": "tor", "method": "apt", "module": "networking", "url": ""},
+  {"name": "proxychains4", "method": "apt", "module": "networking", "url": ""},
+  {"name": "macchanger", "method": "apt", "module": "networking", "url": ""},
+  {"name": "snort", "method": "apt", "module": "networking", "url": ""},
+  {"name": "yersinia", "method": "apt", "module": "networking", "url": ""},
+  {"name": "fping", "method": "apt", "module": "networking", "url": ""},
+  {"name": "ngrep", "method": "apt", "module": "networking", "url": ""},
+  {"name": "dns2tcp", "method": "apt", "module": "networking", "url": ""},
+  {"name": "tcpflow", "method": "apt", "module": "networking", "url": ""},
+  {"name": "tcpreplay", "method": "apt", "module": "networking", "url": ""},
+  {"name": "netsniff-ng", "method": "apt", "module": "networking", "url": ""},
+  {"name": "arping", "method": "apt", "module": "networking", "url": ""},
+  {"name": "sshuttle", "method": "pipx", "module": "networking", "url": ""},
+  {"name": "smbmap", "method": "pipx", "module": "networking", "url": ""},
+  {"name": "chisel", "method": "go", "module": "networking", "url": "https://github.com/jpillora/chisel"},
+  {"name": "bettercap", "method": "git", "module": "networking", "url": "https://github.com/bettercap/bettercap"},
+  {"name": "dnscat2", "method": "git", "module": "networking", "url": "https://github.com/iagox86/dnscat2"},
+  {"name": "nipe", "method": "git", "module": "networking", "url": "https://github.com/htrgouvea/nipe"},
+  {"name": "PRET", "method": "git", "module": "networking", "url": "https://github.com/RUB-NDS/PRET"},
+  {"name": "pwnat", "method": "git", "module": "networking", "url": "https://github.com/samyk/pwnat"},
+  {"name": "ligolo-proxy", "method": "binary", "module": "networking", "url": "https://github.com/nicocha30/ligolo-ng"},
+  {"name": "ligolo-agent", "method": "binary", "module": "networking", "url": "https://github.com/nicocha30/ligolo-ng"},
+  {"name": "frpc", "method": "binary", "module": "networking", "url": "https://github.com/fatedier/frp"},
+  {"name": "frps", "method": "binary", "module": "networking", "url": "https://github.com/fatedier/frp"},
+  {"name": "rustscan", "method": "cargo", "module": "networking", "url": ""},
+  {"name": "ngrok", "method": "snap", "module": "networking", "url": "https://ngrok.com/"},
+  {"name": "dnsenum", "method": "apt", "module": "recon", "url": ""},
+  {"name": "dnstwist", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "holehe", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "h8mail", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "social-analyzer", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "maigret", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "ghunt", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "shodan", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "socialscan", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "maltego-trx", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "dnsrecon", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "sherlock-project", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "bbot", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "onionsearch", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "crosslinked", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "toutatis", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "ssh-audit", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "parsero", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "emailharvester", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "maryam", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "osrframework", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "censys", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "ignorant", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "instaloader", "method": "pipx", "module": "recon", "url": ""},
+  {"name": "recon-ng", "method": "git", "module": "recon", "url": "https://github.com/lanmaster53/recon-ng"},
+  {"name": "subfinder", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/subfinder"},
+  {"name": "amass", "method": "go", "module": "recon", "url": "https://github.com/owasp-amass/amass"},
+  {"name": "waybackurls", "method": "go", "module": "recon", "url": "https://github.com/tomnomnom/waybackurls"},
+  {"name": "gau", "method": "go", "module": "recon", "url": "https://github.com/lc/gau"},
+  {"name": "hakrawler", "method": "go", "module": "recon", "url": "https://github.com/hakluke/hakrawler"},
+  {"name": "httprobe", "method": "go", "module": "recon", "url": "https://github.com/tomnomnom/httprobe"},
+  {"name": "unfurl", "method": "go", "module": "recon", "url": "https://github.com/tomnomnom/unfurl"},
+  {"name": "meg", "method": "go", "module": "recon", "url": "https://github.com/tomnomnom/meg"},
+  {"name": "puredns", "method": "go", "module": "recon", "url": ""},
+  {"name": "shuffledns", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/shuffledns"},
+  {"name": "github-subdomains", "method": "go", "module": "recon", "url": "https://github.com/gwen001/github-subdomains"},
+  {"name": "hakcheckurl", "method": "go", "module": "recon", "url": "https://github.com/hakluke/hakcheckurl"},
+  {"name": "chaos", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/chaos-client"},
+  {"name": "uncover", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/uncover"},
+  {"name": "asnmap", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/asnmap"},
+  {"name": "mapcidr", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/mapcidr"},
+  {"name": "alterx", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/alterx"},
+  {"name": "dnsx", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/dnsx"},
+  {"name": "gowitness", "method": "go", "module": "recon", "url": "https://github.com/sensepost/gowitness"},
+  {"name": "naabu", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/naabu"},
+  {"name": "httpx", "method": "go", "module": "recon", "url": "https://github.com/projectdiscovery/httpx"},
+  {"name": "commit-stream", "method": "go", "module": "recon", "url": "https://github.com/x1sec/commit-stream"},
+  {"name": "metabigor", "method": "go", "module": "recon", "url": "https://github.com/j3ssie/metabigor"},
+  {"name": "phoneinfoga", "method": "binary", "module": "recon", "url": "https://github.com/sundowndev/phoneinfoga"},
+  {"name": "subzy", "method": "go", "module": "recon", "url": "https://github.com/PentestPad/subzy"},
+  {"name": "reconftw", "method": "git", "module": "recon", "url": "https://github.com/six2dez/reconftw"},
+  {"name": "nmapAutomator", "method": "git", "module": "recon", "url": "https://github.com/21y4d/nmapAutomator"},
+  {"name": "axiom", "method": "git", "module": "recon", "url": "https://github.com/pry0cc/axiom"},
+  {"name": "Sn1per", "method": "git", "module": "recon", "url": "https://github.com/1N3/Sn1per"},
+  {"name": "blackbird", "method": "git", "module": "recon", "url": "https://github.com/p1ngul1n0/blackbird"},
+  {"name": "GooFuzz", "method": "git", "module": "recon", "url": "https://github.com/m3n0sd0n4ld/GooFuzz"},
+  {"name": "Telepathy", "method": "git", "module": "recon", "url": "https://github.com/jordanwildon/Telepathy"},
+  {"name": "iKy", "method": "git", "module": "recon", "url": "https://github.com/kennbroorg/iKy"},
+  {"name": "certSniff", "method": "git", "module": "recon", "url": "https://github.com/A-poc/certSniff"},
+  {"name": "linkedin2username", "method": "git", "module": "recon", "url": "https://github.com/initstring/linkedin2username"},
+  {"name": "Gato", "method": "git", "module": "recon", "url": "https://github.com/praetorian-inc/gato"},
+  {"name": "EyeWitness", "method": "git", "module": "recon", "url": "https://github.com/FortyNorthSecurity/EyeWitness"},
+  {"name": "osmedeus", "method": "git", "module": "recon", "url": "https://github.com/j3ssie/osmedeus"},
+  {"name": "massdns", "method": "source", "module": "recon", "url": "https://github.com/blechschmidt/massdns"},
+  {"name": "findomain", "method": "binary", "module": "recon", "url": "https://github.com/Findomain/Findomain"},
+  {"name": "whatweb", "method": "apt", "module": "web", "url": ""},
+  {"name": "sqlmap", "method": "pipx", "module": "web", "url": ""},
+  {"name": "wafw00f", "method": "pipx", "module": "web", "url": ""},
+  {"name": "sslyze", "method": "pipx", "module": "web", "url": ""},
+  {"name": "arjun", "method": "pipx", "module": "web", "url": ""},
+  {"name": "droopescan", "method": "pipx", "module": "web", "url": ""},
+  {"name": "mitmproxy2swagger", "method": "pipx", "module": "web", "url": ""},
+  {"name": "commix", "method": "pipx", "module": "web", "url": ""},
+  {"name": "raccoon-scanner", "method": "pipx", "module": "web", "url": ""},
+  {"name": "git-dumper", "method": "pipx", "module": "web", "url": ""},
+  {"name": "corscanner", "method": "pipx", "module": "web", "url": ""},
+  {"name": "xsrfprobe", "method": "pipx", "module": "web", "url": ""},
+  {"name": "nuclei", "method": "go", "module": "web", "url": "https://github.com/projectdiscovery/nuclei"},
+  {"name": "katana", "method": "go", "module": "web", "url": "https://github.com/projectdiscovery/katana"},
+  {"name": "ffuf", "method": "go", "module": "web", "url": ""},
+  {"name": "crlfuzz", "method": "go", "module": "web", "url": "https://github.com/dwisiswant0/crlfuzz"},
+  {"name": "dalfox", "method": "go", "module": "web", "url": ""},
+  {"name": "kxss", "method": "go", "module": "web", "url": "https://github.com/Emoe/kxss"},
+  {"name": "cariddi", "method": "go", "module": "web", "url": "https://github.com/edoardottt/cariddi"},
+  {"name": "Gxss", "method": "go", "module": "web", "url": "https://github.com/KathanP19/Gxss"},
+  {"name": "webanalyze", "method": "go", "module": "web", "url": "https://github.com/rverton/webanalyze"},
+  {"name": "jaeles", "method": "go", "module": "web", "url": "https://github.com/jaeles-project/jaeles"},
+  {"name": "proxify", "method": "go", "module": "web", "url": "https://github.com/projectdiscovery/proxify"},
+  {"name": "tlsx", "method": "go", "module": "web", "url": "https://github.com/projectdiscovery/tlsx"},
+  {"name": "jsluice", "method": "go", "module": "web", "url": "https://github.com/BishopFox/jsluice"},
+  {"name": "feroxbuster", "method": "cargo", "module": "web", "url": ""},
+  {"name": "wpscan", "method": "gem", "module": "web", "url": ""},
+  {"name": "XSStrike", "method": "git", "module": "web", "url": "https://github.com/s0md3v/XSStrike"},
+  {"name": "jwt_tool", "method": "git", "module": "web", "url": "https://github.com/ticarpi/jwt_tool"},
+  {"name": "smuggler", "method": "git", "module": "web", "url": "https://github.com/defparam/smuggler"},
+  {"name": "testssl.sh", "method": "git", "module": "web", "url": "https://github.com/drwetter/testssl.sh"},
+  {"name": "CMSmap", "method": "git", "module": "web", "url": "https://github.com/dionach/CMSmap"},
+  {"name": "PhpSploit", "method": "git", "module": "web", "url": "https://github.com/nil0x42/phpsploit"},
+  {"name": "phpggc", "method": "git", "module": "web", "url": "https://github.com/ambionics/phpggc"},
+  {"name": "PadBuster", "method": "git", "module": "web", "url": "https://github.com/AonCyberLabs/PadBuster"},
+  {"name": "h2csmuggler", "method": "git", "module": "web", "url": "https://github.com/BishopFox/h2csmuggler"},
+  {"name": "pp-finder", "method": "git", "module": "web", "url": "https://github.com/yeswehack/pp-finder"},
+  {"name": "symfony-exploits", "method": "git", "module": "web", "url": "https://github.com/ambionics/symfony-exploits"},
+  {"name": "tomcatwardeployer", "method": "git", "module": "web", "url": "https://github.com/mgeeky/tomcatwardeployer"},
+  {"name": "XXEinjector", "method": "git", "module": "web", "url": "https://github.com/enjoiz/XXEinjector"},
+  {"name": "paramspider", "method": "git", "module": "web", "url": "https://github.com/devanshbatham/ParamSpider"},
+  {"name": "ysoserial", "method": "binary", "module": "web", "url": "https://github.com/frohoff/ysoserial"},
+  {"name": "kr", "method": "binary", "module": "web", "url": "https://github.com/assetnote/kiterunner"},
+  {"name": "beef", "method": "docker", "module": "web", "url": ""},
+  {"name": "zaproxy", "method": "snap", "module": "web", "url": "https://github.com/zaproxy/zaproxy"},
+  {"name": "codext", "method": "pipx", "module": "crypto", "url": ""},
+  {"name": "xortool", "method": "pipx", "module": "crypto", "url": ""},
+  {"name": "factordb-python", "method": "pipx", "module": "crypto", "url": ""},
+  {"name": "z3-solver", "method": "pipx", "module": "crypto", "url": ""},
+  {"name": "RsaCtfTool", "method": "git", "module": "crypto", "url": "https://github.com/RsaCtfTool/RsaCtfTool"},
+  {"name": "rsatool", "method": "git", "module": "crypto", "url": "https://github.com/ius/rsatool"},
+  {"name": "hash_extender", "method": "source", "module": "crypto", "url": "https://github.com/iagox86/hash_extender"},
+  {"name": "PkCrack", "method": "source", "module": "crypto", "url": "https://github.com/keyunluo/pkcrack"},
+  {"name": "yafu", "method": "source", "module": "crypto", "url": "https://github.com/bbuhrow/yafu"},
+  {"name": "fastcoll", "method": "source", "module": "crypto", "url": "https://github.com/upbit/clone-fastcoll"},
+  {"name": "msieve", "method": "source", "module": "crypto", "url": "https://github.com/radii/msieve"},
+  {"name": "pemcrack", "method": "source", "module": "crypto", "url": "https://github.com/robertdavidgraham/pemcrack"},
+  {"name": "exploitdb", "method": "git", "module": "pwn", "url": "https://gitlab.com/exploit-database/exploitdb"},
+  {"name": "patchelf", "method": "apt", "module": "pwn", "url": ""},
+  {"name": "spike", "method": "apt", "module": "pwn", "url": ""},
+  {"name": "pwntools", "method": "pipx", "module": "pwn", "url": ""},
+  {"name": "ROPgadget", "method": "pipx", "module": "pwn", "url": ""},
+  {"name": "ropper", "method": "pipx", "module": "pwn", "url": ""},
+  {"name": "boofuzz", "method": "pipx", "module": "pwn", "url": ""},
+  {"name": "pwncat-cs", "method": "pipx", "module": "pwn", "url": ""},
+  {"name": "scapy", "method": "pipx", "module": "pwn", "url": ""},
+  {"name": "interactsh-client", "method": "go", "module": "pwn", "url": "https://github.com/projectdiscovery/interactsh"},
+  {"name": "one_gadget", "method": "gem", "module": "pwn", "url": ""},
+  {"name": "seccomp-tools", "method": "gem", "module": "pwn", "url": ""},
+  {"name": "RouterSploit", "method": "git", "module": "pwn", "url": "https://github.com/threat9/routersploit"},
+  {"name": "libc-database", "method": "git", "module": "pwn", "url": "https://github.com/niklasb/libc-database"},
+  {"name": "Penelope", "method": "git", "module": "pwn", "url": "https://github.com/brightio/penelope"},
+  {"name": "ShellNoob", "method": "git", "module": "pwn", "url": "https://github.com/reyammer/shellnoob"},
+  {"name": "unicorn", "method": "git", "module": "pwn", "url": "https://github.com/trustedsec/unicorn"},
+  {"name": "Donut", "method": "git", "module": "pwn", "url": "https://github.com/TheWover/donut"},
+  {"name": "ScareCrow", "method": "git", "module": "pwn", "url": "https://github.com/optiv/ScareCrow"},
+  {"name": "vulscan", "method": "git", "module": "recon", "url": "https://github.com/scipag/vulscan"},
+  {"name": "Freeze", "method": "git", "module": "pwn", "url": "https://github.com/Tylous/Freeze"},
+  {"name": "nanodump", "method": "git", "module": "pwn", "url": "https://github.com/fortra/nanodump"},
+  {"name": "eviltree", "method": "git", "module": "pwn", "url": "https://github.com/t3l3machus/eviltree"},
+  {"name": "Hoaxshell", "method": "git", "module": "pwn", "url": "https://github.com/t3l3machus/hoaxshell"},
+  {"name": "QueenSono", "method": "git", "module": "pwn", "url": "https://github.com/ariary/QueenSono"},
+  {"name": "DNSExfiltrator", "method": "git", "module": "pwn", "url": "https://github.com/Arno0x/DNSExfiltrator"},
+  {"name": "Egress-Assess", "method": "git", "module": "pwn", "url": "https://github.com/FortyNorthSecurity/Egress-Assess"},
+  {"name": "Ivy", "method": "git", "module": "pwn", "url": "https://github.com/optiv/Ivy"},
+  {"name": "pwninit", "method": "cargo", "module": "pwn", "url": ""},
+  {"name": "preeny", "method": "source", "module": "pwn", "url": "https://github.com/zardus/preeny"},
+  {"name": "AFLplusplus", "method": "source", "module": "pwn", "url": "https://github.com/AFLplusplus/AFLplusplus"},
+  {"name": "honggfuzz", "method": "source", "module": "pwn", "url": "https://github.com/google/honggfuzz"},
+  {"name": "radamsa", "method": "source", "module": "pwn", "url": "https://gitlab.com/akihe/radamsa"},
+  {"name": "metasploit", "method": "special", "module": "pwn", "url": "https://github.com/rapid7/metasploit-framework"},
+  {"name": "radare2", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "ghidra", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "checksec", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "rizin", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "gdb", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "binwalk", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "binutils", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "qemu-user-static", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "qemu-system-x86", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "valgrind", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "rr", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "ltrace", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "strace", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "hexedit", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "upx-ucl", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "nasm", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "edb-debugger", "method": "apt", "module": "reversing", "url": ""},
+  {"name": "angr", "method": "pipx", "module": "reversing", "url": ""},
+  {"name": "frida-tools", "method": "pipx", "module": "reversing", "url": ""},
+  {"name": "uncompyle6", "method": "pipx", "module": "reversing", "url": ""},
+  {"name": "pwndbg", "method": "git", "module": "reversing", "url": "https://github.com/pwndbg/pwndbg"},
+  {"name": "GEF", "method": "git", "module": "reversing", "url": "https://github.com/hugsy/gef"},
+  {"name": "peda", "method": "git", "module": "reversing", "url": "https://github.com/longld/peda"},
+  {"name": "decomp2dbg", "method": "git", "module": "reversing", "url": "https://github.com/mahaloz/decomp2dbg"},
+  {"name": "Qiling", "method": "git", "module": "reversing", "url": "https://github.com/qilingframework/qiling"},
+  {"name": "Krakatau", "method": "git", "module": "reversing", "url": "https://github.com/Storyyeller/Krakatau"},
+  {"name": "pyinstxtractor", "method": "git", "module": "reversing", "url": "https://github.com/extremecoders-re/pyinstxtractor"},
+  {"name": "ELFkickers", "method": "source", "module": "reversing", "url": "https://github.com/BR903/ELFkickers"},
+  {"name": "rappel", "method": "source", "module": "reversing", "url": "https://github.com/yrp604/rappel"},
+  {"name": "xrop", "method": "source", "module": "reversing", "url": "https://github.com/acama/xrop"},
+  {"name": "rp-lin", "method": "binary", "module": "reversing", "url": "https://github.com/0vercl0k/rp"},
+  {"name": "jd-gui", "method": "binary", "module": "reversing", "url": "https://github.com/java-decompiler/jd-gui"},
+  {"name": "autopsy", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "sleuthkit", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "foremost", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "scalpel", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "dc3dd", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "dcfldd", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "testdisk", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "extundelete", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "bulk-extractor", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "libimage-exiftool-perl", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "forensics-extra", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "samdump2", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "dislocker", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "ssdeep", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "unhide", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "hashdeep", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "recoverjpeg", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "galleta", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "pasco", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "mac-robber", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "vinetto", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "guymager", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "magicrescue", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "memdump", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "rifiuti2", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "scrounge-ntfs", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "ext3grep", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "ext4magic", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "volatility3", "method": "pipx", "module": "forensics", "url": ""},
+  {"name": "oletools", "method": "pipx", "module": "forensics", "url": ""},
+  {"name": "usbrip", "method": "pipx", "module": "forensics", "url": ""},
+  {"name": "mvt", "method": "pipx", "module": "forensics", "url": ""},
+  {"name": "hachoir", "method": "pipx", "module": "forensics", "url": ""},
+  {"name": "unblob", "method": "pipx", "module": "forensics", "url": ""},
+  {"name": "peepdf-3", "method": "pipx", "module": "forensics", "url": ""},
+  {"name": "RegRipper", "method": "git", "module": "forensics", "url": "https://github.com/keydet89/RegRipper3.0"},
+  {"name": "Depix", "method": "git", "module": "forensics", "url": "https://github.com/spipm/Depix"},
+  {"name": "dvcs-ripper", "method": "git", "module": "forensics", "url": "https://github.com/kost/dvcs-ripper"},
+  {"name": "firefox_decrypt", "method": "git", "module": "forensics", "url": "https://github.com/unode/firefox_decrypt"},
+  {"name": "firmware-mod-kit", "method": "git", "module": "forensics", "url": "https://github.com/rampageX/firmware-mod-kit"},
+  {"name": "chainsaw", "method": "binary", "module": "forensics", "url": "https://github.com/WithSecureLabs/chainsaw"},
+  {"name": "yara", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "clamav", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "inetsim", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "quark-engine", "method": "pipx", "module": "blueteam", "url": ""},
+  {"name": "yara-x-cli", "method": "cargo", "module": "blueteam", "url": "https://github.com/VirusTotal/yara-x"},
+  {"name": "impacket", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "certipy-ad", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "coercer", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "bloodhound", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "mitm6", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "lsassy", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "sprayhound", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "ldapdomaindump", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "pypykatz", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "adidnsdump", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "dploot", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "bloodyad", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "hekatomb", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "donpapi", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "certsync", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "masky", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "pywhisker", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "autobloody", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "krbjack", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "roadtx", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "pywerview", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "pysnaffler", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "powerview", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "aclpwn", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "netexec", "method": "pipx", "module": "enterprise", "url": "https://github.com/Pennyw0rth/NetExec"},
+  {"name": "ldeep", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "smbclientng", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "ldapsearchad", "method": "pipx", "module": "enterprise", "url": ""},
+  {"name": "godap", "method": "go", "module": "enterprise", "url": "https://github.com/Macmod/godap"},
+  {"name": "pretender", "method": "go", "module": "enterprise", "url": "https://github.com/RedTeamPentesting/pretender"},
+  {"name": "evil-winrm", "method": "gem", "module": "enterprise", "url": ""},
+  {"name": "Responder", "method": "git", "module": "enterprise", "url": "https://github.com/lgandx/Responder"},
+  {"name": "enum4linux-ng", "method": "git", "module": "enterprise", "url": "https://github.com/cddmp/enum4linux-ng"},
+  {"name": "linWinPwn", "method": "git", "module": "enterprise", "url": "https://github.com/lefayjey/linWinPwn"},
+  {"name": "PCredz", "method": "git", "module": "enterprise", "url": "https://github.com/lgandx/PCredz"},
+  {"name": "krbrelayx", "method": "git", "module": "enterprise", "url": "https://github.com/dirkjanm/krbrelayx"},
+  {"name": "spraykatz", "method": "git", "module": "enterprise", "url": "https://github.com/aas-n/spraykatz"},
+  {"name": "azurehound", "method": "git", "module": "enterprise", "url": "https://github.com/BloodHoundAD/AzureHound"},
+  {"name": "dfscoerce", "method": "git", "module": "enterprise", "url": "https://github.com/Wh04m1001/dfscoerce"},
+  {"name": "petitpotam", "method": "git", "module": "enterprise", "url": "https://github.com/topotam/PetitPotam"},
+  {"name": "shadowcoerce", "method": "git", "module": "enterprise", "url": "https://github.com/ShutdownRepo/shadowcoerce"},
+  {"name": "noPac", "method": "git", "module": "enterprise", "url": "https://github.com/Ridter/noPac"},
+  {"name": "zerologon", "method": "git", "module": "enterprise", "url": "https://github.com/SecuraBV/CVE-2020-1472"},
+  {"name": "ntlm_theft", "method": "git", "module": "enterprise", "url": "https://github.com/Greenwolf/ntlm_theft"},
+  {"name": "ntlmv1-multi", "method": "git", "module": "enterprise", "url": "https://github.com/evilmog/ntlmv1-multi"},
+  {"name": "PassTheCert", "method": "git", "module": "enterprise", "url": "https://github.com/AlmondOffSec/PassTheCert"},
+  {"name": "pkinittools", "method": "git", "module": "enterprise", "url": "https://github.com/dirkjanm/PKINITtools"},
+  {"name": "privexchange", "method": "git", "module": "enterprise", "url": "https://github.com/dirkjanm/PrivExchange"},
+  {"name": "GPOddity", "method": "git", "module": "enterprise", "url": "https://github.com/synacktiv/GPOddity"},
+  {"name": "gmsadumper", "method": "git", "module": "enterprise", "url": "https://github.com/micahvandeusen/gMSADumper"},
+  {"name": "ExtractBitlockerKeys", "method": "git", "module": "enterprise", "url": "https://github.com/p0dalirius/ExtractBitlockerKeys"},
+  {"name": "PXEThief", "method": "git", "module": "enterprise", "url": "https://github.com/blurbdust/PXEThief"},
+  {"name": "sccmsecrets", "method": "git", "module": "enterprise", "url": "https://github.com/synacktiv/SCCMSecrets"},
+  {"name": "sccmwtf", "method": "git", "module": "enterprise", "url": "https://github.com/xpn/sccmwtf"},
+  {"name": "cmloot", "method": "git", "module": "enterprise", "url": "https://github.com/shelltrail/cmloot"},
+  {"name": "pywsus", "method": "git", "module": "enterprise", "url": "https://github.com/GoSecure/pywsus"},
+  {"name": "RemoteMonologue", "method": "git", "module": "enterprise", "url": "https://github.com/3lp4tr0n/RemoteMonologue"},
+  {"name": "roastinthemiddle", "method": "git", "module": "enterprise", "url": "https://github.com/Tw1sm/RITM"},
+  {"name": "lnkup", "method": "git", "module": "enterprise", "url": "https://github.com/Plazmaz/lnkUp"},
+  {"name": "ruler", "method": "git", "module": "enterprise", "url": "https://github.com/sensepost/ruler"},
+  {"name": "bqm", "method": "git", "module": "enterprise", "url": "https://github.com/Acceis/bqm"},
+  {"name": "cyperoth", "method": "git", "module": "enterprise", "url": "https://github.com/seajaysec/cypheroth"},
+  {"name": "abuseACL", "method": "git", "module": "enterprise", "url": "https://github.com/AetherBlack/abuseACL"},
+  {"name": "asrepcatcher", "method": "git", "module": "enterprise", "url": "https://github.com/Yaxxine7/ASRepCatcher"},
+  {"name": "conpass", "method": "git", "module": "enterprise", "url": "https://github.com/login-securite/conpass"},
+  {"name": "freeipscanner", "method": "git", "module": "enterprise", "url": "https://github.com/scrt/freeipscanner"},
+  {"name": "goldencopy", "method": "git", "module": "enterprise", "url": "https://github.com/Dramelac/GoldenCopy"},
+  {"name": "keytabextract", "method": "git", "module": "enterprise", "url": "https://github.com/sosdave/KeyTabExtract"},
+  {"name": "ldaprelayscan", "method": "git", "module": "enterprise", "url": "https://github.com/zyn3rgy/LdapRelayScan"},
+  {"name": "LDAPWordlistHarvester", "method": "git", "module": "enterprise", "url": "https://github.com/p0dalirius/pyLDAPWordlistHarvester"},
+  {"name": "rusthound", "method": "git", "module": "enterprise", "url": "https://github.com/NH-RED-TEAM/RustHound"},
+  {"name": "rusthound-ce", "method": "git", "module": "enterprise", "url": "https://github.com/g0h4n/RustHound-CE"},
+  {"name": "GoExec", "method": "git", "module": "enterprise", "url": "https://github.com/FalconOpsLLC/goexec"},
+  {"name": "GoMapEnum", "method": "git", "module": "enterprise", "url": "https://github.com/nodauf/GoMapEnum"},
+  {"name": "gosecretsdump", "method": "git", "module": "enterprise", "url": "https://github.com/c-sto/gosecretsdump"},
+  {"name": "kerbrute", "method": "binary", "module": "enterprise", "url": "https://github.com/ropnop/kerbrute"},
+  {"name": "bloodhound-ce", "method": "docker", "module": "enterprise", "url": ""},
+  {"name": "aircrack-ng", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "reaver", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "kismet", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "pixiewps", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "bully", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "iw", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "wireless-tools", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "rfkill", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "horst", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "bluez", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "spooftooph", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "gnuradio", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "gqrx-sdr", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "mdk4", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "hcxtools", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "cowpatty", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "crackle", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "asleap", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "fern-wifi-cracker", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "hackrf", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "hcxdumptool", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "mfcuk", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "mfoc", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "rtl-433", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "libnfc-dev", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "avrdude", "method": "apt", "module": "wireless", "url": ""},
+  {"name": "sipvicious", "method": "pipx", "module": "wireless", "url": ""},
+  {"name": "wifite2", "method": "git", "module": "wireless", "url": "https://github.com/derv82/wifite2"},
+  {"name": "fluxion", "method": "git", "module": "wireless", "url": "https://github.com/FluxionNetwork/fluxion"},
+  {"name": "airgeddon", "method": "git", "module": "wireless", "url": "https://github.com/v1s1t0r1sh3r3/airgeddon"},
+  {"name": "hostapd-mana", "method": "git", "module": "wireless", "url": "https://github.com/sensepost/hostapd-mana"},
+  {"name": "wifiphisher", "method": "git", "module": "wireless", "url": "https://github.com/wifiphisher/wifiphisher"},
+  {"name": "PSKracker", "method": "git", "module": "wireless", "url": "https://github.com/soxrok2212/PSKracker"},
+  {"name": "eaphammer", "method": "git", "module": "wireless", "url": "https://github.com/s0lst1c3/eaphammer"},
+  {"name": "wifipumpkin3", "method": "git", "module": "wireless", "url": "https://github.com/P0cL4bs/wifipumpkin3"},
+  {"name": "proxmark3", "method": "git", "module": "wireless", "url": "https://github.com/RfidResearchGroup/proxmark3"},
+  {"name": "mousejack", "method": "git", "module": "wireless", "url": "https://github.com/BastilleResearch/mousejack"},
+  {"name": "mfdread", "method": "git", "module": "wireless", "url": "https://github.com/zhovner/mfdread"},
+  {"name": "libnfc-crypto1-crack", "method": "git", "module": "wireless", "url": "https://github.com/droidnewbie2/acr122uNFC"},
+  {"name": "john", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "hashcat", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "hydra", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "medusa", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "crunch", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "ophcrack", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "chntpw", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "fcrackzip", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "pdfcrack", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "cewl", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "hashid", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "bruteforce-luks", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "maskprocessor", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "princeprocessor", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "statsprocessor", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "sucrack", "method": "apt", "module": "cracking", "url": ""},
+  {"name": "search-that-hash", "method": "pipx", "module": "cracking", "url": ""},
+  {"name": "name-that-hash", "method": "pipx", "module": "cracking", "url": ""},
+  {"name": "trevorspray", "method": "pipx", "module": "cracking", "url": ""},
+  {"name": "patator", "method": "pipx", "module": "cracking", "url": ""},
+  {"name": "DefaultCreds-cheat-sheet", "method": "git", "module": "cracking", "url": "https://github.com/ihebski/DefaultCreds-cheat-sheet"},
+  {"name": "pipal", "method": "git", "module": "cracking", "url": "https://github.com/digininja/pipal"},
+  {"name": "Hob0Rules", "method": "git", "module": "cracking", "url": "https://github.com/praetorian-inc/Hob0Rules"},
+  {"name": "Pantagrule", "method": "git", "module": "cracking", "url": "https://github.com/rarecoil/pantagrule"},
+  {"name": "OneRuleToRuleThemStill", "method": "git", "module": "cracking", "url": "https://github.com/stealthsploit/OneRuleToRuleThemStill"},
+  {"name": "username-anarchy", "method": "git", "module": "cracking", "url": "https://github.com/urbanadventurer/username-anarchy"},
+  {"name": "gpp-decrypt", "method": "git", "module": "cracking", "url": "https://github.com/t0thkr1s/gpp-decrypt"},
+  {"name": "duplicut", "method": "source", "module": "cracking", "url": "https://github.com/nil0x42/duplicut"},
+  {"name": "steghide", "method": "apt", "module": "stego", "url": ""},
+  {"name": "stegsnow", "method": "apt", "module": "stego", "url": ""},
+  {"name": "outguess", "method": "apt", "module": "stego", "url": ""},
+  {"name": "pngcheck", "method": "apt", "module": "stego", "url": ""},
+  {"name": "sonic-visualiser", "method": "apt", "module": "stego", "url": ""},
+  {"name": "exiv2", "method": "apt", "module": "stego", "url": ""},
+  {"name": "pngtools", "method": "apt", "module": "stego", "url": ""},
+  {"name": "stegoveritas", "method": "pipx", "module": "stego", "url": ""},
+  {"name": "zsteg", "method": "gem", "module": "stego", "url": ""},
+  {"name": "stegsolve", "method": "git", "module": "stego", "url": "https://github.com/Giotino/stegsolve"},
+  {"name": "openstego", "method": "git", "module": "stego", "url": "https://github.com/syvaidya/openstego"},
+  {"name": "stegextract", "method": "git", "module": "stego", "url": "https://github.com/evyatarmeged/stegextract"},
+  {"name": "stegosaurus", "method": "git", "module": "stego", "url": "https://github.com/AngelKitty/stegosaurus"},
+  {"name": "stegseek", "method": "binary", "module": "stego", "url": "https://github.com/RickdeJager/stegseek"},
+  {"name": "kube-hunter", "method": "pipx", "module": "cloud", "url": ""},
+  {"name": "pacu", "method": "pipx", "module": "cloud", "url": ""},
+  {"name": "cloudsplaining", "method": "pipx", "module": "cloud", "url": ""},
+  {"name": "prowler", "method": "pipx", "module": "cloud", "url": ""},
+  {"name": "scoutsuite", "method": "pipx", "module": "cloud", "url": ""},
+  {"name": "s3scanner", "method": "pipx", "module": "cloud", "url": ""},
+  {"name": "roadrecon", "method": "pipx", "module": "cloud", "url": ""},
+  {"name": "cloudfox", "method": "go", "module": "cloud", "url": "https://github.com/BishopFox/cloudfox"},
+  {"name": "cloudlist", "method": "go", "module": "cloud", "url": "https://github.com/projectdiscovery/cloudlist"},
+  {"name": "CloudBrute", "method": "git", "module": "cloud", "url": "https://github.com/0xsha/CloudBrute"},
+  {"name": "enumerate-iam", "method": "git", "module": "cloud", "url": "https://github.com/andresriancho/enumerate-iam"},
+  {"name": "GCPBucketBrute", "method": "git", "module": "cloud", "url": "https://github.com/RhinoSecurityLabs/GCPBucketBrute"},
+  {"name": "cloud_enum", "method": "git", "module": "cloud", "url": "https://github.com/initstring/cloud_enum"},
+  {"name": "deepce", "method": "git", "module": "containers", "url": "https://github.com/stealthcopter/deepce"},
+  {"name": "docker-bench-security", "method": "git", "module": "containers", "url": "https://github.com/docker/docker-bench-security"},
+  {"name": "peirates", "method": "git", "module": "containers", "url": "https://github.com/inguardians/peirates"},
+  {"name": "trivy", "method": "binary", "module": "containers", "url": "https://github.com/aquasecurity/trivy"},
+  {"name": "grype", "method": "binary", "module": "containers", "url": "https://github.com/anchore/grype"},
+  {"name": "kubeaudit", "method": "binary", "module": "containers", "url": "https://github.com/Shopify/kubeaudit"},
+  {"name": "cdk", "method": "binary", "module": "containers", "url": "https://github.com/cdk-team/CDK"},
+  {"name": "suricata", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "fail2ban", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "aide", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "auditd", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "zeek", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "apparmor-utils", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "ufw", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "tiger", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "darkstat", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "chaosreader", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "sentrypeer", "method": "apt", "module": "blueteam", "url": ""},
+  {"name": "sigma-cli", "method": "pipx", "module": "blueteam", "url": ""},
+  {"name": "sigma-rules", "method": "git", "module": "blueteam", "url": "https://github.com/SigmaHQ/sigma"},
+  {"name": "maltrail", "method": "git", "module": "blueteam", "url": "https://github.com/stamparm/maltrail"},
+  {"name": "MISP-docker", "method": "git", "module": "blueteam", "url": "https://github.com/MISP/misp-docker"},
+  {"name": "wazuh-docker", "method": "git", "module": "blueteam", "url": "https://github.com/wazuh/wazuh-docker"},
+  {"name": "velociraptor", "method": "binary", "module": "blueteam", "url": "https://github.com/Velocidex/velociraptor"},
+  {"name": "laurel", "method": "binary", "module": "blueteam", "url": "https://github.com/threathunters-io/laurel"},
+  {"name": "thehive", "method": "docker", "module": "blueteam", "url": ""},
+  {"name": "cortex", "method": "docker", "module": "blueteam", "url": ""},
+  {"name": "adb", "method": "apt", "module": "mobile", "url": ""},
+  {"name": "smali", "method": "apt", "module": "mobile", "url": ""},
+  {"name": "scrcpy", "method": "apt", "module": "mobile", "url": ""},
+  {"name": "apksigner", "method": "apt", "module": "mobile", "url": ""},
+  {"name": "zipalign", "method": "apt", "module": "mobile", "url": ""},
+  {"name": "androguard", "method": "pipx", "module": "mobile", "url": ""},
+  {"name": "apkleaks", "method": "pipx", "module": "mobile", "url": ""},
+  {"name": "objection", "method": "pipx", "module": "mobile", "url": ""},
+  {"name": "apktool", "method": "git", "module": "mobile", "url": "https://github.com/iBotPeaches/Apktool"},
+  {"name": "mobsf", "method": "docker", "module": "mobile", "url": ""},
+  {"name": "solc", "method": "snap", "module": "blockchain", "url": "https://github.com/ethereum/solidity"},
+  {"name": "solc-select", "method": "pipx", "module": "blockchain", "url": "https://github.com/crytic/solc-select"},
+  {"name": "slither-analyzer", "method": "pipx", "module": "blockchain", "url": ""},
+  {"name": "mythril", "method": "pipx", "module": "blockchain", "url": ""},
+  {"name": "echidna", "method": "docker", "module": "blockchain", "url": ""},
+  {"name": "foundry", "method": "special", "module": "blockchain", "url": "https://github.com/foundry-rs/foundry"},
+  {"name": "checkov", "method": "pipx", "module": "cloud", "url": "https://github.com/bridgecrewio/checkov"},
+  {"name": "syft", "method": "binary", "module": "containers", "url": "https://github.com/anchore/syft"},
+  {"name": "kubescape", "method": "binary", "module": "containers", "url": "https://github.com/kubescape/kubescape"},
+  {"name": "floss", "method": "binary", "module": "blueteam", "url": "https://github.com/mandiant/flare-floss"},
+  {"name": "capa", "method": "binary", "module": "blueteam", "url": "https://github.com/mandiant/capa"},
+  {"name": "loki", "method": "binary", "module": "blueteam", "url": "https://github.com/Neo23x0/Loki-RS"},
+  {"name": "theHarvester", "method": "pipx", "module": "recon", "url": "https://github.com/laramies/theHarvester"},
+  {"name": "mosint", "method": "go", "module": "recon", "url": "https://github.com/alpkeskin/mosint"},
+  {"name": "hakrevdns", "method": "go", "module": "recon", "url": "https://github.com/hakluke/hakrevdns"},
+  {"name": "smap", "method": "go", "module": "recon", "url": "https://github.com/s0md3v/smap"},
+  {"name": "Villain", "method": "git", "module": "pwn", "url": "https://github.com/t3l3machus/Villain"},
+  {"name": "steampipe", "method": "special", "module": "cloud", "url": "https://github.com/turbot/steampipe"},
+  {"name": "evilginx", "method": "binary", "module": "misc", "url": "https://github.com/kgretzky/evilginx2"},
+  {"name": "poppler-utils", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "zbar-tools", "method": "apt", "module": "forensics", "url": ""},
+  {"name": "Corsy", "method": "git", "module": "web", "url": "https://github.com/s0md3v/Corsy"},
+  {"name": "NoSQLMap", "method": "git", "module": "web", "url": "https://github.com/codingo/NoSQLMap"},
+  {"name": "Gopherus", "method": "git", "module": "web", "url": "https://github.com/tarunkant/Gopherus"},
+  {"name": "pwndb", "method": "git", "module": "recon", "url": "https://github.com/davidtavarez/pwndb"},
+  {"name": "dnschef", "method": "git", "module": "networking", "url": "https://github.com/iphelix/dnschef"},
+  {"name": "cribdrag", "method": "git", "module": "crypto", "url": "https://github.com/SpiderLabs/cribdrag"},
+  {"name": "robin", "method": "git", "module": "recon", "url": "https://github.com/apurvsinghgautam/robin"},
+  {"name": "stringcheese", "method": "git", "module": "recon", "url": "https://github.com/MathisHammel/stringcheese"},
+  {"name": "bandit", "method": "pipx", "module": "blueteam", "url": ""},
+  {"name": "brakeman", "method": "gem", "module": "web", "url": ""},
+  {"name": "garak", "method": "pipx", "module": "llm", "url": ""},
+  {"name": "FuzzyAI", "method": "git", "module": "llm", "url": "https://github.com/cyberark/FuzzyAI.git"},
+  {"name": "promptfoo", "method": "npm", "module": "llm", "url": "https://github.com/promptfoo/promptfoo"},
+  {"name": "pallms", "method": "git", "module": "llm", "url": "https://github.com/mik0w/pallms.git"},
+  {"name": "shannon", "method": "git", "module": "llm", "url": "https://github.com/KeygraphHQ/shannon.git"},
+  {"name": "cai-framework", "method": "pipx", "module": "llm", "url": "https://github.com/aliasrobotics/cai"},
+  {"name": "pentagi", "method": "git", "module": "llm", "url": "https://github.com/vxcontrol/pentagi.git"},
+  {"name": "pentagi-docker", "method": "docker", "module": "llm", "url": "https://github.com/vxcontrol/pentagi"}
 ]

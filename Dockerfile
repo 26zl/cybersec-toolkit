@@ -18,9 +18,9 @@ COPY . .
 RUN chmod +x install.sh scripts/*.sh
 
 # MCP server: install uv + resolve dependencies so `uv run` works offline.
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && export PATH="$HOME/.local/bin:$PATH" \
-    && cd mcp_server && uv sync
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+RUN cd mcp_server && uv sync
 
 ENTRYPOINT ["./install.sh"]
 CMD ["--dry-run", "--profile", "full"]

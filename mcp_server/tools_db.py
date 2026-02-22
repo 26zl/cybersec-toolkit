@@ -105,7 +105,7 @@ class ToolsDatabase:
         list_tools(installed_only=True).
         """
         now = time.monotonic()
-        if self._versions and (now - self._versions_ts) < ttl:
+        if self._versions_ts > 0 and (now - self._versions_ts) < ttl:
             return self._versions
 
         self._versions = {}
@@ -171,11 +171,10 @@ class ToolsDatabase:
 
         # 4. Git clone directory check (Termux: ~/tools, Linux: /opt)
         if tool["method"] == "git":
-            git_dirs = [Path(os.environ.get("GITHUB_TOOL_DIR", "/opt")) / tool_name]
+            custom_dir = os.environ.get("GITHUB_TOOL_DIR")
+            git_dirs = [Path(custom_dir or "/opt") / tool_name]
             if os.environ.get("TERMUX_VERSION"):
                 git_dirs.insert(0, Path.home() / "tools" / tool_name)
-            elif not os.environ.get("GITHUB_TOOL_DIR"):
-                git_dirs.append(Path("/opt") / tool_name)
             for git_path in git_dirs:
                 if git_path.is_dir():
                     return {

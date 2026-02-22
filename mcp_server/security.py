@@ -11,6 +11,7 @@ import shutil
 import socket
 import sys
 from pathlib import Path
+from typing import Any
 
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
@@ -76,10 +77,10 @@ def _is_safe_target(value: str) -> bool:
     # Try parsing as CIDR
     try:
         net = ipaddress.ip_network(value, strict=False)
-        return any(
-            net.subnet_of(safe) for safe in _SAFE_NETWORKS
-            if net.version == safe.version
-        )
+        same_ver: list[Any] = [
+            s for s in _SAFE_NETWORKS if s.version == net.version
+        ]
+        return any(net.subnet_of(s) for s in same_ver)
     except (ValueError, TypeError):
         pass
 
@@ -278,11 +279,13 @@ async def execute_tool(
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
         truncated = False
+        trunc_msg = f"\n... [truncated at {max_output} bytes]"
+        trunc_limit = max_output - len(trunc_msg)
         if len(stdout) > max_output:
-            stdout = stdout[:max_output] + f"\n... [truncated at {max_output} bytes]"
+            stdout = stdout[:trunc_limit] + trunc_msg
             truncated = True
         if len(stderr) > max_output:
-            stderr = stderr[:max_output] + f"\n... [truncated at {max_output} bytes]"
+            stderr = stderr[:trunc_limit] + trunc_msg
             truncated = True
 
         return {

@@ -43,6 +43,10 @@ SKIP_SOURCE="${SKIP_SOURCE:-false}"
 ENABLE_DOCKER="${ENABLE_DOCKER:-false}"
 INCLUDE_C2="${INCLUDE_C2:-false}"
 REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
+# Track which flags were explicitly set on the CLI (for profile override logic)
+_CLI_SET_SKIP_HEAVY=false
+_CLI_SET_ENABLE_DOCKER=false
+_CLI_SET_INCLUDE_C2=false
 FAST_MODE="${FAST_MODE:-false}"
 ROLLBACK_TARGET=""
 
@@ -169,7 +173,7 @@ while [[ $# -gt 0 ]]; do
         --tool)            [[ $# -lt 2 ]] && { log_error "--tool requires a name"; exit 1; }
                            SELECTED_TOOLS+=("$2"); shift 2 ;;
         --upgrade-system)  UPGRADE_SYSTEM=true; shift ;;
-        --skip-heavy)      SKIP_HEAVY=true; shift ;;
+        --skip-heavy)      SKIP_HEAVY=true; _CLI_SET_SKIP_HEAVY=true; shift ;;
         --skip-pipx)       SKIP_PIPX=true; shift ;;
         --skip-go)         SKIP_GO=true; shift ;;
         --skip-cargo)      SKIP_CARGO=true; shift ;;
@@ -179,8 +183,8 @@ while [[ $# -gt 0 ]]; do
         --skip-source)     SKIP_SOURCE=true; shift ;;
         --fast)            FAST_MODE=true; shift ;;
         --require-checksums) REQUIRE_CHECKSUMS=true; shift ;;
-        --enable-docker)   ENABLE_DOCKER=true; shift ;;
-        --include-c2)      INCLUDE_C2=true; shift ;;
+        --enable-docker)   ENABLE_DOCKER=true; _CLI_SET_ENABLE_DOCKER=true; shift ;;
+        --include-c2)      INCLUDE_C2=true; _CLI_SET_INCLUDE_C2=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
         -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
                            PARALLEL_JOBS="$2"
@@ -558,16 +562,16 @@ if [[ -n "$PROFILE" ]]; then
         log_info "Available: $(find "$SCRIPT_DIR/profiles" -maxdepth 1 -name '*.conf' -print0 2>/dev/null | xargs -0 -I{} basename {} .conf | tr '\n' ' ')"
         exit 1
     fi
-    # Save CLI flags before sourcing profile (profile must not overwrite explicit CLI flags)
-    CLI_SKIP_HEAVY="$SKIP_HEAVY"
-    CLI_ENABLE_DOCKER="$ENABLE_DOCKER"
-    CLI_INCLUDE_C2="$INCLUDE_C2"
+    # Save CLI flag values before sourcing profile
+    _cli_skip_heavy="$SKIP_HEAVY"
+    _cli_enable_docker="$ENABLE_DOCKER"
+    _cli_include_c2="$INCLUDE_C2"
     # Source profile config
     source "$local_profile"
-    # CLI flags override profile defaults
-    [[ "$CLI_SKIP_HEAVY" == "true" ]]     && SKIP_HEAVY=true
-    [[ "$CLI_ENABLE_DOCKER" == "true" ]]  && ENABLE_DOCKER=true
-    [[ "$CLI_INCLUDE_C2" == "true" ]]     && INCLUDE_C2=true
+    # Explicit CLI flags override profile defaults (in both directions)
+    [[ "$_CLI_SET_SKIP_HEAVY" == "true" ]]     && SKIP_HEAVY="$_cli_skip_heavy"
+    [[ "$_CLI_SET_ENABLE_DOCKER" == "true" ]]  && ENABLE_DOCKER="$_cli_enable_docker"
+    [[ "$_CLI_SET_INCLUDE_C2" == "true" ]]     && INCLUDE_C2="$_cli_include_c2"
     # MODULES variable set by profile
     read -ra MODULES_TO_INSTALL <<< "$MODULES"
     # Validate profile module names
@@ -1007,6 +1011,7 @@ install_modules() {
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
             _method_names+=("pipx")
             (
+                trap '[[ -f "$_fail_dir/pipx.cnt" ]] || echo 1 > "$_fail_dir/pipx.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
                 install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
@@ -1018,6 +1023,7 @@ install_modules() {
         if [[ ${#_ALL_GO[@]} -gt 0 ]]; then
             _method_names+=("Go")
             (
+                trap '[[ -f "$_fail_dir/go.cnt" ]] || echo 1 > "$_fail_dir/go.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
                 install_go_batch "All modules - Go" "${_ALL_GO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
@@ -1029,6 +1035,7 @@ install_modules() {
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]]; then
             _method_names+=("Cargo")
             (
+                trap '[[ -f "$_fail_dir/cargo.cnt" ]] || echo 1 > "$_fail_dir/cargo.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
                 install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
@@ -1040,6 +1047,7 @@ install_modules() {
         if [[ ${#_ALL_GEMS[@]} -gt 0 ]]; then
             _method_names+=("Gems")
             (
+                trap '[[ -f "$_fail_dir/gems.cnt" ]] || echo 1 > "$_fail_dir/gems.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
                 install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
@@ -1051,6 +1059,7 @@ install_modules() {
         if [[ ${#_ALL_GIT[@]} -gt 0 ]]; then
             _method_names+=("Git")
             (
+                trap '[[ -f "$_fail_dir/git.cnt" ]] || echo 1 > "$_fail_dir/git.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
                 install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
@@ -1062,6 +1071,7 @@ install_modules() {
         if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then
             _method_names+=("Binary")
             (
+                trap '[[ -f "$_fail_dir/binary.cnt" ]] || echo 1 > "$_fail_dir/binary.cnt"' EXIT
                 TOTAL_TOOL_FAILURES=0
                 install_binary_releases "${_ALL_BINARY[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"

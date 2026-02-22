@@ -32,6 +32,14 @@ venv/
 # Go
 /go/
 
+# Secrets / environment
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+secrets.json
+
 # Runtime artifacts
 .versions
 .install_sessions/

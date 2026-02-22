@@ -250,7 +250,7 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
       "args": [
         "run", "-i", "--rm", "cybersec-toolkit",
         "bash", "-c",
-        "export PATH=\"$HOME/.local/bin:$PATH\" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
+        "cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
       ]
     }
   }
