@@ -471,6 +471,23 @@ install_pipx_batch() {
         [[ "$_symlinked" -gt 0 ]] && log_info "Symlinked $_symlinked pipx binaries from $_fallback_dir → $PIPX_BIN_DIR"
     fi
 
+    # Python 3.12+ removed setuptools from venvs by default, but many tools
+    # still use 'import pkg_resources' at runtime.  Inject setuptools into all
+    # pipx venvs so they don't crash with ModuleNotFoundError.
+    local _py_major _py_minor
+    _py_major=$(python3 -c 'import sys; print(sys.version_info.major)' 2>/dev/null || echo 3)
+    _py_minor=$(python3 -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo 0)
+    if [[ "$_py_major" -ge 3 ]] && [[ "$_py_minor" -ge 12 ]] && [[ -d "$PIPX_HOME/venvs" ]]; then
+        local _injected=0
+        for _venv_dir in "$PIPX_HOME/venvs"/*/; do
+            [[ -x "$_venv_dir/bin/pip" ]] || continue
+            # Skip if setuptools is already installed in this venv
+            "$_venv_dir/bin/python" -c 'import setuptools' 2>/dev/null && continue
+            "$_venv_dir/bin/pip" install -q setuptools >> "$LOG_FILE" 2>&1 && _injected=$((_injected + 1))
+        done
+        [[ "$_injected" -gt 0 ]] && log_info "Injected setuptools into $_injected pipx venvs (Python $_py_major.$_py_minor compat)"
+    fi
+
     echo ""
     log_success "${label}: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
 
@@ -732,6 +749,14 @@ install_gem_batch() {
             continue
         fi
         if _as_builder "$(command -v gem) install $gem_name --no-document" >> "$LOG_FILE" 2>&1; then
+            # Symlink gem executables to PIPX_BIN_DIR (gems install to user-local
+            # dir under _as_builder, which isn't in system PATH)
+            local _gem_bin_dir
+            _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
+            # shellcheck disable=SC2086  # glob expansion intentional
+            for _gbin in $_gem_bin_dir/$gem_name; do
+                [[ -f "$_gbin" ]] && ln -sf "$_gbin" "$PIPX_BIN_DIR/$(basename "$_gbin")" 2>/dev/null || true
+            done
             track_version "$gem_name" "gem" "latest"
             _report_tool_done "Gems" "$gem_name" "ok"
         else
@@ -788,8 +813,25 @@ setup_git_repo() {
             sed -i 's/^pycrypto.*/pycryptodome/i' "$dest/requirements.txt"
         fi
         if ! "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1; then
-            log_warn "pip install failed for $name (some dependencies may be missing)"
-            _SETUP_GIT_DEP_WARN=true
+            # Some packages fail to build against the latest Python (e.g. lxml on 3.13).
+            # Try an older Python if available on the system.
+            local _fallback_ok=false
+            for _pyver in python3.12 python3.11 python3.10; do
+                command -v "$_pyver" &>/dev/null || continue
+                log_info "Retrying $name with $_pyver (build failed on $(python3 --version 2>&1))..."
+                rm -rf "$dest/venv"
+                if "$_pyver" -m venv "$dest/venv" 2>>"$LOG_FILE"; then
+                    "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
+                    if "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1; then
+                        _fallback_ok=true
+                    fi
+                fi
+                break  # only try the newest available fallback
+            done
+            if [[ "$_fallback_ok" != "true" ]]; then
+                log_warn "pip install failed for $name (some dependencies may be missing)"
+                _SETUP_GIT_DEP_WARN=true
+            fi
         fi
 
         # Symlink venv entry points to PATH

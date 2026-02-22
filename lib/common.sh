@@ -963,7 +963,14 @@ _report_tool_done() {
 # _start_progress_display — launch background multi-line progress display
 # Args: method_name1 method_name2 ...  (e.g. "pipx" "Go" "Cargo" "Gems" "Git" "Binary")
 _start_progress_display() {
-    _stop_progress_display 2>/dev/null || true
+    # Kill previous display loop if running (re-entry safety), but do NOT
+    # call _stop_progress_display — that would _cleanup_progress_dir and
+    # destroy .total files already written by the main process.
+    if [[ -n "${_PROGRESS_DISPLAY_PID:-}" ]] && kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null; then
+        kill "$_PROGRESS_DISPLAY_PID" 2>/dev/null
+        wait "$_PROGRESS_DISPLAY_PID" 2>/dev/null || true
+    fi
+    _PROGRESS_DISPLAY_PID=""
 
     # Store ordered method list for _stop_progress_display
     printf '%s\n' "$@" > "$PROGRESS_DIR/.methods"
