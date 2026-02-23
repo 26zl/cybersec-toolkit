@@ -1,0 +1,69 @@
+name: Update uv dependencies
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+  workflow_dispatch: # Manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  uv-update:
+    name: Bump uv packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.3.1
+
+      - name: Upgrade all packages in uv.lock
+        id: upgrade
+        run: |
+          cd mcp_server
+          cp uv.lock uv.lock.old
+          uv lock --upgrade
+          if diff -q uv.lock uv.lock.old > /dev/null 2>&1; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No dependency updates available."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            # Build a readable summary of what changed
+            diff uv.lock.old uv.lock | grep '^[<>].*version' | head -30 > /tmp/diff_summary.txt || true
+            {
+              echo 'summary<<EOF'
+              cat /tmp/diff_summary.txt
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+          rm -f uv.lock.old
+
+      - name: Verify MCP server still works
+        if: steps.upgrade.outputs.changed == 'true'
+        run: |
+          cd mcp_server && uv sync --quiet
+          uv run python -c "
+          import sys; sys.path.insert(0, '..')
+          from mcp_server.server import mcp, _db
+          assert _db.total_tools > 500, f'Expected 500+ tools, got {_db.total_tools}'
+          print(f'MCP server OK: {_db.total_tools} tools')
+          "
+
+      - name: Create pull request
+        if: steps.upgrade.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          commit-message: "chore: bump uv dependencies"
+          branch: auto/uv-update
+          delete-branch: true
+          title: "chore: bump uv dependencies"
+          body: |
+            Automated weekly dependency update for `mcp_server/uv.lock`.
+
+            ```
+            ${{ steps.upgrade.outputs.summary }}
+            ```
+
+            MCP server import test passed.
+          labels: dependencies
