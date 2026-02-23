@@ -480,10 +480,16 @@ install_pipx_batch() {
     if [[ "$_py_major" -ge 3 ]] && [[ "$_py_minor" -ge 12 ]] && [[ -d "$PIPX_HOME/venvs" ]]; then
         local _injected=0
         for _venv_dir in "$PIPX_HOME/venvs"/*/; do
-            [[ -x "$_venv_dir/bin/pip" ]] || continue
+            [[ -x "$_venv_dir/bin/python" ]] || continue
             # Skip if setuptools is already installed in this venv
             "$_venv_dir/bin/python" -c 'import setuptools' 2>/dev/null && continue
-            "$_venv_dir/bin/pip" install -q setuptools >> "$LOG_FILE" 2>&1 && _injected=$((_injected + 1))
+            # Some pipx venvs lack the pip binary — use python -m pip instead.
+            # Bootstrap pip via ensurepip if neither is available.
+            if ! "$_venv_dir/bin/python" -m pip --version &>/dev/null; then
+                "$_venv_dir/bin/python" -m ensurepip --default-pip >> "$LOG_FILE" 2>&1 || continue
+            fi
+            # Pin setuptools<75: version 75+ removed pkg_resources
+            "$_venv_dir/bin/python" -m pip install -q 'setuptools<75' >> "$LOG_FILE" 2>&1 && _injected=$((_injected + 1))
         done
         [[ "$_injected" -gt 0 ]] && log_info "Injected setuptools into $_injected pipx venvs (Python $_py_major.$_py_minor compat)"
     fi

@@ -17,7 +17,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-DIM='\033[2m'
 NC='\033[0m'
 
 # Configurable defaults (GITHUB_TOOL_DIR set after distro detection — see path block below)
@@ -903,7 +902,7 @@ _start_spinner() {
         local s0=$SECONDS
         while true; do
             local elapsed=$(( SECONDS - s0 ))
-            printf '\r\033[K  %s %s %s(%ds)%s' "${_spin[$((i%10))]}" "$label" "$DIM" "$elapsed" "$NC"
+            printf '\r\033[K  %s %s \033[2m(%ds)\033[0m' "${_spin[$((i%10))]}" "$label" "$elapsed"
             i=$((i + 1))
             sleep 0.3
         done
