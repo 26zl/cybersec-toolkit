@@ -422,9 +422,13 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
     # npm tools (promptfoo)
     if command_exists npm && command_exists promptfoo; then
         log_info "Updating promptfoo (npm)..."
-        npm install -g "promptfoo@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1 && \
-            { log_success "promptfoo updated"; track_version "promptfoo" "npm" "$PROMPTFOO_VERSION"; } || \
+        if npm install -g "promptfoo@latest" >> "$LOG_FILE" 2>&1; then
+            _pf_ver=$(promptfoo --version 2>/dev/null || echo "latest")
+            log_success "promptfoo updated ($_pf_ver)"
+            track_version "promptfoo" "npm" "$_pf_ver"
+        else
             log_warn "promptfoo update failed"
+        fi
     fi
 
     # OWASP ZAP (snap)

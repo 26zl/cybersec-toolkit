@@ -109,7 +109,6 @@ Environment variables:
   GITHUB_TOOL_DIR      Where to clone GitHub repos (default: /opt)
   GITHUB_TOKEN         GitHub personal access token for API requests
                          (avoids rate limits on binary downloads)
-  GO_INSTALL_VERSION   Go version to download from go.dev (default: 1.23.6)
   GO_MIN_VERSION       Minimum Go version before auto-upgrade (default: 1.21)
   VERBOSE              Enable verbose/debug output (default: false)
   PARALLEL_JOBS        Number of parallel install jobs (default: 4)
@@ -374,9 +373,10 @@ install_single_tool() {
     if [[ "$tool" == "promptfoo" ]]; then
         ensure_node || { log_error "Node.js/npm not available — cannot install $tool"; return 1; }
         log_info "Installing $tool via npm..."
-        if npm install -g "$tool@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1; then
-            log_success "Installed: $tool"
-            track_version "$tool" "npm" "$PROMPTFOO_VERSION"
+        if npm install -g "$tool@latest" >> "$LOG_FILE" 2>&1; then
+            local _pf_ver; _pf_ver=$(promptfoo --version 2>/dev/null || echo "latest")
+            log_success "Installed: $tool ($_pf_ver)"
+            track_version "$tool" "npm" "$_pf_ver"
         else
             log_error "Failed: $tool"
         fi

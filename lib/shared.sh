@@ -104,7 +104,6 @@ _validate_curl_pipe() {
 # ensure_go — install modern Go from go.dev when the system package is too old.
 # Many security tools (projectdiscovery, etc.) require Go >= 1.21.
 # Ubuntu 22.04 ships Go 1.18, Debian 12 ships Go 1.19 — both too old.
-GO_INSTALL_VERSION="${GO_INSTALL_VERSION:-1.23.6}"
 GO_MIN_VERSION="${GO_MIN_VERSION:-1.21}"
 
 ensure_go() {
@@ -116,11 +115,26 @@ ensure_go() {
                 log_success "Go $current available (>= $GO_MIN_VERSION)"
                 return 0
             fi
-            log_warn "System Go $current is too old (need >= $GO_MIN_VERSION) — installing Go $GO_INSTALL_VERSION..."
+            log_warn "System Go $current is too old (need >= $GO_MIN_VERSION) — installing latest from go.dev..."
         fi
     else
-        log_warn "Go not found after shared deps — installing Go $GO_INSTALL_VERSION from go.dev..."
+        log_warn "Go not found after shared deps — installing latest from go.dev..."
     fi
+
+    # Fetch latest stable Go version from go.dev API
+    local GO_INSTALL_VERSION=""
+    local _go_json
+    _go_json=$(mktemp); _register_cleanup "$_go_json"
+    if curl -fsSL "https://go.dev/dl/?mode=json" -o "$_go_json" 2>>"$LOG_FILE"; then
+        GO_INSTALL_VERSION=$(python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if data:
+    print(data[0]['version'].lstrip('go'))
+" < "$_go_json" 2>/dev/null)
+    fi
+    # Fallback to a known-good version if API fails
+    GO_INSTALL_VERSION="${GO_INSTALL_VERSION:-1.24.0}"
 
     # Determine install location
     local install_parent
@@ -133,7 +147,7 @@ ensure_go() {
     local tarball="go${GO_INSTALL_VERSION}.linux-${SYS_ARCH}.tar.gz"
     local url="https://go.dev/dl/${tarball}"
 
-    log_info "Downloading Go $GO_INSTALL_VERSION from go.dev..."
+    log_info "Downloading Go $GO_INSTALL_VERSION (latest stable) from go.dev..."
     local tmp_tar
     tmp_tar=$(mktemp); _register_cleanup "$tmp_tar"
     if ! curl -fsSL "$url" -o "$tmp_tar" 2>>"$LOG_FILE"; then
@@ -142,12 +156,10 @@ ensure_go() {
         return 1
     fi
 
-    # Verify SHA256 against go.dev published hash
+    # Verify SHA256 against go.dev published hash (reuse API JSON from version lookup)
     log_info "Verifying Go tarball checksum..."
     local expected_hash=""
-    local tmp_json
-    tmp_json=$(mktemp); _register_cleanup "$tmp_json"
-    if curl -fsSL "https://go.dev/dl/?mode=json" -o "$tmp_json" 2>>"$LOG_FILE"; then
+    if [[ -f "$_go_json" ]] && [[ -s "$_go_json" ]]; then
         expected_hash=$(python3 -c "
 import json, sys
 for rel in json.load(sys.stdin):
@@ -157,9 +169,9 @@ for rel in json.load(sys.stdin):
                 print(f['sha256'])
                 break
         break
-" < "$tmp_json" 2>>"$LOG_FILE")
+" < "$_go_json" 2>>"$LOG_FILE")
     fi
-    rm -f "$tmp_json"
+    rm -f "$_go_json"
 
     if [[ -n "$expected_hash" ]]; then
         local actual_hash

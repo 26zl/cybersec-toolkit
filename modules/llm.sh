@@ -3,7 +3,7 @@
 # Module: LLM Security
 # LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning
 
-PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-0.107.4}"
+PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-latest}"
 
 LLM_PACKAGES=()
 
@@ -36,8 +36,9 @@ install_module_llm() {
             if npm install -g "promptfoo@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1; then
                 _stop_spinner
                 local _pf_path; _pf_path=$(command -v promptfoo 2>/dev/null || true)
-                log_success "promptfoo installed${_pf_path:+ ($PROMPTFOO_VERSION → $_pf_path)}"
-                track_version "promptfoo" "npm" "$PROMPTFOO_VERSION"
+                local _pf_ver; _pf_ver=$(promptfoo --version 2>/dev/null || echo "$PROMPTFOO_VERSION")
+                log_success "promptfoo installed${_pf_path:+ ($_pf_ver → $_pf_path)}"
+                track_version "promptfoo" "npm" "$_pf_ver"
             else
                 _stop_spinner
                 log_error "Failed npm: promptfoo"

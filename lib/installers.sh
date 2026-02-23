@@ -1086,6 +1086,11 @@ _CURL_OPTS=()
 _GH_NETRC_FILE=""
 _setup_curl_opts() {
     _CURL_OPTS=(-sSL)
+    # Auto-detect token from gh CLI if not explicitly set
+    if [[ -z "${GITHUB_TOKEN:-}" ]] && command -v gh &>/dev/null; then
+        GITHUB_TOKEN=$(gh auth token 2>/dev/null) || true
+        [[ -n "${GITHUB_TOKEN:-}" ]] && log_info "Using GitHub token from gh CLI (5000 req/hr API limit)"
+    fi
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         _GH_NETRC_FILE=$(mktemp "${TMPDIR:-/tmp}/gh-netrc.XXXXXX")
         chmod 600 "$_GH_NETRC_FILE"

@@ -8,7 +8,7 @@
  / /   / / / / __ \/ _ \/ ___/\__ \/ _ \/ ___/
 / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
 \____/\__, /_.___/\___/_/   /____/\___/\___/
-     /____/
+     /____/                          by 26zl
               Toolkit
 ```
 
@@ -21,6 +21,18 @@ The most comprehensive modular installer and AI-integrated toolkit for cybersecu
 All required runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pipx, and build tools are installed automatically. The only prerequisite is a supported Linux distro. Windows and macOS are not supported (use WSL or Docker).
 
 > __Docker__ is the one exception — install it manually if you want C2 frameworks, MobSF, BeEF, BloodHound, TheHive, or Cortex (`--enable-docker`). See [Docker install docs](https://docs.docker.com/engine/install/).
+> __GitHub authentication__ is recommended. The installer downloads ~30 binary releases and makes ~30+ API calls to GitHub. Without auth, you're limited to __60 requests/hour__ and some downloads may fail. With auth, the limit is __5,000/hour__. The easiest way:
+>
+> ```bash
+> # Install gh CLI and log in (one-time) — the installer auto-detects it
+> sudo apt install gh && gh auth login
+> ```
+>
+> Alternatively, export a [personal access token](https://github.com/settings/tokens) (no scopes needed):
+>
+> ```bash
+> export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+> ```
 
 ```bash
 git clone https://github.com/26zl/cybersec-toolkit.git
