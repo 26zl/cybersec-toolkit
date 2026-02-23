@@ -1229,7 +1229,7 @@ print_banner() {
  / /   / / / / __ \/ _ \/ ___/\__ \/ _ \/ ___/
 / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
 \____/\__, /_.___/\___/_/   /____/\___/\___/
-     /____/
+     /____/                          by 26zl
 BANNER
     echo "              Tools Installer${INSTALLER_VERSION:+  v${INSTALLER_VERSION}}"
     echo -e "${NC}"
