@@ -997,154 +997,81 @@ _start_progress_display() {
         return 0
     fi
 
-    # UTF-8 characters for rendering (using $'\xNN' hex escapes for portability)
-    local _bar_full=$'\xe2\x96\x88'   # █ U+2588
-    local _bar_empty=$'\xe2\x96\x91'  # ░ U+2591
     local _check=$'\xe2\x9c\x93'      # ✓ U+2713
-    local _cross=$'\xe2\x9c\x97'      # ✗ U+2717
-    local _dash=$'\xe2\x80\x94'       # — U+2014
-    local -a _spin=(
-        $'\xe2\xa0\x8b' $'\xe2\xa0\x99' $'\xe2\xa0\xb9' $'\xe2\xa0\xb8' $'\xe2\xa0\xbc'
-        $'\xe2\xa0\xb4' $'\xe2\xa0\xa6' $'\xe2\xa0\xa7' $'\xe2\xa0\x87' $'\xe2\xa0\x8f'
-    )
-
     local _pd="$PROGRESS_DIR"
 
+    # Single-line spinner — updates in place with \r, no cursor movement.
+    # Avoids scrollback pollution that multi-line \033[%dA causes in
+    # ConPTY / Windows Terminal / WSL terminals.
     (
         local -a methods=("$@")
+        local -a _spin=(
+            $'\xe2\xa0\x8b' $'\xe2\xa0\x99' $'\xe2\xa0\xb9' $'\xe2\xa0\xb8' $'\xe2\xa0\xbc'
+            $'\xe2\xa0\xb4' $'\xe2\xa0\xa6' $'\xe2\xa0\xa7' $'\xe2\xa0\x87' $'\xe2\xa0\x8f'
+        )
         local spin_idx=0
         local s0=$SECONDS
-        local prev_lines=0
-
-        # Get terminal width to prevent line wrapping (which breaks cursor math)
         local cols
         cols=$(tput cols 2>/dev/null) || cols=${COLUMNS:-80}
         [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
-        # Fixed visual width: 2(indent) + 8(method) + 1(sp) + 20(bar) + 1(sp) + 7(count) + 2(sp) = 41
-        local max_status=$((cols - 41))
-        [[ "$max_status" -lt 10 ]] && max_status=10
-        local max_fail=$((cols - 4))  # indent(2) + cross(1) + space(1)
-        [[ "$max_fail" -lt 10 ]] && max_fail=10
 
         while true; do
-            # Cooperative shutdown: _stop_progress_display writes .stop
             [[ -f "$_pd/.stop" ]] && break
 
             local elapsed=$(( SECONDS - s0 ))
             spin_idx=$(( (spin_idx + 1) % 10 ))
 
-            # Move cursor up to overwrite previous output
-            [[ "$prev_lines" -gt 0 ]] && printf '\033[%dA\r' "$prev_lines"
-
-            local lines=0
-            local -a fail_lines=()
-
-            # Header
-            printf '\033[K  Stage 3/4 %s Installing tools (%ds)\n\033[K\n' "$_dash" "$elapsed"
-            lines=2
-
+            # Build compact status: "pipx 43/109 · Go ✓ · Cargo 2/4 ..."
+            local parts=""
             for method in "${methods[@]}"; do
-                local total=0 done_count=0 current=""
-
+                local total=0 done_count=0
                 [[ -f "$_pd/$method.total" ]] && read -r total < "$_pd/$method.total" 2>/dev/null
                 if [[ -f "$_pd/$method.done" ]]; then
                     done_count=$(wc -l < "$_pd/$method.done" 2>/dev/null)
                     done_count=${done_count//[[:space:]]/}
                 fi
-                [[ -f "$_pd/$method.current" ]] && read -r current < "$_pd/$method.current" 2>/dev/null
-
-                # Sanitize (guard against partial writes / empty reads)
                 [[ "$total" =~ ^[0-9]+$ ]] || total=0
                 [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
-                [[ "$total" -gt 0 && "$done_count" -gt "$total" ]] && done_count=$total
 
-                # Progress bar (20 chars wide)
-                local bar_width=20 filled=0
-                [[ "$total" -gt 0 ]] && filled=$((done_count * bar_width / total))
-                [[ "$filled" -gt "$bar_width" ]] && filled=$bar_width
-                local empty=$((bar_width - filled))
-                local bar="" i
-                for ((i = 0; i < filled; i++)); do bar+="$_bar_full"; done
-                for ((i = 0; i < empty; i++)); do bar+="$_bar_empty"; done
-
-                # Status indicator
-                local status_str=""
+                local part=""
                 if [[ "$total" -eq 0 ]] && [[ -f "$_pd/$method.total" ]]; then
-                    status_str="skipped"
+                    part="$method skip"
                 elif [[ "$total" -eq 0 ]]; then
-                    status_str="waiting..."
+                    part="$method ..."
                 elif [[ "$done_count" -ge "$total" ]]; then
-                    local fc=0
-                    [[ -f "$_pd/$method.done" ]] && fc=$(grep -c '|fail|' "$_pd/$method.done" 2>/dev/null || true)
-                    [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
-                    if [[ "$fc" -gt 0 ]]; then
-                        status_str="$_check done ($fc failed)"
-                    else
-                        status_str="$_check done"
-                    fi
+                    part="$method $_check"
                 else
-                    if [[ -n "$current" ]]; then
-                        status_str="${_spin[$spin_idx]} ${current}..."
-                    else
-                        status_str="waiting..."
-                    fi
+                    part="$method ${done_count}/${total}"
                 fi
 
-                # Truncate to avoid line wrapping (dynamic based on terminal width)
-                [[ ${#status_str} -gt $max_status ]] && status_str="${status_str:0:$((max_status - 3))}..."
-
-                printf '\033[K  %-8s %s %3d/%-3d  %s\n' \
-                    "$method" "$bar" "$done_count" "$total" "$status_str"
-                lines=$((lines + 1))
-
-                # Collect failures
-                if [[ -f "$_pd/$method.done" ]]; then
-                    while IFS='|' read -r _ft _fs _fe; do
-                        [[ "$_fs" == "fail" ]] && fail_lines+=("${_ft}${_fe:+ ($_fe)}")
-                    done < <(grep '|fail|' "$_pd/$method.done" 2>/dev/null)
-                fi
+                [[ -n "$parts" ]] && parts+=" | "
+                parts+="$part"
             done
 
-            # Failure section at bottom
-            if [[ ${#fail_lines[@]} -gt 0 ]]; then
-                printf '\033[K\n'
-                lines=$((lines + 1))
-                for fl in "${fail_lines[@]}"; do
-                    [[ ${#fl} -gt $max_fail ]] && fl="${fl:0:$((max_fail - 3))}..."
-                    printf '\033[K  %s %s\n' "$_cross" "$fl"
-                    lines=$((lines + 1))
-                done
-            fi
+            local line="  ${_spin[$spin_idx]} ${parts}  (${elapsed}s)"
+            # Truncate to terminal width
+            [[ ${#line} -gt $cols ]] && line="${line:0:$((cols - 1))}"
 
-            # Clear leftover lines from previous render (fewer failures displayed now)
-            if [[ "$prev_lines" -gt "$lines" ]]; then
-                local extra=$((prev_lines - lines))
-                for ((i = 0; i < extra; i++)); do printf '\033[K\n'; done
-                printf '\033[%dA' "$extra"
-            fi
-
-            prev_lines=$lines
-            echo "$lines" > "$_pd/.lines"
+            printf '\r\033[K%s' "$line"
             sleep 0.3
         done
+        # Clear the spinner line on exit
+        printf '\r\033[K'
     ) &
     _PROGRESS_DISPLAY_PID=$!
 }
 
-# _stop_progress_display — kill display loop, render final static state
+# _stop_progress_display — stop spinner, render final static summary
 _stop_progress_display() {
-    # Cooperative shutdown: signal the display loop to exit after its current
-    # render cycle completes (prevents partial-render garbled output).
+    # Cooperative shutdown: signal the display loop to exit cleanly
     [[ -n "${PROGRESS_DIR:-}" && -d "$PROGRESS_DIR" ]] && touch "$PROGRESS_DIR/.stop"
 
     if [[ -n "${_PROGRESS_DISPLAY_PID:-}" ]] && kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null; then
-        # Wait up to 1.5s for the loop to notice .stop and exit cleanly
         local _i=0
         while kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null && [[ $_i -lt 15 ]]; do
             sleep 0.1
             _i=$((_i + 1))
         done
-        # Force kill if cooperative shutdown didn't work
         if kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null; then
             kill "$_PROGRESS_DISPLAY_PID" 2>/dev/null
         fi
@@ -1154,101 +1081,72 @@ _stop_progress_display() {
 
     [[ -n "${PROGRESS_DIR:-}" && -d "$PROGRESS_DIR" ]] || return 0
 
-    # UTF-8 characters (same as display loop)
     local _bar_full=$'\xe2\x96\x88'   # █
     local _bar_empty=$'\xe2\x96\x91'  # ░
     local _check=$'\xe2\x9c\x93'      # ✓
     local _cross=$'\xe2\x9c\x97'      # ✗
     local _dash=$'\xe2\x80\x94'       # —
 
-    # Read method list and last line count
     local -a methods=()
     [[ -f "$PROGRESS_DIR/.methods" ]] && mapfile -t methods < "$PROGRESS_DIR/.methods"
     [[ ${#methods[@]} -gt 0 ]] || { _cleanup_progress_dir; return 0; }
 
     if [[ -t 1 ]]; then
-        local prev_lines=0
-        [[ -f "$PROGRESS_DIR/.lines" ]] && read -r prev_lines < "$PROGRESS_DIR/.lines" 2>/dev/null
-        [[ "$prev_lines" =~ ^[0-9]+$ ]] || prev_lines=0
+        # Clear spinner line (in case the loop didn't clean up)
+        printf '\r\033[K'
 
-        # Terminal width for truncation (same logic as display loop)
-        local cols
-        cols=$(tput cols 2>/dev/null) || cols=${COLUMNS:-80}
-        [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
-        local max_fail=$((cols - 4))
-        [[ "$max_fail" -lt 10 ]] && max_fail=10
+        # Print final multi-line summary (no cursor movement — just normal output)
+        printf '  Stage 3/4 %s Installing tools (complete)\n\n' "$_dash"
 
-        if [[ "$prev_lines" -gt 0 ]]; then
-            # Overwrite the live display with final static state
-            printf '\033[%dA\r' "$prev_lines"
+        for method in "${methods[@]}"; do
+            local total=0 done_count=0
+            [[ -f "$PROGRESS_DIR/$method.total" ]] && read -r total < "$PROGRESS_DIR/$method.total" 2>/dev/null
+            if [[ -f "$PROGRESS_DIR/$method.done" ]]; then
+                done_count=$(wc -l < "$PROGRESS_DIR/$method.done" 2>/dev/null)
+                done_count=${done_count//[[:space:]]/}
+            fi
+            [[ "$total" =~ ^[0-9]+$ ]] || total=0
+            [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
 
-            printf '\033[K  Stage 3/4 %s Installing tools (complete)\n\033[K\n' "$_dash"
-            local final_lines=2
-
-            for method in "${methods[@]}"; do
-                local total=0 done_count=0
-                [[ -f "$PROGRESS_DIR/$method.total" ]] && read -r total < "$PROGRESS_DIR/$method.total" 2>/dev/null
-                if [[ -f "$PROGRESS_DIR/$method.done" ]]; then
-                    done_count=$(wc -l < "$PROGRESS_DIR/$method.done" 2>/dev/null)
-                    done_count=${done_count//[[:space:]]/}
-                fi
-                [[ "$total" =~ ^[0-9]+$ ]] || total=0
-                [[ "$done_count" =~ ^[0-9]+$ ]] || done_count=0
-
-                # All subshells have exited by now — if done file is missing/empty
-                # but total > 0, the method completed (done data didn't reach IPC dir).
-                if [[ "$total" -gt 0 ]] && [[ "$done_count" -eq 0 ]]; then
-                    done_count=$total
-                fi
-
-                # Full bar for completed, empty for skipped
-                local bar_width=20 bar="" i
-                local filled=$bar_width
-                [[ "$total" -eq 0 ]] && filled=0
-                for ((i = 0; i < filled; i++)); do bar+="$_bar_full"; done
-                for ((i = filled; i < bar_width; i++)); do bar+="$_bar_empty"; done
-
-                local fc=0
-                [[ -f "$PROGRESS_DIR/$method.done" ]] && fc=$(grep -c '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null || true)
-                [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
-                local status_str="$_check done"
-                [[ "$fc" -gt 0 ]] && status_str="$_check done ($fc failed)"
-                [[ "$total" -eq 0 ]] && status_str="skipped"
-
-                printf '\033[K  %-8s %s %3d/%-3d  %s\n' \
-                    "$method" "$bar" "$done_count" "$total" "$status_str"
-                final_lines=$((final_lines + 1))
-            done
-
-            # Failure summary
-            local has_fails=false
-            for method in "${methods[@]}"; do
-                [[ -f "$PROGRESS_DIR/$method.done" ]] || continue
-                while IFS='|' read -r _ft _fs _fe; do
-                    if [[ "$_fs" == "fail" ]]; then
-                        if [[ "$has_fails" == "false" ]]; then
-                            printf '\033[K\n'
-                            final_lines=$((final_lines + 1))
-                            has_fails=true
-                        fi
-                        local _fl="${_ft}${_fe:+ ($_fe)}"
-                        [[ ${#_fl} -gt $max_fail ]] && _fl="${_fl:0:$((max_fail - 3))}..."
-                        printf '\033[K  %s %s\n' "$_cross" "$_fl"
-                        final_lines=$((final_lines + 1))
-                    fi
-                done < <(grep '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null)
-            done
-
-            # Clear leftover lines from previous live render
-            if [[ "$prev_lines" -gt "$final_lines" ]]; then
-                local extra=$((prev_lines - final_lines))
-                for ((i = 0; i < extra; i++)); do printf '\033[K\n'; done
+            if [[ "$total" -gt 0 ]] && [[ "$done_count" -eq 0 ]]; then
+                done_count=$total
             fi
 
-            echo ""  # blank line after display
-        fi
+            local bar_width=20 bar="" i
+            local filled=$bar_width
+            [[ "$total" -eq 0 ]] && filled=0
+            for ((i = 0; i < filled; i++)); do bar+="$_bar_full"; done
+            for ((i = filled; i < bar_width; i++)); do bar+="$_bar_empty"; done
+
+            local fc=0
+            [[ -f "$PROGRESS_DIR/$method.done" ]] && fc=$(grep -c '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null || true)
+            [[ "$fc" =~ ^[0-9]+$ ]] || fc=0
+            local status_str="$_check done"
+            [[ "$fc" -gt 0 ]] && status_str="$_check done ($fc failed)"
+            [[ "$total" -eq 0 ]] && status_str="skipped"
+
+            printf '  %-8s %s %3d/%-3d  %s\n' \
+                "$method" "$bar" "$done_count" "$total" "$status_str"
+        done
+
+        # Failure summary
+        local has_fails=false
+        for method in "${methods[@]}"; do
+            [[ -f "$PROGRESS_DIR/$method.done" ]] || continue
+            while IFS='|' read -r _ft _fs _fe; do
+                if [[ "$_fs" == "fail" ]]; then
+                    if [[ "$has_fails" == "false" ]]; then
+                        echo ""
+                        has_fails=true
+                    fi
+                    printf '  %s %s%s\n' "$_cross" "$_ft" "${_fe:+ ($_fe)}"
+                fi
+            done < <(grep '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null)
+        done
+
+        echo ""
     else
-        # Non-interactive: print plain-text summary (no ANSI escapes)
+        # Non-interactive: print plain-text summary
         echo ""
         echo "  Stage 3/4 -- Installing tools (complete)"
         for method in "${methods[@]}"; do

@@ -8,6 +8,7 @@ BLOCKCHAIN_PACKAGES=()
 BLOCKCHAIN_PIPX=(
     slither-analyzer
     mythril
+    solc-select
 )
 
 BLOCKCHAIN_GIT=()
@@ -18,35 +19,6 @@ install_module_blockchain() {
     [[ ${#BLOCKCHAIN_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Blockchain - Packages" "${BLOCKCHAIN_PACKAGES[@]}"
     install_pipx_batch "Blockchain - Python" "${BLOCKCHAIN_PIPX[@]}"
 
-    # solc (Solidity compiler) — not in standard repos, use snap or pipx fallback
-    if [[ "${SKIP_SOURCE:-false}" != "true" ]] && ! command_exists solc; then
-        if [[ "$IS_DOCKER" == "true" ]]; then
-            # snap can't work in Docker — use solc-select via pipx instead
-            if [[ "${SKIP_PIPX:-false}" != "true" ]]; then
-                _start_spinner "Installing solc-select via pipx (Docker)..."
-                if pipx install solc-select >> "$LOG_FILE" 2>&1; then
-                    _stop_spinner
-                    log_success "solc-select installed (run: solc-select install <version>)"
-                    track_version "solc-select" "pipx" "latest"
-                else
-                    _stop_spinner
-                    log_warn "Failed to install solc-select via pipx"
-                fi
-            fi
-        elif snap_available; then
-            _start_spinner "Installing solc via snap..."
-            if snap_install solc >> "$LOG_FILE" 2>&1; then
-                _stop_spinner
-                log_success "solc installed"
-                track_version "solc" "snap" "latest"
-            else
-                _stop_spinner
-                log_warn "Failed to install solc via snap"
-            fi
-        else
-            log_warn "solc not available via apt or snap — install manually: https://docs.soliditylang.org/"
-        fi
-    fi
     [[ ${#BLOCKCHAIN_GIT[@]} -gt 0 ]] && install_git_batch "Blockchain - Git" "${BLOCKCHAIN_GIT[@]}"
 
     # Foundry (forge, cast, anvil, chisel) — installed via foundryup

@@ -14,7 +14,7 @@ CRYPTO_GIT=(
 )
 
 CRYPTO_GIT_NAMES=(RsaCtfTool rsatool cribdrag)
-CRYPTO_BUILD_NAMES=(hash_extender PkCrack yafu fastcoll msieve pemcrack)
+CRYPTO_BUILD_NAMES=(hash_extender PkCrack yafu fastcoll pemcrack)
 
 install_module_crypto() {
     [[ ${#CRYPTO_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Crypto - Packages" "${CRYPTO_PACKAGES[@]}"
@@ -32,9 +32,6 @@ install_module_crypto() {
     build_from_source "yafu" "https://github.com/bbuhrow/yafu.git" \
         "sed -i 's|-I\.\./gmp-install/[^ ]*||g; s|-L\.\./gmp-install/[^ ]*||g; s|-I\.\./ecm-install/[^ ]*||g; s|-L\.\./ecm-install/[^ ]*||g; s|-lcuda||g; s|-lcudart||g; s|-lrt||g; s|-Werror||g' Makefile.gcc && sed -i '/^LIBS/s/\$/ -lpthread/' Makefile.gcc && sed -i '/^CFLAGS/s/\$/ -Wno-implicit-function-declaration/' Makefile.gcc && make -f Makefile.gcc yafu NFS=1 USE_CUDA=0" || true
     build_from_source "fastcoll" "https://github.com/upbit/clone-fastcoll.git" "make" || true
-    # Use generic 'make all' instead of 'make x86_64' — the x86_64 target adds
-    # CPU-specific flags (-march/-fcf-protection) that fail on VMs/older CPUs.
-    build_from_source "msieve" "https://github.com/radii/msieve.git" "make all ECM=1" || true
     # Upstream pemcrack.c is missing #include <ctype.h> — GCC 14+ treats
     # implicit-function-declaration as a hard error, so patch before building
     build_from_source "pemcrack" "https://github.com/robertdavidgraham/pemcrack.git" \

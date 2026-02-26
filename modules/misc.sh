@@ -9,7 +9,7 @@
 MISC_PACKAGES=()
 
 # Heavy tools (skipped with --skip-heavy)
-MISC_HEAVY_PACKAGES=(sagemath)
+MISC_HEAVY_PACKAGES=()
 
 MISC_PIPX=(arsenal-cli sploitscan faraday-cli)
 
@@ -68,10 +68,8 @@ install_module_misc() {
     [[ ${#MISC_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Misc - Packages" "${MISC_PACKAGES[@]}"
 
     # Heavy packages (optional)
-    if [[ "${SKIP_HEAVY:-false}" != "true" ]]; then
+    if [[ "${SKIP_HEAVY:-false}" != "true" ]] && [[ ${#MISC_HEAVY_PACKAGES[@]} -gt 0 ]]; then
         install_apt_batch "Heavy tools" "${MISC_HEAVY_PACKAGES[@]}"
-    else
-        log_warn "Skipping heavy packages (sagemath)"
     fi
 
     # Python tools

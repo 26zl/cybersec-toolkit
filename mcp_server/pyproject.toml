@@ -1,7 +1,7 @@
 [project]
 name = "cybersec-tools-mcp"
 version = "1.0.0"
-description = "MCP server for the cybersec-toolkit — query 577 tools, get recommendations, execute safely"
+description = "MCP server for the cybersec-toolkit — query 568 tools, get recommendations, execute safely"
 requires-python = ">=3.10"
 dependencies = [
     "fastmcp>=3.0.0,<4.0.0",

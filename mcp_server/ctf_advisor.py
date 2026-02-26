@@ -61,7 +61,6 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         "description": "Cryptography — cipher analysis, RSA attacks, hash cracking, encoding",
         "modules": ["crypto"],
         "tools": [
-            ("sagemath", "Mathematical computation for crypto"),
             ("z3-solver", "SMT solver for constraint problems"),
             ("rsactftool", "RSA attack toolkit"),
             ("hashcat", "Advanced hash cracking (GPU)"),
@@ -101,7 +100,6 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("upx", "UPX packer/unpacker"),
             ("angr", "Binary analysis framework"),
             ("uncompyle6", "Python bytecode decompiler"),
-            ("xrop", "ROP gadget search tool"),
         ],
     },
     "forensics": {

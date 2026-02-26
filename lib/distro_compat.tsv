@@ -109,7 +109,6 @@ libnfc-dev	-	-	-	-
 #
 # ----- Skipped: per-distro availability --------------------------------------
 #debian	dnf	pacman	zypper	pkg
-zeek	-	-	-	
 snort	-	-	-	
 yersinia	-	-	-	
 dns2tcp	-	-	-	
@@ -160,7 +159,6 @@ zmap	-		-	-
 rizin	-		-	-
 checksec			-	-
 sonic-visualiser			-	-
-sagemath			-	-
 scrcpy	-		-	-
 hcxdumptool	-		-	-
 avrdude	-		-	-

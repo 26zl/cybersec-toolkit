@@ -408,19 +408,6 @@ if should_remove "web" && snap_available && snap list zaproxy &>/dev/null; then
     log_success "OWASP ZAP removed"
 fi
 
-# ngrok (snap — installed by networking module)
-if should_remove "networking" && snap_available && snap list ngrok &>/dev/null; then
-    log_info "Removing ngrok..."
-    snap remove ngrok >> "$LOG_FILE" 2>&1
-    log_success "ngrok removed"
-fi
-
-# solc (snap — installed by blockchain module)
-if should_remove "blockchain" && snap_available && snap list solc &>/dev/null; then
-    log_info "Removing solc..."
-    snap remove solc >> "$LOG_FILE" 2>&1
-    log_success "solc removed"
-fi
 
 # Foundry (forge, cast, anvil, chisel — installed by blockchain module)
 if should_remove "blockchain"; then

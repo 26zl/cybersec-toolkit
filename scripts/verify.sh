@@ -334,8 +334,6 @@ if should_verify "networking"; then
     check_cmd "ligolo-agent" || true
     check_cmd "frpc" || true
     check_cmd "frps" || true
-    log_info "Networking (Snap):"
-    check_cmd "ngrok" || true
 fi
 
 if should_verify "recon"; then
@@ -500,7 +498,7 @@ if should_verify "stego"; then
     echo ""
     log_info "━━━━━ Module: stego ━━━━━"
     log_info "Stego (packages):"
-    check_cmds steghide outguess pngcheck
+    check_cmds steghide pngcheck
     check_cmd_any "sonic-visualiser" sonic-visualiser sonic_visualiser || true
     log_info "Stego (pipx):"
     check_pipx_arr "${STEGO_PIPX[@]}"
@@ -558,7 +556,6 @@ if should_verify "blueteam"; then
         check_cmd "auditctl" || true
         check_cmd "apparmor_parser" || true
     fi
-    [[ "$_is_kali" == "true" ]] && { check_cmd "zeek" || true; }
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"
     log_info "Blue Team (Cargo):"
@@ -582,7 +579,6 @@ if should_verify "blockchain"; then
     log_info "Blockchain (Git):"
     check_git_repos "${BLOCKCHAIN_GIT_NAMES[@]}"
     log_info "Blockchain (Special):"
-    check_cmd "solc" || true
     check_cmd "foundryup" || true
     check_cmd "forge" || true
     check_cmd "cast" || true

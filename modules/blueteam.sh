@@ -5,7 +5,7 @@
 # incident response platforms, endpoint visibility, malware analysis,
 # AV engines, YARA rules
 
-BLUETEAM_PACKAGES=(suricata fail2ban aide auditd zeek apparmor-utils ufw tiger darkstat chaosreader sentrypeer lynis rkhunter chkrootkit yara clamav inetsim)
+BLUETEAM_PACKAGES=(suricata fail2ban aide auditd apparmor-utils ufw tiger darkstat chaosreader sentrypeer lynis rkhunter chkrootkit yara clamav inetsim)
 
 BLUETEAM_PIPX=(sigma-cli bandit quark-engine)
 

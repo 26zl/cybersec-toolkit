@@ -47,30 +47,6 @@ install_module_networking() {
     # RustScan (Rust-based port scanner)
     install_cargo_batch "Networking - Rust" "${NET_CARGO[@]}" || true
 
-    # ngrok (tunneling — snap; binary fallback in Docker)
-    if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
-        if ! command_exists ngrok; then
-            if [[ "$IS_DOCKER" == "true" ]]; then
-                log_warn "ngrok requires snap (unavailable in Docker) — install manually: https://ngrok.com/download"
-            elif snap_available; then
-                _start_spinner "Installing ngrok via snap..."
-                if snap_install ngrok >> "$LOG_FILE" 2>&1; then
-                    _stop_spinner
-                    log_success "ngrok installed"
-                    track_version "ngrok" "snap" "latest"
-                else
-                    _stop_spinner
-                    log_error "ngrok snap install failed"
-                    TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-                fi
-            else
-                log_warn "snap not available — install ngrok manually: https://ngrok.com/download"
-            fi
-        else
-            log_success "Already installed: ngrok"
-        fi
-    fi
-
     # Wireshark non-interactive config (Debian/Ubuntu — not Termux)
     if [[ "$PKG_MANAGER" == "apt" ]]; then
         echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections 2>/dev/null || true

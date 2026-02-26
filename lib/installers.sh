@@ -90,18 +90,11 @@ fixup_package_names() {
                 if [[ "$DISTRO_ID" != "kali" && "$DISTRO_ID" != "parrot" ]]; then
                     case "$pkg" in
                         spike|enum4linux|bing-ip2hosts) continue ;;
-                        sagemath) continue ;;
                         ghidra|rizin|radare2) continue ;;
                         bulk-extractor|forensics-extra) continue ;;
                         kismet|spooftooph|crackle|asleap|fern-wifi-cracker) continue ;;
                         smali) continue ;;
-                        zeek|sentrypeer|chaosreader) continue ;;
-                    esac
-                fi
-                # Kali Rolling: zeek depends on libc6 < 2.38
-                if [[ "$DISTRO_ID" == "kali" ]]; then
-                    case "$pkg" in
-                        zeek) continue ;;
+                        sentrypeer|chaosreader) continue ;;
                     esac
                 fi
                 ;;

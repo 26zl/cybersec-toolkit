@@ -31,7 +31,10 @@ install_module_llm() {
 
     # promptfoo — LLM red teaming & testing (npm package)
     if [[ "${SKIP_SOURCE:-false}" != "true" ]]; then
-        if ensure_node; then
+        if command_exists promptfoo; then
+            local _pf_ver; _pf_ver=$(promptfoo --version 2>/dev/null || true)
+            log_success "promptfoo already installed${_pf_ver:+ ($_pf_ver)}"
+        elif ensure_node; then
             _start_spinner "Installing promptfoo via npm..."
             if npm install -g "promptfoo@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1; then
                 _stop_spinner

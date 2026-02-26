@@ -79,7 +79,7 @@ Options:
                          Note: --skip-* flags are ignored (forces install).
   --upgrade-system     Upgrade all system packages before installing
                          (apt upgrade / dnf upgrade / pacman -Syu)
-  --skip-heavy         Skip large packages (sagemath, gimp, audacity, gnuradio, etc.)
+  --skip-heavy         Skip large/slow packages defined in HEAVY_PACKAGES arrays
   --skip-pipx          Skip all pipx (Python) tool installs
   --skip-go            Skip all Go tool installs
   --skip-cargo         Skip all Cargo (Rust) tool installs

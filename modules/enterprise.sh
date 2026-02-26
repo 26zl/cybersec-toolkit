@@ -10,7 +10,7 @@ ENTERPRISE_PIPX=(
     impacket certipy-ad coercer bloodhound mitm6
     lsassy sprayhound ldapdomaindump pypykatz
     adidnsdump dploot bloodyad hekatomb
-    donpapi certsync masky pywhisker autobloody
+    certsync masky pywhisker autobloody
     krbjack roadtx pywerview pysnaffler powerview aclpwn
     ldeep smbclientng ldapsearchad netexec
 )

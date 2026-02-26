@@ -12,7 +12,7 @@
               Toolkit
 ```
 
-The most comprehensive modular installer and AI-integrated toolkit for cybersecurity tools on Linux and Termux (Android). __577 tools__, __18 modules__, __14 profiles__, __12 install methods__, plus an __MCP server__ for AI-assisted hacking.
+The most comprehensive modular installer and AI-integrated toolkit for cybersecurity tools on Linux and Termux (Android). __568 tools__, __18 modules__, __14 profiles__, __12 install methods__, plus an __MCP server__ for AI-assisted hacking.
 
 ---
 
@@ -40,7 +40,7 @@ cd cybersec-toolkit
 sudo ./install.sh
 ```
 
-That installs all 577 tools. To install a subset:
+That installs all 568 tools. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -81,7 +81,7 @@ cd cybersec-toolkit
 sudo ./install.sh --help                # Full help
 sudo ./install.sh --list-profiles       # Show profiles
 sudo ./install.sh --list-modules        # Show modules
-sudo ./install.sh --skip-heavy          # Skip large packages (sagemath, gnuradio)
+sudo ./install.sh --skip-heavy          # Skip large/slow packages
 sudo ./install.sh --skip-pipx           # Skip all pipx (Python) installs
 sudo ./install.sh --skip-go             # Skip all Go tool installs
 sudo ./install.sh --skip-cargo          # Skip all Cargo (Rust) installs
@@ -102,7 +102,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 ### Why does a full install take 15-45 minutes?
 
-The installer orchestrates 577 tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
+The installer orchestrates 568 tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
 
 | What takes time | Why | Typical time |
 | --- | --- | --- |
@@ -200,13 +200,13 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 
 ## MCP Server (AI Integration)
 
-[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is an open standard that lets AI assistants use external tools. This project includes an MCP server that gives any MCP-capable AI (Claude Code, Claude Desktop, Cursor, etc.) full read access to the 577-tool registry — plus the ability to check installs, recommend profiles, and execute tools. The AI becomes an interactive partner for ethical hacking: it knows every tool, which ones you have installed, and can run them for you.
+[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is an open standard that lets AI assistants use external tools. This project includes an MCP server that gives any MCP-capable AI (Claude Code, Claude Desktop, Cursor, etc.) full read access to the 568-tool registry — plus the ability to check installs, recommend profiles, and execute tools. The AI becomes an interactive partner for ethical hacking: it knows every tool, which ones you have installed, and can run them for you.
 
 ### What the AI can do
 
 | Tool | What it does |
 | ---- | ------------ |
-| `list_tools` | List/filter all 577 tools by module, method, or install status (includes URLs) |
+| `list_tools` | List/filter all 568 tools by module, method, or install status (includes URLs) |
 | `check_installed` | Check if a tool is installed (5 detection strategies) |
 | `get_tool_info` | Full details: method, module, URL, install/update/remove commands |
 | `get_module_info` | Deep-dive a module: all tools, install status, which profiles use it |
@@ -321,7 +321,7 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 577 tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
+__Debian/Ubuntu/Kali is the primary target__ -- all 568 tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
 
 | Platform | Status |
 | -------- | ------ |

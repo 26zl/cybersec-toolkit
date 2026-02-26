@@ -462,21 +462,6 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_warn "OWASP ZAP update failed"
     fi
 
-    # ngrok (snap)
-    if command_exists ngrok && snap_available; then
-        log_info "Updating ngrok..."
-        snap refresh ngrok >> "$LOG_FILE" 2>&1 && \
-            log_success "ngrok updated" || \
-            log_warn "ngrok update failed"
-    fi
-
-    # solc (snap — Solidity compiler)
-    if command_exists solc && snap_available; then
-        log_info "Updating solc..."
-        snap refresh solc >> "$LOG_FILE" 2>&1 && \
-            log_success "solc updated" || \
-            log_warn "solc update failed"
-    fi
 
     # Foundry (foundryup)
     if command_exists foundryup; then
