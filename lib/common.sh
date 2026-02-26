@@ -1016,7 +1016,20 @@ _start_progress_display() {
         local s0=$SECONDS
         local prev_lines=0
 
+        # Get terminal width to prevent line wrapping (which breaks cursor math)
+        local cols
+        cols=$(tput cols 2>/dev/null) || cols=${COLUMNS:-80}
+        [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+        # Fixed visual width: 2(indent) + 8(method) + 1(sp) + 20(bar) + 1(sp) + 7(count) + 2(sp) = 41
+        local max_status=$((cols - 41))
+        [[ "$max_status" -lt 10 ]] && max_status=10
+        local max_fail=$((cols - 4))  # indent(2) + cross(1) + space(1)
+        [[ "$max_fail" -lt 10 ]] && max_fail=10
+
         while true; do
+            # Cooperative shutdown: _stop_progress_display writes .stop
+            [[ -f "$_pd/.stop" ]] && break
+
             local elapsed=$(( SECONDS - s0 ))
             spin_idx=$(( (spin_idx + 1) % 10 ))
 
@@ -1077,8 +1090,8 @@ _start_progress_display() {
                     fi
                 fi
 
-                # Truncate to avoid line wrapping
-                [[ ${#status_str} -gt 40 ]] && status_str="${status_str:0:37}..."
+                # Truncate to avoid line wrapping (dynamic based on terminal width)
+                [[ ${#status_str} -gt $max_status ]] && status_str="${status_str:0:$((max_status - 3))}..."
 
                 printf '\033[K  %-8s %s %3d/%-3d  %s\n' \
                     "$method" "$bar" "$done_count" "$total" "$status_str"
@@ -1097,6 +1110,7 @@ _start_progress_display() {
                 printf '\033[K\n'
                 lines=$((lines + 1))
                 for fl in "${fail_lines[@]}"; do
+                    [[ ${#fl} -gt $max_fail ]] && fl="${fl:0:$((max_fail - 3))}..."
                     printf '\033[K  %s %s\n' "$_cross" "$fl"
                     lines=$((lines + 1))
                 done
@@ -1119,8 +1133,21 @@ _start_progress_display() {
 
 # _stop_progress_display — kill display loop, render final static state
 _stop_progress_display() {
+    # Cooperative shutdown: signal the display loop to exit after its current
+    # render cycle completes (prevents partial-render garbled output).
+    [[ -n "${PROGRESS_DIR:-}" && -d "$PROGRESS_DIR" ]] && touch "$PROGRESS_DIR/.stop"
+
     if [[ -n "${_PROGRESS_DISPLAY_PID:-}" ]] && kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null; then
-        kill "$_PROGRESS_DISPLAY_PID" 2>/dev/null
+        # Wait up to 1.5s for the loop to notice .stop and exit cleanly
+        local _i=0
+        while kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null && [[ $_i -lt 15 ]]; do
+            sleep 0.1
+            _i=$((_i + 1))
+        done
+        # Force kill if cooperative shutdown didn't work
+        if kill -0 "$_PROGRESS_DISPLAY_PID" 2>/dev/null; then
+            kill "$_PROGRESS_DISPLAY_PID" 2>/dev/null
+        fi
         wait "$_PROGRESS_DISPLAY_PID" 2>/dev/null || true
     fi
     _PROGRESS_DISPLAY_PID=""
@@ -1143,6 +1170,13 @@ _stop_progress_display() {
         local prev_lines=0
         [[ -f "$PROGRESS_DIR/.lines" ]] && read -r prev_lines < "$PROGRESS_DIR/.lines" 2>/dev/null
         [[ "$prev_lines" =~ ^[0-9]+$ ]] || prev_lines=0
+
+        # Terminal width for truncation (same logic as display loop)
+        local cols
+        cols=$(tput cols 2>/dev/null) || cols=${COLUMNS:-80}
+        [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+        local max_fail=$((cols - 4))
+        [[ "$max_fail" -lt 10 ]] && max_fail=10
 
         if [[ "$prev_lines" -gt 0 ]]; then
             # Overwrite the live display with final static state
@@ -1197,7 +1231,9 @@ _stop_progress_display() {
                             final_lines=$((final_lines + 1))
                             has_fails=true
                         fi
-                        printf '\033[K  %s %s%s\n' "$_cross" "$_ft" "${_fe:+ ($_fe)}"
+                        local _fl="${_ft}${_fe:+ ($_fe)}"
+                        [[ ${#_fl} -gt $max_fail ]] && _fl="${_fl:0:$((max_fail - 3))}..."
+                        printf '\033[K  %s %s\n' "$_cross" "$_fl"
                         final_lines=$((final_lines + 1))
                     fi
                 done < <(grep '|fail|' "$PROGRESS_DIR/$method.done" 2>/dev/null)

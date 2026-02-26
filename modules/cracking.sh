@@ -11,7 +11,8 @@ CRACKING_PACKAGES=(
     sucrack
 )
 
-CRACKING_PIPX=(search-that-hash name-that-hash trevorspray patator)
+CRACKING_PIPX=(search-that-hash name-that-hash trevorspray)
+# patator: handled via custom install below (needs --no-deps for cx-Oracle)
 
 CRACKING_GIT=(
     "DefaultCreds-cheat-sheet=https://github.com/ihebski/DefaultCreds-cheat-sheet.git"
