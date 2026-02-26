@@ -138,6 +138,16 @@ if [[ "$SKIP_GO" == "false" ]]; then
             log_info "No Go tools found to update"
         fi
 
+        # Use staging GOBIN + _as_builder (consistent with batch installer)
+        _gobin_stage=""
+        if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
+            _gobin_stage=$(mktemp -d "/tmp/cybersec-gobin.XXXXXX")
+            _register_cleanup "$_gobin_stage"
+            _chown_for_builder "$_gobin_stage"
+            chown -R "$SUDO_USER" "$GOPATH" 2>/dev/null || true
+        fi
+        _effective_gobin="${_gobin_stage:-$GOBIN}"
+
         for tool in "${ALL_GO_TOOLS[@]}"; do
             GO_CURRENT=$((GO_CURRENT + 1))
             tool_name=$(_go_bin_name "$tool")
@@ -156,7 +166,10 @@ if [[ "$SKIP_GO" == "false" ]]; then
             bin_path=$(command -v "$tool_name" 2>/dev/null || echo "")
             [[ -n "$bin_path" ]] && old_mtime=$(stat -c %Y "$bin_path" 2>/dev/null || echo 0)
 
-            if go install "$tool" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "GOPATH='$GOPATH' GOBIN='$_effective_gobin' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
+                # Move binary from staging dir to system GOBIN
+                [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$tool_name" ]] \
+                    && mv "$_gobin_stage/$tool_name" "$GOBIN/$tool_name" && chmod +x "$GOBIN/$tool_name"
                 new_mtime=0
                 bin_path=$(command -v "$tool_name" 2>/dev/null || echo "")
                 [[ -n "$bin_path" ]] && new_mtime=$(stat -c %Y "$bin_path" 2>/dev/null || echo 0)
@@ -173,6 +186,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
                 GO_FAILED=$((GO_FAILED + 1))
             fi
         done
+        [[ -n "$_gobin_stage" ]] && rm -rf "$_gobin_stage"
         echo ""
         log_success "Go tools: $GO_UPDATED updated, $GO_LATEST already latest, $GO_NOT_INSTALLED skipped (not installed), $GO_FAILED failed"
         UPDATE_FAILURES=$((UPDATE_FAILURES + GO_FAILED))
@@ -253,8 +267,16 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
             done
             if [[ ${#GEMS_TO_UPDATE[@]} -gt 0 ]]; then
                 log_info "Updating Ruby gems (${GEMS_TO_UPDATE[*]})..."
-                if gem update "${GEMS_TO_UPDATE[@]}" --no-document >> "$LOG_FILE" 2>&1; then
+                if _as_builder "$(command -v gem) update ${GEMS_TO_UPDATE[*]} --no-document" >> "$LOG_FILE" 2>&1; then
                     log_success "Ruby gems updated"
+                    # Refresh symlinks (new version may have new binary paths)
+                    _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
+                    for _gem in "${GEMS_TO_UPDATE[@]}"; do
+                        # shellcheck disable=SC2086  # glob expansion intentional
+                        for _gbin in $_gem_bin_dir/$_gem; do
+                            [[ -f "$_gbin" ]] && ln -sf "$_gbin" "$PIPX_BIN_DIR/$(basename "$_gbin")" 2>/dev/null || true
+                        done
+                    done
                 else
                     log_warn "Ruby gem update failed"
                     UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
@@ -274,7 +296,8 @@ echo ""
 # 6) Cargo tools
 if [[ "$SKIP_CARGO" == "false" ]]; then
     if command_exists cargo; then
-        export PATH="$HOME/.cargo/bin:$PATH"
+        _cargo_bin_dir="$(_builder_home)/.cargo/bin"
+        export PATH="$_cargo_bin_dir:$HOME/.cargo/bin:$PATH"
         ALL_CARGO=()
         _collect_module_arrays "CARGO" ALL_CARGO
 
@@ -287,22 +310,22 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
             for crate in "${ALL_CARGO[@]}"; do
                 # Only update crates that are already installed
-                if ! command_exists "$crate" && [[ ! -f "$HOME/.cargo/bin/$crate" ]]; then
+                if ! command_exists "$crate" && [[ ! -f "$_cargo_bin_dir/$crate" ]]; then
                     log_debug "Skipping cargo $crate (not installed)"
                     CARGO_NOT_INSTALLED=$((CARGO_NOT_INSTALLED + 1))
                     continue
                 fi
                 # Without --force, cargo skips if the installed version matches latest
                 cargo_output=""
-                if cargo_output=$(cargo install "$crate" 2>&1); then
+                if cargo_output=$(_as_builder "$(command -v cargo) install $crate" 2>&1); then
                     if echo "$cargo_output" | grep -q "already installed"; then
                         log_debug "Already latest: $crate"
                         CARGO_LATEST=$((CARGO_LATEST + 1))
                     else
                         log_success "Updated cargo: $crate"
                         CARGO_UPDATED=$((CARGO_UPDATED + 1))
-                        if [[ -f "$HOME/.cargo/bin/$crate" ]]; then
-                            ln -sf "$HOME/.cargo/bin/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
+                        if [[ -f "$_cargo_bin_dir/$crate" ]]; then
+                            ln -sf "$_cargo_bin_dir/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
                         fi
                         track_version "$crate" "cargo" "latest"
                     fi

@@ -293,12 +293,22 @@ install_single_tool() {
             if [[ "$goname" == "$tool" ]]; then
                 ensure_go || { log_error "Go not available — cannot install $tool"; return 1; }
                 log_info "Installing $tool via go install..."
-                if go install "$gopkg" >> "$LOG_FILE" 2>&1; then
+                # Use _as_builder + staging GOBIN (consistent with batch installer)
+                local _gobin_stage
+                _gobin_stage=$(mktemp -d "/tmp/cybersec-gobin.XXXXXX")
+                _register_cleanup "$_gobin_stage"
+                if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
+                    _chown_for_builder "$_gobin_stage"
+                    chown -R "$SUDO_USER" "$GOPATH" 2>/dev/null || true
+                fi
+                if _as_builder "GOPATH='$GOPATH' GOBIN='$_gobin_stage' $(command -v go) install $gopkg" >> "$LOG_FILE" 2>&1; then
+                    [[ -f "$_gobin_stage/$tool" ]] && mv "$_gobin_stage/$tool" "$GOBIN/$tool" && chmod +x "$GOBIN/$tool"
                     log_success "Installed: $tool"
                     track_version "$tool" "go" "latest"
                 else
                     log_error "Failed: $tool"
                 fi
+                rm -rf "$_gobin_stage"
                 return 0
             fi
         done
@@ -312,14 +322,15 @@ install_single_tool() {
         if _arr_has "$a" "$tool"; then
             ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
             log_info "Installing $tool via cargo..."
-            if cargo install "$tool" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(command -v cargo) install $tool" >> "$LOG_FILE" 2>&1; then
                 log_success "Installed: $tool"
                 track_version "$tool" "cargo" "latest"
             else
                 log_error "Failed: $tool"
             fi
-            if [[ -f "$HOME/.cargo/bin/$tool" ]]; then
-                ln -sf "$HOME/.cargo/bin/$tool" "$PIPX_BIN_DIR/$tool" 2>/dev/null || true
+            local _cargo_bin_dir; _cargo_bin_dir="$(_builder_home)/.cargo/bin"
+            if [[ -f "$_cargo_bin_dir/$tool" ]]; then
+                ln -sf "$_cargo_bin_dir/$tool" "$PIPX_BIN_DIR/$tool" 2>/dev/null || true
             fi
             return 0
         fi
@@ -330,7 +341,14 @@ install_single_tool() {
     for a in "${gem_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via gem..."
-            if gem install "$tool" --no-document >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(command -v gem) install $tool --no-document" >> "$LOG_FILE" 2>&1; then
+                # Symlink gem binary to PIPX_BIN_DIR (consistent with batch installer)
+                local _gem_bin_dir
+                _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
+                # shellcheck disable=SC2086  # glob expansion intentional
+                for _gbin in $_gem_bin_dir/$tool; do
+                    [[ -f "$_gbin" ]] && ln -sf "$_gbin" "$PIPX_BIN_DIR/$(basename "$_gbin")" 2>/dev/null || true
+                done
                 log_success "Installed: $tool"
                 track_version "$tool" "gem" "latest"
             else

@@ -578,9 +578,11 @@ pkg_install() {
                     _dnf_pkgs+=("$_arg")
                 fi
             done
-            for _arg in "${_dnf_groups[@]}"; do
-                maybe_sudo dnf group install --setopt=max_parallel_downloads=10 -y -q "$_arg"
-            done
+            if [[ ${#_dnf_groups[@]} -gt 0 ]]; then
+                for _arg in "${_dnf_groups[@]}"; do
+                    maybe_sudo dnf group install --setopt=max_parallel_downloads=10 -y -q "$_arg"
+                done
+            fi
             if [[ ${#_dnf_pkgs[@]} -gt 0 ]]; then
                 maybe_sudo dnf install --setopt=max_parallel_downloads=10 -y -q "${_dnf_pkgs[@]}"
             fi

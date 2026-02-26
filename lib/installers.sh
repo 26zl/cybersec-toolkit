@@ -1312,6 +1312,9 @@ _download_github_release_impl() {
     if [[ "$SYS_ARCH" != "amd64" ]]; then
         pattern="${pattern//amd64/$SYS_ARCH}"
         pattern="${pattern//x86_64/$SYS_ARCH_ALT}"
+        pattern="${pattern//x64/$SYS_ARCH}"
+        # Replace standalone 64bit (used by gophish, evilginx, trivy)
+        pattern="${pattern//64bit/${SYS_ARCH}}"
     fi
 
     log_debug "_download_github_release_impl[$mode]: repo=$repo binary=$binary pattern=$pattern"
@@ -1745,7 +1748,11 @@ install_binary_releases() {
                 _arm_filtered+=("$_entry")
             fi
         done
-        entries=("${_arm_filtered[@]}")
+        if [[ ${#_arm_filtered[@]} -gt 0 ]]; then
+            entries=("${_arm_filtered[@]}")
+        else
+            entries=()
+        fi
         total=${#entries[@]}
         [[ "$total" -eq 0 ]] && return 0
     fi
