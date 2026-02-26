@@ -175,9 +175,13 @@ if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
             # Normalize hyphens → underscores (PEP 503: pip/pipx normalize package names)
             _norm="${tool//-/_}"
             if echo "$installed_pipx" | grep -qi "^${_norm} "; then
-                pipx_remove "$tool" >> "$LOG_FILE" 2>&1
-                log_success "Removed pipx: $tool"
-                pipx_removed=$((pipx_removed + 1))
+                if pipx_remove "$tool" >> "$LOG_FILE" 2>&1; then
+                    log_success "Removed pipx: $tool"
+                    pipx_removed=$((pipx_removed + 1))
+                else
+                    log_warn "Failed to remove pipx: $tool"
+                    REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+                fi
             else
                 log_debug "Skipping pipx $tool (not installed)"
                 pipx_skipped=$((pipx_skipped + 1))
@@ -219,7 +223,12 @@ if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
     gems_skipped=0
     for gem_name in "${GEMS_TO_REMOVE[@]}"; do
         if echo "$installed_gems" | grep -q "^${gem_name} "; then
-            gem uninstall -x "$gem_name" >> "$LOG_FILE" 2>&1 && gems_removed=$((gems_removed + 1)) || true
+            if gem uninstall -x --force "$gem_name" >> "$LOG_FILE" 2>&1; then
+                gems_removed=$((gems_removed + 1))
+            else
+                log_warn "Failed to remove gem: $gem_name"
+                REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+            fi
         else
             log_debug "Skipping gem $gem_name (not installed)"
             gems_skipped=$((gems_skipped + 1))
@@ -241,8 +250,12 @@ if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
             continue
         fi
         if command_exists cargo; then
-            cargo uninstall "$crate" >> "$LOG_FILE" 2>&1 && \
-                log_success "Removed cargo: $crate" || true
+            if cargo uninstall "$crate" >> "$LOG_FILE" 2>&1; then
+                log_success "Removed cargo: $crate"
+            else
+                log_warn "Failed to remove cargo: $crate"
+                REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+            fi
         fi
         # Clean up binary and symlink regardless of cargo uninstall result
         [[ -f "$_cargo_home/$crate" ]] && rm -f "$_cargo_home/$crate"
@@ -407,7 +420,6 @@ if should_remove "web" && snap_available && snap list zaproxy &>/dev/null; then
     snap remove zaproxy >> "$LOG_FILE" 2>&1
     log_success "OWASP ZAP removed"
 fi
-
 
 # Foundry (forge, cast, anvil, chisel — installed by blockchain module)
 if should_remove "blockchain"; then

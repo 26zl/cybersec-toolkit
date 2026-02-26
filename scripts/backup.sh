@@ -139,38 +139,88 @@ decrypt_files_legacy() {
 backup_configs() {
     local dest="$1"
 
-    # Map: backup_subdir -> list of source paths
-    local -A CONFIG_PATHS=(
-        ["network"]="$HOME_DIR/.nmap $HOME_DIR/.wireshark"
-        ["web"]="$HOME_DIR/.ZAP $HOME_DIR/.sqlmap"
-        ["wireless"]="$HOME_DIR/.aircrack-ng $HOME_DIR/.kismet"
-        ["cracking"]="$HOME_DIR/.john $HOME_DIR/.hashcat"
-        ["exploitation"]="$HOME_DIR/.msf4 $GITHUB_TOOL_DIR/exploitdb"
-        ["forensics"]="$HOME_DIR/.autopsy"
-        ["osint"]="$GITHUB_TOOL_DIR/recon-ng"
+    # Category → paths mapping (one cp per path to avoid quoting issues)
+    # Only existing paths are copied — missing ones are silently skipped.
+    local -a _backup_map=(
+        # Network
+        "network|$HOME_DIR/.nmap"
+        "network|$HOME_DIR/.wireshark"
+        # Web
+        "web|$HOME_DIR/.ZAP"
+        "web|$HOME_DIR/.sqlmap"
+        "web|$HOME_DIR/.config/nuclei"
+        "web|$HOME_DIR/.wpscan"
+        "web|$HOME_DIR/.mitmproxy"
+        # Recon / OSINT
+        "osint|$GITHUB_TOOL_DIR/recon-ng"
+        "osint|$HOME_DIR/.config/subfinder"
+        "osint|$HOME_DIR/.config/amass"
+        # Wireless
+        "wireless|$HOME_DIR/.aircrack-ng"
+        "wireless|$HOME_DIR/.kismet"
+        # Cracking
+        "cracking|$HOME_DIR/.john"
+        "cracking|$HOME_DIR/.hashcat"
+        # Exploitation
+        "exploitation|$HOME_DIR/.msf4"
+        "exploitation|$GITHUB_TOOL_DIR/exploitdb"
+        # Enterprise / AD
+        "enterprise|$HOME_DIR/.netexec"
+        # Forensics
+        "forensics|$HOME_DIR/.autopsy"
+        "forensics|$HOME_DIR/.volatility3"
+        # Cloud
+        "cloud|$HOME_DIR/.steampipe"
+        "cloud|$HOME_DIR/.pacu"
+        # Reversing
+        "reversing|$HOME_DIR/.radare2"
+        # Blockchain
+        "blockchain|$HOME_DIR/.foundry"
+        # LLM
+        "llm|$HOME_DIR/.promptfoo"
     )
 
-    for category in "${!CONFIG_PATHS[@]}"; do
-        ensure_dir "$dest/$category"
-        for src in ${CONFIG_PATHS[$category]}; do
-            [[ -e "$src" ]] && cp -r "$src" "$dest/$category/" 2>/dev/null
-        done
+    for _entry in "${_backup_map[@]}"; do
+        local category="${_entry%%|*}"
+        local src="${_entry#*|}"
+        if [[ -e "$src" ]]; then
+            ensure_dir "$dest/$category"
+            cp -r "$src" "$dest/$category/" 2>/dev/null
+        fi
     done
 }
 
 # Restore config dirs
+# Walks the category subdirectories created by backup_configs and copies
+# each item back to its original location (derived from the directory name).
 restore_configs() {
     local src="$1"
 
-    # Home dir configs
-    for dir in .nmap .wireshark .ZAP .sqlmap .aircrack-ng .kismet \
-               .john .hashcat .msf4 .autopsy; do
+    # Home dir configs — restore to $HOME_DIR/
+    local -a _home_dirs=(
+        .nmap .wireshark .ZAP .sqlmap .aircrack-ng .kismet
+        .john .hashcat .msf4 .autopsy .wpscan .mitmproxy
+        .netexec .volatility3 .steampipe .pacu .radare2
+        .foundry .promptfoo
+    )
+    for dir in "${_home_dirs[@]}"; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
         [[ -n "$found" ]] && cp -r "$found" "$HOME_DIR/" 2>/dev/null
     done
 
-    # /opt tool dirs
+    # ~/.config/ subdirs — restore to $HOME_DIR/.config/
+    local -a _xdg_dirs=(nuclei subfinder amass)
+    for dir in "${_xdg_dirs[@]}"; do
+        local found
+        found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
+        if [[ -n "$found" ]]; then
+            ensure_dir "$HOME_DIR/.config"
+            cp -r "$found" "$HOME_DIR/.config/" 2>/dev/null
+        fi
+    done
+
+    # /opt tool dirs — restore to $GITHUB_TOOL_DIR/
     for dir in exploitdb recon-ng; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)

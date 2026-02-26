@@ -160,26 +160,38 @@ if [[ "$SKIP_GO" == "false" ]]; then
                 continue
             fi
 
-            # Record mtime before install to detect actual binary changes
-            bin_path=""
-            old_mtime=0
+            # Record checksum before install to detect actual binary changes
+            # (mtime is unreliable: staging mv always updates it)
+            old_sum=""
             bin_path=$(command -v "$tool_name" 2>/dev/null || echo "")
-            [[ -n "$bin_path" ]] && old_mtime=$(stat -c %Y "$bin_path" 2>/dev/null || echo 0)
+            [[ -n "$bin_path" ]] && old_sum=$(sha256sum "$bin_path" 2>/dev/null | cut -d' ' -f1)
 
             if _as_builder "GOPATH='$GOPATH' GOBIN='$_effective_gobin' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
-                # Move binary from staging dir to system GOBIN
-                [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$tool_name" ]] \
-                    && mv "$_gobin_stage/$tool_name" "$GOBIN/$tool_name" && chmod +x "$GOBIN/$tool_name"
-                new_mtime=0
-                bin_path=$(command -v "$tool_name" 2>/dev/null || echo "")
-                [[ -n "$bin_path" ]] && new_mtime=$(stat -c %Y "$bin_path" 2>/dev/null || echo 0)
-                if [[ "$new_mtime" -gt "$old_mtime" ]]; then
-                    log_success "Updated: $tool_name"
-                    GO_UPDATED=$((GO_UPDATED + 1))
-                    track_version "$tool_name" "go" "latest"
+                # Compare checksums before moving — detect real changes
+                new_sum=""
+                if [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$tool_name" ]]; then
+                    new_sum=$(sha256sum "$_gobin_stage/$tool_name" 2>/dev/null | cut -d' ' -f1)
+                    if [[ "$new_sum" == "$old_sum" ]]; then
+                        log_debug "Already latest: $tool_name"
+                        GO_LATEST=$((GO_LATEST + 1))
+                        rm -f "$_gobin_stage/$tool_name"
+                    else
+                        mv "$_gobin_stage/$tool_name" "$GOBIN/$tool_name" && chmod +x "$GOBIN/$tool_name"
+                        log_success "Updated: $tool_name"
+                        GO_UPDATED=$((GO_UPDATED + 1))
+                        track_version "$tool_name" "go" "latest"
+                    fi
                 else
-                    log_debug "Already latest: $tool_name"
-                    GO_LATEST=$((GO_LATEST + 1))
+                    # No staging (Termux or direct GOBIN) — compare installed binary
+                    [[ -n "$bin_path" ]] && new_sum=$(sha256sum "$bin_path" 2>/dev/null | cut -d' ' -f1)
+                    if [[ "$new_sum" == "$old_sum" ]]; then
+                        log_debug "Already latest: $tool_name"
+                        GO_LATEST=$((GO_LATEST + 1))
+                    else
+                        log_success "Updated: $tool_name"
+                        GO_UPDATED=$((GO_UPDATED + 1))
+                        track_version "$tool_name" "go" "latest"
+                    fi
                 fi
             else
                 log_warn "Failed: $tool_name"
@@ -234,8 +246,20 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                     fi
                 fi
             else
-                log_warn "Failed: $name"
-                GIT_FAILED=$((GIT_FAILED + 1))
+                # Retry: reset to remote HEAD and pull again (handles dirty trees, e.g. SecLists)
+                log_debug "git pull failed for $name — resetting to remote HEAD..."
+                _remote_branch=""
+                _remote_branch=$(git -C "$dir" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||') || true
+                [[ -z "$_remote_branch" ]] && _remote_branch="main"
+                if git -C "$dir" fetch origin >> "$LOG_FILE" 2>&1 \
+                    && git -C "$dir" reset --hard "origin/$_remote_branch" >> "$LOG_FILE" 2>&1; then
+                    log_success "Updated: $name (reset to origin/$_remote_branch)"
+                    GIT_UPDATED=$((GIT_UPDATED + 1))
+                    track_version "$name" "git" "HEAD"
+                else
+                    log_warn "Failed: $name"
+                    GIT_FAILED=$((GIT_FAILED + 1))
+                fi
             fi
         done
         log_success "Git repos: $GIT_UPDATED updated, $GIT_SKIPPED already latest, $GIT_FAILED failed ($GIT_TOTAL total)"
@@ -389,15 +413,35 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
 
         # Version differs or unknown — re-download
         local old_ver="${installed_ver:-unknown}"
+
+        # Checksum before download to detect actual changes
+        local _bin_path="" _old_bin_sum=""
+        _bin_path=$(command -v "$binary" 2>/dev/null || echo "")
+        [[ -z "$_bin_path" ]] && [[ -f "$dest/$binary" ]] && _bin_path="$dest/$binary"
+        [[ -z "$_bin_path" ]] && [[ -f "$dest/bin/$binary" ]] && _bin_path="$dest/bin/$binary"
+        [[ -n "$_bin_path" ]] && _old_bin_sum=$(sha256sum "$_bin_path" 2>/dev/null | cut -d' ' -f1)
+
         if download_github_release_update "$repo" "$binary" "$pattern" "$dest" >> "$LOG_FILE" 2>&1; then
             local tag="${_RELEASE_TAG:-$latest_tag}"
             track_version "$binary" "binary" "$tag"
-            if [[ "$old_ver" == "unknown" || "$old_ver" == "existing" || "$old_ver" == "latest" ]]; then
+
+            # Compare checksum to detect if binary actually changed
+            local _new_bin_sum=""
+            _bin_path=$(command -v "$binary" 2>/dev/null || echo "")
+            [[ -z "$_bin_path" ]] && [[ -f "$dest/$binary" ]] && _bin_path="$dest/$binary"
+            [[ -z "$_bin_path" ]] && [[ -f "$dest/bin/$binary" ]] && _bin_path="$dest/bin/$binary"
+            [[ -n "$_bin_path" ]] && _new_bin_sum=$(sha256sum "$_bin_path" 2>/dev/null | cut -d' ' -f1)
+
+            if [[ -n "$_old_bin_sum" && "$_old_bin_sum" == "$_new_bin_sum" ]]; then
+                log_debug "Already latest: $binary ($tag)"
+                BIN_SKIPPED=$((BIN_SKIPPED + 1))
+            elif [[ "$old_ver" == "unknown" || "$old_ver" == "existing" || "$old_ver" == "latest" ]]; then
                 log_success "Updated: $binary (→ $tag)"
+                BIN_UPDATED=$((BIN_UPDATED + 1))
             else
                 log_success "Updated: $binary ($old_ver → $tag)"
+                BIN_UPDATED=$((BIN_UPDATED + 1))
             fi
-            BIN_UPDATED=$((BIN_UPDATED + 1))
         else
             log_warn "Failed: $binary"
             BIN_FAILED=$((BIN_FAILED + 1))
@@ -462,7 +506,6 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_warn "OWASP ZAP update failed"
     fi
 
-
     # Foundry (foundryup)
     if command_exists foundryup; then
         log_info "Updating Foundry toolchain..."
@@ -474,7 +517,7 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
     # Steampipe (re-install = self-update)
     if command_exists steampipe; then
         log_info "Updating Steampipe..."
-        if curl -sSL https://raw.githubusercontent.com/turbot/steampipe/main/install.sh | sh -s -- -y >> "$LOG_FILE" 2>&1; then
+        if curl -sSL https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh | sh -s -- -y >> "$LOG_FILE" 2>&1; then
             log_success "Steampipe updated"
         else
             log_warn "Steampipe update failed"
@@ -539,7 +582,7 @@ for _bmod in "${ALL_MODULES[@]}"; do
         fi
     done
 done
-if [[ "$BUILD_UPDATED" -gt 0 || "$BUILD_FAILED" -gt 0 ]]; then
+if [[ "$BUILD_UPDATED" -gt 0 || "$BUILD_FAILED" -gt 0 || "$BUILD_SKIPPED" -gt 0 ]]; then
     log_success "Build-from-source: $BUILD_UPDATED updated, $BUILD_SKIPPED already latest, $BUILD_FAILED failed"
     UPDATE_FAILURES=$((UPDATE_FAILURES + BUILD_FAILED))
 fi
