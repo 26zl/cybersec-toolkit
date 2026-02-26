@@ -52,6 +52,7 @@ install_module_pwn() {
 
     # Build from source
     log_info "Building pwn tools from source..."
+    # preeny requires libini-config-dev and libseccomp-dev (provided by SHARED_BASE_PACKAGES)
     build_from_source "preeny" "https://github.com/zardus/preeny.git" "make" || true
     # 'make source-only' builds the core afl-fuzz binary without optional QEMU/FRIDA/
     # unicorn sub-modules that require extra dependencies and often fail on VMs.

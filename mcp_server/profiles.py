@@ -222,7 +222,6 @@ _KEYWORD_MAP: dict[str, list[tuple[str, float]]] = {
     "llm": [("full", 1.0)],
     "ai security": [("full", 1.0)],
     "active directory": [("redteam", 2.5)],
-    "ad": [("redteam", 1.5)],
     "kerberos": [("redteam", 2.5)],
     "ldap": [("redteam", 2.0)],
     "lateral movement": [("redteam", 2.5)],

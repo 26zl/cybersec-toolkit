@@ -304,8 +304,6 @@ if should_verify "misc"; then
     log_info "Misc (Git repos):"
     check_git_repos "${MISC_GIT_NAMES[@]}"
     log_info "Misc (Special):"
-    check_cmd "msfconsole" "msfconsole --version" || true
-    check_cmd "searchsploit" || true
     check_cmd "pspy" || true
     check_cmd "gophish" || true
     check_cmd "trufflehog" || true

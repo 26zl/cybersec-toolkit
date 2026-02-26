@@ -4,7 +4,7 @@
 # Image/audio steganography tools
 
 STEGO_PACKAGES=(
-    steghide stegsnow outguess pngcheck
+    steghide stegsnow pngcheck
     sonic-visualiser exiv2 pngtools
 )
 
@@ -20,12 +20,22 @@ STEGO_GIT=(
 )
 
 STEGO_GIT_NAMES=(stegsolve openstego stegextract stegosaurus)
+STEGO_BUILD_NAMES=(outguess)
 
 install_module_stego() {
     install_apt_batch "Stego - Packages" "${STEGO_PACKAGES[@]}"
     install_pipx_batch "Stego - Python" "${STEGO_PIPX[@]}"
     install_gem_batch "Stego - Ruby" "${STEGO_GEMS[@]}"
     install_git_batch "Stego - Git" "${STEGO_GIT[@]}"
+
+    # outguess: not in most distro repos — build from source
+    if ! command_exists outguess; then
+        # Needs libjpeg headers (package name varies per distro — fixup handles it)
+        install_apt_batch "Stego - outguess deps" libjpeg-dev 2>/dev/null || true
+        build_from_source "outguess" \
+            "https://github.com/resurrecting-open-source-projects/outguess.git" \
+            "./autogen.sh && ./configure --with-generic-jconfig && make && make install" || true
+    fi
 
     # Binary releases
     install_binary_releases "${BINARY_RELEASES_STEGO[@]}"

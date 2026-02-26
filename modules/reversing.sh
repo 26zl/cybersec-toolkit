@@ -37,7 +37,7 @@ install_module_reversing() {
         log_warn "Skipping x86-only build-from-source tools on ARM: rappel, xrop"
     else
         build_from_source "rappel" "https://github.com/yrp604/rappel.git" "make" || true
-        build_from_source "xrop" "https://github.com/acama/xrop.git" "git submodule update --init --recursive && cmake . && make" || true
+        build_from_source "xrop" "https://github.com/acama/xrop.git" "git submodule update --init --recursive && make" || true
     fi
 
     # Binary releases

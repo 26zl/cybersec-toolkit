@@ -475,7 +475,7 @@
   {"name": "duplicut", "method": "source", "module": "cracking", "url": "https://github.com/nil0x42/duplicut"},
   {"name": "steghide", "method": "apt", "module": "stego", "url": ""},
   {"name": "stegsnow", "method": "apt", "module": "stego", "url": ""},
-  {"name": "outguess", "method": "apt", "module": "stego", "url": ""},
+  {"name": "outguess", "method": "source", "module": "stego", "url": "https://github.com/resurrecting-open-source-projects/outguess"},
   {"name": "pngcheck", "method": "apt", "module": "stego", "url": ""},
   {"name": "sonic-visualiser", "method": "apt", "module": "stego", "url": ""},
   {"name": "exiv2", "method": "apt", "module": "stego", "url": ""},

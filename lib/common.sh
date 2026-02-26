@@ -45,7 +45,7 @@ _register_cleanup() { _CLEANUP_PATHS+=("$1"); }
 
 _global_cleanup() {
     for p in "${_CLEANUP_PATHS[@]+"${_CLEANUP_PATHS[@]}"}"; do
-        [[ -e "$p" ]] && rm -rf "$p" 2>/dev/null || true
+        [[ -e "$p" ]] && { rm -rf "$p" 2>/dev/null || true; }
     done
     _cleanup_global_semaphore 2>/dev/null || true
     _cleanup_progress_dir 2>/dev/null || true
@@ -113,7 +113,7 @@ _list_sessions() {
         profile=$(sed -n 's/^# Profile: //p' "$f")
         status=$(sed -n 's/^# Status: //p' "$f")
         [[ -z "$status" ]] && status="interrupted"
-        tool_count=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
+        tool_count=$(grep -cv '^#' "$f" 2>/dev/null) || tool_count=0
         printf "  %-26s %-10s %-14s %-8s %s\n" "$sid" "$status" "$profile" "$tool_count" "$started"
     done
     echo ""
@@ -384,7 +384,7 @@ _GLOBAL_SEM_FIFO=""
 _GLOBAL_SEM_FD=""
 
 _init_global_semaphore() {
-    _GLOBAL_SEM_DIR=$(mktemp -d "/tmp/cybersec_sem.XXXXXX")
+    _GLOBAL_SEM_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cybersec_sem.XXXXXX")
     _register_cleanup "$_GLOBAL_SEM_DIR"
     _GLOBAL_SEM_FIFO="$_GLOBAL_SEM_DIR/fifo"
     mkfifo "$_GLOBAL_SEM_FIFO"
@@ -813,7 +813,23 @@ pipx_install() {
         _py_flag=(--python "$PIPX_DEFAULT_PYTHON")
     fi
     if ! pipx install "${_py_flag[@]}" "$pkg" >> "$LOG_FILE" 2>&1; then
-        pipx install "${_py_flag[@]}" "$pkg" --force >> "$LOG_FILE" 2>&1 || return 1
+        # Retry 1: --force in case of stale venvs
+        if ! pipx install "${_py_flag[@]}" "$pkg" --force >> "$LOG_FILE" 2>&1; then
+            # Retry 2: allow pip to upgrade transitive deps (fixes lxml/Python 3.13 etc.)
+            if pipx install "${_py_flag[@]}" "$pkg" --force --pip-args='--upgrade' >> "$LOG_FILE" 2>&1; then
+                return 0
+            fi
+            # Retry 3: older Python versions (if available)
+            local _alt
+            for _alt in python3.12 python3.11 python3.10; do
+                command -v "$_alt" &>/dev/null || continue
+                log_debug "Retrying pipx install $pkg with $_alt..."
+                if pipx install --python "$_alt" "$pkg" --force >> "$LOG_FILE" 2>&1; then
+                    return 0
+                fi
+            done
+            return 1
+        fi
     fi
 }
 
@@ -929,13 +945,13 @@ _PROGRESS_DISPLAY_PID=""
 
 # _init_progress_dir — create tmpdir for IPC between batch subshells and display loop
 _init_progress_dir() {
-    PROGRESS_DIR=$(mktemp -d "/tmp/cybersec_progress.XXXXXX")
+    PROGRESS_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cybersec_progress.XXXXXX")
     _register_cleanup "$PROGRESS_DIR"
     export PROGRESS_DIR
 }
 
 _cleanup_progress_dir() {
-    [[ -n "${PROGRESS_DIR:-}" ]] && rm -rf "$PROGRESS_DIR" 2>/dev/null || true
+    [[ -n "${PROGRESS_DIR:-}" ]] && { rm -rf "$PROGRESS_DIR" 2>/dev/null || true; }
     PROGRESS_DIR=""
     export PROGRESS_DIR
 }
@@ -1332,7 +1348,10 @@ detect_wsl() {
     IS_DOCKER=false
     # Docker containers on WSL2 inherit "microsoft" in /proc/version
     # but are not actually WSL — skip the check inside containers
-    if [[ -f /.dockerenv ]] || grep -qsw docker /proc/1/cgroup 2>/dev/null; then
+    if [[ -f /.dockerenv ]] || [[ -f /.containerenv ]] \
+       || grep -qsw docker /proc/1/cgroup 2>/dev/null \
+       || grep -qs 'docker\|containerd' /proc/1/mountinfo 2>/dev/null \
+       || [[ -n "${container:-}" ]]; then
         IS_DOCKER=true
         export IS_WSL IS_DOCKER
         return
@@ -1343,8 +1362,8 @@ detect_wsl() {
     export IS_WSL IS_DOCKER
 }
 
-# Auto-init on source
-detect_pkg_manager
+# Auto-init on source (skip detect_pkg_manager if pre-set — e.g. by test harness)
+[[ -z "${PKG_MANAGER:-}" ]] && detect_pkg_manager
 detect_arch
 detect_wsl
 

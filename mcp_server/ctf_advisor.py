@@ -234,9 +234,6 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("foundry", "Smart contract development toolkit"),
             ("solc-select", "Solidity compiler version manager"),
             ("echidna", "Ethereum smart contract fuzzer"),
-            ("heimdall-rs", "EVM bytecode decompiler"),
-            ("panoramix", "EVM decompiler"),
-            ("manticore", "Symbolic execution for binaries/contracts"),
         ],
     },
 }

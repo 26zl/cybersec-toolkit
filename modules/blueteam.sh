@@ -26,8 +26,9 @@ install_module_blueteam() {
     install_cargo_batch "Blue Team - Cargo" "${BLUETEAM_CARGO[@]}"
 
     # yara-x-cli installs its binary as 'yr' — symlink to PATH
-    if [[ -f "$HOME/.cargo/bin/yr" ]] && [[ ! -f "$PIPX_BIN_DIR/yr" ]]; then
-        ln -sf "$HOME/.cargo/bin/yr" "$PIPX_BIN_DIR/yr" 2>/dev/null || true
+    local _yr_bin; _yr_bin="$(_builder_home)/.cargo/bin/yr"
+    if [[ -f "$_yr_bin" ]] && [[ ! -f "$PIPX_BIN_DIR/yr" ]]; then
+        ln -sf "$_yr_bin" "$PIPX_BIN_DIR/yr" 2>/dev/null || true
     fi
 
     install_git_batch "Blue Team - Git" "${BLUETEAM_GIT[@]}"

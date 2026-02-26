@@ -9,16 +9,71 @@
 # the module function's return code (which only reflects the last command).
 TOTAL_TOOL_FAILURES=0
 
-# Distro-specific package name translation
+# ---------------------------------------------------------------------------
+# Distro compatibility layer — data-driven package name translation
+# Maps Debian package names to equivalents for dnf/pacman/zypper/pkg.
+# Mappings are loaded from lib/distro_compat.tsv (lazy, once).
+# ---------------------------------------------------------------------------
+
+# Associative arrays populated by _load_distro_compat()
+declare -gA _COMPAT_DNF=()
+declare -gA _COMPAT_PACMAN=()
+declare -gA _COMPAT_ZYPPER=()
+declare -gA _COMPAT_PKG=()
+_COMPAT_LOADED=false
+
+# Load distro_compat.tsv into the four associative arrays.
+# Called once on first use; subsequent calls are no-ops.
+_load_distro_compat() {
+    [[ "$_COMPAT_LOADED" == "true" ]] && return 0
+
+    local tsv_path="${SCRIPT_DIR:-.}/lib/distro_compat.tsv"
+    if [[ ! -f "$tsv_path" ]]; then
+        log_warn "distro_compat.tsv not found at $tsv_path — package names will pass through unchanged"
+        _COMPAT_LOADED=true
+        return 0
+    fi
+
+    # NOTE: We cannot use IFS=$'\t' read -r ... because tab is IFS-whitespace
+    # in POSIX, so consecutive tabs (empty fields) get collapsed. Instead we
+    # read each line raw and split manually on the first 4 tabs.
+    local _line _rest debian dnf pacman zypper pkg
+    while IFS='' read -r _line; do
+        # Skip comments and blank lines
+        [[ -z "$_line" || "$_line" == \#* ]] && continue
+        # Strip trailing \r in case of CRLF line endings
+        _line="${_line%$'\r'}"
+        # Split on tabs positionally (preserves empty fields)
+        _rest="$_line"
+        debian="${_rest%%	*}"; _rest="${_rest#*	}"
+        dnf="${_rest%%	*}";    _rest="${_rest#*	}"
+        pacman="${_rest%%	*}"; _rest="${_rest#*	}"
+        zypper="${_rest%%	*}"; _rest="${_rest#*	}"
+        pkg="$_rest"
+        [[ -n "$dnf" ]]    && _COMPAT_DNF["$debian"]="$dnf"
+        [[ -n "$pacman" ]] && _COMPAT_PACMAN["$debian"]="$pacman"
+        [[ -n "$zypper" ]] && _COMPAT_ZYPPER["$debian"]="$zypper"
+        [[ -n "$pkg" ]]    && _COMPAT_PKG["$debian"]="$pkg"
+    done < "$tsv_path"
+
+    _COMPAT_LOADED=true
+    log_debug "_load_distro_compat: loaded from $tsv_path"
+}
+
+# Translate Debian package names in-place for the current PKG_MANAGER.
+# Usage: fixup_package_names <array_nameref>
 fixup_package_names() {
-    local -n arr=$1
+    local -n __arr=$1
     local new_arr=()
-    for pkg in "${arr[@]}"; do
+    local -a _parts
+
+    _load_distro_compat
+
+    for pkg in "${__arr[@]}"; do
         # WSL: skip kernel/hardware-dependent tools (no kernel module access)
         if [[ "$IS_WSL" == "true" ]]; then
             case "$pkg" in
-                auditd|apparmor-utils) continue ;;
-                rr) continue ;;
+                auditd|apparmor-utils|rr) continue ;;
             esac
         fi
 
@@ -34,249 +89,48 @@ fixup_package_names() {
                 # Skip Kali/Parrot-only packages on standard Debian/Ubuntu
                 if [[ "$DISTRO_ID" != "kali" && "$DISTRO_ID" != "parrot" ]]; then
                     case "$pkg" in
-                        # Kali-only packages not available in standard Ubuntu/Debian repos
                         spike|enum4linux|bing-ip2hosts) continue ;;
                         sagemath) continue ;;
                         ghidra|rizin|radare2) continue ;;
                         bulk-extractor|forensics-extra) continue ;;
                         kismet|spooftooph|crackle|asleap|fern-wifi-cracker) continue ;;
                         smali) continue ;;
-                        rsmangler) continue ;;
                         zeek|sentrypeer|chaosreader) continue ;;
                     esac
                 fi
+                # Kali Rolling: zeek depends on libc6 < 2.38
+                if [[ "$DISTRO_ID" == "kali" ]]; then
+                    case "$pkg" in
+                        zeek) continue ;;
+                    esac
+                fi
                 ;;
-            dnf)
-                case "$pkg" in
-                    netcat-openbsd)     pkg="nmap-ncat" ;;
-                    dnsutils)           pkg="bind-utils" ;;
-                    build-essential)    pkg="@development-tools" ;;
-                    python3-venv)       pkg="python3" ;;
-                    default-jdk)        pkg="java-17-openjdk-devel" ;;
-                    zlib1g-dev)         pkg="zlib-devel" ;;
-                    libxml2-dev)        pkg="libxml2-devel" ;;
-                    libxslt1-dev)       pkg="libxslt-devel" ;;
-                    libpcap-dev)        pkg="libpcap-devel" ;;
-                    libssl-dev)         pkg="openssl-devel" ;;
-                    libffi-dev)         pkg="libffi-devel" ;;
-                    python3-dev)        pkg="python3-devel" ;;
-                    wireshark-common)   pkg="wireshark-cli" ;;
-                    proxychains4)       pkg="proxychains-ng" ;;
-                    forensics-extra)    continue ;;
-                    ettercap-graphical) pkg="ettercap" ;;
-                    ruby-dev)           pkg="ruby-devel" ;;
-                    golang-go)          pkg="golang" ;;
-                    libimage-exiftool-perl) pkg="perl-Image-ExifTool" ;;
-                    adb)                pkg="android-tools" ;;
-                    bulk-extractor)     pkg="bulk_extractor" ;;
-                    snmp)               pkg="net-snmp-utils" ;;
-                    smbclient)          pkg="samba-client" ;;
-                    imagemagick)        pkg="ImageMagick" ;;
-                    upx-ucl)            pkg="upx" ;;
-                    gqrx-sdr)           pkg="gqrx" ;;
-                    spooftooph|cewl|hashid|wapiti|zmap|rizin) continue ;;
-                    sentrypeer|chaosreader|apparmor-utils) continue ;;
-                    smali|apksigner|zipalign) continue ;;
-                    hcxdumptool|mfcuk|mfoc|rtl-433|libnfc-dev|avrdude) continue ;;
-                    scrcpy)             continue ;;
-                    auditd)             pkg="audit" ;;
-                    checksec)           pkg="checksec" ;;
-                    sonic-visualiser)   pkg="sonic-visualiser" ;;
-                    qemu-user-static)   pkg="qemu-user-static" ;;
-                    qemu-system-x86)    pkg="qemu-system-x86" ;;
-                    libseccomp-dev)     pkg="libseccomp-devel" ;;
-                    binutils-dev)       pkg="binutils-devel" ;;
-                    libedit-dev)        pkg="libedit-devel" ;;
-                    liblzma-dev)        pkg="xz-devel" ;;
-                    libkrb5-dev)        pkg="krb5-devel" ;;
-                    libsctp-dev)        pkg="lksctp-tools-devel" ;;
-                    libnfnetlink-dev)   pkg="libnfnetlink-devel" ;;
-                    libgmp-dev)         pkg="gmp-devel" ;;
-                    libecm-dev)         pkg="gmp-ecm-devel" ;;
-                    libglib2.0-dev)     pkg="glib2-devel" ;;
-                    libreadline-dev)    pkg="readline-devel" ;;
-                    libsqlite3-dev)     pkg="sqlite-devel" ;;
-                    libcurl4-openssl-dev) pkg="libcurl-devel" ;;
-                    libldap2-dev)       pkg="openldap-devel" ;;
-                    libsasl2-dev)       pkg="cyrus-sasl-devel" ;;
-                    llvm-dev)           pkg="llvm-devel" ;;
-                    libpixman-1-dev)    pkg="pixman-devel" ;;
-                    libunwind-dev)      pkg="libunwind-devel" ;;
-                    libini-config-dev)  pkg="ding-libs-devel" ;;
-                    sslsplit)           pkg="sslsplit" ;;
-                esac
-                ;;
-            pacman)
-                case "$pkg" in
-                    netcat-openbsd)     pkg="gnu-netcat" ;;
-                    dnsutils)           pkg="bind" ;;
-                    build-essential)    pkg="base-devel" ;;
-                    python3-pip)        pkg="python-pip" ;;
-                    python3-venv|python3-dev) continue ;;
-                    python3)            pkg="python" ;;
-                    default-jdk)        pkg="jdk-openjdk" ;;
-                    zlib1g-dev)         pkg="zlib" ;;
-                    libxml2-dev)        pkg="libxml2" ;;
-                    libxslt1-dev)       pkg="libxslt" ;;
-                    libpcap-dev)        pkg="libpcap" ;;
-                    libssl-dev)         pkg="openssl" ;;
-                    libffi-dev)         pkg="libffi" ;;
-                    wireshark-common)   pkg="wireshark-cli" ;;
-                    proxychains4)       pkg="proxychains-ng" ;;
-                    forensics-extra)    continue ;;
-                    ettercap-graphical) pkg="ettercap" ;;
-                    ruby-dev)           continue ;;
-                    golang-go)          pkg="go" ;;
-                    libimage-exiftool-perl) pkg="perl-image-exiftool" ;;
-                    adb)                pkg="android-tools" ;;
-                    bulk-extractor)     pkg="bulk_extractor" ;;
-                    snmp)               pkg="net-snmp" ;;
-                    spooftooph|cewl|hashid|wapiti) continue ;;
-                    sentrypeer|chaosreader|apparmor-utils) continue ;;
-                    smali|apksigner|zipalign) continue ;;
-                    mfcuk|mfoc|libnfc-dev) continue ;;
-                    rtl-433)            pkg="rtl_433" ;;
-                    auditd)             pkg="audit" ;;
-                    upx-ucl)            pkg="upx" ;;
-                    qemu-user-static)   pkg="qemu-user-static" ;;
-                    qemu-system-x86)    pkg="qemu-system-x86" ;;
-                    libseccomp-dev)     pkg="libseccomp" ;;
-                    binutils-dev)       pkg="binutils" ;;
-                    libedit-dev)        pkg="libedit" ;;
-                    liblzma-dev)        pkg="xz" ;;
-                    libkrb5-dev)        pkg="krb5" ;;
-                    libsctp-dev)        pkg="lksctp-tools" ;;
-                    libnfnetlink-dev)   pkg="libnfnetlink" ;;
-                    libgmp-dev)         pkg="gmp" ;;
-                    libecm-dev)         continue ;;
-                    libglib2.0-dev)     pkg="glib2" ;;
-                    libreadline-dev)    pkg="readline" ;;
-                    libsqlite3-dev)     pkg="sqlite" ;;
-                    libcurl4-openssl-dev) pkg="curl" ;;
-                    libldap2-dev)       pkg="libldap" ;;
-                    libsasl2-dev)       pkg="libsasl" ;;
-                    llvm-dev)           pkg="llvm" ;;
-                    libpixman-1-dev)    pkg="pixman" ;;
-                    libunwind-dev)      pkg="libunwind" ;;
-                    libini-config-dev)  continue ;;
-                esac
-                ;;
-            zypper)
-                case "$pkg" in
-                    netcat-openbsd)     pkg="netcat-openbsd" ;;
-                    dnsutils)           pkg="bind-utils" ;;
-                    build-essential)
-                        # devel_basis is a zypper pattern — handled by install_shared_deps()
-                        continue ;;
-                    default-jdk)        pkg="java-17-openjdk-devel" ;;
-                    zlib1g-dev)         pkg="zlib-devel" ;;
-                    libxml2-dev)        pkg="libxml2-devel" ;;
-                    libxslt1-dev)       pkg="libxslt-devel" ;;
-                    libpcap-dev)        pkg="libpcap-devel" ;;
-                    libssl-dev)         pkg="libopenssl-devel" ;;
-                    libffi-dev)         pkg="libffi-devel" ;;
-                    python3-dev)        pkg="python3-devel" ;;
-                    forensics-extra)    continue ;;
-                    ettercap-graphical) pkg="ettercap" ;;
-                    ruby-dev)           pkg="ruby-devel" ;;
-                    golang-go)          pkg="go" ;;
-                    libimage-exiftool-perl) pkg="exiftool" ;;
-                    adb)                pkg="android-tools" ;;
-                    bulk-extractor)     pkg="bulk_extractor" ;;
-                    snmp)               pkg="net-snmp" ;;
-                    smbclient)          pkg="samba-client" ;;
-                    imagemagick)        pkg="ImageMagick" ;;
-                    upx-ucl)            pkg="upx" ;;
-                    spooftooph|cewl|hashid|wapiti|zmap|checksec|rizin|sagemath|sonic-visualiser) continue ;;
-                    sentrypeer|chaosreader|apparmor-utils) continue ;;
-                    smali|apksigner|zipalign|scrcpy) continue ;;
-                    hackrf|hcxdumptool|mfcuk|mfoc|rtl-433|libnfc-dev|avrdude) continue ;;
-                    auditd)             pkg="audit" ;;
-                    qemu-user-static)   pkg="qemu-linux-user" ;;
-                    qemu-system-x86)    pkg="qemu-x86" ;;
-                    libseccomp-dev)     pkg="libseccomp-devel" ;;
-                    binutils-dev)       pkg="binutils-devel" ;;
-                    libedit-dev)        pkg="libedit-devel" ;;
-                    liblzma-dev)        pkg="xz-devel" ;;
-                    libkrb5-dev)        pkg="krb5-devel" ;;
-                    libsctp-dev)        pkg="lksctp-tools-devel" ;;
-                    libnfnetlink-dev)   pkg="libnfnetlink-devel" ;;
-                    libgmp-dev)         pkg="gmp-devel" ;;
-                    libecm-dev)         pkg="gmp-ecm-devel" ;;
-                    libglib2.0-dev)     pkg="glib2-devel" ;;
-                    libreadline-dev)    pkg="readline-devel" ;;
-                    libsqlite3-dev)     pkg="sqlite3-devel" ;;
-                    libcurl4-openssl-dev) pkg="libcurl-devel" ;;
-                    libldap2-dev)       pkg="openldap2-devel" ;;
-                    libsasl2-dev)       pkg="cyrus-sasl-devel" ;;
-                    llvm-dev)           pkg="llvm-devel" ;;
-                    libpixman-1-dev)    pkg="libpixman-1-devel" ;;
-                    libunwind-dev)      pkg="libunwind-devel" ;;
-                    libini-config-dev)  continue ;;
-                    sslsplit)           pkg="sslsplit" ;;
-                esac
-                ;;
-            pkg)
-                case "$pkg" in
-                    # Build tools — Termux uses clang, no gcc (two packages)
-                    build-essential)    new_arr+=("clang" "make"); continue ;;
-                    # Python — Termux uses 'python' (pip/venv/dev included)
-                    python3)            pkg="python" ;;
-                    python3-pip|python3-venv|python3-dev) continue ;;
-                    # Runtimes
-                    golang-go)          pkg="golang" ;;
-                    default-jdk)        pkg="openjdk-17" ;;
-                    ruby-dev)           continue ;;  # included in ruby
-                    npm)                continue ;;  # included in nodejs
-                    # Dev libraries — Termux drops the -dev suffix
-                    libpcap-dev)        pkg="libpcap" ;;
-                    libssl-dev)         pkg="openssl" ;;
-                    libffi-dev)         pkg="libffi" ;;
-                    zlib1g-dev)         pkg="zlib" ;;
-                    libxml2-dev)        pkg="libxml2" ;;
-                    libxslt1-dev)       pkg="libxslt" ;;
-                    libglib2.0-dev)     pkg="glib" ;;
-                    libreadline-dev)    pkg="readline" ;;
-                    libsqlite3-dev)     pkg="libsqlite" ;;
-                    libcurl4-openssl-dev) pkg="libcurl" ;;
-                    libedit-dev)        pkg="libedit" ;;
-                    liblzma-dev)        pkg="xz-utils" ;;
-                    libgmp-dev)         pkg="libgmp" ;;
-                    # Unavailable dev libs on Termux — skip
-                    libseccomp-dev|binutils-dev|libkrb5-dev|libsctp-dev) continue ;;
-                    libnfnetlink-dev|libecm-dev|libldap2-dev|libsasl2-dev) continue ;;
-                    llvm-dev|libpixman-1-dev|libunwind-dev|libini-config-dev) continue ;;
-                    # Networking tools — Termux bundles ncat with nmap
-                    netcat-openbsd)     pkg="nmap" ;;
-                    dnsutils)           pkg="dnsutils" ;;
-                    proxychains4)       pkg="proxychains-ng" ;;
-                    # Unavailable tools on Termux
-                    spooftooph|cewl|hashid|wapiti) continue ;;
-                    wireshark-common|ettercap-graphical) continue ;;
-                    kismet|crackle|asleap|fern-wifi-cracker) continue ;;
-                    forensics-extra|bulk-extractor) continue ;;
-                    auditd|apparmor-utils) continue ;;
-                    adb|smali|scrcpy|apksigner|zipalign) continue ;;
-                    qemu-user-static|qemu-system-x86) continue ;;
-                    sagemath|ghidra|rizin) continue ;;
-                    hackrf|hcxdumptool|mfcuk|mfoc|rtl-433|libnfc-dev|avrdude) continue ;;
-                    sentrypeer|chaosreader) continue ;;
-                    sonic-visualiser|gqrx-sdr|sslsplit) continue ;;
-                    checksec|rsmangler|zmap) continue ;;
-                    snmp)               pkg="net-snmp" ;;
-                    imagemagick)        pkg="imagemagick" ;;
-                    upx-ucl)            pkg="upx" ;;
-                    libimage-exiftool-perl) pkg="exiftool" ;;
-                    dos2unix)           pkg="dos2unix" ;;
-                esac
+            dnf|pacman|zypper|pkg)
+                # Select the right lookup table for this package manager
+                local -n _map="_COMPAT_${PKG_MANAGER^^}"
+                local mapped="${_map[$pkg]:-}"
+
+                if [[ "$mapped" == "-" ]]; then
+                    # Skip — package unavailable on this distro
+                    continue
+                elif [[ -n "$mapped" ]]; then
+                    if [[ "$mapped" == *"+"* ]]; then
+                        # Multi-expand: a+b → two packages (e.g. clang+make)
+                        IFS='+' read -ra _parts <<< "$mapped"
+                        new_arr+=("${_parts[@]}")
+                        continue
+                    fi
+                    pkg="$mapped"
+                fi
+                # else: no mapping → passthrough (keep Debian name)
                 ;;
         esac
         new_arr+=("$pkg")
     done
     if [[ ${#new_arr[@]} -gt 0 ]]; then
-        arr=("${new_arr[@]}")
+        __arr=("${new_arr[@]}")
     else
-        arr=()
+        __arr=()
     fi
 }
 
@@ -816,7 +670,8 @@ setup_git_repo() {
         "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
         # Replace abandoned pycrypto with drop-in pycryptodome (Python 3.12+ compat)
         if grep -qi 'pycrypto' "$dest/requirements.txt" 2>/dev/null; then
-            sed -i 's/^pycrypto.*/pycryptodome/i' "$dest/requirements.txt"
+            sed 's/^pycrypto.*/pycryptodome/i' "$dest/requirements.txt" > "$dest/requirements.txt.tmp" \
+                && mv "$dest/requirements.txt.tmp" "$dest/requirements.txt"
         fi
         if ! "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1; then
             # Some packages fail to build against the latest Python (e.g. lxml on 3.13).
@@ -832,7 +687,7 @@ setup_git_repo() {
                         _fallback_ok=true
                     fi
                 fi
-                break  # only try the newest available fallback
+                [[ "$_fallback_ok" == "true" ]] && break
             done
             if [[ "$_fallback_ok" != "true" ]]; then
                 log_warn "pip install failed for $name (some dependencies may be missing)"
@@ -1271,7 +1126,7 @@ for asset in data.get('assets', []):
     fi
 
     local expected_hash
-    expected_hash=$(echo "$checksums" | grep -F " $file_name" | awk '{print $1}' | head -1)
+    expected_hash=$(echo "$checksums" | awk -v f="$file_name" '$2 == f || $2 == ("*" f) {print $1; exit}')
     if [[ -z "$expected_hash" ]]; then
         log_warn "No checksum entry for $file_name in checksums file"
         return 1
@@ -1580,14 +1435,22 @@ track_version() {
         mv -f "$tmp_file" "$version_file"
     }
 
-    # Use flock when available (parallel safety), fall back to direct write
+    # Use flock when available (parallel safety), fall back to mkdir-based lock
     if command -v flock &>/dev/null; then
         (
             flock -x 200
             _tv_write
         ) 200>"${version_file}.lock"
     else
+        # mkdir is atomic on all POSIX systems — use as spinlock fallback
+        local _lockdir="${version_file}.lockdir" _tries=0
+        while ! mkdir "$_lockdir" 2>/dev/null; do
+            _tries=$((_tries + 1))
+            [[ "$_tries" -ge 50 ]] && break  # give up after ~5s
+            sleep 0.1
+        done
         _tv_write
+        rmdir "$_lockdir" 2>/dev/null || true
     fi
 }
 

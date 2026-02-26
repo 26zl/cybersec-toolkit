@@ -25,9 +25,7 @@ NON_EXECUTABLE_METHODS = {"git", "docker", "snap"}
 # Dangerous shell metacharacters that must not appear in arguments.
 _DANGEROUS_PATTERNS = re.compile(r"[;&|`$><]|\$\(")
 
-# ---------------------------------------------------------------------------
 # Execution policy — restrict *what* tools can do, not just *which* tools run
-# ---------------------------------------------------------------------------
 
 # Flag patterns that are destructive or dangerous in most security tools.
 # Each entry is (compiled regex, human-readable description).
@@ -41,9 +39,9 @@ BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
 
 # Tools that perform network operations and need target validation.
 _NETWORK_TOOLS: set[str] = {
-    "nmap", "masscan", "nikto", "sqlmap", "ffuf", "gobuster", "feroxbuster",
-    "nuclei", "httpx", "whatweb", "wfuzz", "hydra", "patator", "responder",
-    "bettercap", "mitmproxy", "reaver", "aircrack-ng", "wifite", "amass",
+    "nmap", "masscan", "sqlmap", "ffuf", "feroxbuster",
+    "nuclei", "httpx", "whatweb", "hydra", "patator", "Responder",
+    "bettercap", "mitmproxy", "reaver", "aircrack-ng", "wifite2", "amass",
     "subfinder", "shodan", "arjun", "dalfox", "prowler", "pacu", "trivy",
     "scapy", "tshark", "tcpdump",
 }
@@ -70,7 +68,13 @@ def _is_safe_target(value: str) -> bool:
     # Try parsing as IP address directly
     try:
         addr = ipaddress.ip_address(value)
-        return any(addr in net for net in _SAFE_NETWORKS)
+        if any(addr in net for net in _SAFE_NETWORKS):
+            return True
+        # Handle IPv4-mapped IPv6 addresses (e.g. ::ffff:10.0.0.1 → 10.0.0.1)
+        mapped = getattr(addr, "ipv4_mapped", None)
+        if mapped is not None:
+            return any(mapped in net for net in _SAFE_NETWORKS)
+        return False
     except ValueError:
         pass
 
@@ -179,10 +183,7 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
                     f"external targets."
                 )
 
-
-# ---------------------------------------------------------------------------
-
-
+# Validation and execution logic
 def validate_tool_for_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
     """Validate that a tool can be executed. Returns the resolved binary name.
 

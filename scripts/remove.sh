@@ -233,9 +233,10 @@ echo ""
 
 # 3) Cargo tools — must run BEFORE system packages (cargo is from rustup, not apt, but be safe)
 if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
+    _cargo_home="$(_builder_home)/.cargo/bin"
     log_info "Removing ${#CARGO_TO_REMOVE[@]} Cargo tools..."
     for crate in "${CARGO_TO_REMOVE[@]}"; do
-        if ! command_exists "$crate" && [[ ! -f "$HOME/.cargo/bin/$crate" ]]; then
+        if ! command_exists "$crate" && [[ ! -f "$_cargo_home/$crate" ]]; then
             log_debug "Skipping cargo $crate (not installed)"
             continue
         fi
@@ -244,7 +245,7 @@ if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
                 log_success "Removed cargo: $crate" || true
         fi
         # Clean up binary and symlink regardless of cargo uninstall result
-        [[ -f "$HOME/.cargo/bin/$crate" ]] && rm -f "$HOME/.cargo/bin/$crate"
+        [[ -f "$_cargo_home/$crate" ]] && rm -f "$_cargo_home/$crate"
         [[ -L "$PIPX_BIN_DIR/$crate" ]] && rm -f "$PIPX_BIN_DIR/$crate"
     done
 fi
@@ -319,6 +320,18 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
     done
     log_info "Git repos: $git_removed removed, $git_skipped already removed"
 fi
+
+# 6b) Build-from-source binaries — installed to /usr/local/bin via make install
+for _bmod in "${REMOVE_MODULES[@]}"; do
+    _bpfx=$(_module_prefix "$_bmod")
+    _bnames_var="${_bpfx}_BUILD_NAMES"
+    declare -p "$_bnames_var" &>/dev/null || continue
+    declare -n _bnames="$_bnames_var"
+    for _bname in "${_bnames[@]}"; do
+        [[ -f "/usr/local/bin/$_bname" ]] && rm -f "/usr/local/bin/$_bname" && \
+            log_success "Removed build-from-source binary: /usr/local/bin/$_bname"
+    done
+done
 echo ""
 
 # 7) Binary releases
@@ -516,6 +529,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     echo ""
     log_info "Deep clean: purging caches and build artifacts..."
     _deep_freed=0
+    _user_home="$(_builder_home)"
 
     # --- Go caches ---
     # Go module cache (downloaded module source)
@@ -526,7 +540,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         _deep_freed=$((_deep_freed + _sz))
     fi
     # Go build cache
-    _go_cache="${HOME}/.cache/go-build"
+    _go_cache="${_user_home}/.cache/go-build"
     if [[ -d "$_go_cache" ]]; then
         _sz=$(du -sm "$_go_cache" 2>/dev/null | cut -f1 || echo 0)
         rm -rf "$_go_cache"
@@ -543,31 +557,31 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
 
     # --- Cargo / Rust caches ---
     # Cargo registry (crate source downloads)
-    if [[ -d "$HOME/.cargo/registry" ]]; then
-        _sz=$(du -sm "$HOME/.cargo/registry" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$HOME/.cargo/registry"
+    if [[ -d "$_user_home/.cargo/registry" ]]; then
+        _sz=$(du -sm "$_user_home/.cargo/registry" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$_user_home/.cargo/registry"
         log_success "Removed Cargo registry cache (~/.cargo/registry — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi
     # Cargo git checkouts
-    if [[ -d "$HOME/.cargo/git" ]]; then
-        _sz=$(du -sm "$HOME/.cargo/git" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$HOME/.cargo/git"
+    if [[ -d "$_user_home/.cargo/git" ]]; then
+        _sz=$(du -sm "$_user_home/.cargo/git" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$_user_home/.cargo/git"
         log_success "Removed Cargo git cache (~/.cargo/git — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi
     # Rustup toolchains (only with --remove-deps — these are runtimes)
-    if [[ "$REMOVE_DEPS" == "true" ]] && [[ -d "$HOME/.rustup" ]]; then
-        _sz=$(du -sm "$HOME/.rustup" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$HOME/.rustup"
+    if [[ "$REMOVE_DEPS" == "true" ]] && [[ -d "$_user_home/.rustup" ]]; then
+        _sz=$(du -sm "$_user_home/.rustup" 2>/dev/null | cut -f1 || echo 0)
+        rm -rf "$_user_home/.rustup"
         log_success "Removed Rustup toolchains (~/.rustup — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi
     # Empty .cargo dir if nothing useful remains
-    if [[ -d "$HOME/.cargo" ]]; then
-        _cargo_bins=$(find "$HOME/.cargo/bin" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+    if [[ -d "$_user_home/.cargo" ]]; then
+        _cargo_bins=$(find "$_user_home/.cargo/bin" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
         if [[ "$_cargo_bins" -eq 0 ]]; then
-            rm -rf "$HOME/.cargo"
+            rm -rf "$_user_home/.cargo"
             log_success "Removed empty ~/.cargo"
         fi
     fi
@@ -600,7 +614,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         fi
     fi
     # pip download cache
-    _pip_cache="${HOME}/.cache/pip"
+    _pip_cache="${_user_home}/.cache/pip"
     if [[ -d "$_pip_cache" ]]; then
         _sz=$(du -sm "$_pip_cache" 2>/dev/null | cut -f1 || echo 0)
         rm -rf "$_pip_cache"
@@ -608,7 +622,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         _deep_freed=$((_deep_freed + _sz))
     fi
     # pipx download cache
-    _pipx_cache="${HOME}/.cache/pipx"
+    _pipx_cache="${_user_home}/.cache/pipx"
     if [[ -d "$_pipx_cache" ]]; then
         _sz=$(du -sm "$_pipx_cache" 2>/dev/null | cut -f1 || echo 0)
         rm -rf "$_pipx_cache"
@@ -618,7 +632,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
 
     # --- npm cache ---
     if command_exists npm; then
-        _npm_cache=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+        _npm_cache=$(npm config get cache 2>/dev/null || echo "$_user_home/.npm")
         if [[ -d "$_npm_cache" ]]; then
             _sz=$(du -sm "$_npm_cache" 2>/dev/null | cut -f1 || echo 0)
             npm cache clean --force >> "$LOG_FILE" 2>&1 || rm -rf "$_npm_cache"
@@ -628,7 +642,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     fi
 
     # --- Gem cache ---
-    _gem_cache="${HOME}/.gem"
+    _gem_cache="${_user_home}/.gem"
     if [[ -d "$_gem_cache/specs" ]] || [[ -d "$_gem_cache/ruby" ]]; then
         _sz=$(du -sm "$_gem_cache" 2>/dev/null | cut -f1 || echo 0)
         rm -rf "$_gem_cache"

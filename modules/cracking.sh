@@ -11,7 +11,7 @@ CRACKING_PACKAGES=(
     sucrack
 )
 
-CRACKING_PIPX=(search-that-hash name-that-hash trevorspray)
+CRACKING_PIPX=(search-that-hash name-that-hash trevorspray patator)
 
 CRACKING_GIT=(
     "DefaultCreds-cheat-sheet=https://github.com/ihebski/DefaultCreds-cheat-sheet.git"

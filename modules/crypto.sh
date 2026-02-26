@@ -35,5 +35,8 @@ install_module_crypto() {
     # Use generic 'make all' instead of 'make x86_64' — the x86_64 target adds
     # CPU-specific flags (-march/-fcf-protection) that fail on VMs/older CPUs.
     build_from_source "msieve" "https://github.com/radii/msieve.git" "make all ECM=1" || true
-    build_from_source "pemcrack" "https://github.com/robertdavidgraham/pemcrack.git" "make" || true
+    # Upstream pemcrack.c is missing #include <ctype.h> — GCC 14+ treats
+    # implicit-function-declaration as a hard error, so patch before building
+    build_from_source "pemcrack" "https://github.com/robertdavidgraham/pemcrack.git" \
+        "sed -i '1i #include <ctype.h>' pemcrack.c && make" || true
 }

@@ -258,6 +258,62 @@ setup() {
     [[ -f "$VERSION_FILE" ]]
 }
 
+# ---------- _load_distro_compat — TSV loader ---------------------------------
+
+@test "TSV loader populates _COMPAT_DNF array" {
+    source_libs --installers fedora dnf
+    _load_distro_compat
+    [[ "${_COMPAT_DNF[netcat-openbsd]}" == "nmap-ncat" ]]
+    [[ "${_COMPAT_DNF[libssl-dev]}" == "openssl-devel" ]]
+    [[ "${_COMPAT_DNF[spooftooph]}" == "-" ]]
+}
+
+@test "TSV loader populates _COMPAT_PACMAN array" {
+    source_libs --installers arch pacman
+    _load_distro_compat
+    [[ "${_COMPAT_PACMAN[build-essential]}" == "base-devel" ]]
+    [[ "${_COMPAT_PACMAN[python3]}" == "python" ]]
+}
+
+@test "TSV loader populates _COMPAT_PKG array" {
+    source_libs --installers debian apt
+    _load_distro_compat
+    [[ "${_COMPAT_PKG[build-essential]}" == "clang+make" ]]
+    [[ "${_COMPAT_PKG[python3]}" == "python" ]]
+}
+
+@test "TSV loader handles missing file gracefully" {
+    source_libs --installers fedora dnf
+    make_test_tmpdir
+    # Reset loaded flag and point to a directory with no TSV
+    _COMPAT_LOADED=false
+    _COMPAT_DNF=()
+    _COMPAT_PACMAN=()
+    _COMPAT_ZYPPER=()
+    _COMPAT_PKG=()
+    export SCRIPT_DIR="$TEST_TMPDIR"
+    # Should not error, just warn and set loaded flag
+    _load_distro_compat
+    [[ "$_COMPAT_LOADED" == "true" ]]
+    # Packages should pass through unchanged (no mappings loaded)
+    local -a pkgs=(netcat-openbsd curl)
+    fixup_package_names pkgs
+    [[ "${pkgs[0]}" == "netcat-openbsd" ]]
+    [[ "${pkgs[1]}" == "curl" ]]
+}
+
+@test "fixup: pkg expands build-essential to clang and make" {
+    source_libs --installers debian pkg
+    export TERMUX_VERSION=1
+    local -a pkgs=(build-essential curl)
+    fixup_package_names pkgs
+    local joined="${pkgs[*]}"
+    [[ "$joined" == *"clang"* ]]
+    [[ "$joined" == *"make"* ]]
+    [[ "$joined" == *"curl"* ]]
+    [[ "$joined" != *"build-essential"* ]]
+}
+
 # ---------- Go binary name extraction (_go_bin_name) -------------------------
 
 @test "Go binary name extracted from full import path" {

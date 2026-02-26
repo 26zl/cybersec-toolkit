@@ -486,12 +486,14 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_warn "Foundry update failed"
     fi
 
-    # Steampipe (self-update)
+    # Steampipe (re-install = self-update)
     if command_exists steampipe; then
         log_info "Updating Steampipe..."
-        steampipe update check >> "$LOG_FILE" 2>&1 && \
-            log_success "Steampipe updated" || \
+        if curl -sSL https://raw.githubusercontent.com/turbot/steampipe/main/install.sh | sh -s -- -y >> "$LOG_FILE" 2>&1; then
+            log_success "Steampipe updated"
+        else
             log_warn "Steampipe update failed"
+        fi
     fi
 else
     log_warn "Skipping special tool updates"
@@ -521,6 +523,41 @@ else
     log_warn "Skipping Docker image update"
 fi
 
+echo ""
+
+# 10) Build-from-source tools (git pull + rebuild)
+log_info "Updating build-from-source tools..."
+BUILD_UPDATED=0
+BUILD_SKIPPED=0
+BUILD_FAILED=0
+for _bmod in "${ALL_MODULES[@]}"; do
+    _bpfx=$(_module_prefix "$_bmod")
+    _bnames_var="${_bpfx}_BUILD_NAMES"
+    declare -p "$_bnames_var" &>/dev/null || continue
+    declare -n _bnames="$_bnames_var"
+    for _bname in "${_bnames[@]}"; do
+        _bdir="$GITHUB_TOOL_DIR/$_bname"
+        [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_SKIPPED=$((BUILD_SKIPPED + 1)); continue; }
+        _pull_out=""
+        if _pull_out=$(git -C "$_bdir" pull 2>>"$LOG_FILE"); then
+            if echo "$_pull_out" | grep -q "Already up to date"; then
+                log_debug "Already latest: $_bname"
+                BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
+            else
+                log_success "Updated source: $_bname (rebuild may be needed)"
+                BUILD_UPDATED=$((BUILD_UPDATED + 1))
+                track_version "$_bname" "source" "HEAD"
+            fi
+        else
+            log_warn "Failed to update: $_bname"
+            BUILD_FAILED=$((BUILD_FAILED + 1))
+        fi
+    done
+done
+if [[ "$BUILD_UPDATED" -gt 0 || "$BUILD_FAILED" -gt 0 ]]; then
+    log_success "Build-from-source: $BUILD_UPDATED updated, $BUILD_SKIPPED already latest, $BUILD_FAILED failed"
+    UPDATE_FAILURES=$((UPDATE_FAILURES + BUILD_FAILED))
+fi
 echo ""
 
 # Done

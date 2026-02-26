@@ -1,0 +1,179 @@
+# Distro-specific package name mappings for fixup_package_names()
+# Format: debian<TAB>dnf<TAB>pacman<TAB>zypper<TAB>pkg
+#
+# Values:
+#   <name>  = rename to this name on that distro
+#   -       = skip (not available / not needed)
+#   (empty) = passthrough (keep the Debian name unchanged)
+#   a+b     = expand to multiple packages (only build-essential on Termux)
+#
+# Only packages that DIFFER from the Debian name on at least one distro
+# need entries here. Packages not listed pass through unchanged.
+#
+# What is handled INLINE in fixup_package_names (not driven by this file):
+#   - WSL skips (all managers): auditd, apparmor-utils, rr
+#   - ARM skips (all managers): qemu-system-x86
+#   - APT Kali-only filtering: spike, enum4linux, bing-ip2hosts, etc.
+# Note: auditd, apparmor-utils, rr also have entries below for their
+# distro-level renames/skips (e.g. auditd→audit on dnf). Both layers apply.
+#
+# ----- Build tools & runtimes ------------------------------------------------
+#debian	dnf	pacman	zypper	pkg
+build-essential	@development-tools	base-devel	-	clang+make
+python3		python		python
+python3-pip		python-pip		-
+python3-venv	python3	-		-
+python3-dev	python3-devel	-	python3-devel	-
+default-jdk	java-17-openjdk-devel	jdk-openjdk	java-17-openjdk-devel	openjdk-17
+golang-go	golang	go	go	golang
+ruby-dev	ruby-devel	-	ruby-devel	-
+npm				-
+#
+# ----- Networking tools ------------------------------------------------------
+#debian	dnf	pacman	zypper	pkg
+netcat-openbsd	nmap-ncat	gnu-netcat		nmap
+dnsutils	bind-utils	bind	bind-utils	
+proxychains4	proxychains-ng	proxychains-ng		proxychains-ng
+wireshark-common	wireshark-cli	wireshark-cli		-
+snmp	net-snmp-utils	net-snmp	net-snmp	net-snmp
+smbclient	samba-client		samba-client	
+tshark	-	-	-	
+#
+# ----- Dev libraries ---------------------------------------------------------
+#debian	dnf	pacman	zypper	pkg
+zlib1g-dev	zlib-devel	zlib	zlib-devel	zlib
+libxml2-dev	libxml2-devel	libxml2	libxml2-devel	libxml2
+libxslt1-dev	libxslt-devel	libxslt	libxslt-devel	libxslt
+libpcap-dev	libpcap-devel	libpcap	libpcap-devel	libpcap
+libssl-dev	openssl-devel	openssl	libopenssl-devel	openssl
+libffi-dev	libffi-devel	libffi	libffi-devel	libffi
+libjpeg-dev	libjpeg-turbo-devel	libjpeg-turbo	libjpeg62-devel	
+libcapstone-dev	capstone-devel	capstone	capstone-devel	
+libseccomp-dev	libseccomp-devel	libseccomp	libseccomp-devel	-
+binutils-dev	binutils-devel	binutils	binutils-devel	-
+libedit-dev	libedit-devel	libedit	libedit-devel	libedit
+liblzma-dev	xz-devel	xz	xz-devel	xz-utils
+libkrb5-dev	krb5-devel	krb5	krb5-devel	-
+libsctp-dev	lksctp-tools-devel	lksctp-tools	lksctp-tools-devel	-
+libnfnetlink-dev	libnfnetlink-devel	libnfnetlink	libnfnetlink-devel	-
+libgmp-dev	gmp-devel	gmp	gmp-devel	libgmp
+libecm-dev	gmp-ecm-devel	-	gmp-ecm-devel	-
+libglib2.0-dev	glib2-devel	glib2	glib2-devel	glib
+libreadline-dev	readline-devel	readline	readline-devel	readline
+libsqlite3-dev	sqlite-devel	sqlite	sqlite3-devel	libsqlite
+libcurl4-openssl-dev	libcurl-devel	curl	libcurl-devel	libcurl
+libldap2-dev	openldap-devel	libldap	openldap2-devel	-
+libsasl2-dev	cyrus-sasl-devel	libsasl	cyrus-sasl-devel	-
+llvm-dev	llvm-devel	llvm	llvm-devel	-
+libpixman-1-dev	pixman-devel	pixman	libpixman-1-devel	-
+libunwind-dev	libunwind-devel	libunwind	libunwind-devel	-
+libini-config-dev	ding-libs-devel	-	-	-
+#
+# ----- Tool renames ----------------------------------------------------------
+#debian	dnf	pacman	zypper	pkg
+libimage-exiftool-perl	perl-Image-ExifTool	perl-image-exiftool	exiftool	exiftool
+adb	android-tools	android-tools	android-tools	-
+bulk-extractor	bulk_extractor	bulk_extractor	bulk_extractor	-
+imagemagick	ImageMagick		ImageMagick	
+upx-ucl	upx	upx	upx	upx
+auditd	audit	audit	audit	-
+stunnel4	stunnel	stunnel	stunnel	
+protobuf-compiler		protobuf		
+poppler-utils		poppler	poppler-tools	
+zbar-tools	zbar	zbar	zbar	
+hashdeep	md5deep	-	md5deep	
+wireless-tools		wireless_tools		
+gqrx-sdr	gqrx			-
+sslsplit				-
+qemu-user-static			qemu-linux-user	-
+qemu-system-x86			qemu-x86	-
+rtl-433	-	rtl_433	-	-
+#
+# ----- Skipped: unavailable on most non-Debian distros -----------------------
+#debian	dnf	pacman	zypper	pkg
+spooftooph	-	-	-	-
+cewl	-	-	-	-
+hashid	-	-	-	-
+netdiscover	-	-	-	-
+crunch	-	-	-	-
+forensics-extra	-	-	-	-
+sentrypeer	-	-	-	-
+chaosreader	-	-	-	-
+apparmor-utils	-	-	-	-
+smali	-	-	-	-
+apksigner	-	-	-	-
+zipalign	-	-	-	-
+mfcuk	-	-	-	-
+mfoc	-	-	-	-
+libnfc-dev	-	-	-	-
+#
+# ----- Skipped: per-distro availability --------------------------------------
+#debian	dnf	pacman	zypper	pkg
+zeek	-	-	-	
+snort	-	-	-	
+yersinia	-	-	-	
+dns2tcp	-	-	-	
+redsocks	-	-	-	
+mitmproxy	-	-	-	
+autopsy	-	-	-	
+scalpel	-	-	-	
+dc3dd	-	-	-	
+dcfldd	-	-	-	
+samdump2	-	-	-	
+galleta	-	-	-	
+pasco	-	-	-	
+mac-robber	-	-	-	
+vinetto	-	-	-	
+guymager	-	-	-	
+magicrescue	-	-	-	
+memdump	-	-	-	
+rifiuti2	-	-	-	
+scrounge-ntfs	-	-	-	
+ext3grep	-	-	-	
+ext4magic	-	-	-	
+recoverjpeg	-	-	-	
+steghide	-	-	-	
+stegsnow	-	-	-	
+pngtools	-	-	-	
+ophcrack	-	-	-	
+chntpw	-	-	-	
+bruteforce-luks	-	-	-	
+sucrack	-	-	-	
+maskprocessor	-	-	-	
+princeprocessor	-	-	-	
+statsprocessor	-	-	-	
+tiger	-	-	-	
+darkstat	-	-	-	
+inetsim	-	-	-	
+edb-debugger	-	-	-	
+reaver	-	-	-	
+pixiewps	-	-	-	
+bully	-	-	-	
+horst	-	-	-	
+mdk4	-	-	-	
+cowpatty	-	-	-	
+fcrackzip	-	-	-	
+#
+# ----- Skipped: only some distros --------------------------------------------
+#debian	dnf	pacman	zypper	pkg
+zmap	-		-	-
+rizin	-		-	-
+checksec			-	-
+sonic-visualiser			-	-
+sagemath			-	-
+scrcpy	-		-	-
+hcxdumptool	-		-	-
+avrdude	-		-	-
+hackrf			-	-
+netsniff-ng		-		
+iodine		-		
+ufw			-	
+rr		-	-	
+#
+# ----- Skipped: Termux-only -------------------------------------------------
+#debian	dnf	pacman	zypper	pkg
+kismet				-
+crackle				-
+asleap				-
+fern-wifi-cracker				-
+ghidra				-
