@@ -64,9 +64,9 @@ _version_ge() {
     local cur="$1" min="$2"
     local cur_major cur_minor min_major min_minor
     cur_major=${cur%%.*}
-    cur_minor=${cur#*.}; cur_minor=${cur_minor%%.*}
+    if [[ "$cur" == *"."* ]]; then cur_minor=${cur#*.}; cur_minor=${cur_minor%%.*}; else cur_minor=0; fi
     min_major=${min%%.*}
-    min_minor=${min#*.}; min_minor=${min_minor%%.*}
+    if [[ "$min" == *"."* ]]; then min_minor=${min#*.}; min_minor=${min_minor%%.*}; else min_minor=0; fi
     [[ "$cur_major" -gt "$min_major" ]] && return 0
     [[ "$cur_major" -eq "$min_major" && "$cur_minor" -ge "$min_minor" ]]
 }

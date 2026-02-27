@@ -201,13 +201,15 @@ class ToolsDatabase:
 
     def _find_docker_image(self, tool_name: str) -> Optional[str]:
         """Find the docker image for a tool name."""
-        # Check if tool_name matches a docker label (case-insensitive)
+        name_lower = tool_name.lower()
+        # Exact match on label (case-insensitive)
         for label, image in DOCKER_IMAGES.items():
-            if tool_name.lower() in label.lower() or label.lower() in tool_name.lower():
+            if name_lower == label.lower():
                 return image
-        # Check if tool_name is part of an image name
+        # Exact match on image name (last component, e.g. "empire" from "bcsecurity/empire")
         for label, image in DOCKER_IMAGES.items():
-            if tool_name.lower() in image.lower():
+            image_name = image.rsplit("/", 1)[-1].lower()
+            if name_lower == image_name:
                 return image
         return None
 

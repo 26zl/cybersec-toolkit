@@ -1353,7 +1353,9 @@ download_github_release() {
     fi
     if command_exists "$binary"; then
         log_success "Already installed: $binary"
-        track_version "$binary" "binary" "existing"
+        # Skip track_version when called from parallel subshell — the parent
+        # _collect_parallel_results handles version tracking to avoid duplicates.
+        [[ "${_PARALLEL_CHILD:-false}" != "true" ]] && track_version "$binary" "binary" "existing"
         return 0
     fi
     _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "install"
@@ -1361,7 +1363,7 @@ download_github_release() {
     # Consume vtag sidecar for version tracking (written by _download_github_release_impl).
     # The file is intentionally NOT deleted here — parallel callers read it separately.
     local _vtag_file="${dest_dir}/.${binary}.vtag"
-    if [[ -f "$_vtag_file" ]]; then
+    if [[ -f "$_vtag_file" ]] && [[ "${_PARALLEL_CHILD:-false}" != "true" ]]; then
         track_version "$binary" "binary" "$(< "$_vtag_file")"
     fi
     return $_rc
@@ -1640,6 +1642,7 @@ install_binary_releases() {
 
             (
                 trap '_release_job_slot' EXIT
+                local _PARALLEL_CHILD=true
                 _report_tool_start "Binary" "$_binary"
                 if download_github_release "$_repo" "$_binary" "$_pattern" "$_dest" >> "$LOG_FILE" 2>&1; then
                     # Read version from vtag sidecar (written by _download_github_release_impl)

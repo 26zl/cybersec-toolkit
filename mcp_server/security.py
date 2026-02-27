@@ -107,6 +107,10 @@ def _is_safe_target(value: str) -> bool:
             return False
 
     # Not a recognizable IP/hostname — could be a decimal IP, bare hostname, etc.
+    # Values that look like file paths or flags are allowed through.
+    if value.startswith(("-", "/", "./", "~")):
+        return True
+
     # Try DNS resolution as a last resort to catch targets like "google" or "134744072"
     try:
         info = socket.getaddrinfo(value, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
@@ -116,8 +120,9 @@ def _is_safe_target(value: str) -> bool:
                 return False
         return True
     except (socket.gaierror, OSError, ValueError):
-        # Can't resolve — not a network target, allow (flag value or file path)
-        return True
+        # Can't resolve — could be a bare hostname with transient DNS failure.
+        # Deny to be safe; genuine non-network values (flags/paths) are caught above.
+        return False
 
 
 def check_policy(tool_name: str, arg_list: list[str]) -> None:

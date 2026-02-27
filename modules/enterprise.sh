@@ -12,7 +12,7 @@ ENTERPRISE_PIPX=(
     adidnsdump dploot bloodyad hekatomb
     certsync masky pywhisker autobloody
     krbjack roadtx pywerview pysnaffler powerview aclpwn
-    ldeep smbclientng ldapsearchad netexec
+    ldeep smbclientng ldapsearchad
 )
 
 ENTERPRISE_GO=(

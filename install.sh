@@ -920,7 +920,7 @@ main() {
     # Count tools tracked in .versions file (excludes header/comment lines)
     local tools_installed=0
     if [[ -f "$VERSION_FILE" ]]; then
-        tools_installed=$(grep -cv '^#' "$VERSION_FILE" 2>/dev/null || echo 0)
+        tools_installed=$(grep -cv '^#' "$VERSION_FILE" 2>/dev/null) || tools_installed=0
     fi
     log_info "Tools installed: $tools_installed"
     if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
