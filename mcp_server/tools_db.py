@@ -9,9 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 # Project root: CYBERSEC_INSTALLER_ROOT env var, or parent of mcp_server/
-PROJECT_ROOT = Path(
-    os.environ.get("CYBERSEC_INSTALLER_ROOT", Path(__file__).parent.parent)
-)
+PROJECT_ROOT = Path(os.environ.get("CYBERSEC_INSTALLER_ROOT", Path(__file__).parent.parent))
 
 # Pipx package name → binary name mapping (from scripts/verify.sh:130-155).
 # Most pipx packages install a binary with the same name — these are the exceptions.
@@ -77,7 +75,6 @@ DOCKER_IMAGES: dict[str, str] = {
     "Echidna": "trailofbits/echidna",
     "PentAGI": "vxcontrol/pentagi:latest",
 }
-
 
 
 class ToolsDatabase:

@@ -291,9 +291,7 @@ def _check_tool_installed(tool_name: str, tools_db: ToolsDatabase) -> tuple[bool
     return False, in_registry
 
 
-def suggest_for_ctf(
-    challenge_type: str, tools_db: ToolsDatabase
-) -> dict:
+def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
     """Return tool suggestions for a CTF challenge type with install status.
 
     Returns dict with: category, description, modules, tools (with install status).

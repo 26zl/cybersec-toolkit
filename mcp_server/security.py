@@ -39,11 +39,33 @@ BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
 
 # Tools that perform network operations and need target validation.
 _NETWORK_TOOLS: set[str] = {
-    "nmap", "masscan", "sqlmap", "ffuf", "feroxbuster",
-    "nuclei", "httpx", "whatweb", "hydra", "patator", "Responder",
-    "bettercap", "mitmproxy", "reaver", "aircrack-ng", "wifite2", "amass",
-    "subfinder", "shodan", "arjun", "dalfox", "prowler", "pacu", "trivy",
-    "scapy", "tshark", "tcpdump",
+    "nmap",
+    "masscan",
+    "sqlmap",
+    "ffuf",
+    "feroxbuster",
+    "nuclei",
+    "httpx",
+    "whatweb",
+    "hydra",
+    "patator",
+    "Responder",
+    "bettercap",
+    "mitmproxy",
+    "reaver",
+    "aircrack-ng",
+    "wifite2",
+    "amass",
+    "subfinder",
+    "shodan",
+    "arjun",
+    "dalfox",
+    "prowler",
+    "pacu",
+    "trivy",
+    "scapy",
+    "tshark",
+    "tcpdump",
 }
 
 # Env-configurable: CYBERSEC_MCP_ALLOW_EXTERNAL=1 unlocks external targets.
@@ -81,9 +103,7 @@ def _is_safe_target(value: str) -> bool:
     # Try parsing as CIDR
     try:
         net = ipaddress.ip_network(value, strict=False)
-        same_ver: list[Any] = [
-            s for s in _SAFE_NETWORKS if s.version == net.version
-        ]
+        same_ver: list[Any] = [s for s in _SAFE_NETWORKS if s.version == net.version]
         return any(net.subnet_of(s) for s in same_ver)
     except (ValueError, TypeError):
         pass
@@ -188,6 +208,7 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
                     f"external targets."
                 )
 
+
 # Validation and execution logic
 def validate_tool_for_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
     """Validate that a tool can be executed. Returns the resolved binary name.
@@ -200,8 +221,7 @@ def validate_tool_for_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
 
     if tool["method"] in NON_EXECUTABLE_METHODS:
         raise ValueError(
-            f"Tool '{tool_name}' uses install method '{tool['method']}' "
-            f"and is not directly executable as a CLI command"
+            f"Tool '{tool_name}' uses install method '{tool['method']}' and is not directly executable as a CLI command"
         )
 
     # Resolve binary name (pipx packages may have different binary names)
@@ -209,9 +229,7 @@ def validate_tool_for_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
 
     path = shutil.which(binary)
     if not path:
-        raise ValueError(
-            f"Tool '{tool_name}' (binary: '{binary}') is not installed or not in PATH"
-        )
+        raise ValueError(f"Tool '{tool_name}' (binary: '{binary}') is not installed or not in PATH")
 
     return binary
 
@@ -227,8 +245,7 @@ def sanitize_args(args: str) -> list[str]:
     # Check for dangerous shell metacharacters before parsing
     if _DANGEROUS_PATTERNS.search(args):
         raise ValueError(
-            f"Arguments contain blocked shell metacharacters: {args!r}. "
-            f"Blocked characters: ; & | ` $ > < $()"
+            f"Arguments contain blocked shell metacharacters: {args!r}. Blocked characters: ; & | ` $ > < $()"
         )
 
     try:
@@ -277,9 +294,7 @@ async def execute_tool(
         )
 
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
-            )
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()

@@ -15,14 +15,12 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
-from mcp_server.ctf_advisor import suggest_for_ctf as _suggest_for_ctf  # noqa: E402
-from mcp_server.profiles import (  # noqa: E402
-    PROFILES,
-    recommend_install as _recommend_install,
-    list_profiles as _list_profiles,
-)
+from mcp_server.ctf_advisor import suggest_for_ctf as _suggest_for_ctf  # noqa: E402, I001
+from mcp_server.profiles import PROFILES  # noqa: E402
+from mcp_server.profiles import list_profiles as _list_profiles  # noqa: E402
+from mcp_server.profiles import recommend_install as _recommend_install  # noqa: E402
 from mcp_server.security import execute_tool as _execute_tool  # noqa: E402
+from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 
 mcp = FastMCP(
     "Cybersec Toolkit",
@@ -255,22 +253,26 @@ def get_profile_tools(profile: str) -> dict:
         tool_entries = []
         for t in mod_tools:
             status = _db.check_installed(t["name"])
-            tool_entries.append({
-                "name": t["name"],
-                "method": t["method"],
-                "url": t.get("url", ""),
-                "installed": status["installed"],
-            })
+            tool_entries.append(
+                {
+                    "name": t["name"],
+                    "method": t["method"],
+                    "url": t.get("url", ""),
+                    "installed": status["installed"],
+                }
+            )
             total += 1
             if status["installed"]:
                 installed += 1
 
-        by_module.append({
-            "module": mod,
-            "description": MODULE_DESCRIPTIONS.get(mod, ""),
-            "tool_count": len(tool_entries),
-            "tools": tool_entries,
-        })
+        by_module.append(
+            {
+                "module": mod,
+                "description": MODULE_DESCRIPTIONS.get(mod, ""),
+                "tool_count": len(tool_entries),
+                "tools": tool_entries,
+            }
+        )
 
     return {
         "profile": profile_lower,
@@ -304,13 +306,15 @@ def get_module_info(module: str) -> dict:
 
     for t in mod_tools:
         status = _db.check_installed(t["name"])
-        tool_entries.append({
-            "name": t["name"],
-            "method": t["method"],
-            "url": t.get("url", ""),
-            "installed": status["installed"],
-            "details": status["details"],
-        })
+        tool_entries.append(
+            {
+                "name": t["name"],
+                "method": t["method"],
+                "url": t.get("url", ""),
+                "installed": status["installed"],
+                "details": status["details"],
+            }
+        )
         if status["installed"]:
             installed_count += 1
 
@@ -320,10 +324,7 @@ def get_module_info(module: str) -> dict:
         by_method[t["method"]] = by_method.get(t["method"], 0) + 1
 
     # Which profiles include this module
-    in_profiles = [
-        name for name, p in PROFILES.items()
-        if module_lower in p["modules"]
-    ]
+    in_profiles = [name for name, p in PROFILES.items() if module_lower in p["modules"]]
 
     return {
         "module": module_lower,

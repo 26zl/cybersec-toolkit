@@ -17,6 +17,7 @@ instructions/
 .DS_Store
 Thumbs.db
 desktop.ini
+._*
 
 # Temp files from install
 msfinstall
@@ -25,10 +26,17 @@ burpsuite.sh
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
 .pytest_cache/
 .venv/
 venv/
-
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Go
 /go/
@@ -36,10 +44,12 @@ venv/
 # Secrets / environment
 .env
 .env.*
-*.key
+!.env.example
 *.pem
+*.p12
 credentials.json
 secrets.json
+token.json
 
 # Runtime artifacts
 .versions
@@ -57,5 +67,8 @@ results.sarif
 tests/tmp/
 tests/.bats-run-*
 
-#mcp
+# Docker exported images
+docker-*.tar
+
+# MCP
 .mcp.json

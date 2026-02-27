@@ -23,9 +23,24 @@ PROFILES: dict[str, dict] = {
     "full": {
         "description": "All 568 tools across all 18 modules — the complete arsenal",
         "modules": [
-            "misc", "networking", "recon", "web", "crypto", "pwn", "reversing",
-            "forensics", "enterprise", "wireless", "cracking", "stego", "cloud",
-            "containers", "blueteam", "mobile", "blockchain", "llm",
+            "misc",
+            "networking",
+            "recon",
+            "web",
+            "crypto",
+            "pwn",
+            "reversing",
+            "forensics",
+            "enterprise",
+            "wireless",
+            "cracking",
+            "stego",
+            "cloud",
+            "containers",
+            "blueteam",
+            "mobile",
+            "blockchain",
+            "llm",
         ],
         "skip_heavy": False,
         "enable_docker": False,
@@ -34,8 +49,16 @@ PROFILES: dict[str, dict] = {
     "ctf": {
         "description": "Tools for Capture The Flag competitions",
         "modules": [
-            "misc", "crypto", "pwn", "reversing", "stego", "forensics",
-            "cracking", "web", "mobile", "blockchain",
+            "misc",
+            "crypto",
+            "pwn",
+            "reversing",
+            "stego",
+            "forensics",
+            "cracking",
+            "web",
+            "mobile",
+            "blockchain",
         ],
         "skip_heavy": True,
         "enable_docker": False,
@@ -44,8 +67,18 @@ PROFILES: dict[str, dict] = {
     "redteam": {
         "description": "Offensive security — red team operations and pentesting",
         "modules": [
-            "misc", "networking", "recon", "web", "enterprise", "pwn", "mobile",
-            "cracking", "cloud", "wireless", "reversing", "crypto",
+            "misc",
+            "networking",
+            "recon",
+            "web",
+            "enterprise",
+            "pwn",
+            "mobile",
+            "cracking",
+            "cloud",
+            "wireless",
+            "reversing",
+            "crypto",
         ],
         "skip_heavy": True,
         "enable_docker": True,
@@ -124,8 +157,15 @@ PROFILES: dict[str, dict] = {
     "blueteam": {
         "description": "Defensive security — IDS, SIEM, IR, malware analysis",
         "modules": [
-            "misc", "blueteam", "forensics", "reversing", "mobile", "containers",
-            "networking", "cloud", "recon",
+            "misc",
+            "blueteam",
+            "forensics",
+            "reversing",
+            "mobile",
+            "containers",
+            "networking",
+            "cloud",
+            "recon",
         ],
         "skip_heavy": True,
         "enable_docker": True,
@@ -153,7 +193,6 @@ _KEYWORD_MAP: dict[str, list[tuple[str, float]]] = {
     "soc": [("blueteam", 2.5)],
     "threat hunting": [("blueteam", 2.0)],
     "malware analysis": [("blueteam", 2.0), ("forensics", 1.5)],
-
     # Domain-based
     "web": [("web", 3.0)],
     "webapp": [("web", 3.0)],
@@ -227,7 +266,6 @@ _KEYWORD_MAP: dict[str, list[tuple[str, float]]] = {
     "lateral movement": [("redteam", 2.5)],
     "c2": [("redteam", 2.5)],
     "command and control": [("redteam", 2.5)],
-
     # Scope-based
     "everything": [("full", 3.0)],
     "all tools": [("full", 3.0)],
@@ -323,7 +361,7 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
     if not task or not task.strip():
         return {
             "error": "Please describe what you want to do (e.g., 'CTF web challenges', "
-                     "'pentest a web application', 'crack password hashes').",
+            "'pentest a web application', 'crack password hashes').",
             "available_profiles": list(PROFILES.keys()),
         }
 
@@ -332,9 +370,7 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
 
     # 2. Score profiles
     profile_scores = _score_profiles(task)
-    ranked_profiles = sorted(
-        profile_scores.items(), key=lambda x: x[1], reverse=True
-    )
+    ranked_profiles = sorted(profile_scores.items(), key=lambda x: x[1], reverse=True)
     top_profiles = [(name, score) for name, score in ranked_profiles if score > 0]
 
     # 3. Score individual modules
@@ -376,8 +412,7 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
             "score": best_score,
             "modules": best_profile["modules"],
             "module_details": [
-                {"name": m, "description": MODULE_DESCRIPTIONS.get(m, "")}
-                for m in best_profile["modules"]
+                {"name": m, "description": MODULE_DESCRIPTIONS.get(m, "")} for m in best_profile["modules"]
             ],
             "tool_count": tool_count,
             "skip_heavy": best_profile["skip_heavy"],
@@ -390,13 +425,15 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
         alternatives = []
         for name, score in top_profiles[1:4]:
             if score >= 1.5:
-                alternatives.append({
-                    "profile": name,
-                    "description": PROFILES[name]["description"],
-                    "score": score,
-                    "tool_count": _count_profile_tools(name, tools_db),
-                    "install_command": f"{_SUDO}./install.sh --profile {name}",
-                })
+                alternatives.append(
+                    {
+                        "profile": name,
+                        "description": PROFILES[name]["description"],
+                        "score": score,
+                        "tool_count": _count_profile_tools(name, tools_db),
+                        "install_command": f"{_SUDO}./install.sh --profile {name}",
+                    }
+                )
         if alternatives:
             result["alternatives"] = alternatives
 
@@ -417,9 +454,7 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
     # Case C: Module-level match — user needs a few specific modules, not a full profile
     if matched_modules:
         modules_needed = [m for m, _ in matched_modules[:4]]  # Top 4 max
-        tool_count = sum(
-            1 for t in tools_db._tools if t["module"] in modules_needed
-        )
+        tool_count = sum(1 for t in tools_db._tools if t["module"] in modules_needed)
 
         result = {
             "recommendation": "modules",
@@ -483,17 +518,19 @@ def list_profiles(tools_db: ToolsDatabase) -> dict:
     profiles_info = []
     for name, profile in PROFILES.items():
         tool_count = _count_profile_tools(name, tools_db)
-        profiles_info.append({
-            "name": name,
-            "description": profile["description"],
-            "modules": profile["modules"],
-            "module_count": len(profile["modules"]),
-            "tool_count": tool_count,
-            "skip_heavy": profile["skip_heavy"],
-            "enable_docker": profile["enable_docker"],
-            "include_c2": profile["include_c2"],
-            "install_command": f"{_SUDO}./install.sh --profile {name}",
-        })
+        profiles_info.append(
+            {
+                "name": name,
+                "description": profile["description"],
+                "modules": profile["modules"],
+                "module_count": len(profile["modules"]),
+                "tool_count": tool_count,
+                "skip_heavy": profile["skip_heavy"],
+                "enable_docker": profile["enable_docker"],
+                "include_c2": profile["include_c2"],
+                "install_command": f"{_SUDO}./install.sh --profile {name}",
+            }
+        )
 
     return {
         "total_profiles": len(profiles_info),
