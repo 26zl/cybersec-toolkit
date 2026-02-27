@@ -3,7 +3,7 @@
 # Module: Web Security
 # Web application testing, scanning, fuzzing, exploitation
 
-WEB_PACKAGES=(whatweb)
+WEB_PACKAGES=(whatweb nikto)
 
 WEB_PIPX=(
     sqlmap wafw00f sslyze arjun
@@ -25,6 +25,7 @@ WEB_GO=(
     "github.com/projectdiscovery/proxify/cmd/proxify@latest"
     "github.com/projectdiscovery/tlsx/cmd/tlsx@latest"
     "github.com/BishopFox/jsluice/cmd/jsluice@latest"
+    "github.com/OJ/gobuster/v3@latest"
 )
 
 WEB_CARGO=(feroxbuster)
@@ -52,7 +53,7 @@ WEB_GIT=(
 )
 
 # Binary names for verify/remove
-WEB_GO_BINS=(nuclei katana ffuf crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice)
+WEB_GO_BINS=(nuclei katana ffuf crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice gobuster)
 WEB_GIT_NAMES=(XSStrike Corsy jwt_tool smuggler NoSQLMap testssl.sh Gopherus CMSmap PhpSploit phpggc PadBuster h2csmuggler pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider)
 
 install_module_web() {
