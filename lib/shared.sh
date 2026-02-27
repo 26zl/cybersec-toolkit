@@ -48,6 +48,15 @@ install_shared_deps() {
 
     install_apt_batch "Shared base dependencies" "${SHARED_BASE_PACKAGES[@]}"
 
+    # AFLplusplus gcc_plugin needs version-specific plugin-dev headers
+    if [[ "$PKG_MANAGER" == "apt" ]] && command_exists gcc; then
+        local _gcc_ver
+        _gcc_ver=$(gcc -dumpversion | cut -d. -f1)
+        if [[ -n "$_gcc_ver" ]]; then
+            pkg_install "gcc-${_gcc_ver}-plugin-dev" >> "$LOG_FILE" 2>&1 || true
+        fi
+    fi
+
     # Report which key runtimes are now available
     local -a _runtimes=(python3 go ruby java cargo node npx)
     for _rt in "${_runtimes[@]}"; do

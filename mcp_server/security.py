@@ -145,6 +145,36 @@ def _is_safe_target(value: str) -> bool:
         return False
 
 
+def _looks_like_target(value: str) -> bool:
+    """Heuristic: does this positional arg look like a network target?
+
+    Returns True for IPs, hostnames, URLs, CIDRs.  Returns False for bare
+    numbers (port/timeout values), plain words (flag values like usernames),
+    and other non-target strings.  This prevents flag values from being
+    incorrectly validated as network targets (e.g. ``-p 80`` where ``80`` is
+    a port, not a host).
+    """
+    # URL
+    if re.match(r"^https?://", value):
+        return True
+    # IPv6 (contains colons)
+    if ":" in value:
+        return True
+    # CIDR notation
+    if "/" in value and re.match(r"^[\d.]", value):
+        return True
+    # IP-like (digits and dots, at least one dot)
+    if "." in value and re.match(r"^[\d.]+$", value):
+        return True
+    # Hostname (contains dot, starts with alphanumeric)
+    if "." in value and re.match(r"^[a-zA-Z0-9]", value):
+        return True
+    # localhost special case
+    if value.lower() == "localhost":
+        return True
+    return False
+
+
 def check_policy(tool_name: str, arg_list: list[str]) -> None:
     """Enforce execution policy on the resolved arguments.
 
@@ -178,8 +208,11 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
             value = arg.split("=", 1)[1]
             i += 1
         elif not arg.startswith("-") and not arg.startswith("/"):
-            # Positional arg that could be a target (hostname, IP, URL, decimal IP)
-            value = arg
+            # Positional arg — only validate if it looks like a network target.
+            # Skip bare numbers (port/timeout values for flags like -p 80, -T 4)
+            # and plain words (flag values like -l admin, --script vuln).
+            if _looks_like_target(arg):
+                value = arg
             i += 1
         else:
             i += 1

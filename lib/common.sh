@@ -711,7 +711,7 @@ _as_builder() {
     if [[ "$PKG_MANAGER" == "pkg" ]] || [[ -z "${SUDO_USER:-}" ]] || [[ "${SUDO_USER:-}" == "root" ]]; then
         bash -c "$1"; return $?
     fi
-    sudo -H -u "$SUDO_USER" bash -c "$1"
+    sudo -H -u "$SUDO_USER" bash -c "export PATH=\"\$HOME/.cargo/bin:/usr/local/bin:\$PATH\"; $1"
 }
 
 # _chown_for_builder — make directories writable by $SUDO_USER before privilege-dropped operations.
@@ -848,7 +848,16 @@ git_clone_or_pull() {
     local dest="$2"
     if [[ -d "$dest/.git" ]]; then
         log_info "Updating $(basename "$dest")..."
-        _as_builder "git -C '$dest' pull -q" >> "$LOG_FILE" 2>&1 || true
+        if ! _as_builder "git -C '$dest' pull -q" >> "$LOG_FILE" 2>&1; then
+            log_debug "git pull failed for $(basename "$dest") — resetting to remote HEAD..."
+            local _remote_branch=""
+            _remote_branch=$(_as_builder "git -C '$dest' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+                | sed 's|refs/remotes/origin/||'") || true
+            [[ -z "$_remote_branch" ]] && _remote_branch="main"
+            _as_builder "git -C '$dest' fetch origin" >> "$LOG_FILE" 2>&1 \
+                && _as_builder "git -C '$dest' reset --hard 'origin/$_remote_branch'" >> "$LOG_FILE" 2>&1 \
+                || log_warn "git update failed for $(basename "$dest")"
+        fi
     else
         mkdir -p "$dest" 2>/dev/null || true
         _chown_for_builder "$dest"

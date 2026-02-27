@@ -25,7 +25,7 @@ from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 mcp = FastMCP(
     "Cybersec Toolkit",
     instructions=(
-        "Query and manage 568 cybersecurity tools across 18 modules."
+        "Query and manage 570 cybersecurity tools across 18 modules."
         "Check installation status, get CTF challenge recommendations, "
         "recommend install profiles or individual tools, "
         "and execute installed tools safely."
@@ -50,7 +50,7 @@ def list_tools(
     method: Optional[str] = None,
     installed_only: bool = False,
 ) -> dict:
-    """List and filter tools from the 568-tool cybersecurity registry.
+    """List and filter tools from the 570-tool cybersecurity registry.
 
     Args:
         module: Filter by module (e.g. "web", "pwn", "forensics"). 18 modules available.
@@ -213,7 +213,7 @@ def list_profiles() -> dict:
 
     Each profile is a curated set of modules targeting a specific use case.
     Shows module count, tool count, and install command for each profile.
-    Profiles range from 'osint' (2 modules, ~80 tools) to 'full' (18 modules, 568 tools).
+    Profiles range from 'osint' (2 modules, ~80 tools) to 'full' (18 modules, 570 tools).
 
     Returns:
         All profiles with descriptions, module lists, tool counts, and install commands.

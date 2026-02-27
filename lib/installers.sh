@@ -682,6 +682,21 @@ setup_git_repo() {
                 fi
                 [[ "$_fallback_ok" == "true" ]] && break
             done
+            # Last resort: relax pinned versions (== → >=) and retry with system Python.
+            # Only triggers when strict pins exist and all older-Python fallbacks failed.
+            if [[ "$_fallback_ok" != "true" ]] && grep -qE '^[^#].*==' "$dest/requirements.txt" 2>/dev/null; then
+                log_info "Retrying $name with relaxed version pins (== → >=)..."
+                rm -rf "$dest/venv"
+                if python3 -m venv "$dest/venv" 2>>"$LOG_FILE"; then
+                    "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
+                    sed 's/==/>=/' "$dest/requirements.txt" > "$dest/requirements.relaxed.txt"
+                    if "$dest/venv/bin/pip" install -q -r "$dest/requirements.relaxed.txt" >> "$LOG_FILE" 2>&1; then
+                        _fallback_ok=true
+                        log_debug "Relaxed-pins install succeeded for $name"
+                    fi
+                    rm -f "$dest/requirements.relaxed.txt"
+                fi
+            fi
             if [[ "$_fallback_ok" != "true" ]]; then
                 log_warn "pip install failed for $name (some dependencies may be missing)"
                 _SETUP_GIT_DEP_WARN=true
