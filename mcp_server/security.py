@@ -233,6 +233,11 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^--checkpoint-action"), "tar: checkpoint-action command execution"),
         (re.compile(r"^--to-command"), "tar: to-command command execution"),
     ],
+    "gpg": [
+        (re.compile(r"^--recv-keys?$"), "gpg: key import from external keyserver"),
+        (re.compile(r"^--keyserver$"), "gpg: external keyserver specification"),
+        (re.compile(r"^--fetch-keys?$"), "gpg: key fetch from URL"),
+    ],
 }
 
 # Tools that perform network operations and need target validation.

@@ -5,9 +5,38 @@ from __future__ import annotations
 import json
 import logging
 import logging.handlers
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# Patterns that may contain credentials in tool arguments.
+# Matches: -H "Authorization: Bearer xxx", --password xxx, --token=xxx, etc.
+_SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"((?:Authorization|Bearer|Token|Api-?Key)\s*[:=]?\s*)\S+",
+            re.IGNORECASE,
+        ),
+        r"\1[REDACTED]",
+    ),
+    (
+        re.compile(
+            r"(--?(?:password|passwd|token|secret|api[_-]?key|auth)"
+            r"[\s=]+)\S+",
+            re.IGNORECASE,
+        ),
+        r"\1[REDACTED]",
+    ),
+]
+
+
+def _redact_sensitive(value: str) -> str:
+    """Replace likely credentials in a string with [REDACTED]."""
+    for pattern, replacement in _SENSITIVE_PATTERNS:
+        value = pattern.sub(replacement, value)
+    return value
+
 
 _AUDIT_LOG_PATH = Path(__file__).resolve().parent / "audit.log"
 
@@ -58,7 +87,7 @@ def log_blocked(
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "event": "blocked",
         "tool": tool_name,
-        "args": args,
+        "args": _redact_sensitive(args),
         "host": host,
         "remote": remote,
         "reason": reason,
@@ -107,10 +136,10 @@ def log_execution(
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "event": "execution",
         "tool": tool_name,
-        "args": args,
+        "args": _redact_sensitive(args),
         "host": host,
         "remote": remote,
-        "command": command,
+        "command": _redact_sensitive(command),
         "exit_code": exit_code,
     }
     try:

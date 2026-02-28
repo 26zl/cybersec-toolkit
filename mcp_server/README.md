@@ -12,6 +12,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `get_module_info` | Full module details: all tools, install status, management commands, which profiles use it |
 | `get_profile_tools` | List every tool a profile installs, grouped by module with install status |
 | `suggest_for_ctf` | Tool suggestions for 13 CTF challenge categories with descriptions |
+| `suggest_for_bounty` | Tool suggestions for 6 bug bounty target types with methodology and common vulns |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
 | `list_profiles` | List all 14 installation profiles with tool counts and details |
 | `run_tool` | Execute an installed tool safely (argument sanitization + network policy). Supports remote execution via `host` parameter |
@@ -151,16 +152,16 @@ wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools
 
 | Capability | Claude Code | Claude Desktop |
 | --- | --- | --- |
-| Read/write files on Windows | Yes (direct filesystem access) | No |
-| Run shell commands on Windows | Yes (`Bash` tool) | No |
-| Browse/discover files | Yes | Via MCP: `run_tool("ls", "-la /path/")` |
+| Read/write files on Windows | Yes (direct filesystem access) | Yes (via MCP: `run_tool`, `run_script`) |
+| Run shell commands on Windows | Yes (`Bash` tool) | No (but can run tools via MCP in WSL) |
+| Browse/discover files | Yes | Yes (via MCP: `run_tool("ls", "-la /path/")`) |
 | Run tools in WSL via MCP | Yes (`run_tool`, `run_pipeline`, `run_script`) | Yes (same MCP tools) |
-| Analyze files in WSL | Yes (MCP + direct read) | Yes (MCP only — user must provide the file path) |
+| Analyze files | Yes (MCP + direct read) | Yes (via MCP — user provides path or Claude uses `ls` to find files) |
 | Edit project code | Yes | No |
 
-**Working with files in Claude Desktop (CTF/bug bounty workflow):**
+**IMPORTANT: Claude Desktop HAS filesystem access via MCP tools.** It should NEVER ask users to "upload" or "attach" files. The MCP server runs locally in WSL and can access both WSL files and Windows files (at `/mnt/c/...`).
 
-Claude Desktop cannot browse the filesystem, but it CAN read and analyze files via MCP tools — the user just needs to provide the path. Files on Windows are accessible from WSL at `/mnt/c/...`.
+**Working with files in Claude Desktop (CTF/bug bounty workflow):**
 
 ```bash
 # User tells Claude Desktop: "analyze /home/user/challenge.pcap"
@@ -223,6 +224,7 @@ Once connected via an MCP client:
 - **Full module view**: `get_module_info("web")` — all 49 tools, install status, which profiles include it
 - **Profile contents**: `get_profile_tools("ctf")` — all 264 tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
+- **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning
 - **What to install**: `recommend_install("I want to do CTF competitions")` — recommends ctf profile
 - **Just a few tools**: `recommend_install("I need nmap and sqlmap")` — recommends individual modules
 - **List profiles**: `list_profiles()` — all 14 profiles with tool counts
@@ -237,9 +239,10 @@ Once connected via an MCP client:
 ```text
 mcp_server/
   __init__.py          # Package marker
-  server.py            # FastMCP server — 12 tool registrations + entry point
+  server.py            # FastMCP server — 13 tool registrations + entry point
   tools_db.py          # ToolsDatabase — loads tools_config.json, checks installs (TTL-cached)
   ctf_advisor.py       # CTF challenge-type → tool mapping with suggestions
+  bounty_advisor.py    # Bug bounty target-type → tool mapping with methodology and common vulns
   profiles.py          # Profile recommendation engine — 14 profiles, keyword matching
   security.py          # Execution validation, argument sanitization, network policy, rate limiting,
                        #   script execution with venv support, pipeline execution

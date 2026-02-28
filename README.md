@@ -215,6 +215,7 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `get_module_info` | Deep-dive a module: all tools, install status, which profiles use it |
 | `get_profile_tools` | See every tool a profile installs, grouped by module |
 | `suggest_for_ctf` | Curated tool recommendations for 13 CTF challenge categories |
+| `suggest_for_bounty` | Bug bounty tool recommendations for 6 target types with methodology and common vulns |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
 | `list_profiles` | All 14 profiles with tool counts and install commands |
 | `run_tool` | Execute installed tools safely (sanitized args, network policy, rate limiting, audit logging). Supports remote execution via SSH |
@@ -237,7 +238,7 @@ Requires [uv](https://docs.astral.sh/uv/). Add to `.mcp.json` in the project roo
 }
 ```
 
-Restart Claude Code. The 12 tools appear in `/mcp`.
+Restart Claude Code. The 13 tools appear in `/mcp`.
 
 ### Connect from WSL (e.g. Kali Linux)
 
