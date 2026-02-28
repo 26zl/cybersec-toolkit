@@ -105,13 +105,26 @@ class TestSanitizeArgs:
             "host | cat /etc/passwd",
             "arg `id`",
             "file $(whoami)",
-            "out > /tmp/evil",
-            "in < /etc/shadow",
+            "file ${HOME}",
         ],
     )
     def test_shell_injection_blocked(self, malicious: str) -> None:
         with pytest.raises(ValueError, match="blocked shell metacharacters"):
             sanitize_args(malicious)
+
+    @pytest.mark.parametrize(
+        "safe",
+        [
+            "grep 'root$' /etc/passwd",
+            "awk '{print $1}' file.txt",
+            "grep 'value>[0-9]+' file.xml",
+            "curl -H 'X-Custom: <token>' http://10.0.0.1",
+        ],
+    )
+    def test_dollar_angle_brackets_allowed(self, safe: str) -> None:
+        """Bare $, >, < are safe without shell — needed for regex/awk/XML."""
+        result = sanitize_args(safe)
+        assert len(result) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +142,18 @@ class TestCheckPolicy:
     def test_blocked_flag_rf(self) -> None:
         with pytest.raises(ValueError, match="-rf"):
             check_policy("nmap", ["-rf"])
+
+    def test_awk_system_blocked(self) -> None:
+        with pytest.raises(ValueError, match="system"):
+            check_policy("awk", ['{system("id")}', "/etc/passwd"])
+
+    def test_awk_getline_blocked(self) -> None:
+        with pytest.raises(ValueError, match="getline"):
+            check_policy("awk", ['{"ls" | getline x}', "/etc/passwd"])
+
+    def test_tar_checkpoint_action_blocked(self) -> None:
+        with pytest.raises(ValueError, match="checkpoint-action"):
+            check_policy("tar", ["--checkpoint-action=exec=sh", "evil.tar"])
 
     def test_normal_flags_allowed(self) -> None:
         check_policy("nmap", ["-sV", "10.0.0.1"])

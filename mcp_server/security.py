@@ -11,6 +11,7 @@ import shutil
 import socket
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -186,7 +187,11 @@ SYSTEM_UTILITIES: frozenset[str] = frozenset(
 )
 
 # Dangerous shell metacharacters that must not appear in arguments.
-_DANGEROUS_PATTERNS = re.compile(r"[;&|`$><]|\$\(")
+# Only block shell injection vectors: ; & | ` $( ${
+# Note: > < $ are NOT blocked — no shell is used (create_subprocess_exec),
+# so they are harmless literals.  Tools need $ for regex anchors (grep 'root$')
+# and field references (awk '{print $1}'), and > < for XML/comparisons.
+_DANGEROUS_PATTERNS = re.compile(r"[;&|`]|\$[({]")
 
 # Execution policy — restrict *what* tools can do, not just *which* tools run
 
@@ -330,9 +335,40 @@ class _RateLimiter:
 
 _rate_limiter = _RateLimiter()
 
+# Thread-safe DNS resolution with per-call timeout (avoids process-global
+# socket.setdefaulttimeout which races under concurrent tool executions).
+_dns_lock = threading.Lock()
+
+
+def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
+    """Resolve hostname via getaddrinfo with a timeout.
+
+    Uses a daemon thread so the calling thread is not blocked beyond *timeout*.
+    """
+    result: list = []
+    error: list = []
+
+    def _resolve() -> None:
+        try:
+            result.extend(socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM))
+        except (socket.gaierror, OSError) as exc:
+            error.append(exc)
+
+    t = threading.Thread(target=_resolve, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise socket.timeout(f"DNS resolution timed out after {timeout}s")
+    if error:
+        raise error[0]
+    return result
+
 
 def _is_safe_target(value: str) -> bool:
     """Check if a string looks like a network target and is in a safe range."""
+    if not value:
+        return True  # Empty string is not a network target
+
     # Try parsing as IP address directly
     try:
         addr = ipaddress.ip_address(value)
@@ -360,11 +396,9 @@ def _is_safe_target(value: str) -> bool:
         safe_hosts = {"localhost", "localhost.localdomain"}
         if value.lower() in safe_hosts:
             return True
-        # Try to resolve and check (5s timeout to prevent thread pool saturation)
-        old_timeout = socket.getdefaulttimeout()
+        # Try to resolve and check
         try:
-            socket.setdefaulttimeout(5)
-            info = socket.getaddrinfo(value, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            info = _resolve_with_timeout(value)
             for _, _, _, _, sockaddr in info:
                 addr = ipaddress.ip_address(sockaddr[0])
                 if not any(addr in net for net in _SAFE_NETWORKS):
@@ -373,8 +407,6 @@ def _is_safe_target(value: str) -> bool:
         except (socket.gaierror, OSError, socket.timeout):
             # Can't resolve — treat as potentially external
             return False
-        finally:
-            socket.setdefaulttimeout(old_timeout)
 
     # Not a recognizable IP/hostname — could be a decimal IP, bare hostname, etc.
     # Values that look like file paths or flags are allowed through.
@@ -382,10 +414,8 @@ def _is_safe_target(value: str) -> bool:
         return True
 
     # Try DNS resolution as a last resort to catch targets like "google" or "134744072"
-    old_timeout = socket.getdefaulttimeout()
     try:
-        socket.setdefaulttimeout(5)
-        info = socket.getaddrinfo(value, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        info = _resolve_with_timeout(value)
         for _, _, _, _, sockaddr in info:
             addr = ipaddress.ip_address(sockaddr[0])
             if not any(addr in net for net in _SAFE_NETWORKS):
@@ -395,8 +425,6 @@ def _is_safe_target(value: str) -> bool:
         # Can't resolve — could be a bare hostname with transient DNS failure.
         # Deny to be safe; genuine non-network values (flags/paths) are caught above.
         return False
-    finally:
-        socket.setdefaulttimeout(old_timeout)
 
 
 _FILE_EXTENSIONS: frozenset[str] = frozenset(
@@ -635,11 +663,13 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
                 raise ValueError(f"Blocked by policy: {desc}")
 
     # 1b. Check for tool-specific blocked flags
+    # Use search() instead of match() because tool-specific patterns may need
+    # to match anywhere in the argument (e.g. awk's system() inside '{...}').
     binary = PIPX_BIN_NAMES.get(tool_name, tool_name)
     for blocked_list in (TOOL_BLOCKED_FLAGS.get(tool_name, []), TOOL_BLOCKED_FLAGS.get(binary, [])):
         for arg in arg_list:
             for pattern, desc in blocked_list:
-                if pattern.match(arg):
+                if pattern.search(arg):
                     raise ValueError(f"Blocked by policy: {desc}")
 
     # 2. Network target checks (only for network tools, unless external is allowed)

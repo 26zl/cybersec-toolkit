@@ -110,18 +110,21 @@ class ToolsDatabase:
         if not versions_path.exists():
             self._versions_ts = now
             return self._versions
-        with open(versions_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                parts = line.split("|")
-                if len(parts) >= 4:
-                    self._versions[parts[0]] = {
-                        "method": parts[1],
-                        "version": parts[2],
-                        "timestamp": parts[3],
-                    }
+        try:
+            with open(versions_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split("|")
+                    if len(parts) >= 4:
+                        self._versions[parts[0]] = {
+                            "method": parts[1],
+                            "version": parts[2],
+                            "timestamp": parts[3],
+                        }
+        except PermissionError:
+            pass  # Degrade gracefully — fall through to PATH/pipx/docker checks
         self._versions_ts = now
         return self._versions
 

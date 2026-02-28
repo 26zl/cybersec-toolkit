@@ -55,7 +55,10 @@ class TestListTools:
         assert results[0]["name"] == "sqlmap"
 
     def test_installed_only_none_installed(self, tools_db: ToolsDatabase) -> None:
-        with patch("shutil.which", return_value=None):
+        with (
+            patch("shutil.which", return_value=None),
+            patch.object(tools_db, "_docker_image_exists", return_value=False),
+        ):
             results = tools_db.list_tools(installed_only=True)
         assert len(results) == 0
 
@@ -147,6 +150,14 @@ class TestReloadVersions:
 
     def test_missing_versions_file(self, tools_db: ToolsDatabase) -> None:
         vers = tools_db.reload_versions()
+        assert vers == {}
+
+    def test_permission_denied_versions_file(self, tmp_tools_config: Path) -> None:
+        versions = tmp_tools_config / ".versions"
+        versions.write_text("nmap|apt|7.94|2024-01-01T00:00:00\n", encoding="utf-8")
+        db = ToolsDatabase(project_root=tmp_tools_config)
+        with patch("builtins.open", side_effect=PermissionError("Permission denied")):
+            vers = db.reload_versions()
         assert vers == {}
 
     def test_ttl_caching(self, tmp_tools_config: Path) -> None:

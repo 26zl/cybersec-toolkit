@@ -1445,6 +1445,7 @@ track_version() {
         tmp_file=$(mktemp "${version_file}.XXXXXX")
         grep -v "^${tool}|" "$version_file" > "$tmp_file" 2>/dev/null || true
         echo "${tool}|${method}|${version}|${timestamp}" >> "$tmp_file"
+        chmod 644 "$tmp_file" 2>/dev/null || true
         mv -f "$tmp_file" "$version_file"
     }
 
@@ -1461,7 +1462,9 @@ track_version() {
         if [[ -d "$_lockdir" ]]; then
             local _lock_age=0
             _lock_age=$(( $(date +%s) - $(stat -c %Y "$_lockdir" 2>/dev/null || echo "0") ))
-            [[ "$_lock_age" -gt 30 ]] && rmdir "$_lockdir" 2>/dev/null || true
+            if [[ "$_lock_age" -gt 30 ]]; then
+                rmdir "$_lockdir" 2>/dev/null || rm -rf "$_lockdir" 2>/dev/null || true
+            fi
         fi
         while ! mkdir "$_lockdir" 2>/dev/null; do
             _tries=$((_tries + 1))

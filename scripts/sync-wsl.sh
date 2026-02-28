@@ -23,4 +23,4 @@ DEST="\$HOME/cybersec-toolkit"
 
 echo "Syncing MCP server to WSL (${DISTRO:-default distro})..."
 
-wsl.exe "${WSL_DISTRO_FLAG[@]}" bash -c "mkdir -p ${DEST}/mcp_server && cp ${SRC}/mcp_server/*.py ${DEST}/mcp_server/ && cp ${SRC}/mcp_server/pyproject.toml ${DEST}/mcp_server/ && cp ${SRC}/mcp_server/uv.lock ${DEST}/mcp_server/ 2>/dev/null; ln -sf ${SRC}/tools_config.json ${DEST}/tools_config.json 2>/dev/null; echo Done"
+wsl.exe "${WSL_DISTRO_FLAG[@]}" bash -c "mkdir -p ${DEST}/mcp_server/tests && cp ${SRC}/mcp_server/*.py ${DEST}/mcp_server/ && cp ${SRC}/mcp_server/tests/*.py ${DEST}/mcp_server/tests/ 2>/dev/null; cp ${SRC}/mcp_server/pyproject.toml ${DEST}/mcp_server/ && cp ${SRC}/mcp_server/uv.lock ${DEST}/mcp_server/ 2>/dev/null; ln -sf ${SRC}/tools_config.json ${DEST}/tools_config.json 2>/dev/null; echo Done"
