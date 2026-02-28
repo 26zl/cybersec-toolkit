@@ -224,7 +224,7 @@ if [[ "$SKIP_GIT" == "false" ]]; then
             GIT_TOTAL=$((GIT_TOTAL + 1))
 
             pull_output=""
-            if pull_output=$(git -C "$dir" pull 2>>"$LOG_FILE"); then
+            if pull_output=$(_as_builder "git -C '$dir' pull" 2>>"$LOG_FILE"); then
                 if echo "$pull_output" | grep -q "Already up to date"; then
                     log_debug "Already latest: $name"
                     GIT_SKIPPED=$((GIT_SKIPPED + 1))
@@ -249,10 +249,10 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                 # Retry: reset to remote HEAD and pull again (handles dirty trees, e.g. SecLists)
                 log_debug "git pull failed for $name — resetting to remote HEAD..."
                 _remote_branch=""
-                _remote_branch=$(git -C "$dir" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||') || true
+                _remote_branch=$(_as_builder "git -C '$dir' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'") || true
                 [[ -z "$_remote_branch" ]] && _remote_branch="main"
-                if git -C "$dir" fetch origin >> "$LOG_FILE" 2>&1 \
-                    && git -C "$dir" reset --hard "origin/$_remote_branch" >> "$LOG_FILE" 2>&1; then
+                if _as_builder "git -C '$dir' fetch origin" >> "$LOG_FILE" 2>&1 \
+                    && _as_builder "git -C '$dir' reset --hard 'origin/$_remote_branch'" >> "$LOG_FILE" 2>&1; then
                     log_success "Updated: $name (reset to origin/$_remote_branch)"
                     GIT_UPDATED=$((GIT_UPDATED + 1))
                     track_version "$name" "git" "HEAD"
@@ -514,14 +514,23 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_warn "Foundry update failed"
     fi
 
-    # Steampipe (re-install = self-update)
+    # Steampipe (re-install = self-update) — verify script content before executing
     if command_exists steampipe; then
         log_info "Updating Steampipe..."
-        if curl -sSL https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh | sh -s -- -y >> "$LOG_FILE" 2>&1; then
-            log_success "Steampipe updated"
+        local _sp_tmp
+        _sp_tmp=$(mktemp)
+        _register_cleanup "$_sp_tmp"
+        if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh" -o "$_sp_tmp" 2>>"$LOG_FILE" \
+                && _validate_curl_pipe "$_sp_tmp" "steampipe" "install" "github"; then
+            if bash "$_sp_tmp" -y >> "$LOG_FILE" 2>&1; then
+                log_success "Steampipe updated"
+            else
+                log_warn "Steampipe update failed"
+            fi
         else
-            log_warn "Steampipe update failed"
+            log_warn "Steampipe update script verification failed — skipping"
         fi
+        rm -f "$_sp_tmp"
     fi
 else
     log_warn "Skipping special tool updates"
@@ -567,12 +576,26 @@ for _bmod in "${ALL_MODULES[@]}"; do
         _bdir="$GITHUB_TOOL_DIR/$_bname"
         [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_SKIPPED=$((BUILD_SKIPPED + 1)); continue; }
         _pull_out=""
-        if _pull_out=$(git -C "$_bdir" pull 2>>"$LOG_FILE"); then
+        if _pull_out=$(_as_builder "git -C '$_bdir' pull" 2>>"$LOG_FILE"); then
             if echo "$_pull_out" | grep -q "Already up to date"; then
                 log_debug "Already latest: $_bname"
                 BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
             else
-                log_success "Updated source: $_bname (rebuild may be needed)"
+                log_success "Updated source: $_bname — attempting rebuild..."
+                # Try common build patterns (use _as_builder for consistent ownership)
+                if [[ -f "$_bdir/Makefile" ]]; then
+                    if _as_builder "make -C '$_bdir' -j$(nproc 2>/dev/null || echo 2)" >> "$LOG_FILE" 2>&1; then
+                        log_success "Rebuilt: $_bname"
+                    else
+                        log_warn "Rebuild failed for $_bname (make failed) — source updated"
+                    fi
+                elif [[ -f "$_bdir/Cargo.toml" ]]; then
+                    if _as_builder "cd '$_bdir' && $(command -v cargo) build --release" >> "$LOG_FILE" 2>&1; then
+                        log_success "Rebuilt: $_bname"
+                    else
+                        log_warn "Rebuild failed for $_bname (cargo build failed) — source updated"
+                    fi
+                fi
                 BUILD_UPDATED=$((BUILD_UPDATED + 1))
                 track_version "$_bname" "source" "HEAD"
             fi

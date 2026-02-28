@@ -406,12 +406,17 @@ cmd_schedule() {
         exit 1
     fi
 
-    local cron_cmd="BACKUP_PASSPHRASE='$BACKUP_PASSPHRASE' $SCRIPT_DIR/scripts/backup.sh backup"
+    # Write passphrase to a root-only env file instead of embedding in crontab
+    # (avoids single-quote injection and keeps secrets out of crontab -l)
+    local env_file="/etc/cybersec-backup.env"
+    # Escape single quotes in passphrase to prevent shell injection when sourced
+    local _escaped="${BACKUP_PASSPHRASE//\'/\'\\\'\'}"
+    printf "BACKUP_PASSPHRASE='%s'\n" "$_escaped" > "$env_file"
+    chmod 600 "$env_file"
+    local cron_cmd=". $env_file && $SCRIPT_DIR/scripts/backup.sh backup"
     (crontab -l 2>/dev/null | grep -v "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd") | crontab -
     log_success "Backup scheduled: $frequency at $time"
-    log_warn "Passphrase is embedded in crontab. For better security, use an env file:"
-    log_info "  echo 'BACKUP_PASSPHRASE=...' > /etc/cybersec-backup.env && chmod 600 /etc/cybersec-backup.env"
-    log_info "  Then edit crontab manually to source it: . /etc/cybersec-backup.env && $SCRIPT_DIR/scripts/backup.sh backup"
+    log_info "Passphrase stored in $env_file (mode 600)"
 }
 
 cmd_unschedule() {

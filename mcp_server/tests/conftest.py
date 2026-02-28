@@ -35,7 +35,7 @@ SAMPLE_TOOLS = [
     {"name": "impacket", "method": "pipx", "module": "enterprise", "url": ""},
     {"name": "aircrack-ng", "method": "apt", "module": "wireless", "url": ""},
     {"name": "pwntools", "method": "pipx", "module": "pwn", "url": ""},
-    {"name": "gpt-researcher", "method": "pipx", "module": "llm", "url": ""},
+    {"name": "garak", "method": "pipx", "module": "llm", "url": ""},
 ]
 
 

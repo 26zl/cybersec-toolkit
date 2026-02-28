@@ -1,4 +1,4 @@
-"""Main FastMCP server — 10 MCP tool registrations + entry point."""
+"""Main FastMCP server — 12 MCP tool registrations + entry point."""
 
 from __future__ import annotations
 

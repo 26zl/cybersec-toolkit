@@ -203,9 +203,9 @@ class ToolsDatabase:
         for label, image in DOCKER_IMAGES.items():
             if name_lower == label.lower():
                 return image
-        # Exact match on image name (last component, e.g. "empire" from "bcsecurity/empire")
+        # Exact match on image name (last component, strip tag, e.g. "empire" from "bcsecurity/empire")
         for label, image in DOCKER_IMAGES.items():
-            image_name = image.rsplit("/", 1)[-1].lower()
+            image_name = image.rsplit("/", 1)[-1].split(":")[0].lower()
             if name_lower == image_name:
                 return image
         return None

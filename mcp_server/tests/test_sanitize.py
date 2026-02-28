@@ -78,7 +78,6 @@ class TestInjectionPrefixMarking:
             "As an AI",
             "Human:",
             "Assistant:",
-            "System:",
             "Disregard",
             "New instructions",
         ],

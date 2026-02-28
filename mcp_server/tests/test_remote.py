@@ -15,9 +15,7 @@ from mcp_server.remote import (
 )
 
 
-# ---------------------------------------------------------------------------
 # RemoteHostConfig
-# ---------------------------------------------------------------------------
 class TestRemoteHostConfig:
     def test_add_host(self, remote_config: RemoteHostConfig) -> None:
         entry = remote_config.add_host(
@@ -38,9 +36,9 @@ class TestRemoteHostConfig:
         remote_config.add_host(name="box1", hostname="10.0.0.5")
         # Reload from disk
         reloaded = RemoteHostConfig(config_path=remote_config._path)
-        host = reloaded.get_host("box1")
-        assert host is not None
-        assert host["hostname"] == "10.0.0.5"
+        hosts = reloaded.list_hosts()
+        assert "box1" in hosts
+        assert hosts["box1"]["hostname"] == "10.0.0.5"
 
     def test_add_host_empty_name_raises(self, remote_config: RemoteHostConfig) -> None:
         with pytest.raises(ValueError, match="name must not be empty"):
@@ -57,7 +55,7 @@ class TestRemoteHostConfig:
     def test_remove_host(self, remote_config: RemoteHostConfig) -> None:
         remote_config.add_host(name="box1", hostname="10.0.0.5")
         assert remote_config.remove_host("box1") is True
-        assert remote_config.get_host("box1") is None
+        assert "box1" not in remote_config.list_hosts()
 
     def test_remove_nonexistent_host(self, remote_config: RemoteHostConfig) -> None:
         assert remote_config.remove_host("nonexistent") is False
@@ -74,7 +72,7 @@ class TestRemoteHostConfig:
         assert "box2" in hosts
 
     def test_get_host_not_found(self, remote_config: RemoteHostConfig) -> None:
-        assert remote_config.get_host("nonexistent") is None
+        assert "nonexistent" not in remote_config.list_hosts()
 
     def test_get_ssh_base_args(self, remote_config: RemoteHostConfig, tmp_path: Path) -> None:
         key_file = tmp_path / "id_kali"
@@ -163,9 +161,7 @@ class TestRemoteHostConfig:
         assert cfg.list_hosts() == {}
 
 
-# ---------------------------------------------------------------------------
 # check_ssh_connection (async, mocked subprocess)
-# ---------------------------------------------------------------------------
 class TestCheckSshConnection:
     @pytest.mark.asyncio
     async def test_successful_connection(self) -> None:
@@ -213,9 +209,7 @@ class TestCheckSshConnection:
         assert "not found" in result["message"].lower()
 
 
-# ---------------------------------------------------------------------------
 # execute_remote_command (async, mocked subprocess)
-# ---------------------------------------------------------------------------
 class TestExecuteRemoteCommand:
     @pytest.mark.asyncio
     async def test_successful_execution(self) -> None:

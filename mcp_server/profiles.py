@@ -337,8 +337,8 @@ def _match_individual_tools(task: str, tools_db: ToolsDatabase) -> list[dict]:
     task_lower = task.lower()
     matched = []
     for tool in tools_db.tools_by_name.values():
-        # Match tool name (at least 3 chars to avoid false positives)
-        if len(tool["name"]) >= 3 and tool["name"].lower() in task_lower:
+        # Match tool name (at least 5 chars to avoid false positives like "cat", "age")
+        if len(tool["name"]) >= 5 and tool["name"].lower() in task_lower:
             matched.append(tool)
     return matched
 

@@ -13,9 +13,7 @@ from mcp_server.profiles import (
 from mcp_server.tools_db import ToolsDatabase
 
 
-# ---------------------------------------------------------------------------
 # _score_profiles
-# ---------------------------------------------------------------------------
 class TestScoreProfiles:
     def test_ctf_keyword(self) -> None:
         scores = _score_profiles("I'm doing a CTF competition")
@@ -47,9 +45,7 @@ class TestScoreProfiles:
             assert name in scores
 
 
-# ---------------------------------------------------------------------------
 # recommend_install
-# ---------------------------------------------------------------------------
 class TestRecommendInstall:
     def test_empty_task(self, tools_db: ToolsDatabase) -> None:
         result = recommend_install("", tools_db)
@@ -88,9 +84,7 @@ class TestRecommendInstall:
         assert "available_profiles" in result
 
 
-# ---------------------------------------------------------------------------
 # list_profiles
-# ---------------------------------------------------------------------------
 class TestListProfiles:
     def test_returns_all_profiles(self, tools_db: ToolsDatabase) -> None:
         result = list_profiles(tools_db)

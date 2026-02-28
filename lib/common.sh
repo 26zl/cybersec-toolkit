@@ -92,7 +92,14 @@ track_session() {
     local tool="$1" method="$2" action="$3"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "${tool}|${method}|${action}|${timestamp}" >> "$_SESSION_FILE"
+    if command -v flock &>/dev/null; then
+        (
+            flock -x 200
+            printf '%s|%s|%s|%s\n' "$tool" "$method" "$action" "$timestamp" >> "$_SESSION_FILE"
+        ) 200>"${_SESSION_FILE}.lock"
+    else
+        printf '%s|%s|%s|%s\n' "$tool" "$method" "$action" "$timestamp" >> "$_SESSION_FILE"
+    fi
 }
 
 _list_sessions() {
@@ -122,7 +129,7 @@ _list_sessions() {
 # Logging
 log_message() {
     echo -e "$1"
-    if [[ -n "$LOG_FILE" ]]; then
+    if [[ -n "$LOG_FILE" && "$LOG_FILE" != "/dev/null" ]]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - $(echo -e "$1" | sed 's/\x1b\[[0-9;]*m//g')" >> "$LOG_FILE"
     fi
 }
@@ -461,19 +468,16 @@ detect_distro() {
         DISTRO_ID_LIKE="${ID_LIKE:-}"
         DISTRO_ID_LIKE="${DISTRO_ID_LIKE,,}"
         DISTRO_NAME="${PRETTY_NAME:-$ID}"
-        DISTRO_VERSION="${VERSION_ID:-}"
     elif command -v lsb_release &>/dev/null; then
         DISTRO_ID="$(lsb_release -si | tr '[:upper:]' '[:lower:]')"
         DISTRO_NAME="$(lsb_release -sd)"
-        DISTRO_VERSION="$(lsb_release -sr)"
         DISTRO_ID_LIKE=""
     else
         DISTRO_ID="unknown"
         DISTRO_NAME="Unknown"
-        DISTRO_VERSION=""
         DISTRO_ID_LIKE=""
     fi
-    export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME DISTRO_VERSION
+    export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME
 }
 
 # Determine the package-manager family: apt | dnf | pacman | zypper | pkg | unknown
@@ -505,8 +509,7 @@ detect_pkg_manager() {
         DISTRO_ID="android"
         DISTRO_ID_LIKE=""
         DISTRO_NAME="Termux"
-        DISTRO_VERSION="${TERMUX_VERSION}"
-        export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME DISTRO_VERSION
+        export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME
         PKG_MANAGER="pkg"
         export PKG_MANAGER
         return

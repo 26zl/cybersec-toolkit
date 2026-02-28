@@ -24,20 +24,24 @@ _XML_INJECTION_RE = re.compile(
 
 # Line-level injection prefixes (case-insensitive, at line start)
 _INJECTION_PREFIXES = re.compile(
-    r"^(IMPORTANT:|Ignore previous|You are now|As an AI|Human:|Assistant:|System:|Disregard|New instructions)",
+    r"^(IMPORTANT:|Ignore previous|You are now|As an AI|Human:|Assistant:|Disregard|New instructions)",
     re.IGNORECASE | re.MULTILINE,
 )
 
 
 def truncate_output(text: str, max_bytes: int) -> tuple[str, bool]:
-    """Truncate *text* to *max_bytes* with a trailing message.
+    """Truncate *text* so its UTF-8 encoding stays within *max_bytes*.
 
     Returns ``(text, was_truncated)``.
     """
-    if len(text) <= max_bytes:
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
         return text, False
     trunc_msg = f"\n... [truncated at {max_bytes} bytes]"
-    return text[: max_bytes - len(trunc_msg)] + trunc_msg, True
+    trunc_msg_bytes = trunc_msg.encode("utf-8")
+    # Truncate at byte level and decode back, ignoring partial characters
+    truncated = encoded[: max_bytes - len(trunc_msg_bytes)].decode("utf-8", errors="ignore")
+    return truncated + trunc_msg, True
 
 
 def sanitize_output(text: str) -> str:

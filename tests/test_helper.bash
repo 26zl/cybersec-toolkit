@@ -51,7 +51,6 @@ source_libs() {
     export DISTRO_ID="$distro_id"
     export DISTRO_ID_LIKE=""
     export DISTRO_NAME="$distro_id"
-    export DISTRO_VERSION=""
     export PKG_MANAGER="$pkg_mgr"
 
     # Stub out detect_pkg_manager so the auto-init at bottom of common.sh

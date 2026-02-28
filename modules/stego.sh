@@ -20,8 +20,6 @@ STEGO_GIT=(
 )
 
 STEGO_GIT_NAMES=(stegsolve openstego stegextract stegosaurus)
-STEGO_BUILD_NAMES=()
-
 install_module_stego() {
     install_apt_batch "Stego - Packages" "${STEGO_PACKAGES[@]}"
     install_pipx_batch "Stego - Python" "${STEGO_PIPX[@]}"

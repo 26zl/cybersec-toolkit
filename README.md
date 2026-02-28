@@ -92,6 +92,9 @@ sudo ./install.sh --skip-source         # Skip build-from-source, snap, npm, and
 sudo ./install.sh --fast                # Skip checksum verification (see Security note below)
 sudo ./install.sh --require-checksums   # Fail if binary release has no checksum file
 sudo ./install.sh --upgrade-system      # Upgrade system packages before installing
+sudo ./install.sh --list-sessions       # List install sessions and exit
+sudo ./install.sh --rollback <id|last>  # Rollback tools installed in a session
+sudo ./install.sh --version             # Show installer version and exit
 sudo ./install.sh --enable-docker       # Pull Docker images
 sudo ./install.sh --include-c2          # Include C2 frameworks (needs --enable-docker)
 sudo ./install.sh -j 8                  # 8 parallel install jobs (default: 4)
@@ -146,24 +149,24 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | ~33 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
-| `networking` | ~55 | Port scanning, packet capture, tunneling, MITM, protocol tools |
-| `recon` | ~76 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
-| `web` | ~49 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
-| `crypto` | ~13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | ~35 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
-| `reversing` | ~32 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | ~43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
-| `enterprise` | ~77 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
-| `wireless` | ~39 | WiFi cracking, Bluetooth, SDR, rogue AP |
-| `cracking` | ~28 | Hash cracking (john, hashcat), brute force, wordlist generation |
-| `stego` | ~14 | Image/audio steganography, detection, StegCracker |
-| `cloud` | ~15 | AWS/Azure/GCP security auditing, Checkov |
-| `containers` | ~9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
-| `blueteam` | ~32 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
-| `mobile` | ~12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
-| `blockchain` | ~6 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
-| `llm` | ~9 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
+| `misc` | 32 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
+| `networking` | 54 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `recon` | 76 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
+| `web` | 51 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
+| `crypto` | 12 | RSA attacks, cipher analysis, hash attacks, constraint solving |
+| `pwn` | 34 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `reversing` | 31 | Disassemblers, debuggers, emulation, Java/Python reversing |
+| `forensics` | 43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
+| `enterprise` | 76 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
+| `wireless` | 39 | WiFi cracking, Bluetooth, SDR, rogue AP |
+| `cracking` | 28 | Hash cracking (john, hashcat), brute force, wordlist generation |
+| `stego` | 13 | Image/audio steganography, detection, StegCracker |
+| `cloud` | 15 | AWS/Azure/GCP security auditing, Checkov |
+| `containers` | 9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
+| `blueteam` | 31 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
+| `mobile` | 12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
+| `blockchain` | 5 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
+| `llm` | 9 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
 
 ## Install Methods
 
@@ -179,7 +182,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
 | Cargo (Rust) | 4 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
-| Snap | 3 | zaproxy, solc, ngrok |
+| Snap | 1 | zaproxy |
 | npm | 1 | promptfoo |
 
 ---
@@ -190,7 +193,7 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 
 | Script | Purpose | Example |
 | ------ | ------- | ------- |
-| `scripts/verify.sh` | Check which tools are installed | `sudo ./scripts/verify.sh --module web` |
+| `scripts/verify.sh` | Check which tools are installed | `sudo ./scripts/verify.sh --module web --skip-heavy` |
 | `scripts/update.sh` | Update all installed tools | `sudo ./scripts/update.sh --skip-system` |
 | `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module enterprise --yes` |
 | `scripts/remove.sh --deep-clean` | Purge all caches and build artifacts | `sudo ./scripts/remove.sh --deep-clean --yes` |

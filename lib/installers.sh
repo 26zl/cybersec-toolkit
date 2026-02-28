@@ -199,6 +199,7 @@ install_apt_batch() {
                     if ! pkg_install "$_g" >> "$LOG_FILE" 2>&1; then
                         log_error "Failed: $_g$(_disk_hint)"
                         failed=$((failed + 1))
+                        track_session "$_g" "$PKG_MANAGER" "failed" 2>/dev/null || true
                     else
                         track_version "$_g" "$PKG_MANAGER" "system"
                     fi
@@ -604,12 +605,14 @@ install_gem_batch() {
         if _as_builder "$(command -v gem) install $gem_name --no-document" >> "$LOG_FILE" 2>&1; then
             # Symlink gem executables to PIPX_BIN_DIR (gems install to user-local
             # dir under _as_builder, which isn't in system PATH)
-            local _gem_bin_dir
-            _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
-            # shellcheck disable=SC2086  # glob expansion intentional
-            for _gbin in $_gem_bin_dir/$gem_name; do
-                [[ -f "$_gbin" ]] && ln -sf "$_gbin" "$PIPX_BIN_DIR/$(basename "$_gbin")" 2>/dev/null || true
+            local _gem_bin_dir=""
+            local _gdir
+            for _gdir in "$(_builder_home)/.local/share/gem/ruby"/*/bin; do
+                [[ -d "$_gdir" ]] && _gem_bin_dir="$_gdir" && break
             done
+            if [[ -n "$_gem_bin_dir" && -f "$_gem_bin_dir/$gem_name" ]]; then
+                ln -sf "$_gem_bin_dir/$gem_name" "$PIPX_BIN_DIR/$gem_name" 2>/dev/null || true
+            fi
             track_version "$gem_name" "gem" "latest"
             _report_tool_done "Gems" "$gem_name" "ok"
         else
@@ -1454,6 +1457,12 @@ track_version() {
     else
         # mkdir is atomic on all POSIX systems — use as spinlock fallback
         local _lockdir="${version_file}.lockdir" _tries=0
+        # Clean up stale lock (older than 30 seconds — likely from a crashed process)
+        if [[ -d "$_lockdir" ]]; then
+            local _lock_age=0
+            _lock_age=$(( $(date +%s) - $(stat -c %Y "$_lockdir" 2>/dev/null || echo "0") ))
+            [[ "$_lock_age" -gt 30 ]] && rmdir "$_lockdir" 2>/dev/null || true
+        fi
         while ! mkdir "$_lockdir" 2>/dev/null; do
             _tries=$((_tries + 1))
             [[ "$_tries" -ge 50 ]] && break  # give up after ~5s

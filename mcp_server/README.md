@@ -76,8 +76,8 @@ The Dockerfile pre-installs `uv` and resolves MCP dependencies at build time. To
 docker build -t cybersec-toolkit .
 
 # Run MCP server inside container (stdio transport)
-docker run -i --rm cybersec-toolkit \
-  bash -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py'
+docker run -i --rm --entrypoint bash cybersec-toolkit \
+  -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py'
 ```
 
 Then point your `.mcp.json` or `claude_desktop_config.json` at the Docker command:
@@ -88,8 +88,8 @@ Then point your `.mcp.json` or `claude_desktop_config.json` at the Docker comman
     "cybersec-tools": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm", "cybersec-toolkit",
-        "bash", "-c",
+        "run", "-i", "--rm", "--entrypoint", "bash", "cybersec-toolkit",
+        "-c",
         "export PATH=\"$HOME/.local/bin:$PATH\" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
       ]
     }
@@ -178,7 +178,7 @@ The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safe
 - **Install check**: Tool must be installed and in PATH
 - **Argument sanitization**: Shell metacharacters (`;`, `&`, `|`, `` ` ``, `$`, `>`, `<`) are blocked
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
-- **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--file-read`/`--file-write`, nmap `-iL`, masscan `--includefile`
+- **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`, masscan `--includefile`, sed `-i` (in-place modification)
 - **Network policy**: Network tools can only target private/loopback IPs by default (including single-label hostnames like `google`). Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
 - **Script execution gate**: `run_script` is disabled by default. Set `CYBERSEC_MCP_ALLOW_SCRIPTS=1` to enable
 - **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing

@@ -133,46 +133,46 @@ class TestCheckPolicy:
     def test_normal_flags_allowed(self) -> None:
         check_policy("nmap", ["-sV", "10.0.0.1"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_network_tool_private_target_allowed(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_network_tool_private_target_allowed(self, _mock_ext) -> None:
         check_policy("nmap", ["-sV", "10.0.0.1"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_network_tool_external_target_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_network_tool_external_target_blocked(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["-sV", "8.8.8.8"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", True)
-    def test_network_tool_external_allowed_with_env(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=True)
+    def test_network_tool_external_allowed_with_env(self, _mock_ext) -> None:
         check_policy("nmap", ["-sV", "8.8.8.8"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_non_network_tool_any_target(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_non_network_tool_any_target(self, _mock_ext) -> None:
         # hashcat is not a network tool — targets not checked
         check_policy("hashcat", ["--attack-mode", "0", "hashes.txt", "wordlist.txt"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_network_tool_target_flag(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_network_tool_target_flag(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["-t", "8.8.8.8"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_network_tool_url_target(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_network_tool_url_target(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("sqlmap", ["-u", "http://example.com/page?id=1"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_network_tool_localhost_url_allowed(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_network_tool_localhost_url_allowed(self, _mock_ext) -> None:
         check_policy("sqlmap", ["-u", "http://127.0.0.1/page?id=1"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_single_label_hostname_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_single_label_hostname_blocked(self, _mock_ext) -> None:
         """Single-label hostnames like 'google' must not bypass target validation."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["google"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_single_label_scanme_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_single_label_scanme_blocked(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["scanme"])
 
@@ -192,26 +192,26 @@ class TestCheckPolicy:
         with pytest.raises(ValueError, match="masscan: target list from file"):
             check_policy("masscan", ["--includefile"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_long_flag_value_not_treated_as_target(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_long_flag_value_not_treated_as_target(self, _mock_ext) -> None:
         """Values of --long-flags must not be treated as network targets."""
         # --script vuln: "vuln" is a script name, not a target
         check_policy("nmap", ["--script", "vuln", "10.0.0.1"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_long_flag_value_with_external_target_still_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_long_flag_value_with_external_target_still_blocked(self, _mock_ext) -> None:
         """The actual target after a --flag value pair must still be validated."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["--script", "vuln", "8.8.8.8"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_short_t_flag_not_treated_as_target_flag(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_short_t_flag_not_treated_as_target_flag(self, _mock_ext) -> None:
         """-t is ambiguous (template in nuclei, threads in ffuf) and must not
         cause its value to be validated as a network target."""
         check_policy("nuclei", ["-t", "cves/", "-u", "http://10.0.0.1/"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_explicit_target_flags_still_validated(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_explicit_target_flags_still_validated(self, _mock_ext) -> None:
         """Unambiguous target flags (--target, -u, --url) must still be validated."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("sqlmap", ["-u", "http://example.com/page?id=1"])
@@ -248,7 +248,7 @@ class TestValidationFailureLogged:
     async def test_validation_failure_logged(self, tools_db) -> None:
         with (
             patch("shutil.which", return_value="/usr/bin/nmap"),
-            patch("mcp_server.security._ALLOW_EXTERNAL", False),
+            patch("mcp_server.security._allow_external", return_value=False),
             patch("mcp_server.security.log_blocked") as mock_log_blocked,
             patch("mcp_server.security._rate_limiter", _RateLimiter()),
         ):
@@ -364,7 +364,7 @@ class TestExecuteTool:
     async def test_policy_violation_returns_error(self, tools_db) -> None:
         with (
             patch("shutil.which", return_value="/usr/bin/nmap"),
-            patch("mcp_server.security._ALLOW_EXTERNAL", False),
+            patch("mcp_server.security._allow_external", return_value=False),
         ):
             result = await execute_tool("nmap", "-sV 8.8.8.8", tools_db)
         assert result["exit_code"] == -1
@@ -439,7 +439,7 @@ class TestExecuteToolRemote:
     @pytest.mark.asyncio
     async def test_policy_violation(self, tools_db, remote_config) -> None:
         remote_config.add_host(name="kali", hostname="10.0.0.5")
-        with patch("mcp_server.security._ALLOW_EXTERNAL", False):
+        with patch("mcp_server.security._allow_external", return_value=False):
             result = await execute_tool_remote("nmap", "-sV 8.8.8.8", tools_db, remote_config, "kali")
         assert result["exit_code"] == -1
         assert "not in a private/local" in result["stderr"]
@@ -533,18 +533,40 @@ class TestSystemUtilityValidation:
 
     def test_dangerous_command_not_in_system_utilities(self) -> None:
         """Dangerous commands must never appear in SYSTEM_UTILITIES."""
-        dangerous = {"rm", "rmdir", "dd", "mkfs", "kill", "pkill", "killall",
-                      "chmod", "chown", "chgrp", "shutdown", "reboot", "halt",
-                      "poweroff", "fdisk", "wipefs", "shred", "su", "sudo",
-                      "mount", "umount", "iptables", "useradd", "userdel",
-                      "passwd", "crontab"}
+        dangerous = {
+            "rm",
+            "rmdir",
+            "dd",
+            "mkfs",
+            "kill",
+            "pkill",
+            "killall",
+            "chmod",
+            "chown",
+            "chgrp",
+            "shutdown",
+            "reboot",
+            "halt",
+            "poweroff",
+            "fdisk",
+            "wipefs",
+            "shred",
+            "su",
+            "sudo",
+            "mount",
+            "umount",
+            "iptables",
+            "useradd",
+            "userdel",
+            "passwd",
+            "crontab",
+        }
         for cmd in dangerous:
             assert cmd not in SYSTEM_UTILITIES, f"{cmd} should NOT be in SYSTEM_UTILITIES"
 
     def test_interpreters_not_in_system_utilities(self) -> None:
         """Scripting interpreters must not be in SYSTEM_UTILITIES — they allow arbitrary code exec."""
-        interpreters = {"python3", "python", "perl", "ruby", "node", "php",
-                        "bash", "sh", "zsh"}
+        interpreters = {"python3", "python", "perl", "ruby", "node", "php", "bash", "sh", "zsh"}
         for cmd in interpreters:
             assert cmd not in SYSTEM_UTILITIES, f"{cmd} should NOT be in SYSTEM_UTILITIES"
 
@@ -586,35 +608,35 @@ class TestSystemUtilityExecution:
 class TestSystemUtilityNetworkPolicy:
     """Network system utilities get target validation."""
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_curl_external_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_external_blocked(self, _mock_ext) -> None:
         """curl http://evil.com → blocked (curl is in _NETWORK_TOOLS)."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("curl", ["http://example.com/"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_curl_local_allowed(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_local_allowed(self, _mock_ext) -> None:
         """curl http://10.0.0.1/ → allowed."""
         check_policy("curl", ["http://10.0.0.1/"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_ping_external_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_ping_external_blocked(self, _mock_ext) -> None:
         """ping 8.8.8.8 → blocked."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("ping", ["8.8.8.8"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_ping_local_allowed(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_ping_local_allowed(self, _mock_ext) -> None:
         """ping 10.0.0.1 → allowed."""
         check_policy("ping", ["10.0.0.1"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_wget_external_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_wget_external_blocked(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("wget", ["http://example.com/file"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_dig_external_blocked(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_dig_external_blocked(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("dig", ["example.com"])
 
@@ -681,25 +703,25 @@ class TestDangerousCommandExclusion:
 class TestBooleanFlagBypass:
     """Boolean flags must not consume the next token, hiding it from target validation."""
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_boolean_flag_does_not_hide_target(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_boolean_flag_does_not_hide_target(self, _mock_ext) -> None:
         """nmap --open evil.com must still validate evil.com as a target."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["--open", "8.8.8.8"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_boolean_flag_silent_does_not_hide_target(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_boolean_flag_silent_does_not_hide_target(self, _mock_ext) -> None:
         """curl --silent evil.com must still validate evil.com."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("curl", ["--silent", "http://example.com/"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_boolean_flag_verbose_does_not_hide_target(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_boolean_flag_verbose_does_not_hide_target(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["-sV", "--reason", "8.8.8.8"])
 
-    @patch("mcp_server.security._ALLOW_EXTERNAL", False)
-    def test_known_target_flag_still_works(self) -> None:
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_known_target_flag_still_works(self, _mock_ext) -> None:
         """Explicit target flags like -u still consume their value correctly."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("sqlmap", ["-u", "http://example.com/page?id=1"])
@@ -782,31 +804,35 @@ class TestExecutePipeline:
         steps = [{"tool": "nmap", "args": "8.8.8.8"}]
         with (
             patch("shutil.which", return_value="/usr/bin/nmap"),
-            patch("mcp_server.security._ALLOW_EXTERNAL", False),
+            patch("mcp_server.security._allow_external", return_value=False),
         ):
             result = await execute_pipeline(steps, tools_db)
         assert result["exit_code"] == -1
         assert "not in a private/local" in result["stderr"]
 
     @pytest.mark.asyncio
-    async def test_step_failure_stops_pipeline(self, tools_db) -> None:
-        """Step 1 exit=1 → step 2 is never started."""
+    async def test_intermediate_failure_continues_pipeline(self, tools_db) -> None:
+        """Step 1 exit=1 (e.g. grep no match) passes output to step 2."""
         mock_proc1 = AsyncMock()
-        mock_proc1.communicate.return_value = (b"", b"error\n")
+        mock_proc1.communicate.return_value = (b"partial", b"")
         mock_proc1.returncode = 1
+
+        mock_proc2 = AsyncMock()
+        mock_proc2.communicate.return_value = (b"final", b"")
+        mock_proc2.returncode = 0
 
         with (
             patch("shutil.which", return_value="/usr/bin/fake"),
-            patch("asyncio.create_subprocess_exec", return_value=mock_proc1),
+            patch("asyncio.create_subprocess_exec", side_effect=[mock_proc1, mock_proc2]),
         ):
             result = await execute_pipeline(
                 [{"tool": "cat", "args": "missing"}, {"tool": "grep", "args": "x"}],
                 tools_db,
             )
 
-        assert result["exit_code"] == 1
-        assert result["failed_step"] == 1
-        assert result["step_count"] == 1
+        assert result["exit_code"] == 0
+        assert result["step_count"] == 2
+        assert "failed_step" not in result
 
     @pytest.mark.asyncio
     async def test_pipeline_timeout(self, tools_db) -> None:
@@ -957,11 +983,13 @@ class TestDefaultValues:
 
     def test_default_timeout_is_120(self) -> None:
         import inspect
+
         sig = inspect.signature(execute_tool)
         assert sig.parameters["timeout"].default == 120
 
     def test_default_max_output_is_200k(self) -> None:
         import inspect
+
         sig = inspect.signature(execute_tool)
         assert sig.parameters["max_output"].default == 200000
 

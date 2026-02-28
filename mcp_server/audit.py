@@ -105,6 +105,7 @@ def log_execution(
     """Write a single JSON audit line for a tool execution."""
     entry: dict[str, Any] = {
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "event": "execution",
         "tool": tool_name,
         "args": args,
         "host": host,

@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 
 LABEL maintainer="26zl" \
-      description="Cybersec Toolkit — 568 security tools, one command"
+      description="Cybersec Toolkit — 570 security tools, one command"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -23,7 +23,7 @@ RUN chmod +x install.sh scripts/*.sh
 
 # MCP server: install uv + resolve dependencies so `uv run` works offline.
 # Install uv as root, then move binary so it's available to all users.
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+RUN curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh \
     && mv /root/.local/bin/uv /usr/local/bin/uv \
     && mv /root/.local/bin/uvx /usr/local/bin/uvx
 RUN cd mcp_server && uv sync
@@ -33,5 +33,5 @@ RUN chown -R toolkit:toolkit /opt/cybersec-toolkit
 
 USER toolkit
 
-ENTRYPOINT ["./install.sh"]
+ENTRYPOINT ["sudo", "./install.sh"]
 CMD ["--dry-run", "--profile", "full"]

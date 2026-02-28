@@ -3,6 +3,8 @@ name: Integration
 on:
   push:
     branches: [main, master]
+  schedule:
+    - cron: "0 3 * * 0"   # Weekly Sunday at 03:00 UTC
 
 permissions:
   contents: read

@@ -28,6 +28,7 @@ Usage: sudo ./scripts/verify.sh [OPTIONS]    # Linux
 Options:
   --module <name>    Verify specific module only (can be repeated)
   --installed-only   Only check tools tracked in .versions (skip tools you never installed)
+  --skip-heavy       Skip heavy packages (gnuradio, gqrx) — matches install.sh --skip-heavy
   --summary          Show only summary counts (no per-tool output)
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
@@ -41,11 +42,13 @@ fi
 VERIFY_MODULES=()
 SUMMARY_ONLY=false
 INSTALLED_ONLY=false
+SKIP_HEAVY="${SKIP_HEAVY:-false}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --module)  [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 1; }
                    VERIFY_MODULES+=("$2"); shift 2 ;;
         --installed-only) INSTALLED_ONLY=true; shift ;;
+        --skip-heavy) SKIP_HEAVY=true; shift ;;
         --summary) SUMMARY_ONLY=true; shift ;;
         -v|--verbose) VERBOSE=true; shift ;;
         -h|--help) exec "$0" --help ;;
@@ -470,7 +473,10 @@ if should_verify "wireless"; then
         echo ""
         log_info "━━━━━ Module: wireless ━━━━━"
         log_info "Wireless (packages):"
-        check_cmds aircrack-ng reaver pixiewps bully iw horst gnuradio-companion gqrx
+        check_cmds aircrack-ng reaver pixiewps bully iw horst
+        if [[ "$SKIP_HEAVY" != "true" ]]; then
+            check_cmds gnuradio-companion gqrx
+        fi
         [[ "$_is_kali" == "true" ]] && { check_cmd "kismet" || true; }
         check_cmd_any "bluetooth" hciconfig bluetoothctl || true
         log_info "Wireless (pipx):"

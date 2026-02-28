@@ -11,6 +11,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore[assignment]  # unavailable on Windows
+
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
@@ -55,10 +60,17 @@ class RemoteHostConfig:
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(
-            json.dumps({"hosts": self._hosts}, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        data = json.dumps({"hosts": self._hosts}, indent=2) + "\n"
+        if fcntl is not None:
+            with open(self._path, "w", encoding="utf-8") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(data)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        else:
+            # fcntl unavailable on Windows — fallback to simple write
+            self._path.write_text(data, encoding="utf-8")
 
     def add_host(
         self,
@@ -120,10 +132,6 @@ class RemoteHostConfig:
             self._save()
             return True
         return False
-
-    def get_host(self, name: str) -> dict[str, Any] | None:
-        """Return host config dict or None."""
-        return self._hosts.get(name)
 
     def list_hosts(self) -> dict[str, dict[str, Any]]:
         """Return all hosts."""
@@ -259,7 +267,7 @@ async def execute_remote_command(
         truncated = t1 or t2
 
         return {
-            "exit_code": process.returncode if process.returncode is not None else 0,
+            "exit_code": process.returncode if process.returncode is not None else -1,
             "stdout": stdout,
             "stderr": stderr,
             "truncated": truncated,

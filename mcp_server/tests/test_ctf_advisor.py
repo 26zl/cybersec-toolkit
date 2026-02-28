@@ -15,9 +15,7 @@ from mcp_server.ctf_advisor import (
 from mcp_server.tools_db import ToolsDatabase
 
 
-# ---------------------------------------------------------------------------
 # resolve_category
-# ---------------------------------------------------------------------------
 class TestResolveCategory:
     @pytest.mark.parametrize("cat", list(CTF_CATEGORY_MAP.keys()))
     def test_canonical_names(self, cat: str) -> None:
@@ -41,9 +39,7 @@ class TestResolveCategory:
         assert resolve_category("") is None
 
 
-# ---------------------------------------------------------------------------
 # suggest_for_ctf
-# ---------------------------------------------------------------------------
 class TestSuggestForCtf:
     def test_valid_category(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):
@@ -93,9 +89,7 @@ class TestSuggestForCtf:
             assert nmap_entry["installed"] is True
 
 
-# ---------------------------------------------------------------------------
 # Methodology and quick_wins
-# ---------------------------------------------------------------------------
 class TestMethodology:
     @pytest.mark.parametrize("cat", list(CTF_CATEGORY_MAP.keys()))
     def test_methodology_exists(self, cat: str) -> None:

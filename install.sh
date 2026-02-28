@@ -509,7 +509,7 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                     cargo uninstall "$rb_tool" >> "$LOG_FILE" 2>&1 || true
                 fi
                 rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
-                rm -f "$HOME/.cargo/bin/$rb_tool" 2>/dev/null || true
+                rm -f "$(_builder_home)/.cargo/bin/$rb_tool" 2>/dev/null || true
                 rb_removed=$((rb_removed + 1))
                 ;;
             gem)
@@ -1042,7 +1042,7 @@ install_modules() {
                 TOTAL_TOOL_FAILURES=0
                 install_pipx_batch "All modules - Python" "${_ALL_PIPX[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/pipx.cnt"
-            ) > /dev/null 2>&1 &
+            ) > /dev/null 2>>"$LOG_FILE" &
             _job_pids+=($!)
         fi
 
@@ -1053,7 +1053,7 @@ install_modules() {
                 TOTAL_TOOL_FAILURES=0
                 install_go_batch "All modules - Go" "${_ALL_GO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/go.cnt"
-            ) > /dev/null 2>&1 &
+            ) > /dev/null 2>>"$LOG_FILE" &
             _job_pids+=($!)
         fi
 
@@ -1064,7 +1064,7 @@ install_modules() {
                 TOTAL_TOOL_FAILURES=0
                 install_cargo_batch "All modules - Rust" "${_ALL_CARGO[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/cargo.cnt"
-            ) > /dev/null 2>&1 &
+            ) > /dev/null 2>>"$LOG_FILE" &
             _job_pids+=($!)
         fi
 
@@ -1075,7 +1075,7 @@ install_modules() {
                 TOTAL_TOOL_FAILURES=0
                 install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
-            ) > /dev/null 2>&1 &
+            ) > /dev/null 2>>"$LOG_FILE" &
             _job_pids+=($!)
         fi
 
@@ -1086,7 +1086,7 @@ install_modules() {
                 TOTAL_TOOL_FAILURES=0
                 install_git_batch "All modules - Git" "${_ALL_GIT[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/git.cnt"
-            ) > /dev/null 2>&1 &
+            ) > /dev/null 2>>"$LOG_FILE" &
             _job_pids+=($!)
         fi
 
@@ -1097,7 +1097,7 @@ install_modules() {
                 TOTAL_TOOL_FAILURES=0
                 install_binary_releases "${_ALL_BINARY[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/binary.cnt"
-            ) > /dev/null 2>&1 &
+            ) > /dev/null 2>>"$LOG_FILE" &
             _job_pids+=($!)
         fi
 
