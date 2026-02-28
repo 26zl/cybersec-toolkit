@@ -14,7 +14,10 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `suggest_for_ctf` | Tool suggestions for 13 CTF challenge categories with descriptions |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
 | `list_profiles` | List all 14 installation profiles with tool counts and details |
-| `run_tool` | Execute an installed tool safely (argument sanitization + network policy) |
+| `run_tool` | Execute an installed tool safely (argument sanitization + network policy). Supports remote execution via `host` parameter |
+| `run_pipeline` | Pipe tools together safely without shell (e.g. `strings binary \| grep flag`). Max 10 steps |
+| `run_script` | Write and execute Python/Bash scripts (pwntools, z3, requests, crypto). Optional `venv` parameter for per-script interpreter selection |
+| `manage_remote_hosts` | Add, remove, list, and test SSH remote hosts for remote tool execution |
 
 ## Setup
 
@@ -143,30 +146,58 @@ Once connected via an MCP client:
 - **Just a few tools**: `recommend_install("I need nmap and sqlmap")` — recommends individual modules
 - **List profiles**: `list_profiles()` — all 14 profiles with tool counts
 - **Run a tool**: `run_tool("nmap", "--version")` — execute with network policy enforcement
+- **Run a pipeline**: `run_pipeline([{"tool": "strings", "args": "./binary"}, {"tool": "grep", "args": "flag"}])` — pipe tools together
+- **Run a script**: `run_script("from pwn import *; print(cyclic(20))", venv="pwntools")` — write and execute scripts
+- **Run remotely**: `run_tool("nmap", "-sV 10.0.0.1", host="kali-vm")` — execute on a remote host via SSH
+- **Manage remotes**: `manage_remote_hosts("add", name="kali-vm", hostname="192.168.1.50")` — configure SSH hosts
 
 ## Architecture
 
 ```text
 mcp_server/
   __init__.py          # Package marker
-  server.py            # FastMCP server — 9 tool registrations + entry point
+  server.py            # FastMCP server — 12 tool registrations + entry point
   tools_db.py          # ToolsDatabase — loads tools_config.json, checks installs (TTL-cached)
   ctf_advisor.py       # CTF challenge-type → tool mapping with suggestions
   profiles.py          # Profile recommendation engine — 14 profiles, keyword matching
-  security.py          # Execution validation, argument sanitization, network policy
+  security.py          # Execution validation, argument sanitization, network policy, rate limiting,
+                       #   script execution with venv support, pipeline execution
+  sanitize.py          # Output sanitization — strips LLM markers, XML injection, Unicode evasion
+  audit.py             # JSON audit logging with rotation for executions and blocked attempts
+  remote.py            # Remote SSH execution — host config, connection testing, input validation
   pyproject.toml       # UV dependency config (fastmcp>=3.0.0,<4.0.0) + CLI entrypoint
   README.md            # This file
+manual_scripts/        # Persistent scripts — exploits, solvers, reusable tools
 ```
 
 ## Security
 
-The `run_tool` endpoint enforces multiple safety measures:
+The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safety measures:
 
-- **Registry check**: Only tools listed in `tools_config.json` can be executed
+- **Registry check**: Only tools listed in `tools_config.json` (plus ~120 system utilities) can be executed
 - **Install check**: Tool must be installed and in PATH
 - **Argument sanitization**: Shell metacharacters (`;`, `&`, `|`, `` ` ``, `$`, `>`, `<`) are blocked
-- **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar flags are rejected
-- **Network policy**: Network tools (nmap, sqlmap, etc.) can only target private/loopback IPs by default. Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
+- **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
+- **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--file-read`/`--file-write`, nmap `-iL`, masscan `--includefile`
+- **Network policy**: Network tools can only target private/loopback IPs by default (including single-label hostnames like `google`). Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
+- **Script execution gate**: `run_script` is disabled by default. Set `CYBERSEC_MCP_ALLOW_SCRIPTS=1` to enable
+- **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing
+- **Pipeline validation**: `run_pipeline` validates all steps (allowlist, args, policy) before executing any. Max 10 steps per pipeline
+- **Rate limiting**: Max 10 concurrent executions and 60 per minute (sliding window)
+- **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion
+- **Audit logging**: All executions (tools, scripts, blocked attempts) are logged to `audit.log` (JSON lines, 5 MB rotation). Script content is logged before execution. Crash-safe — logging failures never interrupt execution
+- **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)
+- **Async DNS**: Network target validation runs in a thread pool to avoid blocking the event loop
 - **Timeout**: Configurable 1-300s, process killed on timeout
-- **Output limits**: Truncated at 50KB to prevent memory issues
+- **Output limits**: Truncated at 200KB to prevent memory issues
+
+## Environment Variables
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `CYBERSEC_MCP_ALLOW_SCRIPTS` | `""` (disabled) | Set to `1` to enable `run_script` |
+| `CYBERSEC_MCP_ALLOW_EXTERNAL` | `""` (disabled) | Set to `1` to allow network tools to target external IPs |
+| `CYBERSEC_MCP_SCRIPT_PYTHON` | `""` (sys.executable) | Static override for Python interpreter used by `run_script` (when no `venv` is set) |
+| `CYBERSEC_MCP_VENVS_DIR` | `~/.ctf-venvs` | Directory containing named Python venvs for the `venv` parameter |
+| `CYBERSEC_INSTALLER_ROOT` | Auto-detected | Override the project root path |

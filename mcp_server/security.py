@@ -10,6 +10,8 @@ import shlex
 import shutil
 import socket
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,10 +19,64 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
+from mcp_server.audit import log_blocked, log_execution, log_script_execution  # noqa: E402
+from mcp_server.sanitize import sanitize_output, truncate_output  # noqa: E402
 from mcp_server.tools_db import PIPX_BIN_NAMES, ToolsDatabase  # noqa: E402
 
 # Methods that are not directly executable as CLI commands.
 NON_EXECUTABLE_METHODS = {"git", "docker", "snap"}
+
+# System utilities allowed for execution without being in tools_config.json.
+# These are standard Linux/macOS CLI tools commonly used in CTF and security work.
+#
+# EXCLUDED (dangerous / allows arbitrary code execution):
+#   Destructive:  rm, rmdir, dd, mkfs, kill, pkill, killall, chmod, chown,
+#                 chgrp, shutdown, reboot, halt, poweroff, fdisk, wipefs,
+#                 shred, su, sudo, mount, umount, iptables, useradd,
+#                 userdel, passwd, crontab
+#   Interpreters: python3, python, perl, ruby, node, php, bash, sh, zsh
+#                 (these allow arbitrary code execution via -c/-e flags)
+#   Meta-exec:    timeout, xargs, parallel, find
+#                 (these execute other commands as arguments, bypassing allowlist)
+SYSTEM_UTILITIES: frozenset[str] = frozenset({
+    # File analysis & forensics
+    "file", "strings", "xxd", "hexdump", "od", "readelf", "objdump",
+    "nm", "ldd", "strace", "ltrace", "binwalk",
+    # Encoding & hashing
+    "base64", "base32", "md5sum", "sha1sum", "sha256sum", "sha512sum",
+    "shasum", "cksum", "openssl",
+    # Text processing
+    "grep", "egrep", "fgrep", "sed", "awk", "cut", "sort", "uniq",
+    "wc", "head", "tail", "tr", "tee", "diff", "comm", "paste",
+    "column", "rev", "fold", "expand", "unexpand", "fmt", "nl",
+    # Search & find (note: find is excluded — it supports -exec/-delete)
+    "locate", "which", "whereis", "type",
+    # Network utilities
+    "curl", "wget", "nc", "ncat", "netcat", "socat",
+    "dig", "host", "nslookup", "ping", "traceroute", "tracepath",
+    "whois", "ss", "netstat", "ip", "ifconfig", "arp",
+    # Archive & compression
+    "tar", "gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz",
+    "zip", "unzip", "7z", "zcat", "zgrep", "zless",
+    # Image & media (CTF stego)
+    "identify", "convert", "exiftool", "exiv2", "foremost", "steghide",
+    "zsteg", "pngcheck",
+    # Crypto
+    "gpg", "age", "ssh-keygen",
+    # Document & data
+    "jq", "yq", "xmllint", "csvtool", "pdftotext", "pdfinfo",
+    # QR & barcode
+    "zbarimg", "qrencode",
+    # System info (read-only)
+    "uname", "hostname", "id", "whoami", "date", "uptime",
+    "df", "du", "free", "locale",
+    # File operations (safe subset)
+    "cat", "less", "more", "cp", "mv", "mkdir", "touch", "ln",
+    "ls", "stat", "realpath", "basename", "dirname", "pwd",
+    "tac", "shuf",
+    # Misc CTF
+    "bc", "dc", "expr", "printf", "echo",
+})
 
 # Dangerous shell metacharacters that must not appear in arguments.
 _DANGEROUS_PATTERNS = re.compile(r"[;&|`$><]|\$\(")
@@ -37,6 +93,25 @@ BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^--exploit$"), "active exploitation flag --exploit"),
 ]
 
+# Tool-specific blocked flags — dangerous per-tool options.
+TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
+    "sqlmap": [
+        (re.compile(r"^--os-shell$"), "sqlmap: OS shell access"),
+        (re.compile(r"^--os-cmd$"), "sqlmap: OS command execution"),
+        (re.compile(r"^--os-pwn$"), "sqlmap: OOB exploitation"),
+        (re.compile(r"^--priv-esc$"), "sqlmap: privilege escalation"),
+        (re.compile(r"^--file-read$"), "sqlmap: arbitrary file read"),
+        (re.compile(r"^--file-write$"), "sqlmap: arbitrary file write"),
+        (re.compile(r"^--file-dest$"), "sqlmap: file write destination"),
+    ],
+    "nmap": [
+        (re.compile(r"^-iL$"), "nmap: target list from file (bypasses target validation)"),
+    ],
+    "masscan": [
+        (re.compile(r"^--includefile$"), "masscan: target list from file"),
+    ],
+}
+
 # Tools that perform network operations and need target validation.
 _NETWORK_TOOLS: set[str] = {
     "nmap",
@@ -44,6 +119,8 @@ _NETWORK_TOOLS: set[str] = {
     "sqlmap",
     "ffuf",
     "feroxbuster",
+    "gobuster",
+    "nikto",
     "nuclei",
     "httpx",
     "whatweb",
@@ -66,11 +143,29 @@ _NETWORK_TOOLS: set[str] = {
     "scapy",
     "tshark",
     "tcpdump",
+    # System network utilities
+    "curl",
+    "wget",
+    "nc",
+    "ncat",
+    "netcat",
+    "socat",
+    "dig",
+    "host",
+    "nslookup",
+    "ping",
+    "traceroute",
+    "tracepath",
+    "whois",
 }
 
 # Env-configurable: CYBERSEC_MCP_ALLOW_EXTERNAL=1 unlocks external targets.
 # Default: only loopback and RFC 1918 ranges are allowed.
 _ALLOW_EXTERNAL = os.environ.get("CYBERSEC_MCP_ALLOW_EXTERNAL", "").strip() == "1"
+
+# Env-configurable: CYBERSEC_MCP_ALLOW_SCRIPTS=1 unlocks script execution.
+# Default: script execution is disabled.
+_ALLOW_SCRIPTS = os.environ.get("CYBERSEC_MCP_ALLOW_SCRIPTS", "").strip() == "1"
 
 # Private/safe network ranges (loopback + RFC 1918 + link-local).
 _SAFE_NETWORKS = [
@@ -83,6 +178,27 @@ _SAFE_NETWORKS = [
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
 ]
+
+
+class _RateLimiter:
+    """Concurrency + sliding-window rate limiter for tool execution."""
+
+    def __init__(self, max_concurrent: int = 10, max_per_minute: int = 60):
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._timestamps: list[float] = []
+        self._max_per_minute = max_per_minute
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            self._timestamps = [t for t in self._timestamps if now - t < 60]
+            if len(self._timestamps) >= self._max_per_minute:
+                raise ValueError(f"Rate limit exceeded: max {self._max_per_minute} tool executions per minute")
+            self._timestamps.append(now)
+
+
+_rate_limiter = _RateLimiter()
 
 
 def _is_safe_target(value: str) -> bool:
@@ -172,6 +288,12 @@ def _looks_like_target(value: str) -> bool:
     # localhost special case
     if value.lower() == "localhost":
         return True
+    # Single-label hostname: alphabetic word (possibly with hyphens/digits) that
+    # is not purely numeric.  Values like "google", "scanme" are valid DNS names
+    # and must go through target validation.  Pure numbers ("80", "4") are
+    # skipped — they are port/timeout values.
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9-]*$", value):
+        return True
     return False
 
 
@@ -180,22 +302,34 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
 
     Raises ValueError if the command violates policy.
     """
-    # 1. Check for blocked flags
+    # 1. Check for blocked flags (universal)
     for arg in arg_list:
         for pattern, desc in BLOCKED_FLAGS:
             if pattern.match(arg):
                 raise ValueError(f"Blocked by policy: {desc}")
 
+    # 1b. Check for tool-specific blocked flags
+    binary = PIPX_BIN_NAMES.get(tool_name, tool_name)
+    for blocked_list in (TOOL_BLOCKED_FLAGS.get(tool_name, []), TOOL_BLOCKED_FLAGS.get(binary, [])):
+        for arg in arg_list:
+            for pattern, desc in blocked_list:
+                if pattern.match(arg):
+                    raise ValueError(f"Blocked by policy: {desc}")
+
     # 2. Network target checks (only for network tools, unless external is allowed)
     if _ALLOW_EXTERNAL:
         return
 
-    binary = PIPX_BIN_NAMES.get(tool_name, tool_name)
     if binary not in _NETWORK_TOOLS and tool_name not in _NETWORK_TOOLS:
         return
 
     # Check positional args and common target flags for external targets
-    target_flags = {"-t", "--target", "-u", "--url", "-h", "--host", "--ip"}
+    # NOTE: Only include unambiguous flags.  Short flags like -t and -h are
+    # excluded because they have conflicting meanings across tools (-t is
+    # "template" in nuclei, "threads" in ffuf; -h is "help" in most tools).
+    # Targets passed via short flags are still caught by the positional-arg
+    # heuristic below.
+    target_flags = {"--target", "-u", "--url", "--host", "--ip"}
     i = 0
     while i < len(arg_list):
         arg = arg_list[i]
@@ -215,7 +349,29 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
                 value = arg
             i += 1
         else:
-            i += 1
+            # Unrecognized flag. After --long-flags, the next non-flag token
+            # may be a flag value (--script vuln) or a real target after a
+            # boolean flag (--open evil.com). We distinguish by checking for
+            # strong target indicators (dots, colons, slashes, http prefix).
+            # Plain single-label words (vuln, default, normal) are consumed
+            # as flag values. Tokens with target indicators are left for
+            # validation in the next iteration.
+            if arg.startswith("--") and i + 1 < len(arg_list) and not arg_list[i + 1].startswith("-"):
+                next_token = arg_list[i + 1]
+                has_target_indicators = (
+                    "." in next_token
+                    or ":" in next_token
+                    or "/" in next_token
+                    or next_token.lower().startswith("http")
+                )
+                if has_target_indicators:
+                    # Looks like a real target — don't consume, validate next iteration
+                    i += 1
+                else:
+                    # Plain word — likely a flag value, consume it
+                    i += 2
+            else:
+                i += 1
             continue
 
         if value:
@@ -246,8 +402,18 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
 def validate_tool_for_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
     """Validate that a tool can be executed. Returns the resolved binary name.
 
+    System utilities (cat, grep, curl, etc.) bypass the registry check but
+    still require the binary to be present in PATH.
+
     Raises ValueError if the tool cannot be executed.
     """
+    # System utilities: skip registry check, just verify PATH
+    if tool_name in SYSTEM_UTILITIES:
+        path = shutil.which(tool_name)
+        if not path:
+            raise ValueError(f"System utility '{tool_name}' is not installed or not in PATH")
+        return tool_name
+
     tool = tools_db.tools_by_name.get(tool_name)
     if not tool:
         raise ValueError(f"Tool '{tool_name}' not found in tools_config.json")
@@ -293,8 +459,8 @@ async def execute_tool(
     tool_name: str,
     args: str,
     tools_db: ToolsDatabase,
-    timeout: int = 30,
-    max_output: int = 50000,
+    timeout: int = 120,
+    max_output: int = 200000,
 ) -> dict:
     """Execute a tool safely and return its output.
 
@@ -304,8 +470,9 @@ async def execute_tool(
     try:
         binary = validate_tool_for_execution(tool_name, tools_db)
         arg_list = sanitize_args(args)
-        check_policy(tool_name, arg_list)
+        await asyncio.to_thread(check_policy, tool_name, arg_list)
     except ValueError as e:
+        log_blocked(tool_name=tool_name, args=args, reason=str(e))
         return {
             "exit_code": -1,
             "stdout": "",
@@ -319,60 +486,663 @@ async def execute_tool(
 
     command = [binary] + arg_list
 
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
+    async with _rate_limiter._semaphore:
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
+            await _rate_limiter.acquire()
+        except ValueError as e:
+            log_blocked(tool_name=tool_name, args=args, reason=str(e))
             return {
                 "exit_code": -1,
                 "stdout": "",
-                "stderr": f"Process timed out after {timeout} seconds",
+                "stderr": str(e),
                 "truncated": False,
-                "command": shlex.join(command),
+                "command": tool_name + (" " + args if args else ""),
             }
 
-        stdout = stdout_bytes.decode("utf-8", errors="replace")
-        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-        truncated = False
-        trunc_msg = f"\n... [truncated at {max_output} bytes]"
-        trunc_limit = max_output - len(trunc_msg)
-        if len(stdout) > max_output:
-            stdout = stdout[:trunc_limit] + trunc_msg
-            truncated = True
-        if len(stderr) > max_output:
-            stderr = stderr[:trunc_limit] + trunc_msg
-            truncated = True
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                cmd_str = shlex.join(command)
+                log_execution(
+                    tool_name=tool_name,
+                    args=args,
+                    host="localhost",
+                    exit_code=-1,
+                    command=cmd_str,
+                )
+                return {
+                    "exit_code": -1,
+                    "stdout": "",
+                    "stderr": f"Process timed out after {timeout} seconds",
+                    "truncated": False,
+                    "command": cmd_str,
+                }
 
-        return {
-            "exit_code": process.returncode,
-            "stdout": stdout,
-            "stderr": stderr,
-            "truncated": truncated,
-            "command": shlex.join(command),
-        }
+            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-    except FileNotFoundError:
+            stdout, t1 = truncate_output(stdout, max_output)
+            stderr, t2 = truncate_output(stderr, max_output)
+            truncated = t1 or t2
+
+            stdout = sanitize_output(stdout)
+            stderr = sanitize_output(stderr)
+
+            cmd_str = shlex.join(command)
+            rc = process.returncode if process.returncode is not None else 0
+            log_execution(
+                tool_name=tool_name,
+                args=args,
+                host="localhost",
+                exit_code=rc,
+                command=cmd_str,
+            )
+
+            return {
+                "exit_code": rc,
+                "stdout": stdout,
+                "stderr": stderr,
+                "truncated": truncated,
+                "command": cmd_str,
+            }
+
+        except FileNotFoundError:
+            cmd_str = shlex.join(command)
+            log_execution(
+                tool_name=tool_name,
+                args=args,
+                host="localhost",
+                exit_code=-1,
+                command=cmd_str,
+            )
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Binary '{binary}' not found",
+                "truncated": False,
+                "command": cmd_str,
+            }
+        except OSError as e:
+            cmd_str = shlex.join(command)
+            log_execution(
+                tool_name=tool_name,
+                args=args,
+                host="localhost",
+                exit_code=-1,
+                command=cmd_str,
+            )
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Failed to execute: {e}",
+                "truncated": False,
+                "command": cmd_str,
+            }
+
+
+# ---------------------------------------------------------------------------
+# Pipeline execution — safe stdin piping without shell
+# ---------------------------------------------------------------------------
+
+MAX_PIPELINE_STEPS = 10
+
+
+def _pipeline_error(msg: str) -> dict:
+    """Return a structured error for pipeline failures."""
+    return {"exit_code": -1, "stdout": "", "stderr": msg,
+            "truncated": False, "commands": [], "step_count": 0}
+
+
+async def _run_pipeline_steps(
+    steps: list[dict],
+    tools_db: ToolsDatabase,
+    timeout: int,
+    max_output: int,
+) -> dict:
+    """Execute validated pipeline steps, piping stdout→stdin between them."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    prev_output: bytes | None = None
+    commands: list[str] = []
+
+    for i, step in enumerate(steps):
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Pipeline timed out at step {i + 1}",
+                "truncated": False,
+                "commands": commands,
+                "step_count": i,
+                "failed_step": i + 1,
+            }
+
+        binary = validate_tool_for_execution(step["tool"], tools_db)
+        arg_list = sanitize_args(step.get("args", ""))
+        command = [binary] + arg_list
+        cmd_str = shlex.join(command)
+        commands.append(cmd_str)
+
+        stdin_mode = asyncio.subprocess.DEVNULL if i == 0 else asyncio.subprocess.PIPE
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdin=stdin_mode,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(input=prev_output if i > 0 else None),
+                    timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                return {
+                    "exit_code": -1,
+                    "stdout": "",
+                    "stderr": f"Pipeline timed out at step {i + 1} after {timeout}s",
+                    "truncated": False,
+                    "commands": commands,
+                    "step_count": i + 1,
+                    "failed_step": i + 1,
+                }
+
+            rc = process.returncode if process.returncode is not None else 0
+            if rc != 0:
+                stderr = stderr_bytes.decode("utf-8", errors="replace")
+                return {
+                    "exit_code": rc,
+                    "stdout": "",
+                    "stderr": stderr,
+                    "truncated": False,
+                    "commands": commands,
+                    "step_count": i + 1,
+                    "failed_step": i + 1,
+                }
+
+            prev_output = stdout_bytes
+
+        except FileNotFoundError:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Binary not found for step {i + 1}: {cmd_str}",
+                "truncated": False,
+                "commands": commands,
+                "step_count": i + 1,
+                "failed_step": i + 1,
+            }
+        except OSError as e:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Failed to execute step {i + 1}: {e}",
+                "truncated": False,
+                "commands": commands,
+                "step_count": i + 1,
+                "failed_step": i + 1,
+            }
+
+    # Final output — truncate and sanitize
+    stdout = (prev_output or b"").decode("utf-8", errors="replace")
+    stdout, truncated = truncate_output(stdout, max_output)
+    stdout = sanitize_output(stdout)
+
+    return {
+        "exit_code": 0,
+        "stdout": stdout,
+        "stderr": "",
+        "truncated": truncated,
+        "commands": commands,
+        "step_count": len(steps),
+    }
+
+
+async def execute_pipeline(
+    steps: list[dict],
+    tools_db: ToolsDatabase,
+    timeout: int = 120,
+    max_output: int = 200000,
+) -> dict:
+    """Execute a pipeline of tools, piping stdout→stdin between steps.
+
+    Each step is validated (allowlist, sanitize_args, check_policy) before
+    any process is started. Uses asyncio.create_subprocess_exec (no shell).
+
+    Args:
+        steps: List of dicts with 'tool' and optional 'args' keys.
+        tools_db: ToolsDatabase for allowlist validation.
+        timeout: Global timeout for entire pipeline (clamped 1-300).
+        max_output: Max output size for final step.
+
+    Returns:
+        Dict with exit_code, stdout, stderr, truncated, commands, step_count.
+    """
+    if not steps:
+        return _pipeline_error("Pipeline must have at least 1 step")
+    if len(steps) > MAX_PIPELINE_STEPS:
+        return _pipeline_error(f"Pipeline exceeds max {MAX_PIPELINE_STEPS} steps (got {len(steps)})")
+
+    # Pre-validate ALL steps before executing any
+    for i, step in enumerate(steps):
+        if "tool" not in step:
+            return _pipeline_error(f"Step {i + 1} missing required 'tool' key")
+        try:
+            validate_tool_for_execution(step["tool"], tools_db)
+            arg_list = sanitize_args(step.get("args", ""))
+            await asyncio.to_thread(check_policy, step["tool"], arg_list)
+        except ValueError as e:
+            log_blocked(tool_name=step["tool"], args=step.get("args", ""), reason=str(e))
+            return _pipeline_error(f"Step {i + 1} ({step['tool']}): {e}")
+
+    # Clamp timeout
+    timeout = max(1, min(timeout, 300))
+
+    # Acquire one rate limiter slot for the entire pipeline
+    async with _rate_limiter._semaphore:
+        try:
+            await _rate_limiter.acquire()
+        except ValueError as e:
+            return _pipeline_error(str(e))
+
+        return await _run_pipeline_steps(steps, tools_db, timeout, max_output)
+
+
+# ---------------------------------------------------------------------------
+# Script execution — write-and-run Python/Bash scripts
+# ---------------------------------------------------------------------------
+
+_SCRIPT_LANGUAGES = {"python": ".py", "bash": ".sh"}
+
+
+def _resolve_venv_interpreter(venv_name: str) -> str | None:
+    """Resolve a venv name to its Python interpreter path.
+
+    Searches CYBERSEC_MCP_VENVS_DIR (default ~/.ctf-venvs/) for a venv
+    with the given name and returns the python binary path if it exists.
+
+    The venv name is validated to prevent path traversal outside the
+    venvs directory.
+    """
+    # Reject path separators and traversal components
+    if os.sep in venv_name or "/" in venv_name or venv_name in (".", ".."):
+        return None
+    venvs_dir = os.environ.get("CYBERSEC_MCP_VENVS_DIR", "").strip()
+    if not venvs_dir:
+        venvs_dir = os.path.expanduser("~/.ctf-venvs")
+    venvs_dir = os.path.realpath(venvs_dir)
+    # Ensure the venv directory itself is inside venvs_dir (check before
+    # following any symlinks inside the venv — python binary may be a
+    # symlink to the system interpreter, which is expected and safe).
+    venv_root = os.path.join(venvs_dir, venv_name)
+    if not os.path.realpath(venv_root).startswith(venvs_dir + os.sep):
+        return None
+    venv_python = os.path.join(venv_root, "bin", "python")
+    if os.path.isfile(venv_python):
+        return venv_python
+    # Windows compat
+    venv_python_win = os.path.join(venv_root, "Scripts", "python.exe")
+    if os.path.isfile(venv_python_win):
+        return venv_python_win
+    return None
+
+
+async def execute_script(
+    code: str,
+    language: str = "python",
+    timeout: int = 120,
+    max_output: int = 200000,
+    working_dir: str | None = None,
+    venv: str | None = None,
+) -> dict:
+    """Write code to a temp file and execute it via python3/bash.
+
+    Gated by CYBERSEC_MCP_ALLOW_SCRIPTS=1 env variable.
+
+    Returns dict with: exit_code, stdout, stderr, truncated, language,
+    script_file, working_dir.
+    """
+    # 1. Env gate
+    if not _ALLOW_SCRIPTS:
         return {
             "exit_code": -1,
             "stdout": "",
-            "stderr": f"Binary '{binary}' not found",
+            "stderr": (
+                "Script execution is disabled. "
+                "Set CYBERSEC_MCP_ALLOW_SCRIPTS=1 to enable."
+            ),
             "truncated": False,
-            "command": shlex.join(command),
+            "language": language,
+            "script_file": "",
+            "working_dir": "",
         }
-    except OSError as e:
+
+    # 2. Validate language
+    lang = language.lower().strip()
+    if lang not in _SCRIPT_LANGUAGES:
         return {
             "exit_code": -1,
             "stdout": "",
-            "stderr": f"Failed to execute: {e}",
+            "stderr": f"Unsupported language '{language}'. Supported: {', '.join(sorted(_SCRIPT_LANGUAGES))}",
             "truncated": False,
-            "command": shlex.join(command),
+            "language": language,
+            "script_file": "",
+            "working_dir": "",
         }
+
+    # 3. Check code not empty
+    if not code or not code.strip():
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": "Script code is empty",
+            "truncated": False,
+            "language": lang,
+            "script_file": "",
+            "working_dir": "",
+        }
+
+    # 4. Find interpreter
+    if lang == "python":
+        if venv:
+            resolved = _resolve_venv_interpreter(venv)
+            if resolved:
+                interpreter = resolved
+            else:
+                venvs_dir = os.environ.get("CYBERSEC_MCP_VENVS_DIR", "").strip() or os.path.expanduser("~/.ctf-venvs")
+                return {
+                    "exit_code": -1,
+                    "stdout": "",
+                    "stderr": f"Venv '{venv}' not found. Expected: {venvs_dir}/{venv}/bin/python",
+                    "truncated": False,
+                    "language": lang,
+                    "script_file": "",
+                    "working_dir": "",
+                }
+        else:
+            # Static override via env var, fallback to sys.executable
+            custom_python = os.environ.get("CYBERSEC_MCP_SCRIPT_PYTHON", "").strip()
+            if custom_python and os.path.isfile(custom_python):
+                interpreter = custom_python
+            else:
+                interpreter = sys.executable
+    else:
+        interpreter = shutil.which("bash")
+        if not interpreter:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": "Interpreter 'bash' not found in PATH",
+                "truncated": False,
+                "language": lang,
+                "script_file": "",
+                "working_dir": "",
+            }
+
+    # 5. Validate working_dir
+    if working_dir:
+        wd = Path(working_dir)
+        if not wd.is_dir():
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Working directory '{working_dir}' does not exist or is not a directory",
+                "truncated": False,
+                "language": lang,
+                "script_file": "",
+                "working_dir": working_dir,
+            }
+        cwd = str(wd)
+    else:
+        cwd = tempfile.gettempdir()
+
+    # 6. Clamp timeout
+    timeout = max(1, min(timeout, 300))
+
+    # 7. Write code to temp file
+    suffix = _SCRIPT_LANGUAGES[lang]
+    fd, script_path = tempfile.mkstemp(suffix=suffix, prefix="mcp_script_")
+    try:
+        os.write(fd, code.encode("utf-8"))
+        os.close(fd)
+
+        # 8. Audit log BEFORE execution
+        log_script_execution(
+            language=lang,
+            code=code,
+            script_file=script_path,
+            working_dir=cwd,
+        )
+
+        # 9. Acquire rate limiter slot
+        async with _rate_limiter._semaphore:
+            try:
+                await _rate_limiter.acquire()
+            except ValueError as e:
+                return {
+                    "exit_code": -1,
+                    "stdout": "",
+                    "stderr": str(e),
+                    "truncated": False,
+                    "language": lang,
+                    "script_file": script_path,
+                    "working_dir": cwd,
+                }
+
+            # 10. Execute
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    interpreter, script_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                )
+
+                try:
+                    stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                        process.communicate(), timeout=timeout,
+                    )
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await process.wait()
+                    log_execution(
+                        tool_name=f"script:{lang}",
+                        args="",
+                        host="localhost",
+                        exit_code=-1,
+                        command=f"{interpreter} {script_path}",
+                    )
+                    return {
+                        "exit_code": -1,
+                        "stdout": "",
+                        "stderr": f"Script timed out after {timeout} seconds",
+                        "truncated": False,
+                        "language": lang,
+                        "script_file": script_path,
+                        "working_dir": cwd,
+                    }
+
+                stdout = stdout_bytes.decode("utf-8", errors="replace")
+                stderr = stderr_bytes.decode("utf-8", errors="replace")
+
+                stdout, t1 = truncate_output(stdout, max_output)
+                stderr, t2 = truncate_output(stderr, max_output)
+                truncated = t1 or t2
+
+                stdout = sanitize_output(stdout)
+                stderr = sanitize_output(stderr)
+
+                rc = process.returncode if process.returncode is not None else 0
+                log_execution(
+                    tool_name=f"script:{lang}",
+                    args="",
+                    host="localhost",
+                    exit_code=rc,
+                    command=f"{interpreter} {script_path}",
+                )
+
+                return {
+                    "exit_code": rc,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "truncated": truncated,
+                    "language": lang,
+                    "script_file": script_path,
+                    "working_dir": cwd,
+                }
+
+            except FileNotFoundError:
+                log_execution(
+                    tool_name=f"script:{lang}",
+                    args="",
+                    host="localhost",
+                    exit_code=-1,
+                    command=f"{interpreter} {script_path}",
+                )
+                return {
+                    "exit_code": -1,
+                    "stdout": "",
+                    "stderr": f"Interpreter '{interpreter}' not found",
+                    "truncated": False,
+                    "language": lang,
+                    "script_file": script_path,
+                    "working_dir": cwd,
+                }
+            except OSError as e:
+                log_execution(
+                    tool_name=f"script:{lang}",
+                    args="",
+                    host="localhost",
+                    exit_code=-1,
+                    command=f"{interpreter} {script_path}",
+                )
+                return {
+                    "exit_code": -1,
+                    "stdout": "",
+                    "stderr": f"Failed to execute script: {e}",
+                    "truncated": False,
+                    "language": lang,
+                    "script_file": script_path,
+                    "working_dir": cwd,
+                }
+    finally:
+        # 13. Cleanup temp file
+        try:
+            os.unlink(script_path)
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Remote execution support
+# ---------------------------------------------------------------------------
+
+
+def validate_tool_for_remote_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
+    """Validate that a tool can be executed remotely. Returns the resolved binary name.
+
+    Like validate_tool_for_execution but skips the local shutil.which() check
+    since the tool only needs to be installed on the remote host.
+    System utilities bypass the registry check entirely for remote execution.
+
+    Raises ValueError if the tool cannot be executed.
+    """
+    # System utilities: no registry or PATH check needed for remote
+    if tool_name in SYSTEM_UTILITIES:
+        return tool_name
+
+    tool = tools_db.tools_by_name.get(tool_name)
+    if not tool:
+        raise ValueError(f"Tool '{tool_name}' not found in tools_config.json")
+
+    if tool["method"] in NON_EXECUTABLE_METHODS:
+        raise ValueError(
+            f"Tool '{tool_name}' uses install method '{tool['method']}' and is not directly executable as a CLI command"
+        )
+
+    return PIPX_BIN_NAMES.get(tool_name, tool_name)
+
+
+async def execute_tool_remote(
+    tool_name: str,
+    args: str,
+    tools_db: ToolsDatabase,
+    remote_config: Any,
+    host: str,
+    timeout: int = 120,
+    max_output: int = 200000,
+) -> dict:
+    """Execute a tool on a remote host via SSH.
+
+    Runs all security checks (sanitize_args, check_policy) locally before
+    sending the command over SSH.
+
+    Returns dict with: exit_code, stdout, stderr, truncated, command, remote.
+    """
+    from mcp_server.remote import execute_remote_command
+
+    # Validate, sanitize, and enforce policy locally
+    try:
+        # Allowlist check first
+        if not remote_config.check_tool_allowed(host, tool_name):
+            raise ValueError(f"Tool '{tool_name}' is not in the allowlist for host '{host}'")
+        binary = validate_tool_for_remote_execution(tool_name, tools_db)
+        arg_list = sanitize_args(args)
+        await asyncio.to_thread(check_policy, tool_name, arg_list)
+        ssh_args = remote_config.get_ssh_base_args(host)
+    except ValueError as e:
+        log_blocked(tool_name=tool_name, args=args, reason=str(e), host=host, remote=True)
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": str(e),
+            "truncated": False,
+            "command": tool_name + (" " + args if args else ""),
+            "remote": True,
+        }
+
+    command = [binary] + arg_list
+
+    async with _rate_limiter._semaphore:
+        try:
+            await _rate_limiter.acquire()
+        except ValueError as e:
+            log_blocked(tool_name=tool_name, args=args, reason=str(e), host=host, remote=True)
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": str(e),
+                "truncated": False,
+                "command": tool_name + (" " + args if args else ""),
+                "remote": True,
+            }
+
+        result = await execute_remote_command(ssh_args, command, timeout=timeout, max_output=max_output)
+
+    # Sanitize output to strip prompt-injection patterns
+    result["stdout"] = sanitize_output(result.get("stdout", ""))
+    result["stderr"] = sanitize_output(result.get("stderr", ""))
+
+    log_execution(
+        tool_name=tool_name,
+        args=args,
+        host=host,
+        exit_code=result.get("exit_code", -1),
+        command=result.get("command", ""),
+        remote=True,
+    )
+
+    return result

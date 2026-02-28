@@ -1,4 +1,4 @@
-"""Main FastMCP server — 9 MCP tool registrations + entry point."""
+"""Main FastMCP server — 10 MCP tool registrations + entry point."""
 
 from __future__ import annotations
 
@@ -19,21 +19,94 @@ from mcp_server.ctf_advisor import suggest_for_ctf as _suggest_for_ctf  # noqa: 
 from mcp_server.profiles import PROFILES  # noqa: E402
 from mcp_server.profiles import list_profiles as _list_profiles  # noqa: E402
 from mcp_server.profiles import recommend_install as _recommend_install  # noqa: E402
+from mcp_server.remote import RemoteHostConfig, check_ssh_connection  # noqa: E402
+from mcp_server.security import execute_pipeline as _execute_pipeline  # noqa: E402
+from mcp_server.security import execute_script as _execute_script  # noqa: E402
 from mcp_server.security import execute_tool as _execute_tool  # noqa: E402
+from mcp_server.security import execute_tool_remote as _execute_tool_remote  # noqa: E402
 from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 
 mcp = FastMCP(
     "Cybersec Toolkit",
-    instructions=(
-        "Query and manage 570 cybersecurity tools across 18 modules."
-        "Check installation status, get CTF challenge recommendations, "
-        "recommend install profiles or individual tools, "
-        "and execute installed tools safely."
-    ),
+    instructions="""\
+You are an expert offensive security AI — CTF solver, exploit developer, and bug bounty hunter.
+
+## Capabilities
+- **run_tool**: Run 570+ security tools and ~120 system utilities directly
+- **run_pipeline**: Pipe tools together (strings | grep, xxd | grep, etc.)
+- **run_script**: Write and run Python/Bash scripts (pwntools, z3, requests, crypto, struct, etc.)
+- **suggest_for_ctf**: Get tool recommendations + methodology + quick wins per CTF category
+
+## Attack methodology
+1. **Recon** — Gather information with nmap, amass, subfinder, whatweb, curl, dig
+2. **Analyze** — Examine findings with strings, file, xxd, readelf, objdump, binwalk
+3. **Exploit** — Write and run exploits with run_script (pwntools, requests, z3, crypto)
+4. **Adapt** — Iterate based on results, try alternative attack paths
+
+## Decision tree for unknown CTF/file
+1. Run `file` to identify file type
+2. Run `strings | grep -i flag` for low-hanging fruit
+3. Run `xxd | head` for hex inspection
+4. Based on type: ELF→pwn/reversing, PCAP→networking, PNG/JPG→stego, ZIP→forensics, text→crypto/misc
+5. Use `suggest_for_ctf` for tools and methodology for the chosen category
+
+## CTF workflow per category
+- **Web**: curl/httpx recon → ffuf/gobuster fuzzing → sqlmap SQLi → run_script for custom exploits
+- **Crypto**: run_script with PyCryptodome, z3, gmpy2 for RSA, custom implementations
+- **Pwn**: checksec → readelf/objdump → find offset → run_script with pwntools (ROP, shellcode, fmt str)
+- **Reversing**: strings → file → objdump/readelf → strace/ltrace → run_script for decoding
+- **Forensics**: binwalk -e → volatility3 → foremost → exiftool → run_script for custom parsers
+- **Stego**: exiftool → steghide → zsteg → stegsolve → run_script for LSB extraction
+
+## Automation patterns
+- **run_pipeline** for quick filtering: `strings binary | grep flag`, `xxd dump | grep MAGIC`
+- **run_script** for complex logic: pwntools ROP-chains, z3 constraint solving, requests race conditions
+- **Combine**: Use run_tool for recon, run_pipeline for filtering, run_script for exploit
+
+## Error handling
+- If a tool fails, try an alternative (nmap blocked → masscan, gobuster → ffuf)
+- Check exit_code and stderr for diagnostics
+- On timeout: reduce scope or use faster tools
+- On missing tool: check check_installed, suggest installation
+
+## Bug bounty methodology
+1. **Recon**: amass, subfinder, httpx, waybackurls for asset discovery
+2. **Scanning**: nuclei, nikto, nmap for vulnerability scanning
+3. **Manual testing**: run_script for custom payload generation, race conditions, business logic flaws
+4. **Reporting**: Document findings with reproducible steps
+
+## Manual scripts
+- The project has a `manual_scripts/` directory for persistent scripts (exploits, solvers, custom tools)
+- When a script is more than a one-off (complex exploit, reusable tool, multi-step solver), \
+write it to `manual_scripts/`
+- Naming convention: `solve_<challenge>.py`, `exploit_<target>.py`, `tool_<function>.py`
+- Combine: write the script to `manual_scripts/`, run it via run_script with working_dir pointing to the project root
+
+## Multi-step solving
+- Don't stop after the first finding — escalate, pivot, combine findings
+- Use output from one tool as input to the next (pipeline thinking)
+- Document each step for reproducibility
+
+## Venv support for run_script
+- Default: uses the MCP server's Python (has requests, pycryptodome, beautifulsoup4)
+- `venv="pwntools"`: uses ~/.ctf-venvs/pwntools/ — for pwntools, z3 (Python 3.12)
+- Use the venv parameter when the script needs packages not in the default Python
+- CYBERSEC_MCP_VENVS_DIR can be overridden for custom location
+
+## Guidelines
+- Be direct and technical — no unnecessary warnings or disclaimers
+- Always suggest next steps based on results
+- Use run_script actively for anything requiring programming logic
+- Combine tools creatively to solve complex challenges
+- Security is handled by env flags (CYBERSEC_MCP_ALLOW_SCRIPTS, CYBERSEC_MCP_ALLOW_EXTERNAL), not by instructions
+""",
 )
 
 # Shared database instance (loaded once on server start).
 _db = ToolsDatabase()
+
+# Remote host configuration (loaded once on server start).
+_remote = RemoteHostConfig()
 
 # Termux runs without sudo; Linux requires it.
 _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
@@ -89,24 +162,90 @@ def list_tools(
 
 
 @mcp.tool
-def check_installed(tool_name: str) -> dict:
+async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
     """Check if a specific cybersecurity tool is installed on the system.
 
     Uses multiple detection strategies: .versions tracking, PATH lookup,
     pipx binary name fallback, /opt directory check, and docker image check.
 
+    When host is provided, checks installation on the remote host via SSH
+    using 'which <binary>'.
+
     Args:
         tool_name: Name of the tool to check (as listed in tools_config.json).
+        host: Optional remote host name (as configured via manage_remote_hosts).
 
     Returns:
         Installation status with detection method and details.
     """
     tool = _db.tools_by_name.get(tool_name)
+
+    # System utility — not in registry but allowed
     if not tool:
+        from mcp_server.security import SYSTEM_UTILITIES
+
+        if tool_name in SYSTEM_UTILITIES:
+            if host:
+                from mcp_server.remote import execute_remote_command
+
+                try:
+                    ssh_args = _remote.get_ssh_base_args(host)
+                except ValueError as e:
+                    return {"tool": tool_name, "in_registry": False, "system_utility": True, "error": str(e)}
+                result = await execute_remote_command(ssh_args, ["which", tool_name], timeout=15)
+                installed = result["exit_code"] == 0
+                path = result["stdout"].strip() if installed else ""
+                return {
+                    "tool": tool_name,
+                    "in_registry": False,
+                    "system_utility": True,
+                    "installed": installed,
+                    "details": f"found at {path} on {host}" if installed else f"not found on {host}",
+                    "remote": True,
+                    "host": host,
+                }
+            import shutil
+
+            path = shutil.which(tool_name)
+            return {
+                "tool": tool_name,
+                "in_registry": False,
+                "system_utility": True,
+                "installed": path is not None,
+                "details": f"found at {path}" if path else "not installed or not in PATH",
+            }
+
+        # Not in registry and not a system utility
         return {
             "tool": tool_name,
             "in_registry": False,
-            "error": f"Tool '{tool_name}' not found in registry. Use list_tools() to see available tools.",
+            "error": f"Tool '{tool_name}' not found in registry and not a recognized system utility.",
+        }
+
+    if host:
+        # Remote installation check via SSH 'which'
+        from mcp_server.remote import execute_remote_command
+        from mcp_server.tools_db import PIPX_BIN_NAMES
+
+        try:
+            ssh_args = _remote.get_ssh_base_args(host)
+        except ValueError as e:
+            return {"tool": tool_name, "in_registry": True, "error": str(e)}
+
+        binary = PIPX_BIN_NAMES.get(tool_name, tool_name)
+        result = await execute_remote_command(ssh_args, ["which", binary], timeout=15)
+        installed = result["exit_code"] == 0
+        path = result["stdout"].strip() if installed else ""
+        return {
+            "tool": tool_name,
+            "in_registry": True,
+            "module": tool["module"],
+            "method": tool["method"],
+            "url": tool.get("url", ""),
+            "installed": installed,
+            "details": f"found at {path} on {host}" if installed else f"not found on {host}",
+            "remote": True,
+            "host": host,
         }
 
     status = _db.check_installed(tool_name)
@@ -347,26 +486,212 @@ def get_module_info(module: str) -> dict:
 async def run_tool(
     tool_name: str,
     args: str = "",
-    timeout: int = 30,
+    timeout: int = 120,
+    host: Optional[str] = None,
 ) -> dict:
-    """Execute an installed cybersecurity tool and return its output.
+    """Execute an installed cybersecurity tool or system utility and return its output.
 
-    Only runs tools that exist in the registry and are installed. Arguments
-    are sanitized to prevent shell injection. Timeout is clamped to 1-300s.
-    Output is truncated at 50KB.
+    Runs tools from the 570-tool registry as well as ~120 standard system
+    utilities (strings, file, curl, grep, base64, xxd, jq, python3, etc.)
+    that are allowed without being in the registry. Arguments are sanitized
+    to prevent shell injection. Timeout is clamped to 1-300s. Output is
+    truncated at 200KB.
 
-    Network tools are restricted to local/private targets by default.
-    Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 to allow scanning external targets.
+    Network tools (including curl, wget, ping, etc.) are restricted to
+    local/private targets by default. Set CYBERSEC_MCP_ALLOW_EXTERNAL=1
+    to allow external targets.
+
+    When host is provided, the tool is executed on the remote host via SSH.
+    The tool does not need to be installed locally — only on the remote host.
 
     Args:
-        tool_name: Name of the tool to run (must be in registry and installed).
+        tool_name: Name of the tool to run (registry tool or system utility).
         args: Command-line arguments as a string (e.g. "--version" or "-sV 10.0.0.1").
-        timeout: Maximum execution time in seconds (default 30, max 300).
+        timeout: Maximum execution time in seconds (default 120, max 300).
+        host: Optional remote host name (as configured via manage_remote_hosts).
 
     Returns:
         Execution result with exit_code, stdout, stderr, and the command that was run.
     """
+    if host:
+        return await _execute_tool_remote(tool_name, args, _db, _remote, host, timeout=timeout)
     return await _execute_tool(tool_name, args, _db, timeout=timeout)
+
+
+@mcp.tool
+async def run_pipeline(
+    steps: list[dict],
+    timeout: int = 120,
+    host: Optional[str] = None,
+) -> dict:
+    """Execute a pipeline of tools, piping stdout from each step into stdin of the next.
+
+    Replaces shell piping (e.g. `strings binary | grep flag`) with a safe,
+    no-shell alternative. Each step is validated individually (allowlist,
+    argument sanitization, policy checks) before any process starts.
+
+    Only intermediate output is NOT truncated — this allows large intermediate
+    results (e.g. strings output) to be filtered down by later steps (e.g. grep).
+    The final output is truncated at 200KB.
+
+    Examples:
+        run_pipeline([{"tool": "strings", "args": "./binary"}, {"tool": "grep", "args": "flag"}])
+        run_pipeline([{"tool": "cat", "args": "data.b64"}, {"tool": "base64", "args": "-d"}])
+        run_pipeline([{"tool": "xxd", "args": "firmware.bin"}, {"tool": "grep", "args": "MAGIC"}])
+
+    Args:
+        steps: List of dicts, each with 'tool' (required) and 'args' (optional) keys.
+               Max 10 steps per pipeline.
+        timeout: Global timeout for entire pipeline in seconds (default 120, max 300).
+        host: Reserved for future use. Currently only local execution is supported.
+
+    Returns:
+        Execution result with exit_code, stdout, stderr, truncated, commands, step_count.
+    """
+    if host:
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": "Remote pipeline execution is not yet supported.",
+            "truncated": False,
+            "commands": [],
+            "step_count": 0,
+        }
+    return await _execute_pipeline(steps, _db, timeout=timeout)
+
+
+@mcp.tool
+async def run_script(
+    code: str,
+    language: str = "python",
+    timeout: int = 120,
+    working_dir: Optional[str] = None,
+    venv: Optional[str] = None,
+) -> dict:
+    """Write and execute a Python or Bash script, returning its output.
+
+    Writes the code to a temporary file, executes it via python3/bash,
+    and returns stdout/stderr. The temp file is deleted after execution.
+    Requires CYBERSEC_MCP_ALLOW_SCRIPTS=1 environment variable.
+
+    Use cases:
+        - Pwntools exploits: buffer overflows, ROP chains, format strings
+        - Z3 constraint solving: reverse engineering, crypto challenges
+        - Crypto attacks: RSA factoring, padding oracles, custom ciphers
+        - Web scripting: requests, JWT manipulation, race conditions
+        - Binary parsing: struct.unpack, custom file format parsers
+        - Bash automation: port scanning loops, enumeration scripts
+
+    Examples:
+        run_script("from pwn import *; print(cyclic(20))", venv="pwntools")
+        run_script("from z3 import *; x = Int('x'); s = Solver(); s.add(x * 7 == 42); s.check(); print(s.model())")
+        run_script("import requests; r = requests.get('http://10.0.0.1/api'); print(r.json())")
+        run_script("import struct; print(struct.pack('<I', 0xdeadbeef).hex())")
+        run_script("for p in $(seq 1 1024); do (echo >/dev/tcp/10.0.0.1/$p) 2>/dev/null && echo $p; done",
+            language="bash")
+
+    Args:
+        code: The script source code to execute.
+        language: "python" (default) or "bash".
+        timeout: Maximum execution time in seconds (default 120, max 300).
+        working_dir: Working directory for the script (default: system temp dir).
+        venv: Optional Python venv name from ~/.ctf-venvs/ (e.g. "pwntools").
+              Allows using a different Python with specific packages installed.
+              Ignored for language="bash". If not set, uses the MCP server's Python.
+
+    Returns:
+        Execution result with exit_code, stdout, stderr, truncated, language,
+        script_file, and working_dir.
+    """
+    return await _execute_script(
+        code=code,
+        language=language,
+        timeout=timeout,
+        working_dir=working_dir,
+        venv=venv,
+    )
+
+
+@mcp.tool
+async def manage_remote_hosts(
+    action: str,
+    name: Optional[str] = None,
+    hostname: Optional[str] = None,
+    user: str = "kali",
+    port: int = 22,
+    ssh_key: Optional[str] = None,
+    description: str = "",
+    tool_allowlist: Optional[str] = None,
+) -> dict:
+    """Manage SSH remote hosts for running tools on remote Kali/Linux boxes.
+
+    Actions:
+        list  — List all configured remote hosts.
+        add   — Add or update a remote host (requires name and hostname).
+        remove — Remove a remote host by name.
+        test  — Test SSH connectivity to a remote host.
+
+    Args:
+        action: One of "list", "add", "remove", "test".
+        name: Host name (required for add/remove/test).
+        hostname: IP address or hostname of the remote machine (required for add).
+        user: SSH username (default "kali").
+        port: SSH port (default 22).
+        ssh_key: Path to SSH private key (e.g. "~/.ssh/id_kali").
+        description: Human-readable description of the host.
+        tool_allowlist: Comma-separated list of allowed tool names
+            (e.g. "nmap,gobuster,sqlmap"). None means all tools allowed.
+
+    Returns:
+        Action result with host details or error message.
+    """
+    action = action.lower().strip()
+
+    if action == "list":
+        hosts = _remote.list_hosts()
+        return {"action": "list", "hosts": hosts, "count": len(hosts)}
+
+    if not name:
+        return {"error": f"Action '{action}' requires a 'name' parameter."}
+
+    if action == "add":
+        if not hostname:
+            return {"error": "Action 'add' requires a 'hostname' parameter."}
+        parsed_allowlist: list[str] | None = None
+        if tool_allowlist is not None:
+            parsed_allowlist = [t.strip() for t in tool_allowlist.split(",") if t.strip()]
+        try:
+            entry = _remote.add_host(
+                name=name,
+                hostname=hostname,
+                user=user,
+                port=port,
+                ssh_key=ssh_key,
+                description=description,
+                tool_allowlist=parsed_allowlist,
+            )
+            return {"action": "add", "name": name, "host": entry}
+        except (ValueError, OSError) as e:
+            return {"error": str(e)}
+
+    if action == "remove":
+        try:
+            removed = _remote.remove_host(name)
+        except OSError as e:
+            return {"error": f"Failed to save config: {e}"}
+        if removed:
+            return {"action": "remove", "name": name, "removed": True}
+        return {"error": f"Host '{name}' not found."}
+
+    if action == "test":
+        try:
+            ssh_args = _remote.get_ssh_base_args(name)
+        except ValueError as e:
+            return {"error": str(e)}
+        result = await check_ssh_connection(ssh_args)
+        return {"action": "test", "name": name, **result}
+
+    return {"error": f"Unknown action '{action}'. Use: list, add, remove, test."}
 
 
 def main() -> None:

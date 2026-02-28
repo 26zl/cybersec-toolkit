@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from mcp_server.remote import RemoteHostConfig
 from mcp_server.tools_db import ToolsDatabase
 
 SAMPLE_TOOLS = [
@@ -51,3 +52,10 @@ def tools_db(tmp_tools_config: Path) -> ToolsDatabase:
     """ToolsDatabase backed by the sample config (no real filesystem checks)."""
     with patch("shutil.which", return_value=None):
         return ToolsDatabase(project_root=tmp_tools_config)
+
+
+@pytest.fixture()
+def remote_config(tmp_path: Path) -> RemoteHostConfig:
+    """RemoteHostConfig backed by a temporary config file."""
+    config_path = tmp_path / "remote_hosts.json"
+    return RemoteHostConfig(config_path=config_path)

@@ -91,3 +91,30 @@ class TestSuggestForCtf:
         nmap_entry = next((t for t in result["tools"] if t["name"] == "nmap"), None)
         if nmap_entry:
             assert nmap_entry["installed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Methodology and quick_wins
+# ---------------------------------------------------------------------------
+class TestMethodology:
+    @pytest.mark.parametrize("cat", list(CTF_CATEGORY_MAP.keys()))
+    def test_methodology_exists(self, cat: str) -> None:
+        assert "methodology" in CTF_CATEGORY_MAP[cat]
+        assert len(CTF_CATEGORY_MAP[cat]["methodology"]) >= 3
+
+    @pytest.mark.parametrize("cat", list(CTF_CATEGORY_MAP.keys()))
+    def test_quick_wins_exists(self, cat: str) -> None:
+        assert "quick_wins" in CTF_CATEGORY_MAP[cat]
+        assert len(CTF_CATEGORY_MAP[cat]["quick_wins"]) >= 2
+
+    def test_suggest_includes_methodology(self, tools_db: ToolsDatabase) -> None:
+        with patch("shutil.which", return_value=None):
+            result = suggest_for_ctf("web", tools_db)
+        assert "methodology" in result
+        assert len(result["methodology"]) > 0
+
+    def test_suggest_includes_quick_wins(self, tools_db: ToolsDatabase) -> None:
+        with patch("shutil.which", return_value=None):
+            result = suggest_for_ctf("web", tools_db)
+        assert "quick_wins" in result
+        assert len(result["quick_wins"]) > 0

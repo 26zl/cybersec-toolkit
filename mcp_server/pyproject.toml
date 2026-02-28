@@ -1,14 +1,25 @@
 [project]
 name = "cybersec-tools-mcp"
 version = "1.0.0"
-description = "MCP server for the cybersec-toolkit — query 568 tools, get recommendations, execute safely"
+description = "MCP server for the cybersec-toolkit — query 570 tools, get recommendations, execute safely"
 requires-python = ">=3.10"
 dependencies = [
     "fastmcp>=3.0.0,<4.0.0",
 ]
 
+[project.optional-dependencies]
+ctf-core = [
+    "requests>=2.31",
+    "pycryptodome>=3.19",
+    "beautifulsoup4>=4.12",
+]
+ctf-extra = [
+    "pwntools>=4.11",
+    "z3-solver>=4.12",
+]
+
 [project.scripts]
-cybersec-mcp = "server:main"
+cybersec-mcp = "mcp_server.server:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.8"]

@@ -41,9 +41,9 @@ TOOL_ALIASES: dict[str, str] = {
 CTF_CATEGORY_MAP: dict[str, dict] = {
     "web": {
         "description": "Web application exploitation — SQL injection, XSS, SSRF, auth bypass, deserialization",
-        "modules": ["web", "recon"],
+        "modules": ["web", "recon", "networking"],
         "tools": [
-            ("burpsuite", "Intercepting proxy for web app testing"),
+            ("mitmproxy", "Intercepting HTTP/HTTPS proxy"),
             ("sqlmap", "Automatic SQL injection exploitation"),
             ("nikto", "Web server vulnerability scanner"),
             ("gobuster", "Directory/DNS/vhost brute-forcing"),
@@ -56,10 +56,23 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("jwt-tool", "JWT token testing and exploitation"),
             ("dalfox", "XSS parameter analysis and scanning"),
         ],
+        "methodology": [
+            "1. RECON: Run whatweb/httpx for tech stack, ffuf/gobuster for hidden paths",
+            "2. ENUMERATE: Check robots.txt, .git, backup files, API endpoints",
+            "3. ANALYZE: Inspect cookies, headers, JS source code, parameters",
+            "4. EXPLOIT: Test SQLi (sqlmap), XSS (dalfox), SSRF, auth bypass",
+            "5. ESCALATE: Pivot via discovered access, try deserialization, SSTI, file upload",
+        ],
+        "quick_wins": [
+            "Check robots.txt and /.git/HEAD",
+            "Test ' OR 1=1-- in all input fields",
+            "Try admin:admin, admin:password",
+            "Inspect HTML comments and JS source code",
+        ],
     },
     "crypto": {
         "description": "Cryptography — cipher analysis, RSA attacks, hash cracking, encoding",
-        "modules": ["crypto"],
+        "modules": ["crypto", "cracking"],
         "tools": [
             ("z3-solver", "SMT solver for constraint problems"),
             ("rsactftool", "RSA attack toolkit"),
@@ -70,10 +83,23 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("hashid", "Hash type identification"),
             ("name-that-hash", "Hash identification tool"),
         ],
+        "methodology": [
+            "1. IDENTIFY: Use hashid/name-that-hash, check encoding (base64, hex, rot13)",
+            "2. ANALYZE: Find key length (xortool), RSA parameters (n, e, c), cipher type",
+            "3. ATTACK: RSA (RsaCtfTool, factordb), XOR (xortool), hash (hashcat/john)",
+            "4. SOLVE: Use run_script with z3 for constraints, PyCryptodome for custom crypto",
+            "5. VERIFY: Decrypt and validate output, check for nested encoding",
+        ],
+        "quick_wins": [
+            "Try base64 -d, xxd -r, rot13 on ciphertext",
+            "Check if RSA n is factorable via factordb",
+            "Test common ciphers: Caesar, Vigenere, XOR with known plaintext",
+            "Run hashcat/john with rockyou.txt on unknown hashes",
+        ],
     },
     "pwn": {
         "description": "Binary exploitation — buffer overflows, ROP chains, format strings, heap exploits",
-        "modules": ["pwn"],
+        "modules": ["pwn", "reversing"],
         "tools": [
             ("pwntools", "CTF framework for exploit development"),
             ("gdb", "GNU debugger (with pwndbg/GEF)"),
@@ -85,6 +111,19 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("afl++", "Coverage-guided fuzzer"),
             ("checksec", "Binary security property checker"),
             ("ROPgadget", "ROP gadget search tool"),
+        ],
+        "methodology": [
+            "1. RECON: checksec for protections (NX, PIE, canary, RELRO), file/readelf for type",
+            "2. ANALYZE: objdump/radare2 for disassembly, find vulnerable function (gets, strcpy, printf)",
+            "3. FIND PRIMITIVES: Buffer overflow offset (cyclic), format string leaks, heap bugs",
+            "4. BUILD EXPLOIT: run_script with pwntools — ROP chain, shellcode, ret2libc, GOT overwrite",
+            "5. EXPLOIT: Connect to target, send payload, handle interaction, capture the flag",
+        ],
+        "quick_wins": [
+            "Run checksec to see which protections are missing",
+            "Try cyclic(200) + core dump to find offset",
+            "Check for format string: %p%p%p%p in input",
+            "Look for win/flag function in symbols (nm/objdump)",
         ],
     },
     "reversing": {
@@ -100,6 +139,18 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("upx", "UPX packer/unpacker"),
             ("angr", "Binary analysis framework"),
             ("uncompyle6", "Python bytecode decompiler"),
+        ],
+        "methodology": [
+            "1. IDENTIFY: file, strings, readelf/objdump for file type, architecture, symbols",
+            "2. STATIC ANALYSIS: Ghidra/radare2 decompile, find main/entry, map out functions",
+            "3. DYNAMIC ANALYSIS: strace/ltrace for syscalls, gdb for breakpoints and stepping",
+            "4. DECODE: Find anti-debug, unpack (UPX), decrypt strings, run_script for custom decode",
+            "5. PATCH/SOLVE: Patch the binary or write keygen/solver with angr/z3",
+        ],
+        "quick_wins": [
+            "Run strings and grep for flag{, CTF{, password, key",
+            "Check if the binary is UPX-packed: upx -d binary",
+            "Use ltrace to see strcmp/memcmp calls with expected input",
         ],
     },
     "forensics": {
@@ -118,6 +169,19 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("photorec", "File recovery / carving"),
             ("bulk-extractor", "Bulk data extraction"),
         ],
+        "methodology": [
+            "1. IDENTIFY: file, xxd, binwalk for file type and embedded data",
+            "2. EXTRACT: binwalk -e, foremost, photorec for file carving",
+            "3. ANALYZE: volatility3 for memory dumps, sleuthkit for disk images",
+            "4. METADATA: exiftool, oletools, peepdf for document analysis",
+            "5. RECONSTRUCT: run_script for custom parsers, timeline analysis, data recovery",
+        ],
+        "quick_wins": [
+            "Run binwalk -e for automatic extraction of embedded files",
+            "Check exiftool for hidden metadata and comments",
+            "Use strings | grep -i flag on the entire file",
+            "Try foremost for file carving from disk/memory dumps",
+        ],
     },
     "stego": {
         "description": "Steganography — hidden data in images, audio, text, and network protocols",
@@ -131,6 +195,19 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("exiftool", "Image metadata analysis"),
             ("stegoveritas", "Multi-tool stego analyzer"),
             ("snow", "Whitespace steganography tool"),
+        ],
+        "methodology": [
+            "1. IDENTIFY: file, exiftool for file type and metadata, pngcheck for PNG validation",
+            "2. VISUAL: stegsolve for bit-plane analysis, color channel manipulation",
+            "3. EXTRACT: steghide extract, zsteg, binwalk for embedded data",
+            "4. CRACK: stegseek with wordlist if steghide is password-protected",
+            "5. CUSTOM: run_script for LSB extraction, audio spectrogram, custom stego algorithms",
+        ],
+        "quick_wins": [
+            "Run exiftool for hidden comments and metadata",
+            "Try steghide extract -sf image.jpg -p '' (empty password)",
+            "Use zsteg on PNG/BMP for LSB data",
+            "Check strings for embedded text or flag",
         ],
     },
     "misc": {
@@ -146,10 +223,22 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("seclists", "Security wordlists collection"),
             ("patator", "Multi-purpose brute-forcer"),
         ],
+        "methodology": [
+            "1. IDENTIFY: file, strings, xxd to understand what you're working with",
+            "2. DECODE: Try common encodings — base64, hex, URL, rot13, morse",
+            "3. CRACK: hashcat/john with rockyou.txt, hydra for online brute-force",
+            "4. SCRIPT: run_script for custom decode chains, brute-force logic",
+            "5. COMBINE: Combine findings from multiple steps, think laterally",
+        ],
+        "quick_wins": [
+            "Try CyberChef Magic function for automatic decoding",
+            "Run base64 -d, xxd -r, and rot13 on unknown data",
+            "Use john/hashcat with rockyou.txt on hashes",
+        ],
     },
     "networking": {
         "description": "Network challenges — packet analysis, protocol exploitation, traffic manipulation",
-        "modules": ["networking"],
+        "modules": ["networking", "pwn", "enterprise"],
         "tools": [
             ("wireshark", "Network protocol analyzer (GUI)"),
             ("tshark", "CLI packet analyzer"),
@@ -162,10 +251,23 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("responder", "LLMNR/NBT-NS/MDNS poisoner"),
             ("mitmproxy", "Intercepting HTTP/HTTPS proxy"),
         ],
+        "methodology": [
+            "1. CAPTURE: tcpdump/tshark for packet capture, analyze PCAP files",
+            "2. ANALYZE: Wireshark/tshark filters, follow TCP streams, identify protocols",
+            "3. SCAN: nmap -sV -sC for service detection, masscan for fast port sweep",
+            "4. EXPLOIT: netcat/socat for connections, scapy for custom packets",
+            "5. EXTRACT: Extract files from PCAP, decrypt TLS with keys, analyze DNS",
+        ],
+        "quick_wins": [
+            "Use tshark -r file.pcap -T fields -e data for quick data extraction",
+            "Follow TCP streams in Wireshark: tcp.stream eq 0",
+            "Run nmap -sV -sC for service fingerprinting",
+            "Check DNS queries in PCAP for exfiltrated data",
+        ],
     },
     "wireless": {
         "description": "Wireless security — WiFi cracking, Bluetooth exploitation, SDR",
-        "modules": ["wireless"],
+        "modules": ["wireless", "networking"],
         "tools": [
             ("aircrack-ng", "WiFi security auditing suite"),
             ("kismet", "Wireless network detector/sniffer"),
@@ -176,6 +278,18 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("bluez", "Bluetooth protocol stack"),
             ("hackrf", "SDR tools for HackRF"),
             ("gnuradio", "Signal processing framework"),
+        ],
+        "methodology": [
+            "1. DISCOVER: airmon-ng for monitor mode, kismet for network scanning",
+            "2. CAPTURE: airodump-ng for handshake capture, tcpdump for raw packets",
+            "3. CRACK: aircrack-ng/hashcat on WPA handshake, reaver for WPS",
+            "4. MITM: bettercap for ARP spoofing, mitmproxy for HTTP intercept",
+            "5. ADVANCED: SDR with HackRF/GNURadio, Bluetooth with bluez",
+        ],
+        "quick_wins": [
+            "Run wifite for automated WiFi attacks",
+            "Check for WPS with wash/reaver",
+            "Use aircrack-ng with rockyou.txt on captured handshake",
         ],
     },
     "osint": {
@@ -193,10 +307,23 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("maigret", "Username search across 2500+ sites"),
             ("maltego-trx", "Maltego transform SDK"),
         ],
+        "methodology": [
+            "1. TARGET: Define scope — username, domain, email, organization",
+            "2. ENUMERATE: sherlock/maigret for usernames, amass/subfinder for subdomains",
+            "3. HARVEST: theHarvester for email/IP, holehe for account checking",
+            "4. CORRELATE: Cross-reference findings, build relationship map",
+            "5. DEEP DIVE: Shodan for exposed services, wayback machine for history",
+        ],
+        "quick_wins": [
+            "Run sherlock/maigret on usernames for social media",
+            "Use subfinder + httpx for fast subdomain scanning",
+            "Check Shodan for exposed services on target IP",
+            "Search wayback machine for old/deleted pages",
+        ],
     },
     "cloud": {
         "description": "Cloud security — AWS/Azure/GCP exploitation, container escapes, IAM abuse",
-        "modules": ["cloud", "containers"],
+        "modules": ["cloud", "containers", "recon"],
         "tools": [
             ("scoutsuite", "Multi-cloud security auditing"),
             ("prowler", "AWS/Azure/GCP security assessments"),
@@ -208,10 +335,23 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("deepce", "Docker enumeration and escape"),
             ("cloudsplaining", "AWS IAM policy analyzer"),
         ],
+        "methodology": [
+            "1. ENUMERATE: Find cloud services, S3 buckets, IAM roles, metadata endpoints",
+            "2. SCAN: prowler/scoutsuite for misconfiguration, trivy for container vulns",
+            "3. SECRETS: trufflehog for hardcoded keys, check metadata API (169.254.169.254)",
+            "4. EXPLOIT: pacu for AWS escalation, deepce for container escape",
+            "5. PIVOT: Use discovered access to move laterally in the cloud environment",
+        ],
+        "quick_wins": [
+            "Check metadata endpoint: curl http://169.254.169.254/latest/meta-data/",
+            "Run trufflehog on git repo for exposed secrets",
+            "Try public S3 bucket enumeration",
+            "Check IAM policies for overprivileged roles",
+        ],
     },
     "mobile": {
         "description": "Mobile security — Android/iOS app analysis, APK reversing, dynamic testing",
-        "modules": ["mobile"],
+        "modules": ["mobile", "reversing", "forensics", "blueteam", "web"],
         "tools": [
             ("apktool", "APK reverse engineering"),
             ("jadx", "DEX to Java decompiler"),
@@ -221,6 +361,19 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("androguard", "Android app reverse engineering"),
             ("quark-engine", "Android malware scoring"),
             ("nuclei", "Vulnerability scanner with mobile templates"),
+        ],
+        "methodology": [
+            "1. EXTRACT: apktool d app.apk, jadx for Java decompilation",
+            "2. STATIC: Search for hardcoded secrets, API keys, endpoints in source code",
+            "3. DYNAMIC: frida/objection for runtime hooking, SSL pinning bypass",
+            "4. NETWORK: mitmproxy for API traffic, check for insecure endpoints",
+            "5. EXPLOIT: Exploit discovered weaknesses — insecure storage, auth bypass, injection",
+        ],
+        "quick_wins": [
+            "Run apktool d + grep -r 'password\\|secret\\|api_key' on unpacked APK",
+            "Use jadx to read Java source code directly",
+            "Check AndroidManifest.xml for exported activities/providers",
+            "Try frida with objection for SSL pinning bypass",
         ],
     },
     "blockchain": {
@@ -232,6 +385,18 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("foundry", "Smart contract development toolkit"),
             ("solc-select", "Solidity compiler version manager"),
             ("echidna", "Ethereum smart contract fuzzer"),
+        ],
+        "methodology": [
+            "1. ANALYZE: Read smart contract code, understand business logic",
+            "2. STATIC: slither for automatic vulnerability scanning, mythril for EVM analysis",
+            "3. TEST: foundry (forge test) for unit tests, echidna for fuzzing",
+            "4. EXPLOIT: Write exploit contract with foundry, test against local fork",
+            "5. VERIFY: Confirm vulnerability, document attack vector and impact",
+        ],
+        "quick_wins": [
+            "Run slither for automatic detection of common weaknesses",
+            "Check for reentrancy, integer overflow, access control issues",
+            "Use foundry cast to interact with the contract directly",
         ],
     },
 }
@@ -329,5 +494,7 @@ def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
         "description": cat_info["description"],
         "modules": cat_info["modules"],
         "tools": tools_with_status,
+        "methodology": cat_info.get("methodology", []),
+        "quick_wins": cat_info.get("quick_wins", []),
         "summary": f"{installed_count}/{len(tools_with_status)} tools installed",
     }

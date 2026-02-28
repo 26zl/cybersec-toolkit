@@ -72,3 +72,6 @@ docker-*.tar
 
 # MCP
 .mcp.json
+remote_hosts.json
+audit.log
+audit.log.*

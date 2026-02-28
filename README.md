@@ -214,7 +214,10 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `suggest_for_ctf` | Curated tool recommendations for 13 CTF challenge categories |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
 | `list_profiles` | All 14 profiles with tool counts and install commands |
-| `run_tool` | Execute installed tools safely (sanitized args, network policy, timeout) |
+| `run_tool` | Execute installed tools safely (sanitized args, network policy, rate limiting, audit logging). Supports remote execution via SSH |
+| `run_pipeline` | Pipe tools together safely without shell (`strings binary \| grep flag`) |
+| `run_script` | Write and execute Python/Bash scripts (pwntools, z3, requests, crypto). Supports per-script venv selection |
+| `manage_remote_hosts` | Add, remove, list, and test SSH remote hosts for remote tool execution |
 
 ### Quick Start
 
@@ -231,7 +234,7 @@ Requires [uv](https://docs.astral.sh/uv/). Add to `.mcp.json` in the project roo
 }
 ```
 
-Restart Claude Code. The 9 tools appear in `/mcp`.
+Restart Claude Code. The 12 tools appear in `/mcp`.
 
 ### Connect from WSL (e.g. Kali Linux)
 
@@ -280,6 +283,44 @@ Once connected, just talk to the AI naturally:
 - __"I want to do bug bounty hunting"__ -- recommends the `web` profile
 - __"Is nmap installed?"__ -- multi-strategy detection (PATH, .versions, pipx, /opt, docker)
 - __"Run nmap --version"__ -- executes with output capture, network policy enforcement
+- __"Run nmap on my Kali VM"__ -- remote execution via SSH with per-host tool allowlists
+- __"Write a pwntools exploit for this binary"__ -- writes and runs a script with `venv="pwntools"`
+- __"Extract hidden data from this PNG"__ -- pipelines `strings`, `xxd`, `binwalk` + custom scripts
+
+### Script Execution
+
+`run_script` lets the AI write and execute Python or Bash scripts. Requires `CYBERSEC_MCP_ALLOW_SCRIPTS=1`:
+
+```json
+{
+  "mcpServers": {
+    "cybersec-tools": {
+      "command": "uv",
+      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py"],
+      "env": {
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "1",
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "1"
+      }
+    }
+  }
+}
+```
+
+#### Venv Support
+
+Some packages (e.g. pwntools) require an older Python. The `venv` parameter lets the AI choose the right interpreter per script:
+
+```bash
+# One-time setup: create a venv with pwntools
+python3.12 -m venv ~/.ctf-venvs/pwntools
+~/.ctf-venvs/pwntools/bin/pip install pwntools z3-solver
+```
+
+The AI then uses `run_script("from pwn import *; ...", venv="pwntools")` automatically. Scripts that only need standard libs or the server's packages (requests, pycryptodome, beautifulsoup4) run without `venv`. Set `CYBERSEC_MCP_VENVS_DIR` to override the default `~/.ctf-venvs/` location.
+
+### Manual Scripts
+
+The `manual_scripts/` directory stores persistent scripts — complex exploits, multi-step solvers, and reusable tools that shouldn't disappear after execution. The AI writes scripts here when they're worth keeping.
 
 ### Test the Server
 
