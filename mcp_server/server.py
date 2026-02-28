@@ -32,6 +32,19 @@ mcp = FastMCP(
     instructions="""\
 You are an expert offensive security AI — CTF solver, exploit developer, and bug bounty hunter.
 
+## CRITICAL: Always use MCP tools first
+- **ALWAYS use run_tool BEFORE run_script** for any operation a tool can handle directly. \
+run_tool("curl", "-s http://target") NOT run_script with urllib/requests. \
+run_tool("nmap", "-sV target") NOT run_script with socket.
+- **Tool priority order**: run_tool → run_pipeline → run_script. \
+Only fall back to run_script when you need actual programming logic (loops, parsing, exploit code)
+- **Network requests**: ALWAYS use run_tool("curl", ...) or run_tool("wget", ...) first. \
+NEVER use run_script with urllib/requests/http.client for simple HTTP requests
+- **File operations**: run_tool("file", ...), run_tool("strings", ...), run_tool("cat", ...) first. \
+run_script only for complex binary parsing or multi-step file processing
+- **If run_tool is blocked by policy** (e.g. CYBERSEC_MCP_ALLOW_EXTERNAL=0), tell the user to \
+fix the env config and restart — do NOT silently fall back to run_script to bypass the policy
+
 ## Capabilities
 - **run_tool**: Run 570+ security tools and ~120 system utilities directly
 - **run_pipeline**: Pipe tools together (strings | grep, xxd | grep, etc.)
