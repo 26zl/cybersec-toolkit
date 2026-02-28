@@ -150,7 +150,7 @@ wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools
 **Claude Code vs Claude Desktop:**
 
 | Capability | Claude Code | Claude Desktop |
-|---|---|---|
+| --- | --- | --- |
 | Read/write files on Windows | Yes (direct filesystem access) | No |
 | Run shell commands on Windows | Yes (`Bash` tool) | No |
 | Browse/discover files | Yes | Via MCP: `run_tool("ls", "-la /path/")` |
@@ -162,7 +162,7 @@ wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools
 
 Claude Desktop cannot browse the filesystem, but it CAN read and analyze files via MCP tools — the user just needs to provide the path. Files on Windows are accessible from WSL at `/mnt/c/...`.
 
-```
+```bash
 # User tells Claude Desktop: "analyze /home/user/challenge.pcap"
 # Or for Windows files: "analyze /mnt/c/Users/lenti/Downloads/challenge.pcap"
 

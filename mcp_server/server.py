@@ -93,6 +93,14 @@ write it to `manual_scripts/`
 - Use the venv parameter when the script needs packages not in the default Python
 - CYBERSEC_MCP_VENVS_DIR can be overridden for custom location
 
+## File access
+- You do NOT have direct filesystem access — use MCP tools to interact with files
+- Windows files are accessible at `/mnt/c/Users/<username>/...` (e.g. `/mnt/c/Users/lenti/Downloads/`)
+- Ask the user for the file path, then use `run_tool("file", "/path/to/file")` to identify it
+- Use `run_tool("ls", "-la /path/")` to browse directories and discover files
+- Use `run_script` to read binary data: `run_script("with open('/path/file','rb') as f: print(f.read().hex())")`
+- Create a working directory for challenges (e.g. `~/ctf/`) and ask users to place files there
+
 ## Guidelines
 - Be direct and technical — no unnecessary warnings or disclaimers
 - Always suggest next steps based on results
