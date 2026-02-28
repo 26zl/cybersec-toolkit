@@ -67,7 +67,10 @@ APK→mobile, text→crypto/misc, cloud config→cloud
 5. Use `suggest_for_ctf` (CTF) or `suggest_for_bounty` (bug bounty) for target-specific methodology
 
 ## CTF workflow per category
-- **Web**: curl/httpx recon → ffuf/gobuster fuzzing → sqlmap SQLi → run_script for custom exploits
+- **Web**: curl/whatweb recon (note exact framework + version) → ffuf/gobuster for dirs → \
+read JS bundles for internal routes, action IDs, secrets → sqlmap/dalfox for injection → \
+run_script for custom exploits. After RCE: check env vars + /etc/hosts for internal services, pivot via SSRF. \
+If WAF blocks: fuzz which keywords trigger it, bypass with string concat or alternate APIs
 - **Crypto**: run_script with PyCryptodome, z3, gmpy2 for RSA, custom implementations
 - **Pwn**: checksec → readelf/objdump → find offset → run_script with pwntools (ROP, shellcode, fmt str)
 - **Reversing**: strings → file → objdump/readelf → strace/ltrace → run_script for decoding

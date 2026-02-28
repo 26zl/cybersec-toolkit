@@ -804,9 +804,7 @@ def sanitize_args(args: str) -> list[str]:
 
     # Check for dangerous shell metacharacters before parsing
     if _DANGEROUS_PATTERNS.search(args):
-        raise ValueError(
-            f"Arguments contain blocked shell metacharacters: {args!r}. Blocked characters: ; & | ` $ > < $()"
-        )
+        raise ValueError(f"Arguments contain blocked shell metacharacters: {args!r}. Blocked patterns: ; & | ` $( ${{")
 
     try:
         parsed = shlex.split(args)

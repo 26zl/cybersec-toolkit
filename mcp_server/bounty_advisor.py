@@ -18,7 +18,7 @@ from mcp_server.tools_db import ToolsDatabase  # noqa: E402
 # quick_wins, and common_vulns.
 BOUNTY_TARGET_MAP: dict[str, dict] = {
     "web_app": {
-        "description": "Web application testing — OWASP Top 10, business logic, auth bypass, injection",
+        "description": "Web app testing — OWASP Top 10, business logic, auth bypass, deserialization",
         "modules": ["web", "recon", "networking"],
         "tools": [
             ("mitmproxy", "Intercepting HTTP/HTTPS proxy for request tampering"),
@@ -37,15 +37,19 @@ BOUNTY_TARGET_MAP: dict[str, dict] = {
             ("amass", "In-depth attack surface mapping and asset discovery"),
         ],
         "methodology": [
-            "0. SCOPE: Verify target is in scope — check program rules, domain/IP boundaries, and out-of-scope assets",
-            "1. RECON: Subdomain enumeration (subfinder, amass), tech fingerprinting (whatweb, httpx)",
-            "2. ENUMERATE: Directory brute-force (ffuf, gobuster), parameter discovery (arjun), endpoint mapping",
-            "3. ANALYZE: Inspect auth flows, session management, input handling, API structure",
-            "4. TEST: Injection (SQLi, XSS, SSTI, SSRF), broken auth, IDOR, file upload, race conditions",
-            "5. VALIDATE: Confirm impact with minimal PoC — use read-only methods where possible, "
-            "respect rate limits (back off on 429s), do not exfiltrate data beyond proof",
-            "6. REPORT: Write clear report with title, description, steps to reproduce, impact, "
-            "and remediation — redact credentials and PII",
+            "0. SCOPE: Verify target is in scope — check program rules, domain/IP boundaries",
+            "1. RECON: Subdomain enum (subfinder, amass), tech fingerprint (whatweb, httpx). "
+            "Note exact framework + version from X-Powered-By, Server, JS bundle paths",
+            "2. ENUMERATE: ffuf/gobuster for dirs, arjun for hidden params. "
+            "Read JS bundles for internal API routes, server action IDs, build manifests",
+            "3. ANALYZE: Map auth flows, session handling, API structure. "
+            "Check if reverse proxy (nginx/cloudflare) and backend disagree on path parsing",
+            "4. TEST: SQLi, XSS, SSTI, SSRF, IDOR, deserialization, prototype pollution, "
+            "file upload, race conditions. If WAF blocks: fuzz which keywords trigger it, "
+            "then bypass with encoding, string concat, or alternate APIs",
+            "5. VALIDATE: Minimal PoC only — respect rate limits (back off on 429s), "
+            "do not exfiltrate data beyond proof of access",
+            "6. REPORT: Clear title, repro steps, impact, remediation — redact creds and PII",
         ],
         "quick_wins": [
             "Run nuclei with default templates on all discovered endpoints",
@@ -58,13 +62,27 @@ BOUNTY_TARGET_MAP: dict[str, dict] = {
             "SQL Injection (SQLi)",
             "Cross-Site Scripting (XSS) — reflected, stored, DOM-based",
             "Insecure Direct Object Reference (IDOR)",
-            "Server-Side Request Forgery (SSRF)",
+            "Server-Side Request Forgery (SSRF) — to internal services or cloud metadata (169.254.169.254)",
             "Broken Authentication and Session Management",
             "Cross-Site Request Forgery (CSRF)",
             "Server-Side Template Injection (SSTI)",
+            "Unsafe Deserialization — Java (readObject), PHP (unserialize), Python (pickle), "
+            "Node.js (prototype pollution via JSON merge, React Flight payloads)",
             "File Upload vulnerabilities",
             "Race conditions / TOCTOU",
-            "Information disclosure via error messages or headers",
+            "Information disclosure via error messages, headers, or stack traces",
+        ],
+        "notable_cves": [
+            "CVE-2025-55182 — React2Shell: RCE via React Flight protocol deserialization. "
+            "Multipart POST with __proto__/constructor chain reaches Function constructor. "
+            "Affects any app with React Server Components (Next.js App Router, etc.)",
+            "CVE-2025-29927 — Next.js middleware bypass via x-middleware-subrequest header. "
+            "Skips auth middleware, exposes protected API routes and server actions",
+            "CVE-2021-44228 — Log4Shell: Java JNDI injection via ${jndi:ldap://...}. "
+            "Test in all headers, form fields, and URL parameters",
+            "CVE-2023-44487 — HTTP/2 Rapid Reset DoS (report existence, do not exploit)",
+            "CVE-2023-46747 — F5 BIG-IP unauthenticated RCE via /mgmt/tm/util/bash",
+            "CVE-2024-34102 — Adobe Commerce/Magento XXE to RCE via crafted XML layout",
         ],
     },
     "api": {
@@ -208,6 +226,12 @@ BOUNTY_TARGET_MAP: dict[str, dict] = {
             "Kubernetes RBAC misconfigurations",
             "Insecure serverless function configurations",
             "Missing encryption at rest or in transit",
+        ],
+        "notable_cves": [
+            "CVE-2024-21626 — Leaky Vessels: runc container escape via /proc/self/fd race. "
+            "Attacker in container can overwrite host binaries and escape",
+            "CVE-2023-22527 — Confluence Server RCE: OGNL injection in template engine. "
+            "Unauthenticated RCE on Atlassian Confluence (often on cloud/internal infra)",
         ],
     },
     "network": {
@@ -398,7 +422,7 @@ def suggest_for_bounty(target_type: str, tools_db: ToolsDatabase) -> dict:
 
     installed_count = sum(1 for t in tools_with_status if t["installed"])
 
-    return {
+    result = {
         "target_type": resolved,
         "description": target_info["description"],
         "modules": target_info["modules"],
@@ -416,3 +440,6 @@ def suggest_for_bounty(target_type: str, tools_db: ToolsDatabase) -> dict:
         ),
         "summary": f"{installed_count}/{len(tools_with_status)} tools installed",
     }
+    if "notable_cves" in target_info:
+        result["notable_cves"] = target_info["notable_cves"]
+    return result

