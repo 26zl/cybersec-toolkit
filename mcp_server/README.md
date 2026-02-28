@@ -99,6 +99,54 @@ Then point your `.mcp.json` or `claude_desktop_config.json` at the Docker comman
 
 This gives the MCP server access to all tools installed in the container. The `check_installed` and `run_tool` endpoints will detect and execute tools from the container's PATH.
 
+### WSL (Windows → Linux)
+
+When running from Windows, the MCP server runs inside WSL. A WSL-local copy is needed because `uv` can't create `.venv` on NTFS.
+
+**First-time setup:**
+
+```bash
+# 1. Install uv in WSL
+wsl.exe bash -lc "curl -LsSf https://astral.sh/uv/install.sh | sh"
+
+# 2. Clone or sync the repo into WSL
+./scripts/sync-wsl.sh              # from Git Bash
+
+# 3. Build the venv
+wsl.exe bash -lc "cd ~/cybersec-toolkit/mcp_server && ~/.local/bin/uv sync"
+
+# 4. (Optional) Create pwntools venv for run_script
+wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools && ~/.ctf-venvs/pwntools/bin/pip install pwntools z3-solver"
+```
+
+**MCP config (`.mcp.json` / `claude_desktop_config.json`):**
+
+```json
+{
+  "mcpServers": {
+    "cybersec-tools": {
+      "command": "wsl.exe",
+      "args": [
+        "bash", "-lc",
+        "export CYBERSEC_MCP_ALLOW_SCRIPTS=1 CYBERSEC_MCP_ALLOW_EXTERNAL=0 && cd ~/cybersec-toolkit/mcp_server && ~/.local/bin/uv run fastmcp run server.py"
+      ],
+      "env": {
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "1",
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+        "WSLENV": "CYBERSEC_MCP_ALLOW_SCRIPTS/u:CYBERSEC_MCP_ALLOW_EXTERNAL/u"
+      }
+    }
+  }
+}
+```
+
+**Key details:**
+
+- Env vars must be set in **both** the `bash -lc` command (`export`) AND the `env` block with `WSLENV` — Windows env vars don't propagate into WSL automatically
+- Add `-d <distro>` before `bash` in `args` to target a specific WSL distro (default: user's default)
+- Run `./scripts/sync-wsl.sh` after code changes to update the WSL copy
+- Pwntools venv must be created directly in WSL (full network access), not through `run_script` (subject to MCP network policy)
+
 ### Custom Project Root
 
 If running from a different directory, set the environment variable:
