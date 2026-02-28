@@ -147,6 +147,39 @@ wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools
 - Run `./scripts/sync-wsl.sh` after code changes to update the WSL copy
 - Pwntools venv must be created directly in WSL (full network access), not through `run_script` (subject to MCP network policy)
 
+**Claude Code vs Claude Desktop:**
+
+| Capability | Claude Code | Claude Desktop |
+|---|---|---|
+| Read/write files on Windows | Yes (direct filesystem access) | No |
+| Run shell commands on Windows | Yes (`Bash` tool) | No |
+| Browse/discover files | Yes | Via MCP: `run_tool("ls", "-la /path/")` |
+| Run tools in WSL via MCP | Yes (`run_tool`, `run_pipeline`, `run_script`) | Yes (same MCP tools) |
+| Analyze files in WSL | Yes (MCP + direct read) | Yes (MCP only — user must provide the file path) |
+| Edit project code | Yes | No |
+
+**Working with files in Claude Desktop (CTF/bug bounty workflow):**
+
+Claude Desktop cannot browse the filesystem, but it CAN read and analyze files via MCP tools — the user just needs to provide the path. Files on Windows are accessible from WSL at `/mnt/c/...`.
+
+```
+# User tells Claude Desktop: "analyze /home/user/challenge.pcap"
+# Or for Windows files: "analyze /mnt/c/Users/lenti/Downloads/challenge.pcap"
+
+# Claude Desktop can then run:
+run_tool("file", "/home/user/challenge.pcap")              # identify file type
+run_tool("tshark", "-r /home/user/challenge.pcap -Y http")  # analyze pcap
+run_tool("strings", "/home/user/binary")                    # extract strings
+run_pipeline([                                               # chain tools
+  {"tool": "strings", "args": "/home/user/binary"},
+  {"tool": "grep", "args": "-i flag"}
+])
+run_script("with open('/home/user/data.bin','rb') as f: print(f.read().hex())")
+run_tool("ls", "-la /mnt/c/Users/lenti/Downloads/")         # browse Windows files from WSL
+```
+
+**Tip:** Create a working directory for challenges (e.g. `~/ctf/`) and tell Claude Desktop the path. It can then use `ls` to discover files and MCP tools to analyze them.
+
 ### Custom Project Root
 
 If running from a different directory, set the environment variable:
