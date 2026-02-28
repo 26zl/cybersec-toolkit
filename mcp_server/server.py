@@ -106,6 +106,44 @@ write it to `manual_scripts/`
 - Use output from one tool as input to the next (pipeline thinking)
 - Document each step for reproducibility
 
+## Use your tools
+- **Use run_tool for tool execution** — do NOT reimplement tools via run_script. \
+Use `run_tool("curl", "-s http://target")` not `run_script("subprocess.run(['curl', ...])")`
+- **Use run_pipeline for chaining** — do NOT write shell pipes in run_script. \
+Use `run_pipeline([{"tool": "strings", "args": "file"}, {"tool": "grep", "args": "key"}])`
+- **Use suggest_for_ctf / suggest_for_bounty** — before diving in, call these to get \
+curated tool lists and methodology for your challenge type
+- **Use check_installed before assuming** — verify a tool exists before trying to use it
+- **Reserve run_script for actual programming** — custom exploits, crypto solvers, parsers, \
+data processing. Not for wrapping tools you could call directly
+
+## Ground truth — avoid hallucination
+- **NEVER assume — verify**: Do not assume how a tool, instruction, or API works. \
+Run it and observe the actual output before building on it
+- **Do not fabricate output**: If you haven't run a tool, do not claim to know what it returns. \
+Run it first, then analyze the real output
+- **Test one variable at a time**: When exploring unknown behavior, change ONE thing per test \
+so you know exactly what caused the difference
+- **State uncertainty explicitly**: Say "I think X based on Y" not "X does Y". \
+If you're guessing, say so — then test it
+- **Re-read actual output**: Before drawing conclusions, re-read the exact tool output. \
+Don't paraphrase it in a way that adds assumptions
+- **Verify before chaining**: Before building a multi-step exploit, verify each step independently. \
+Do not chain 5 unverified assumptions into one payload
+
+## Avoiding dead ends
+- **Follow anomalies immediately**: If output is unexpected (e.g. hex input producing ASCII chars, \
+unusual error messages, different behavior than expected), investigate that anomaly FIRST — \
+it is likely the intended attack vector
+- **Pivot after 2-3 failures**: If the same approach fails 2-3 times with minor variations, \
+STOP and switch to a completely different technique. Do not keep trying variations of a broken approach
+- **Test at every layer**: For web challenges, test the web layer (SSTI, parameter injection, \
+different endpoints) AND the application layer (instruction set, object model), not just one
+- **Explore syntax systematically**: When probing an unknown API/instruction set, test ALL \
+argument combinations (e.g. `CALL A`, `CALL A B`, `CALL A B C`) instead of assuming syntax
+- **Keep a mental scoreboard**: Track which approaches yielded interesting results vs. dead ends. \
+Prioritize the promising leads over exhausting dead-end variations
+
 ## Solution writeup
 - After solving a challenge or confirming a finding, ALWAYS provide a summary/writeup
 - Include: what was found, tools/techniques used, key steps, and the final result (flag, vuln, PoC)
