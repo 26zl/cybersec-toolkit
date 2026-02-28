@@ -517,7 +517,6 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
     # Steampipe (re-install = self-update) — verify script content before executing
     if command_exists steampipe; then
         log_info "Updating Steampipe..."
-        local _sp_tmp
         _sp_tmp=$(mktemp)
         _register_cleanup "$_sp_tmp"
         if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh" -o "$_sp_tmp" 2>>"$LOG_FILE" \
