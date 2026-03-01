@@ -77,4 +77,4 @@ audit.log.*
 uv.lock
 
 # Challenge writeups & scripts (local only)
-workflows/
+/workflows/
