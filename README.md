@@ -1,6 +1,6 @@
-[![CI](https://img.shields.io/github/actions/workflow/status/26zl/cybersec-toolkit/ci.yml?label=CI)](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml)
-[![Integration](https://img.shields.io/github/actions/workflow/status/26zl/cybersec-toolkit/integration.yml?label=Integration)](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml)
-[![Security](https://img.shields.io/github/actions/workflow/status/26zl/cybersec-toolkit/security.yml?label=Security)](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml)
+[![CI](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml)
+[![Integration](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml)
+[![Security](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml)
 
 ```text
    ______      __              _____
