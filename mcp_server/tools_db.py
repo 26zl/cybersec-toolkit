@@ -40,6 +40,7 @@ PIPX_BIN_NAMES: dict[str, str] = {
     "mythril": "myth",
     "eth-ape": "ape",
     "vcdvcd": "vcdcat",
+    "lascar": "lascarctl",
 }
 
 # Module descriptions (from lib/common.sh:1212-1231).

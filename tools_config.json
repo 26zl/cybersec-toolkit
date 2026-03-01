@@ -579,5 +579,8 @@
   {"name": "shannon", "method": "git", "module": "llm", "url": "https://github.com/KeygraphHQ/shannon"},
   {"name": "cai-framework", "method": "pipx", "module": "llm", "url": "https://github.com/aliasrobotics/cai"},
   {"name": "pentagi", "method": "git", "module": "llm", "url": "https://github.com/vxcontrol/pentagi"},
-  {"name": "pentagi-docker", "method": "docker", "module": "llm", "url": "https://github.com/vxcontrol/pentagi"}
+  {"name": "pentagi-docker", "method": "docker", "module": "llm", "url": "https://github.com/vxcontrol/pentagi"},
+  {"name": "lascar", "method": "pipx", "module": "crypto", "url": "https://github.com/Ledger-Donjon/lascar"},
+  {"name": "USB-HID-decoders", "method": "git", "module": "forensics", "url": "https://github.com/Nissen96/USB-HID-decoders"},
+  {"name": "ctf-usb-keyboard-parser", "method": "git", "module": "forensics", "url": "https://github.com/TeamRocketIst/ctf-usb-keyboard-parser"}
 ]

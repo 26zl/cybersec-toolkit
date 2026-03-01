@@ -71,13 +71,16 @@ APK→mobile, text→crypto/misc, cloud config→cloud
 read JS bundles for internal routes, action IDs, secrets → sqlmap/dalfox for injection → \
 run_script for custom exploits. After RCE: check env vars + /etc/hosts for internal services, pivot via SSRF. \
 If WAF blocks: fuzz which keywords trigger it, bypass with string concat or alternate APIs
-- **Crypto**: run_script with PyCryptodome, z3, gmpy2 for RSA, custom implementations
+- **Crypto**: run_script with PyCryptodome, z3, gmpy2 for RSA, custom implementations. \
+Side-channel (CPA/DPA): load power traces as numpy arrays, identify POI (sample with highest \
+variance across guesses), use correlation to extract secret digits
 - **Pwn**: checksec → readelf/objdump → find offset → run_script with pwntools (ROP, shellcode, fmt str)
 - **Reversing**: `file` for arch/linking/stripped → non-x86? `qemu-<arch>` for dynamic. \
 Ghidra/r2 for static: map functions, trace string xrefs to validation logic. \
 Identify transforms (XOR, lookup tables, custom crypto), extract encoded data, \
 reverse in run_script. Watch for anti-debug and decoy checks
-- **Forensics**: binwalk -e → volatility3 → foremost → exiftool → run_script for custom parsers
+- **Forensics**: binwalk -e → volatility3 → foremost → exiftool → run_script for custom parsers. \
+USB HID: tshark to extract usb.capdata, USB-HID-decoders for keyboard/mouse reconstruction
 - **Stego**: exiftool → steghide → zsteg → stegsolve → run_script for LSB extraction
 - **Networking**: nmap/masscan service discovery → tshark/tcpdump traffic analysis → \
 isolate interesting streams/services → run_script for protocol decoding, covert channels, replay

@@ -157,6 +157,7 @@ declare -A _PIPX_BIN_NAMES=(
     [mythril]="myth"
     [eth-ape]="ape"
     [vcdvcd]="vcdcat"
+    [lascar]="lascarctl"
 )
 
 check_pipx() {

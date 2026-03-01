@@ -24,9 +24,11 @@ FORENSICS_GIT=(
     "dvcs-ripper=https://github.com/kost/dvcs-ripper.git"
     "firefox_decrypt=https://github.com/unode/firefox_decrypt.git"
     "firmware-mod-kit=https://github.com/rampageX/firmware-mod-kit.git"
+    "USB-HID-decoders=https://github.com/Nissen96/USB-HID-decoders.git"
+    "ctf-usb-keyboard-parser=https://github.com/TeamRocketIst/ctf-usb-keyboard-parser.git"
 )
 
-FORENSICS_GIT_NAMES=(RegRipper Depix dvcs-ripper firefox_decrypt firmware-mod-kit)
+FORENSICS_GIT_NAMES=(RegRipper Depix dvcs-ripper firefox_decrypt firmware-mod-kit USB-HID-decoders ctf-usb-keyboard-parser)
 
 install_module_forensics() {
     install_apt_batch "Forensics - Packages" "${FORENSICS_PACKAGES[@]}"

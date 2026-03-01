@@ -96,7 +96,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         ],
     },
     "crypto": {
-        "description": "Cryptography — cipher analysis, RSA attacks, hash cracking, encoding",
+        "description": "Cryptography — cipher analysis, RSA attacks, hash cracking, encoding, side-channel (CPA/DPA)",
         "modules": ["crypto", "cracking"],
         "tools": [
             ("z3-solver", "SMT solver for constraint problems"),
@@ -107,19 +107,23 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("factordb-python", "Integer factorization database client"),
             ("hashid", "Hash type identification"),
             ("name-that-hash", "Hash identification tool"),
+            ("lascar", "Side-channel analysis framework (CPA, DPA, template attacks)"),
         ],
         "methodology": [
             "1. IDENTIFY: Use hashid/name-that-hash, check encoding (base64, hex, rot13)",
             "2. ANALYZE: Find key length (xortool), RSA parameters (n, e, c), cipher type",
             "3. ATTACK: RSA (RsaCtfTool, factordb), XOR (xortool), hash (hashcat/john)",
-            "4. SOLVE: Use run_script with z3 for constraints, PyCryptodome for custom crypto",
-            "5. VERIFY: Decrypt and validate output, check for nested encoding",
+            "4. SIDE-CHANNEL: Load power traces as numpy arrays, identify POI (sample with highest "
+            "variance across key guesses), use correlation (CPA) or difference-of-means (DPA) to recover secret",
+            "5. SOLVE: Use run_script with z3 for constraints, PyCryptodome for custom crypto",
+            "6. VERIFY: Decrypt and validate output, check for nested encoding",
         ],
         "quick_wins": [
             "Try base64 -d, xxd -r, rot13 on ciphertext",
             "Check if RSA n is factorable via factordb",
             "Test common ciphers: Caesar, Vigenere, XOR with known plaintext",
             "Run hashcat/john with rockyou.txt on unknown hashes",
+            "Side-channel: correlate power traces with Hamming weight of intermediate values per key guess",
         ],
     },
     "pwn": {
@@ -189,7 +193,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         ],
     },
     "forensics": {
-        "description": "Digital forensics — disk/memory analysis, file carving, network forensics, timeline",
+        "description": "Digital forensics — disk/memory analysis, file carving, network forensics, USB HID, timeline",
         "modules": ["forensics"],
         "tools": [
             ("volatility3", "Memory forensics framework"),
@@ -203,19 +207,23 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("hachoir", "Binary stream analysis"),
             ("photorec", "File recovery / carving"),
             ("bulk-extractor", "Bulk data extraction"),
+            ("usbrip", "USB event history forensics"),
         ],
         "methodology": [
             "1. IDENTIFY: file, xxd, binwalk for file type and embedded data",
             "2. EXTRACT: binwalk -e, foremost, photorec for file carving",
             "3. ANALYZE: volatility3 for memory dumps, sleuthkit for disk images",
             "4. METADATA: exiftool, oletools, peepdf for document analysis",
-            "5. RECONSTRUCT: run_script for custom parsers, timeline analysis, data recovery",
+            "5. USB/HID: tshark to extract usb.capdata from PCAPs, USB-HID-decoders for keyboard/mouse reconstruction",
+            "6. RECONSTRUCT: run_script for custom parsers, timeline analysis, data recovery",
         ],
         "quick_wins": [
             "Run binwalk -e for automatic extraction of embedded files",
             "Check exiftool for hidden metadata and comments",
             "Use strings | grep -i flag on the entire file",
             "Try foremost for file carving from disk/memory dumps",
+            "USB keyboard PCAP: extract usb.capdata with tshark, decode with "
+            "USB-HID-decoders or ctf-usb-keyboard-parser",
         ],
         "notable_cves": [
             "CVE-2021-22204 — Exiftool RCE via DjVu metadata: upload a crafted .djvu/.jpg "
@@ -482,6 +490,13 @@ CATEGORY_ALIASES: dict[str, str] = {
     "solidity": "blockchain",
     "dfir": "forensics",
     "memory": "forensics",
+    "usb": "forensics",
+    "hid": "forensics",
+    "side-channel": "crypto",
+    "power-analysis": "crypto",
+    "sca": "crypto",
+    "dpa": "crypto",
+    "cpa": "crypto",
 }
 
 
