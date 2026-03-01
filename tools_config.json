@@ -582,5 +582,6 @@
   {"name": "pentagi-docker", "method": "docker", "module": "llm", "url": "https://github.com/vxcontrol/pentagi"},
   {"name": "lascar", "method": "pipx", "module": "crypto", "url": "https://github.com/Ledger-Donjon/lascar"},
   {"name": "USB-HID-decoders", "method": "git", "module": "forensics", "url": "https://github.com/Nissen96/USB-HID-decoders"},
-  {"name": "ctf-usb-keyboard-parser", "method": "git", "module": "forensics", "url": "https://github.com/TeamRocketIst/ctf-usb-keyboard-parser"}
+  {"name": "ctf-usb-keyboard-parser", "method": "git", "module": "forensics", "url": "https://github.com/TeamRocketIst/ctf-usb-keyboard-parser"},
+  {"name": "ffmpeg", "method": "apt", "module": "forensics", "url": "https://github.com/FFmpeg/FFmpeg"}
 ]
