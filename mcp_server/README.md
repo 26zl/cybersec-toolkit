@@ -1,6 +1,6 @@
 # MCP Server for Cybersec Toolkit
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that exposes the 570-tool cybersecurity registry to AI assistants. Query installed tools, get CTF recommendations, get profile/install advice, and execute tools — all from Claude Code, Claude Desktop, or any MCP-capable client.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that exposes the 580+ cybersecurity registry to AI assistants. Query installed tools, get CTF recommendations, get profile/install advice, and execute tools — all from Claude Code, Claude Desktop, or any MCP-capable client.
 
 ## Tools Provided
 
@@ -215,14 +215,14 @@ uv run fastmcp run server.py
 
 Once connected via an MCP client:
 
-- **List all tools**: `list_tools()` — returns 570 tools with URLs
-- **Filter by module**: `list_tools(module="web")` — 49 web app testing tools
+- **List all tools**: `list_tools()` — returns 580+ tools with URLs
+- **Filter by module**: `list_tools(module="web")` — 51 web app testing tools
 - **Filter by method**: `list_tools(method="pipx")` — Python tools installed via pipx
 - **Check installed only**: `list_tools(installed_only=true)` — with version info
 - **Check a tool**: `check_installed("nmap")` — detailed install status
 - **Tool details**: `get_tool_info("sqlmap")` — method, module, URL, install/update/remove commands
-- **Full module view**: `get_module_info("web")` — all 49 tools, install status, which profiles include it
-- **Profile contents**: `get_profile_tools("ctf")` — all 264 tools grouped by module
+- **Full module view**: `get_module_info("web")` — all 51 tools, install status, which profiles include it
+- **Profile contents**: `get_profile_tools("ctf")` — all 272 tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
 - **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning
 - **What to install**: `recommend_install("I want to do CTF competitions")` — recommends ctf profile
@@ -260,9 +260,9 @@ The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safe
 
 - **Registry check**: Only tools listed in `tools_config.json` (plus ~120 system utilities) can be executed
 - **Install check**: Tool must be installed and in PATH
-- **Argument sanitization**: Shell metacharacters (`;`, `&`, `|`, `` ` ``, `$`, `>`, `<`) are blocked
+- **Argument sanitization**: Shell injection patterns (`;`, `&`, `|`, `` ` ``, `$(`, `${`) are blocked. `$`, `>`, `<` alone are allowed — no shell is used, and tools need them for regex/awk/XML
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
-- **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`, masscan `--includefile`, sed `-i` (in-place modification)
+- **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `--includefile`, sed `-i` (in-place modification)
 - **Network policy**: Network tools can only target private/loopback IPs by default (including single-label hostnames like `google`). Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
 - **Script execution gate**: `run_script` is disabled by default. Set `CYBERSEC_MCP_ALLOW_SCRIPTS=1` to enable
 - **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing

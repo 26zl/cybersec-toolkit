@@ -12,7 +12,7 @@
               Toolkit
 ```
 
-The most comprehensive modular installer and AI-integrated toolkit for cybersecurity tools on Linux and Termux (Android). __570 tools__, __18 modules__, __14 profiles__, __12 install methods__, plus an __MCP server__ for AI-assisted hacking.
+The most comprehensive modular installer and AI-integrated toolkit for cybersecurity tools on Linux and Termux (Android). __580+ tools__, __18 modules__, __14 profiles__, __12 install methods__, plus an __MCP server__ for AI-assisted hacking.
 
 ---
 
@@ -40,7 +40,7 @@ cd cybersec-toolkit
 sudo ./install.sh
 ```
 
-That installs all 570 tools. To install a subset:
+That installs all 580+ tools. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -105,7 +105,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 
 ### Why does a full install take 15-45 minutes?
 
-The installer orchestrates 570 tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
+The installer orchestrates 580+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
 
 | What takes time | Why | Typical time |
 | --- | --- | --- |
@@ -156,7 +156,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | `crypto` | 12 | RSA attacks, cipher analysis, hash attacks, constraint solving |
 | `pwn` | 34 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | 31 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | 43 | Disk/memory forensics, file carving, timeline analysis, log analysis |
+| `forensics` | 47 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
 | `enterprise` | 76 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | 39 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | 28 | Hash cracking (john, hashcat), brute force, wordlist generation |
@@ -165,7 +165,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | `containers` | 9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
 | `blueteam` | 31 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
 | `mobile` | 12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
-| `blockchain` | 5 | Smart contract auditing (Slither, Mythril, Foundry), Echidna (Docker) |
+| `blockchain` | 12 | Smart contract auditing (Slither, Mythril, Foundry, Aderyn), blockchain forensics, Echidna (Docker) |
 | `llm` | 9 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
 
 ## Install Methods
@@ -173,14 +173,14 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | Method | Count | Examples |
 | ------ | ----- | ------- |
 | Git clone | ~176 | GitHub repos with auto-setup, resources, wordlists |
-| System packages (apt/dnf/pacman/zypper) | ~163 | nmap, wireshark, john, hashcat |
-| pipx | ~113 | sqlmap, impacket, bloodhound, volatility3 |
-| Go install | ~52 | nuclei, subfinder, ffuf, httpx |
-| Binary release | ~32 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
-| Build from source | ~15 | massdns, duplicut, AFLplusplus, honggfuzz |
+| System packages (apt/dnf/pacman/zypper) | ~164 | nmap, wireshark, john, hashcat |
+| pipx | ~116 | sqlmap, impacket, bloodhound, volatility3 |
+| Go install | ~53 | nuclei, subfinder, ffuf, httpx |
+| Binary release | ~35 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
+| Build from source | ~12 | massdns, duplicut, AFLplusplus, honggfuzz |
 | Docker | ~9 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
-| Cargo (Rust) | 4 | feroxbuster, RustScan, pwninit, yara-x-cli |
+| Cargo (Rust) | 5 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
 | Snap | 1 | zaproxy |
 | npm | 1 | promptfoo |
@@ -203,13 +203,13 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 
 ## MCP Server (AI Integration)
 
-[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is an open standard that lets AI assistants use external tools. This project includes an MCP server that gives any MCP-capable AI (Claude Code, Claude Desktop, Cursor, etc.) full read access to the 570-tool registry — plus the ability to check installs, recommend profiles, and execute tools. The AI becomes an interactive partner for ethical hacking: it knows every tool, which ones you have installed, and can run them for you.
+[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is an open standard that lets AI assistants use external tools. This project includes an MCP server that gives any MCP-capable AI (Claude Code, Claude Desktop, Cursor, etc.) full read access to the 580+ tool registry — plus the ability to check installs, recommend profiles, and execute tools. The AI becomes an interactive partner for ethical hacking: it knows every tool, which ones you have installed, and can run them for you.
 
 ### What the AI can do
 
 | Tool | What it does |
 | ---- | ------------ |
-| `list_tools` | List/filter all 570 tools by module, method, or install status (includes URLs) |
+| `list_tools` | List/filter all 580+ tools by module, method, or install status (includes URLs) |
 | `check_installed` | Check if a tool is installed (5 detection strategies) |
 | `get_tool_info` | Full details: method, module, URL, install/update/remove commands |
 | `get_module_info` | Deep-dive a module: all tools, install status, which profiles use it |
@@ -281,8 +281,8 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
 Once connected, just talk to the AI naturally:
 
 - __"Which tools do I need for a web CTF?"__ -- suggests top tools with install status
-- __"What does the CTF profile install?"__ -- lists all 264 tools grouped by module
-- __"Tell me about the web module"__ -- 49 tools, methods breakdown, which profiles include it
+- __"What does the CTF profile install?"__ -- lists all 272 tools grouped by module
+- __"Tell me about the web module"__ -- 51 tools, methods breakdown, which profiles include it
 - __"How do I install sqlmap?"__ -- install/update/remove commands for the right module
 - __"I want to do bug bounty hunting"__ -- recommends the `web` profile
 - __"Is nmap installed?"__ -- multi-strategy detection (PATH, .versions, pipx, /opt, docker)
@@ -366,7 +366,7 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 570 tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
+__Debian/Ubuntu/Kali is the primary target__ -- all 580+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
 
 | Platform | Status |
 | -------- | ------ |

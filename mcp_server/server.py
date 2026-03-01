@@ -46,7 +46,7 @@ run_script only for complex binary parsing or multi-step file processing
 fix the env config and restart — do NOT silently fall back to run_script to bypass the policy
 
 ## Capabilities
-- **run_tool**: Run 570+ security tools and ~120 system utilities directly
+- **run_tool**: Run 580+ security tools and ~120 system utilities directly
 - **run_pipeline**: Pipe tools together (strings | grep, xxd | grep, etc.)
 - **run_script**: Write and run Python/Bash scripts (pwntools, z3, requests, crypto, struct, etc.)
 - **suggest_for_ctf**: Get tool recommendations + methodology + quick wins per CTF category
@@ -81,6 +81,19 @@ reverse in run_script. Watch for anti-debug and decoy checks
 - **Stego**: exiftool → steghide → zsteg → stegsolve → run_script for LSB extraction
 - **Networking**: nmap/masscan service discovery → tshark/tcpdump traffic analysis → \
 isolate interesting streams/services → run_script for protocol decoding, covert channels, replay
+- **Blockchain**: Read contract source → slither + aderyn for static analysis → \
+check storage layout for delegatecall collisions → foundry cast for interaction → \
+write exploit contract and test against anvil local fork
+- **Cloud**: Enumerate cloud services/buckets/IAM → check metadata endpoint (169.254.169.254) → \
+trufflehog for secrets → pacu/cloudfox for escalation → deepce for container escape
+- **Mobile**: apktool d + jadx for decompilation → grep for hardcoded secrets/API keys → \
+check AndroidManifest.xml for exported components → frida/objection for dynamic analysis
+- **Wireless**: airmon-ng monitor mode → airodump-ng handshake capture → \
+aircrack-ng/hashcat with rockyou.txt → bettercap for MITM
+- **OSINT**: sherlock/maigret for username enumeration → amass/subfinder for subdomains → \
+theHarvester for email/IP → shodan for exposed services → wayback for history
+- **Misc**: file/strings/xxd to identify → base64/hex/rot13 decode attempts → \
+hashcat/john with rockyou.txt → run_script for custom decode chains
 
 ## Efficiency tips
 - **Combine operations**: Run multiple analyses in a single run_script call instead of separate run_tool calls
@@ -124,6 +137,8 @@ write it to `manual_scripts/`
 - Don't stop after the first finding — escalate, pivot, combine findings
 - Use output from one tool as input to the next (pipeline thinking)
 - Document each step for reproducibility
+- **Check previous writeups**: Before starting a new challenge, scan `workflows/` for \
+past solves with similar techniques — reuse patterns, avoid repeated dead ends
 
 ## Use your tools
 - **Use run_tool for tool execution** — do NOT reimplement tools via run_script. \
@@ -174,7 +189,7 @@ Prioritize the promising leads over exhausting dead-end variations
 
 ## Discover and install new tools (MANDATORY)
 - When you find a tool (via web search, GitHub, writeups, or research) that would help the current \
-task and is NOT in our 570+ tool registry: **install it immediately and use it**
+task and is NOT in our 580+ tool registry: **install it immediately and use it**
 - Do NOT mention a useful tool exists but then try to solve it manually instead
 - Do NOT say "if we had tool X installed, we could..." — just install it
 - Install methods: apt/pipx/go/cargo first, then git clone to ~/tools/<name> or /tmp/ for one-offs
@@ -207,7 +222,8 @@ to verify integrity
   2. `run_tool("file", "/path/to/file")` — identify file type
   3. `run_tool("strings", "/path/to/file")` — extract strings
   4. `run_script("with open('/path/file','rb') as f: ...")` — read binary data
-- If the user says a file is in "Downloads", find their Windows username first, then try `/mnt/c/Users/<username>/Downloads/`
+- If the user says a file is in "Downloads", find their Windows username first, \
+then try `/mnt/c/Users/<username>/Downloads/`
 - If a path doesn't work, use `run_tool("ls", ...)` to find the correct path
 
 ## Sensitive data handling
@@ -249,7 +265,7 @@ def list_tools(
     method: Optional[str] = None,
     installed_only: bool = False,
 ) -> dict:
-    """List and filter tools from the 570-tool cybersecurity registry.
+    """List and filter tools from the 580+ cybersecurity registry.
 
     Args:
         module: Filter by module (e.g. "web", "pwn", "forensics"). 18 modules available.
@@ -500,7 +516,7 @@ def list_profiles() -> dict:
 
     Each profile is a curated set of modules targeting a specific use case.
     Shows module count, tool count, and install command for each profile.
-    Profiles range from 'osint' (2 modules, ~80 tools) to 'full' (18 modules, 570 tools).
+    Profiles range from 'osint' (2 modules, ~80 tools) to 'full' (18 modules, 580+ tools).
 
     Returns:
         All profiles with descriptions, module lists, tool counts, and install commands.
@@ -639,7 +655,7 @@ async def run_tool(
 ) -> dict:
     """Execute an installed cybersecurity tool or system utility and return its output.
 
-    Runs tools from the 570-tool registry as well as ~120 standard system
+    Runs tools from the 580+ registry as well as ~120 standard system
     utilities (strings, file, curl, grep, base64, xxd, jq, python3, etc.)
     that are allowed without being in the registry. Arguments are sanitized
     to prevent shell injection. Timeout is clamped to 1-300s. Output is

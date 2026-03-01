@@ -21,7 +21,7 @@ _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
 # dependency at import time — these rarely change and must match the .conf files).
 PROFILES: dict[str, dict] = {
     "full": {
-        "description": "All 570 tools across all 18 modules — the complete arsenal",
+        "description": "All 580+ tools across all 18 modules — the complete arsenal",
         "modules": [
             "misc",
             "networking",
