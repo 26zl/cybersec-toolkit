@@ -165,7 +165,7 @@ wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools
 
 ```bash
 # User tells Claude Desktop: "analyze /home/user/challenge.pcap"
-# Or for Windows files: "analyze /mnt/c/Users/lenti/Downloads/challenge.pcap"
+# Or for Windows files: "analyze /mnt/c/Users/<username>/Downloads/challenge.pcap"
 
 # Claude Desktop can then run:
 run_tool("file", "/home/user/challenge.pcap")              # identify file type
@@ -176,7 +176,7 @@ run_pipeline([                                               # chain tools
   {"tool": "grep", "args": "-i flag"}
 ])
 run_script("with open('/home/user/data.bin','rb') as f: print(f.read().hex())")
-run_tool("ls", "-la /mnt/c/Users/lenti/Downloads/")         # browse Windows files from WSL
+run_tool("ls", "-la /mnt/c/Users/<username>/Downloads/")     # browse Windows files from WSL
 ```
 
 **Tip:** Create a working directory for challenges (e.g. `~/ctf/`) and tell Claude Desktop the path. It can then use `ls` to discover files and MCP tools to analyze them.

@@ -73,7 +73,10 @@ run_script for custom exploits. After RCE: check env vars + /etc/hosts for inter
 If WAF blocks: fuzz which keywords trigger it, bypass with string concat or alternate APIs
 - **Crypto**: run_script with PyCryptodome, z3, gmpy2 for RSA, custom implementations
 - **Pwn**: checksec → readelf/objdump → find offset → run_script with pwntools (ROP, shellcode, fmt str)
-- **Reversing**: strings → file → objdump/readelf → strace/ltrace → run_script for decoding
+- **Reversing**: `file` for arch/linking/stripped → non-x86? `qemu-<arch>` for dynamic. \
+Ghidra/r2 for static: map functions, trace string xrefs to validation logic. \
+Identify transforms (XOR, lookup tables, custom crypto), extract encoded data, \
+reverse in run_script. Watch for anti-debug and decoy checks
 - **Forensics**: binwalk -e → volatility3 → foremost → exiftool → run_script for custom parsers
 - **Stego**: exiftool → steghide → zsteg → stegsolve → run_script for LSB extraction
 - **Networking**: nmap/masscan service discovery → tshark/tcpdump traffic analysis → \
@@ -161,11 +164,21 @@ argument combinations (e.g. `CALL A`, `CALL A B`, `CALL A B C`) instead of assum
 Prioritize the promising leads over exhausting dead-end variations
 
 ## Solution writeup
-- After solving a challenge or confirming a finding, ALWAYS provide a summary/writeup
-- Include: what was found, tools/techniques used, key steps, and the final result (flag, vuln, PoC)
-- For CTFs: flag, category, difficulty, solve path, alternative approaches if relevant
+- After solving a challenge or confirming a finding, ALWAYS write a detailed writeup to `workflows/`
+- File naming: `workflows/<competition>/<challenge-name>.md` (e.g. `workflows/htb2025/pilgrimage.md`)
+- Writing style: direct, technical, no AI filler language. Use "we"/"ran"/"found", not "Let's"/"I'll"
+- Include: exact commands, exact output (trimmed), exact payloads, dead ends, timeline
+- For CTFs: flag, category, difficulty, solve path, tools used, lessons learned
 - For bug bounty: vulnerability type, affected endpoint, impact, reproduction steps, remediation
 - REDACT sensitive data in writeups — mask credentials (****), anonymize PII, use minimal PoC
+
+## Discover and install new tools (MANDATORY)
+- When you find a tool (via web search, GitHub, writeups, or research) that would help the current \
+task and is NOT in our 570+ tool registry: **install it immediately and use it**
+- Do NOT mention a useful tool exists but then try to solve it manually instead
+- Do NOT say "if we had tool X installed, we could..." — just install it
+- Install methods: apt/pipx/go/cargo first, then git clone to ~/tools/<name> or /tmp/ for one-offs
+- Do NOT reimplement functionality that an existing open-source tool already provides
 
 ## Venv support for run_script
 - Default: uses the MCP server's Python (has requests, pycryptodome, beautifulsoup4)
@@ -173,19 +186,28 @@ Prioritize the promising leads over exhausting dead-end variations
 - Use the venv parameter when the script needs packages not in the default Python
 - CYBERSEC_MCP_VENVS_DIR can be overridden for custom location
 
+## DANGER: Never Read unvalidated images
+- NEVER use the Claude Code `Read` tool on image files without first validating them via MCP tools
+- A corrupt image in conversation context poisons the ENTIRE chat — every subsequent API call fails \
+with "Could not process image" and the only fix is abandoning the conversation
+- ALWAYS validate first: `run_tool("file", "/path/to/image")` to confirm valid type, then \
+`run_tool("identify", "/path/to/image")` or `run_script("from PIL import Image; img = Image.open(...)...")` \
+to verify integrity
+- Reconstructed/extracted/converted images from challenges are ESPECIALLY suspect — validate before viewing
+
 ## CRITICAL: File access via MCP tools
 - You HAVE full filesystem access through your MCP tools (run_tool, run_pipeline, run_script)
 - The MCP server runs on the user's LOCAL machine in WSL — NOT in a cloud sandbox
 - NEVER ask the user to "upload", "drag and drop", or "attach" files — you can read them directly
 - NEVER say you don't have filesystem access — you DO, via MCP tools
-- Windows files are at `/mnt/c/Users/<username>/...` (e.g. `/mnt/c/Users/lenti/Downloads/`)
+- Windows files are at `/mnt/c/Users/<username>/...` — find the username with `run_tool("ls", "/mnt/c/Users/")`
 - WSL files are at their normal paths (e.g. `/home/user/...`)
 - When a user mentions a file or path, IMMEDIATELY use run_tool to access it:
-  1. `run_tool("ls", "-la /mnt/c/Users/lenti/Downloads/")` — browse directories
+  1. `run_tool("ls", "-la /mnt/c/Users/<username>/Downloads/")` — browse directories
   2. `run_tool("file", "/path/to/file")` — identify file type
   3. `run_tool("strings", "/path/to/file")` — extract strings
   4. `run_script("with open('/path/file','rb') as f: ...")` — read binary data
-- If the user says a file is in "Downloads", try `/mnt/c/Users/lenti/Downloads/` directly
+- If the user says a file is in "Downloads", find their Windows username first, then try `/mnt/c/Users/<username>/Downloads/`
 - If a path doesn't work, use `run_tool("ls", ...)` to find the correct path
 
 ## Sensitive data handling

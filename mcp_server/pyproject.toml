@@ -12,6 +12,7 @@ ctf-core = [
     "requests>=2.31",
     "pycryptodome>=3.19",
     "beautifulsoup4>=4.12",
+    "Pillow>=10.0",
 ]
 ctf-extra = [
     "pwntools>=4.11",

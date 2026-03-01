@@ -857,15 +857,20 @@ git_clone_or_pull() {
             _remote_branch=$(_as_builder "git -C '$dest' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
                 | sed 's|refs/remotes/origin/||'") || true
             [[ -z "$_remote_branch" ]] && _remote_branch="main"
-            _as_builder "git -C '$dest' fetch origin" >> "$LOG_FILE" 2>&1 \
-                && _as_builder "git -C '$dest' reset --hard 'origin/$_remote_branch'" >> "$LOG_FILE" 2>&1 \
-                || log_warn "git update failed for $(basename "$dest")"
+            if ! _as_builder "git -C '$dest' fetch origin" >> "$LOG_FILE" 2>&1 \
+                || ! _as_builder "git -C '$dest' reset --hard 'origin/$_remote_branch'" >> "$LOG_FILE" 2>&1; then
+                log_warn "git update failed for $(basename "$dest")"
+                return 1
+            fi
         fi
     else
         mkdir -p "$dest" 2>/dev/null || true
         _chown_for_builder "$dest"
         log_info "Cloning $(basename "$dest")..."
-        _as_builder "git clone --depth 1 -q '$repo_url' '$dest'" >> "$LOG_FILE" 2>&1
+        if ! _as_builder "git clone --depth 1 -q '$repo_url' '$dest'" >> "$LOG_FILE" 2>&1; then
+            log_warn "git clone failed for $(basename "$dest")"
+            return 1
+        fi
     fi
 }
 

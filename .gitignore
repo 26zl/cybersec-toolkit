@@ -75,3 +75,6 @@ docker-*.tar
 remote_hosts.json
 audit.log
 audit.log.*
+
+# Challenge writeups & scripts (local only)
+workflows/

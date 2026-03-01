@@ -47,6 +47,7 @@ VALID_METHODS = {
 NAME_ALIASES = {
     "metasploit-framework": "metasploit",
     "d2j-dex2jar": "dex2jar",
+    "heimdall": "heimdall-rs",
 }
 
 # Bash parsing helpers
@@ -90,6 +91,7 @@ BINARY_RELEASE_MODULE = {
     "WEB": "web", "REVERSING": "reversing", "FORENSICS": "forensics",
     "ENTERPRISE": "enterprise", "BLUETEAM": "blueteam",
     "CONTAINERS": "containers", "MOBILE": "mobile", "STEGO": "stego",
+    "BLOCKCHAIN": "blockchain",
 }
 
 # Binary release extraction from installers.sh

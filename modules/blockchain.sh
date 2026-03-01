@@ -9,6 +9,13 @@ BLOCKCHAIN_PIPX=(
     slither-analyzer
     mythril
     solc-select
+    halmos
+    crytic-compile
+    eth-ape
+)
+
+BLOCKCHAIN_CARGO=(
+    aderyn
 )
 
 BLOCKCHAIN_GIT=()
@@ -18,8 +25,12 @@ BLOCKCHAIN_GIT_NAMES=()
 install_module_blockchain() {
     [[ ${#BLOCKCHAIN_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Blockchain - Packages" "${BLOCKCHAIN_PACKAGES[@]}"
     install_pipx_batch "Blockchain - Python" "${BLOCKCHAIN_PIPX[@]}"
+    install_cargo_batch "Blockchain - Rust" "${BLOCKCHAIN_CARGO[@]}" || true
 
     [[ ${#BLOCKCHAIN_GIT[@]} -gt 0 ]] && install_git_batch "Blockchain - Git" "${BLOCKCHAIN_GIT[@]}"
+
+    # Binary releases: medusa (fuzzer), heimdall (decompiler), ityfuzz (hybrid fuzzer)
+    [[ ${#BINARY_RELEASES_BLOCKCHAIN[@]} -gt 0 ]] && install_binary_releases "${BINARY_RELEASES_BLOCKCHAIN[@]}"
 
     # Foundry (forge, cast, anvil, chisel) — installed via foundryup
     if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then

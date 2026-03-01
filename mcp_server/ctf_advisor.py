@@ -63,15 +63,18 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "hidden routes. Check /_next/static/<buildId>/_buildManifest.js for route map. "
             "Look for .hint files, env vars leaking internal service names",
             "4. EXPLOIT: SQLi (sqlmap), XSS (dalfox), SSRF, SSTI, deserialization, "
-            "prototype pollution. If WAF blocks payloads: try string concat, alternate functions, "
-            "encoding tricks",
+            "prototype pollution, JWT manipulation, insecure file uploads. "
+            "If WAF/blacklist blocks: encoding (URL, double-URL, Unicode), string concat, "
+            "alternate built-ins, case tricks, comment injection",
             "5. ESCALATE: After initial access, check env vars and filesystem for internal "
             "service hostnames/ports, then pivot via SSRF or RCE to reach them",
         ],
         "quick_wins": [
-            "Check robots.txt and /.git/HEAD",
+            "Check robots.txt, /.git/HEAD, .env, /graphql, /swagger.json, common key endpoints",
             "Test ' OR 1=1-- in all input fields",
-            "Try admin:admin, admin:password",
+            "Try admin:admin, admin:password on login forms",
+            "If JWT cookie/header: decode payload, try alg:none and algorithm confusion attacks",
+            "SSTI: test {{7*7}} / ${7*7} in text inputs — if evaluated, identify engine and escalate",
             "Read all JS bundles — search for hardcoded secrets, action IDs, internal URLs",
             "If Docker: check /.dockerenv, env vars, /etc/hosts for internal services",
         ],
@@ -149,7 +152,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         ],
     },
     "reversing": {
-        "description": "Reverse engineering — disassembly, decompilation, malware analysis, patching",
+        "description": "Reverse engineering — disassembly, decompilation, crackmes, cross-arch analysis",
         "modules": ["reversing"],
         "tools": [
             ("ghidra", "NSA reverse engineering framework"),
@@ -163,16 +166,26 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("uncompyle6", "Python bytecode decompiler"),
         ],
         "methodology": [
-            "1. IDENTIFY: file, strings, readelf/objdump for file type, architecture, symbols",
-            "2. STATIC ANALYSIS: Ghidra/radare2 decompile, find main/entry, map out functions",
-            "3. DYNAMIC ANALYSIS: strace/ltrace for syscalls, gdb for breakpoints and stepping",
-            "4. DECODE: Find anti-debug, unpack (UPX), decrypt strings, run_script for custom decode",
-            "5. PATCH/SOLVE: Patch the binary or write keygen/solver with angr/z3",
+            "1. IDENTIFY: file for arch + linking + stripped status. strings for flag format, "
+            "error messages, decoy strings. Non-x86? Use qemu-<arch> for dynamic analysis",
+            "2. MAP STRUCTURE: Ghidra/r2 auto-analysis to list functions. Trace entry → main. "
+            "Follow string xrefs to find key functions (input, comparison, output)",
+            "3. FIND THE CHECK: Work backwards from success/failure strings to the validation "
+            "logic. Watch for decoys (fake comparisons before the real check), multi-stage "
+            "validation, and indirect calls",
+            "4. ANALYZE TRANSFORMS: XOR (static key, rolling key, multi-byte), lookup tables, "
+            "custom hashing, S-boxes, RC4-like streams. Identify the loop structure, "
+            "extract encoded data, reverse the transform in Python",
+            "5. HANDLE ANTI-RE: Timing checks, debugger detection (ptrace/IsDebuggerPresent), "
+            "obfuscated control flow, self-modifying code, VM-based protection. "
+            "Often simpler to extract the algorithm statically than to bypass all checks",
         ],
         "quick_wins": [
-            "Run strings and grep for flag{, CTF{, password, key",
-            "Check if the binary is UPX-packed: upx -d binary",
-            "Use ltrace to see strcmp/memcmp calls with expected input",
+            "strings | grep for flag format — multiple hits may indicate decoys",
+            "Non-x86 (ARM/RISC-V/MIPS)? qemu-<arch> to run, qemu -strace for syscall trace",
+            "ltrace to see strcmp/memcmp with expected input (instant solve if not stripped)",
+            "r2/Ghidra: find strings, trace xrefs, disassemble validation functions",
+            "Check if packed: UPX (upx -d), custom packers (high entropy sections)",
         ],
     },
     "forensics": {
@@ -418,21 +431,33 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         "tools": [
             ("slither-analyzer", "Solidity static analyzer"),
             ("mythril", "EVM bytecode security analyzer"),
-            ("foundry", "Smart contract development toolkit"),
+            ("foundry", "Smart contract development toolkit (forge/cast/anvil)"),
             ("solc-select", "Solidity compiler version manager"),
             ("echidna", "Ethereum smart contract fuzzer"),
+            ("halmos", "Symbolic testing for Foundry contracts (a16z)"),
+            ("aderyn", "Fast Rust-based Solidity static analyzer (Cyfrin)"),
+            ("heimdall-rs", "EVM bytecode decompiler and disassembler"),
+            ("crytic-medusa", "Parallelized smart contract fuzzer (Crytic)"),
+            ("ityfuzz", "Hybrid fuzzer with flashloan and DeFi support"),
+            ("crytic-compile", "Multi-framework compilation abstraction"),
+            ("eth-ape", "Python smart contract interaction framework"),
         ],
         "methodology": [
-            "1. ANALYZE: Read smart contract code, understand business logic",
-            "2. STATIC: slither for automatic vulnerability scanning, mythril for EVM analysis",
-            "3. TEST: foundry (forge test) for unit tests, echidna for fuzzing",
-            "4. EXPLOIT: Write exploit contract with foundry, test against local fork",
-            "5. VERIFY: Confirm vulnerability, document attack vector and impact",
+            "1. ANALYZE: Read smart contract code, understand business logic and storage layout",
+            "2. DECOMPILE: If no source — heimdall for bytecode decompilation and disassembly",
+            "3. STATIC: slither + aderyn for automatic vulnerability scanning, mythril for EVM analysis",
+            "4. FUZZ: echidna/medusa for property-based fuzzing, ityfuzz for DeFi-specific bugs",
+            "5. SYMBOLIC: halmos for formal verification of Foundry test properties",
+            "6. INTERACT: foundry cast for on-chain interaction, eth-ape for Python scripting",
+            "7. EXPLOIT: Write exploit contract with foundry, test against local fork (anvil)",
+            "8. VERIFY: Confirm vulnerability, document attack vector and impact",
         ],
         "quick_wins": [
-            "Run slither for automatic detection of common weaknesses",
-            "Check for reentrancy, integer overflow, access control issues",
+            "Run slither + aderyn for automatic detection of common weaknesses",
+            "Check for reentrancy, integer overflow, access control, delegatecall issues",
             "Use foundry cast to interact with the contract directly",
+            "heimdall decompile for unverified contracts without source code",
+            "Check storage layout for delegatecall storage collision vulnerabilities",
         ],
     },
 }

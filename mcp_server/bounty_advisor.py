@@ -247,7 +247,6 @@ BOUNTY_TARGET_MAP: dict[str, dict] = {
             ("netcat", "Network utility for banner grabbing and connections"),
             ("tshark", "CLI packet analyzer for traffic inspection"),
             ("hydra", "Online brute-force for network services"),
-            ("nmap", "NSE scripts for vulnerability detection"),
         ],
         "methodology": [
             "0. SCOPE: Verify IP ranges, ports, and services are in scope "
@@ -290,7 +289,7 @@ BOUNTY_TARGET_MAP: dict[str, dict] = {
             ("ghidra", "Firmware binary reverse engineering"),
             ("radare2", "RE framework for firmware analysis"),
             ("nmap", "Network scanning for IoT device discovery"),
-            ("firmwalker", "Firmware analysis for sensitive data"),
+            ("firmware-mod-kit", "Firmware modification and extraction toolkit"),
             ("boofuzz", "Network protocol fuzzer for IoT protocols"),
             ("strace", "System call tracing for embedded binaries"),
             ("tshark", "IoT protocol traffic analysis"),

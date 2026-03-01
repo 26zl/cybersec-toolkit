@@ -1002,6 +1002,9 @@ install_modules() {
     # Stage 3/4: Non-APT batch installs ──
     echo ""
 
+    # Save APT failure count so parallel subshell totals don't double-count
+    local _apt_failures=$TOTAL_TOOL_FAILURES
+
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # --- Parallel: launch all batches as concurrent subshells ---
         log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
@@ -1129,7 +1132,7 @@ install_modules() {
                 log_success "  ${_method}: OK"
             fi
         done
-        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + _stage3_failures))
+        TOTAL_TOOL_FAILURES=$((_apt_failures + _stage3_failures))
         rm -rf "$_fail_dir"
 
         if [[ "$_stage3_failures" -gt 0 ]]; then

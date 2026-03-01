@@ -1575,6 +1575,11 @@ BINARY_RELEASES_MOBILE=(
 BINARY_RELEASES_STEGO=(
     "RickdeJager/stegseek|stegseek|\\.deb"
 )
+BINARY_RELEASES_BLOCKCHAIN=(
+    "crytic/medusa|crytic-medusa|medusa-linux-x64\\.tar\\.gz$"
+    "Jon-Becker/heimdall-rs|heimdall|heimdall-linux-amd64$"
+    "fuzzland/ityfuzz|ityfuzz|ityfuzz_nightly_linux_amd64\\.tar\\.gz$"
+)
 
 # Docker image registry (single source of truth)
 # Format: "image|label"

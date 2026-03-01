@@ -221,6 +221,7 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     ],
     "nmap": [
         (re.compile(r"^-iL$"), "nmap: target list from file (bypasses target validation)"),
+        (re.compile(r"^-iR$"), "nmap: random target generation (bypasses target validation)"),
     ],
     "masscan": [
         (re.compile(r"^--includefile$"), "masscan: target list from file"),

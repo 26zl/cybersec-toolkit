@@ -38,6 +38,8 @@ PIPX_BIN_NAMES: dict[str, str] = {
     "quark-engine": "quark",
     "slither-analyzer": "slither",
     "mythril": "myth",
+    "eth-ape": "ape",
+    "vcdvcd": "vcdcat",
 }
 
 # Module descriptions (from lib/common.sh:1212-1231).

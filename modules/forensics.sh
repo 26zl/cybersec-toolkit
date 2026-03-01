@@ -13,9 +13,10 @@ FORENSICS_PACKAGES=(
     guymager magicrescue memdump
     rifiuti2 scrounge-ntfs ext3grep ext4magic
     poppler-utils zbar-tools
+    sigrok-cli pulseview gtkwave
 )
 
-FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3)
+FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3 vcdvcd)
 
 FORENSICS_GIT=(
     "RegRipper=https://github.com/keydet89/RegRipper3.0.git"

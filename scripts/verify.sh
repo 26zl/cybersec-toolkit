@@ -155,6 +155,8 @@ declare -A _PIPX_BIN_NAMES=(
     [quark-engine]="quark"
     [slither-analyzer]="slither"
     [mythril]="myth"
+    [eth-ape]="ape"
+    [vcdvcd]="vcdcat"
 )
 
 check_pipx() {
