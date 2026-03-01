@@ -155,6 +155,66 @@ class TestCheckPolicy:
         with pytest.raises(ValueError, match="checkpoint-action"):
             check_policy("tar", ["--checkpoint-action=exec=sh", "evil.tar"])
 
+    def test_tar_to_command_blocked(self) -> None:
+        with pytest.raises(ValueError, match="to-command"):
+            check_policy("tar", ["--to-command=/bin/sh", "evil.tar"])
+
+    def test_sed_in_place_short_blocked(self) -> None:
+        with pytest.raises(ValueError, match="sed: in-place"):
+            check_policy("sed", ["-i", "s/old/new/g", "file.txt"])
+
+    def test_sed_in_place_with_suffix_blocked(self) -> None:
+        """sed -i.bak must also be blocked (starts with -i)."""
+        with pytest.raises(ValueError, match="sed: in-place"):
+            check_policy("sed", ["-i.bak", "s/old/new/g", "file.txt"])
+
+    def test_sed_in_place_long_blocked(self) -> None:
+        with pytest.raises(ValueError, match="sed: in-place"):
+            check_policy("sed", ["--in-place", "s/old/new/g", "file.txt"])
+
+    def test_sed_in_place_long_with_suffix_blocked(self) -> None:
+        with pytest.raises(ValueError, match="sed: in-place"):
+            check_policy("sed", ["--in-place=.bak", "s/old/new/g", "file.txt"])
+
+    def test_sed_without_in_place_allowed(self) -> None:
+        check_policy("sed", ["s/old/new/g", "file.txt"])
+
+    def test_gpg_recv_keys_blocked(self) -> None:
+        with pytest.raises(ValueError, match="gpg: key import"):
+            check_policy("gpg", ["--recv-keys", "0x12345678"])
+
+    def test_gpg_keyserver_blocked(self) -> None:
+        with pytest.raises(ValueError, match="gpg: external keyserver"):
+            check_policy("gpg", ["--keyserver", "keys.example.com", "--recv-key", "0x12345678"])
+
+    def test_gpg_fetch_keys_blocked(self) -> None:
+        with pytest.raises(ValueError, match="gpg: key fetch"):
+            check_policy("gpg", ["--fetch-keys", "http://example.com/key.asc"])
+
+    @patch("mcp_server.security._allow_external", return_value=True)
+    def test_gpg_local_operations_allowed(self, _mock_ext) -> None:
+        check_policy("gpg", ["--decrypt", "file.gpg"])
+        check_policy("gpg", ["--verify", "file.sig", "file.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=True)
+    def test_socat_exec_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="socat: EXEC"):
+            check_policy("socat", ["TCP-LISTEN:4444,reuseaddr", "EXEC:/bin/sh"])
+
+    @patch("mcp_server.security._allow_external", return_value=True)
+    def test_socat_exec1_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="socat: EXEC"):
+            check_policy("socat", ["EXEC1:/bin/bash", "TCP:10.0.0.1:4444"])
+
+    @patch("mcp_server.security._allow_external", return_value=True)
+    def test_socat_system_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="socat: SYSTEM"):
+            check_policy("socat", ["TCP-LISTEN:4444", "SYSTEM:cat /etc/passwd"])
+
+    @patch("mcp_server.security._allow_external", return_value=True)
+    def test_socat_safe_usage_allowed(self, _mock_ext) -> None:
+        check_policy("socat", ["TCP-LISTEN:4444,reuseaddr", "TCP:10.0.0.1:80"])
+
     def test_normal_flags_allowed(self) -> None:
         check_policy("nmap", ["-sV", "10.0.0.1"])
 
@@ -1022,3 +1082,43 @@ class TestDefaultValues:
         limiter = _RateLimiter()
         assert limiter._semaphore._value == 10
         assert limiter._max_per_minute == 60
+
+
+# ---------------------------------------------------------------------------
+# _redact_sensitive (audit.py)
+# ---------------------------------------------------------------------------
+class TestRedactSensitive:
+    """Credential redaction in audit logs."""
+
+    def test_password_flag_redacted(self) -> None:
+        from mcp_server.audit import _redact_sensitive
+
+        assert "[REDACTED]" in _redact_sensitive("--password s3cret123")
+        assert "s3cret123" not in _redact_sensitive("--password s3cret123")
+
+    def test_token_flag_redacted(self) -> None:
+        from mcp_server.audit import _redact_sensitive
+
+        result = _redact_sensitive("--token ghp_abc123xyz")
+        assert "[REDACTED]" in result
+        assert "ghp_abc123xyz" not in result
+
+    def test_api_key_flag_redacted(self) -> None:
+        from mcp_server.audit import _redact_sensitive
+
+        result = _redact_sensitive("--api-key AKIAIOSFODNN7EXAMPLE")
+        assert "[REDACTED]" in result
+        assert "AKIAIOSFODNN7EXAMPLE" not in result
+
+    def test_no_redaction_for_normal_args(self) -> None:
+        from mcp_server.audit import _redact_sensitive
+
+        normal = "-sV --top-ports 100 10.0.0.1"
+        assert _redact_sensitive(normal) == normal
+
+    def test_secret_flag_redacted(self) -> None:
+        from mcp_server.audit import _redact_sensitive
+
+        result = _redact_sensitive("--secret my_secret_value")
+        assert "[REDACTED]" in result
+        assert "my_secret_value" not in result

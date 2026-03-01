@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +26,12 @@ from mcp_server.security import execute_pipeline as _execute_pipeline  # noqa: E
 from mcp_server.security import execute_script as _execute_script  # noqa: E402
 from mcp_server.security import execute_tool as _execute_tool  # noqa: E402
 from mcp_server.security import execute_tool_remote as _execute_tool_remote  # noqa: E402
+from mcp_server.audit import (  # noqa: E402
+    log_remote_op,
+    log_server_start,
+    log_tool_call,
+    log_tool_result,
+)
 from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 
 mcp = FastMCP(
@@ -72,18 +79,32 @@ read JS bundles for internal routes, action IDs, secrets → sqlmap/dalfox for i
 run_script for custom exploits. After RCE: check env vars + /etc/hosts for internal services, pivot via SSRF. \
 If WAF blocks: fuzz which keywords trigger it, bypass with string concat or alternate APIs
 - **Crypto**: run_script with PyCryptodome, z3, gmpy2 for RSA, custom implementations. \
+Lattice attacks (LLL/BKZ via SageMath) for knapsack, hidden number, ECDSA nonce bias. \
+Padding oracle: byte-at-a-time decrypt if server leaks validity. \
 Side-channel (CPA/DPA): load power traces as numpy arrays, identify POI (sample with highest \
 variance across guesses), use correlation to extract secret digits
-- **Pwn**: checksec → readelf/objdump → find offset → run_script with pwntools (ROP, shellcode, fmt str)
+- **Pwn**: checksec → readelf/objdump → find offset → run_script with pwntools (ROP, shellcode, fmt str). \
+Heap: tcache poisoning (overwrite fd), fastbin dup (double-free), unsorted bin leak (libc via fd/bk). \
+Custom allocator: map chunk header layout, trace alloc/free, find overflow into adjacent metadata. \
+Custom VM: identify opcode dispatch, map all instructions + stack effects empirically, \
+look for refcount bugs (DUP without incref), UAF via GC, type confusion in indirect calls
 - **Reversing**: `file` for arch/linking/stripped → non-x86? `qemu-<arch>` for dynamic. \
 Ghidra/r2 for static: map functions, trace string xrefs to validation logic. \
 Identify transforms (XOR, lookup tables, custom crypto), extract encoded data, \
-reverse in run_script. Watch for anti-debug and decoy checks
+reverse in run_script. Watch for anti-debug and decoy checks. \
+Custom VM: find dispatch loop (switch/jump table), map opcode→handler, determine operand encoding \
+(LEB128, fixed-width), test each instruction with minimal programs before building exploit. \
+Non-C: Java→jadx, .NET→ILSpy, Go→look for runtime.main, Python .pyc→uncompyle6/pycdc
 - **Forensics**: binwalk -e → volatility3 → foremost → exiftool → run_script for custom parsers. \
-USB HID: tshark to extract usb.capdata, USB-HID-decoders for keyboard/mouse reconstruction
-- **Stego**: exiftool → steghide → zsteg → stegsolve → run_script for LSB extraction
+USB HID: tshark to extract usb.capdata, USB-HID-decoders for keyboard/mouse reconstruction. \
+Windows: RegRipper for registry hives, chainsaw for event logs, prefetch for execution timeline
+- **Stego**: exiftool → steghide → zsteg → stegsolve → run_script for LSB extraction. \
+Audio: check spectrogram FIRST (sonic-visualiser/Audacity) — hidden images in spectrograms are \
+extremely common. Also check DTMF tones, morse code waveform, SSTV signals. \
+Multiple images: XOR/diff to reveal hidden data
 - **Networking**: nmap/masscan service discovery → tshark/tcpdump traffic analysis → \
-isolate interesting streams/services → run_script for protocol decoding, covert channels, replay
+isolate interesting streams/services → run_script for protocol decoding, covert channels, replay. \
+DNS exfil: extract query names, strip domain, concat labels, decode base64/hex
 - **Blockchain**: Read contract source → slither + aderyn for static analysis → \
 check storage layout for delegatecall collisions → foundry cast for interaction → \
 write exploit contract and test against anvil local fork
@@ -96,7 +117,26 @@ aircrack-ng/hashcat with rockyou.txt → bettercap for MITM
 - **OSINT**: sherlock/maigret for username enumeration → amass/subfinder for subdomains → \
 theHarvester for email/IP → shodan for exposed services → wayback for history
 - **Misc**: file/strings/xxd to identify → base64/hex/rot13 decode attempts → \
-hashcat/john with rockyou.txt → run_script for custom decode chains
+hashcat/john with rockyou.txt → run_script for custom decode chains. \
+Pyjail: identify blocked builtins, bypass via __class__.__mro__[1].__subclasses__(), \
+chr() for strings, getattr() for attribute access. \
+Priv-esc: sudo -l, SUID (find / -perm -4000), cron, writable PATH, GTFOBins
+
+## Cross-platform: CLI (WSL) vs GUI (Windows)
+- **All MCP tools run in WSL/Linux** — run_tool, run_pipeline, run_script execute in the Linux environment
+- **CLI tools** (tshark, r2, strings, objdump, steghide, zsteg, volatility3, sleuthkit, nmap, etc.) \
+→ use directly via run_tool/run_script. Challenge files on Windows are at /mnt/c/Users/<username>/...
+- **GUI tools must be run by the user on the Windows host**. When a GUI tool is needed, \
+tell the user to download and open it on Windows with the file path (C:\\Users\\...):
+  - **Ghidra** (RE): download from ghidra-sre.org — Java, cross-platform
+  - **Wireshark** (networking): download from wireshark.org — or use tshark (CLI) via run_tool
+  - **Audacity / sonic-visualiser** (audio stego): audacityteam.org / sonicvisualiser.org
+  - **stegsolve** (image stego): download JAR from github.com/Giotino/stegsolve
+  - **ILSpy** (.NET RE): github.com/icsharpcode/ILSpy/releases — or ilspycmd CLI via dotnet
+  - **jadx-gui** (Android RE): github.com/skylot/jadx/releases — or jadx CLI via run_tool
+  - **Autopsy** (forensics): sleuthkit.org — or use sleuthkit CLI (fls, icat) via run_tool
+- **Always offer a CLI alternative** when possible so the AI can do initial analysis via MCP, \
+then recommend the GUI for deeper interactive work
 
 ## Efficiency tips
 - **Combine operations**: Run multiple analyses in a single run_script call instead of separate run_tool calls
@@ -253,6 +293,9 @@ _db = ToolsDatabase()
 # Remote host configuration (loaded once on server start).
 _remote = RemoteHostConfig()
 
+# Log server startup with config state.
+log_server_start()
+
 # Termux runs without sudo; Linux requires it.
 _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
 
@@ -278,6 +321,8 @@ def list_tools(
     Returns:
         Tool list with count, available filters, and tool entries (name, method, module, url).
     """
+    call_id = log_tool_call("list_tools", {"module": module, "method": method, "installed_only": installed_only})
+    t0 = time.monotonic()
     tools = _db.list_tools(module=module, method=method, installed_only=installed_only)
 
     tool_entries = []
@@ -303,6 +348,7 @@ def list_tools(
         result["available_modules"] = _db.modules
         result["available_methods"] = _db.methods
 
+    log_tool_result("list_tools", call_id, True, (time.monotonic() - t0) * 1000, summary=f"{len(tool_entries)} tools")
     return result
 
 
@@ -323,6 +369,8 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
     Returns:
         Installation status with detection method and details.
     """
+    call_id = log_tool_call("check_installed", {"tool_name": tool_name, "host": host})
+    t0 = time.monotonic()
     tool = _db.tools_by_name.get(tool_name)
 
     # System utility — not in registry but allowed
@@ -394,7 +442,7 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
         }
 
     status = _db.check_installed(tool_name)
-    return {
+    result = {
         "tool": tool_name,
         "in_registry": True,
         "module": tool["module"],
@@ -402,6 +450,14 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
         "url": tool.get("url", ""),
         **status,
     }
+    log_tool_result(
+        "check_installed",
+        call_id,
+        True,
+        (time.monotonic() - t0) * 1000,
+        summary=f"{tool_name}: {'installed' if status['installed'] else 'not installed'}",
+    )
+    return result
 
 
 @mcp.tool
@@ -417,8 +473,11 @@ def get_tool_info(tool_name: str) -> dict:
     Returns:
         Full tool details including install/update/remove commands.
     """
+    call_id = log_tool_call("get_tool_info", {"tool_name": tool_name})
+    t0 = time.monotonic()
     tool = _db.tools_by_name.get(tool_name)
     if not tool:
+        log_tool_result("get_tool_info", call_id, False, (time.monotonic() - t0) * 1000, error="not found")
         return {
             "error": f"Tool '{tool_name}' not found in registry. Use list_tools() to see available tools.",
         }
@@ -427,6 +486,7 @@ def get_tool_info(tool_name: str) -> dict:
     module = tool["module"]
     module_desc = MODULE_DESCRIPTIONS.get(module, "")
 
+    log_tool_result("get_tool_info", call_id, True, (time.monotonic() - t0) * 1000, summary=tool_name)
     return {
         "name": tool["name"],
         "method": tool["method"],
@@ -461,7 +521,13 @@ def suggest_for_ctf(challenge_type: str) -> dict:
     Returns:
         Suggested tools with descriptions and install status, plus relevant modules.
     """
-    return _suggest_for_ctf(challenge_type, _db)
+    call_id = log_tool_call("suggest_for_ctf", {"challenge_type": challenge_type})
+    t0 = time.monotonic()
+    result = _suggest_for_ctf(challenge_type, _db)
+    log_tool_result(
+        "suggest_for_ctf", call_id, "error" not in result, (time.monotonic() - t0) * 1000, summary=challenge_type
+    )
+    return result
 
 
 @mcp.tool
@@ -483,7 +549,13 @@ def suggest_for_bounty(target_type: str) -> dict:
     Returns:
         Suggested tools with install status, methodology, common vulns, and scope warning.
     """
-    return _suggest_for_bounty(target_type, _db)
+    call_id = log_tool_call("suggest_for_bounty", {"target_type": target_type})
+    t0 = time.monotonic()
+    result = _suggest_for_bounty(target_type, _db)
+    log_tool_result(
+        "suggest_for_bounty", call_id, "error" not in result, (time.monotonic() - t0) * 1000, summary=target_type
+    )
+    return result
 
 
 @mcp.tool
@@ -510,7 +582,11 @@ def recommend_install(task: str) -> dict:
     Returns:
         Recommendation with install commands, module details, and alternatives.
     """
-    return _recommend_install(task, _db)
+    call_id = log_tool_call("recommend_install", {"task": task})
+    t0 = time.monotonic()
+    result = _recommend_install(task, _db)
+    log_tool_result("recommend_install", call_id, True, (time.monotonic() - t0) * 1000)
+    return result
 
 
 @mcp.tool
@@ -524,7 +600,11 @@ def list_profiles() -> dict:
     Returns:
         All profiles with descriptions, module lists, tool counts, and install commands.
     """
-    return _list_profiles(_db)
+    call_id = log_tool_call("list_profiles", {})
+    t0 = time.monotonic()
+    result = _list_profiles(_db)
+    log_tool_result("list_profiles", call_id, True, (time.monotonic() - t0) * 1000)
+    return result
 
 
 @mcp.tool
@@ -541,6 +621,8 @@ def get_profile_tools(profile: str) -> dict:
     Returns:
         All tools in the profile grouped by module, with install status and counts.
     """
+    call_id = log_tool_call("get_profile_tools", {"profile": profile})
+    t0 = time.monotonic()
     profile_lower = profile.lower().strip()
     if profile_lower not in PROFILES:
         return {
@@ -580,6 +662,9 @@ def get_profile_tools(profile: str) -> dict:
             }
         )
 
+    log_tool_result(
+        "get_profile_tools", call_id, True, (time.monotonic() - t0) * 1000, summary=f"{profile_lower}: {total} tools"
+    )
     return {
         "profile": profile_lower,
         "description": profile_data["description"],
@@ -600,6 +685,8 @@ def get_module_info(module: str) -> dict:
     Returns:
         Module description, tool list with install status, and install/update/remove commands.
     """
+    call_id = log_tool_call("get_module_info", {"module": module})
+    t0 = time.monotonic()
     module_lower = module.lower().strip()
     if module_lower not in MODULE_DESCRIPTIONS:
         return {
@@ -632,6 +719,13 @@ def get_module_info(module: str) -> dict:
     # Which profiles include this module
     in_profiles = [name for name, p in PROFILES.items() if module_lower in p["modules"]]
 
+    log_tool_result(
+        "get_module_info",
+        call_id,
+        True,
+        (time.monotonic() - t0) * 1000,
+        summary=f"{module_lower}: {len(mod_tools)} tools",
+    )
     return {
         "module": module_lower,
         "description": MODULE_DESCRIPTIONS[module_lower],
@@ -680,9 +774,21 @@ async def run_tool(
     Returns:
         Execution result with exit_code, stdout, stderr, and the command that was run.
     """
+    call_id = log_tool_call("run_tool", {"tool_name": tool_name, "args": args, "timeout": timeout, "host": host})
+    t0 = time.monotonic()
     if host:
-        return await _execute_tool_remote(tool_name, args, _db, _remote, host, timeout=timeout)
-    return await _execute_tool(tool_name, args, _db, timeout=timeout)
+        result = await _execute_tool_remote(tool_name, args, _db, _remote, host, timeout=timeout)
+    else:
+        result = await _execute_tool(tool_name, args, _db, timeout=timeout)
+    log_tool_result(
+        "run_tool",
+        call_id,
+        result.get("exit_code", -1) == 0,
+        (time.monotonic() - t0) * 1000,
+        error=result.get("stderr", "")[:200] if result.get("exit_code", -1) != 0 else "",
+        summary=f"{tool_name} exit={result.get('exit_code', -1)}",
+    )
+    return result
 
 
 @mcp.tool
@@ -715,8 +821,11 @@ async def run_pipeline(
     Returns:
         Execution result with exit_code, stdout, stderr, truncated, commands, step_count.
     """
+    step_names = [s.get("tool", "?") for s in steps] if steps else []
+    call_id = log_tool_call("run_pipeline", {"steps": step_names, "timeout": timeout, "host": host})
+    t0 = time.monotonic()
     if host:
-        return {
+        result = {
             "exit_code": -1,
             "stdout": "",
             "stderr": "Remote pipeline execution is not yet supported.",
@@ -724,7 +833,16 @@ async def run_pipeline(
             "commands": [],
             "step_count": 0,
         }
-    return await _execute_pipeline(steps, _db, timeout=timeout)
+    else:
+        result = await _execute_pipeline(steps, _db, timeout=timeout)
+    log_tool_result(
+        "run_pipeline",
+        call_id,
+        result.get("exit_code", -1) == 0,
+        (time.monotonic() - t0) * 1000,
+        summary=f"{len(step_names)} steps, exit={result.get('exit_code', -1)}",
+    )
+    return result
 
 
 @mcp.tool
@@ -770,13 +888,26 @@ async def run_script(
         Execution result with exit_code, stdout, stderr, truncated, language,
         script_file, and working_dir.
     """
-    return await _execute_script(
+    call_id = log_tool_call(
+        "run_script", {"language": language, "timeout": timeout, "working_dir": working_dir, "venv": venv, "code": code}
+    )
+    t0 = time.monotonic()
+    result = await _execute_script(
         code=code,
         language=language,
         timeout=timeout,
         working_dir=working_dir,
         venv=venv,
     )
+    log_tool_result(
+        "run_script",
+        call_id,
+        result.get("exit_code", -1) == 0,
+        (time.monotonic() - t0) * 1000,
+        error=result.get("stderr", "")[:200] if result.get("exit_code", -1) != 0 else "",
+        summary=f"{language} exit={result.get('exit_code', -1)}",
+    )
+    return result
 
 
 @mcp.tool
@@ -813,9 +944,15 @@ async def manage_remote_hosts(
         Action result with host details or error message.
     """
     action = action.lower().strip()
+    call_id = log_tool_call("manage_remote_hosts", {"action": action, "name": name, "hostname": hostname})
+    t0 = time.monotonic()
 
     if action == "list":
         hosts = _remote.list_hosts()
+        log_tool_result(
+            "manage_remote_hosts", call_id, True, (time.monotonic() - t0) * 1000, summary=f"list: {len(hosts)} hosts"
+        )
+        log_remote_op("list", detail=f"{len(hosts)} hosts")
         return {"action": "list", "hosts": hosts, "count": len(hosts)}
 
     if not name:
@@ -837,27 +974,50 @@ async def manage_remote_hosts(
                 description=description,
                 tool_allowlist=parsed_allowlist,
             )
+            log_remote_op("add", host=name, detail=f"{user}@{hostname}:{port}")
+            log_tool_result("manage_remote_hosts", call_id, True, (time.monotonic() - t0) * 1000, summary=f"add {name}")
             return {"action": "add", "name": name, "host": entry}
         except (ValueError, OSError) as e:
+            log_tool_result("manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"error": str(e)}
 
     if action == "remove":
         try:
             removed = _remote.remove_host(name)
         except OSError as e:
+            log_tool_result("manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"error": f"Failed to save config: {e}"}
         if removed:
+            log_remote_op("remove", host=name)
+            log_tool_result(
+                "manage_remote_hosts", call_id, True, (time.monotonic() - t0) * 1000, summary=f"remove {name}"
+            )
             return {"action": "remove", "name": name, "removed": True}
+        log_tool_result(
+            "manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=f"host {name} not found"
+        )
         return {"error": f"Host '{name}' not found."}
 
     if action == "test":
         try:
             ssh_args = _remote.get_ssh_base_args(name)
         except ValueError as e:
+            log_tool_result("manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"error": str(e)}
         result = await check_ssh_connection(ssh_args)
+        log_remote_op("test", host=name, detail="connected" if result.get("connected") else "failed")
+        log_tool_result(
+            "manage_remote_hosts",
+            call_id,
+            result.get("connected", False),
+            (time.monotonic() - t0) * 1000,
+            summary=f"test {name}",
+        )
         return {"action": "test", "name": name, **result}
 
+    log_tool_result(
+        "manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=f"unknown action: {action}"
+    )
     return {"error": f"Unknown action '{action}'. Use: list, add, remove, test."}
 
 

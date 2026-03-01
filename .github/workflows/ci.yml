@@ -45,7 +45,8 @@ jobs:
             scripts/verify.sh \
             scripts/update.sh \
             scripts/remove.sh \
-            scripts/backup.sh
+            scripts/backup.sh \
+            scripts/sync-wsl.sh
 
   syntax-check:
     name: Bash Syntax Check

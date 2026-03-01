@@ -13,7 +13,7 @@ setup() {
 # ---------- Profile file existence -------------------------------------------
 
 @test "all expected profile files exist" {
-    local expected=(full ctf redteam web osint crackstation lightweight blueteam)
+    local expected=(full ctf redteam web osint crackstation lightweight blueteam forensics pwn mobile cloud blockchain wireless)
     for prof in "${expected[@]}"; do
         [[ -f "$PROFILES_DIR/${prof}.conf" ]] || { echo "Missing: ${prof}.conf"; return 1; }
     done
@@ -24,7 +24,7 @@ setup() {
     count=$(find "$PROFILES_DIR" -maxdepth 1 -name '*.conf' | wc -l)
     # 14 profiles: full, ctf, redteam, web, osint, crackstation, lightweight,
     # blueteam, forensics, pwn, mobile, cloud, blockchain, wireless
-    [[ "$count" -le 15 ]]
+    [[ "$count" -eq 14 ]]
 }
 
 # ---------- MODULES variable -------------------------------------------------

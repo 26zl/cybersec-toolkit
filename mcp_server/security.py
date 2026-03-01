@@ -20,7 +20,18 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from mcp_server.audit import log_blocked, log_execution, log_script_execution  # noqa: E402
+from mcp_server.audit import (  # noqa: E402
+    log_blocked,
+    log_dns,
+    log_execution,
+    log_pipeline_result,
+    log_pipeline_start,
+    log_pipeline_step,
+    log_rate_limit,
+    log_script_execution,
+    log_script_result,
+    log_validation,
+)
 from mcp_server.sanitize import sanitize_output, truncate_output  # noqa: E402
 from mcp_server.tools_db import PIPX_BIN_NAMES, ToolsDatabase  # noqa: E402
 
@@ -218,6 +229,7 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     ],
     "sed": [
         (re.compile(r"^-i"), "sed: in-place file modification"),
+        (re.compile(r"^--in-place"), "sed: in-place file modification"),
     ],
     "nmap": [
         (re.compile(r"^-iL$"), "nmap: target list from file (bypasses target validation)"),
@@ -238,6 +250,10 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^--recv-keys?$"), "gpg: key import from external keyserver"),
         (re.compile(r"^--keyserver$"), "gpg: external keyserver specification"),
         (re.compile(r"^--fetch-keys?$"), "gpg: key fetch from URL"),
+    ],
+    "socat": [
+        (re.compile(r"EXEC[12]?\s*:", re.IGNORECASE), "socat: EXEC address (arbitrary command execution)"),
+        (re.compile(r"SYSTEM\s*:", re.IGNORECASE), "socat: SYSTEM address (arbitrary command execution)"),
     ],
 }
 
@@ -308,13 +324,16 @@ def _allow_scripts() -> bool:
     return os.environ.get("CYBERSEC_MCP_ALLOW_SCRIPTS", "").strip() == "1"
 
 
-# Private/safe network ranges (loopback + RFC 1918 + link-local).
+# Private/safe network ranges (loopback + RFC 1918 + link-local + CGNAT/VPN).
 _SAFE_NETWORKS = [
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("169.254.0.0/16"),
+    # RFC 6598 CGNAT range — used by Tailscale, some VPN providers, and
+    # carrier-grade NAT. Safe for CTF/pentest VPN tunnels.
+    ipaddress.ip_network("100.64.0.0/10"),
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
@@ -334,16 +353,19 @@ class _RateLimiter:
         async with self._lock:
             now = time.monotonic()
             self._timestamps = [t for t in self._timestamps if now - t < 60]
-            if len(self._timestamps) >= self._max_per_minute:
+            current = len(self._timestamps)
+            if current >= self._max_per_minute:
+                log_rate_limit("exceeded", current, self._max_per_minute)
                 raise ValueError(f"Rate limit exceeded: max {self._max_per_minute} tool executions per minute")
             self._timestamps.append(now)
+            log_rate_limit("acquired", current + 1, self._max_per_minute)
 
 
 _rate_limiter = _RateLimiter()
 
+
 # Thread-safe DNS resolution with per-call timeout (avoids process-global
 # socket.setdefaulttimeout which races under concurrent tool executions).
-_dns_lock = threading.Lock()
 
 
 def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
@@ -353,6 +375,7 @@ def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
     """
     result: list = []
     error: list = []
+    start = time.monotonic()
 
     def _resolve() -> None:
         try:
@@ -363,10 +386,19 @@ def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
     t = threading.Thread(target=_resolve, daemon=True)
     t.start()
     t.join(timeout)
+    elapsed = (time.monotonic() - start) * 1000
     if t.is_alive():
+        log_dns(hostname, resolved=False, duration_ms=elapsed, error="timeout")
         raise socket.timeout(f"DNS resolution timed out after {timeout}s")
     if error:
+        log_dns(hostname, resolved=False, duration_ms=elapsed, error=str(error[0]))
         raise error[0]
+    if result:
+        first_ip = result[0][4][0] if result else ""
+        is_safe = all(any(ipaddress.ip_address(sa[4][0]) in net for net in _SAFE_NETWORKS) for sa in result)
+        log_dns(hostname, resolved=True, ip=first_ip, safe=is_safe, duration_ms=elapsed)
+    else:
+        log_dns(hostname, resolved=False, duration_ms=elapsed, error="empty_result")
     return result
 
 
@@ -405,6 +437,8 @@ def _is_safe_target(value: str) -> bool:
         # Try to resolve and check
         try:
             info = _resolve_with_timeout(value)
+            if not info:
+                return False  # No resolution results — treat as unsafe
             for _, _, _, _, sockaddr in info:
                 addr = ipaddress.ip_address(sockaddr[0])
                 if not any(addr in net for net in _SAFE_NETWORKS):
@@ -422,6 +456,8 @@ def _is_safe_target(value: str) -> bool:
     # Try DNS resolution as a last resort to catch targets like "google" or "134744072"
     try:
         info = _resolve_with_timeout(value)
+        if not info:
+            return False  # No resolution results — treat as unsafe
         for _, _, _, _, sockaddr in info:
             addr = ipaddress.ip_address(sockaddr[0])
             if not any(addr in net for net in _SAFE_NETWORKS):
@@ -826,12 +862,18 @@ async def execute_tool(
 
     Returns dict with: exit_code, stdout, stderr, truncated, command.
     """
+    exec_start = time.monotonic()
+
     # Validate, sanitize, and enforce policy — return structured errors
     try:
         binary = validate_tool_for_execution(tool_name, tools_db)
+        log_validation(tool_name, "resolve", True, detail=binary)
         arg_list = sanitize_args(args)
+        log_validation(tool_name, "sanitize", True, detail=f"{len(arg_list)} args")
         await asyncio.to_thread(check_policy, tool_name, arg_list)
+        log_validation(tool_name, "policy", True)
     except ValueError as e:
+        log_validation(tool_name, "failed", False, detail=str(e))
         log_blocked(tool_name=tool_name, args=args, reason=str(e))
         return {
             "exit_code": -1,
@@ -873,12 +915,14 @@ async def execute_tool(
                 process.kill()
                 await process.wait()
                 cmd_str = shlex.join(command)
+                elapsed = (time.monotonic() - exec_start) * 1000
                 log_execution(
                     tool_name=tool_name,
                     args=args,
                     host="localhost",
                     exit_code=-1,
                     command=cmd_str,
+                    duration_ms=elapsed,
                 )
                 return {
                     "exit_code": -1,
@@ -900,12 +944,17 @@ async def execute_tool(
 
             cmd_str = shlex.join(command)
             rc = process.returncode if process.returncode is not None else -1
+            elapsed = (time.monotonic() - exec_start) * 1000
             log_execution(
                 tool_name=tool_name,
                 args=args,
                 host="localhost",
                 exit_code=rc,
                 command=cmd_str,
+                duration_ms=elapsed,
+                stdout_len=len(stdout),
+                stderr_len=len(stderr),
+                truncated=truncated,
             )
 
             return {
@@ -918,12 +967,14 @@ async def execute_tool(
 
         except FileNotFoundError:
             cmd_str = shlex.join(command)
+            elapsed = (time.monotonic() - exec_start) * 1000
             log_execution(
                 tool_name=tool_name,
                 args=args,
                 host="localhost",
                 exit_code=-1,
                 command=cmd_str,
+                duration_ms=elapsed,
             )
             return {
                 "exit_code": -1,
@@ -934,12 +985,14 @@ async def execute_tool(
             }
         except OSError as e:
             cmd_str = shlex.join(command)
+            elapsed = (time.monotonic() - exec_start) * 1000
             log_execution(
                 tool_name=tool_name,
                 args=args,
                 host="localhost",
                 exit_code=-1,
                 command=cmd_str,
+                duration_ms=elapsed,
             )
             return {
                 "exit_code": -1,
@@ -967,6 +1020,7 @@ async def _run_pipeline_steps(
     tools_db: ToolsDatabase,
     timeout: int,
     max_output: int,
+    pipeline_id: str = "",
 ) -> dict:
     """Execute validated pipeline steps, piping stdout→stdin between them."""
     deadline = asyncio.get_event_loop().time() + timeout
@@ -986,6 +1040,7 @@ async def _run_pipeline_steps(
                 "failed_step": i + 1,
             }
 
+        step_start = time.monotonic()
         binary = validate_tool_for_execution(step["tool"], tools_db)
         arg_list = sanitize_args(step.get("args", ""))
         command = [binary] + arg_list
@@ -1010,6 +1065,8 @@ async def _run_pipeline_steps(
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
+                step_elapsed = (time.monotonic() - step_start) * 1000
+                log_pipeline_step(pipeline_id, i + 1, step["tool"], -1, step_elapsed)
                 return {
                     "exit_code": -1,
                     "stdout": "",
@@ -1021,6 +1078,15 @@ async def _run_pipeline_steps(
                 }
 
             rc = process.returncode if process.returncode is not None else -1
+            step_elapsed = (time.monotonic() - step_start) * 1000
+            log_pipeline_step(
+                pipeline_id,
+                i + 1,
+                step["tool"],
+                rc,
+                step_elapsed,
+                output_bytes=len(stdout_bytes),
+            )
             if rc != 0 and i < len(steps) - 1:
                 # Intermediate step with non-zero exit (e.g. grep returning 1
                 # for "no matches") — continue the pipeline with whatever
@@ -1046,6 +1112,8 @@ async def _run_pipeline_steps(
                 prev_output = stdout_bytes
 
         except FileNotFoundError:
+            step_elapsed = (time.monotonic() - step_start) * 1000
+            log_pipeline_step(pipeline_id, i + 1, step["tool"], -1, step_elapsed)
             return {
                 "exit_code": -1,
                 "stdout": "",
@@ -1056,6 +1124,8 @@ async def _run_pipeline_steps(
                 "failed_step": i + 1,
             }
         except OSError as e:
+            step_elapsed = (time.monotonic() - step_start) * 1000
+            log_pipeline_step(pipeline_id, i + 1, step["tool"], -1, step_elapsed)
             return {
                 "exit_code": -1,
                 "stdout": "",
@@ -1106,6 +1176,9 @@ async def execute_pipeline(
     if len(steps) > MAX_PIPELINE_STEPS:
         return _pipeline_error(f"Pipeline exceeds max {MAX_PIPELINE_STEPS} steps (got {len(steps)})")
 
+    pipeline_id = log_pipeline_start(steps, timeout)
+    pipe_start = time.monotonic()
+
     # Pre-validate ALL steps before executing any
     for i, step in enumerate(steps):
         if "tool" not in step:
@@ -1128,7 +1201,17 @@ async def execute_pipeline(
         return _pipeline_error(str(e))
 
     async with _rate_limiter._semaphore:
-        return await _run_pipeline_steps(steps, tools_db, timeout, max_output)
+        result = await _run_pipeline_steps(steps, tools_db, timeout, max_output, pipeline_id)
+
+    elapsed = (time.monotonic() - pipe_start) * 1000
+    log_pipeline_result(
+        pipeline_id,
+        result.get("exit_code", -1),
+        elapsed,
+        result.get("step_count", 0),
+        result.get("truncated", False),
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1292,7 +1375,9 @@ async def execute_script(
             code=code,
             script_file=script_path,
             working_dir=cwd,
+            venv=venv or "",
         )
+        script_start = time.monotonic()
 
         # 9. Check rate limit BEFORE acquiring semaphore
         try:
@@ -1327,13 +1412,8 @@ async def execute_script(
                 except asyncio.TimeoutError:
                     process.kill()
                     await process.wait()
-                    log_execution(
-                        tool_name=f"script:{lang}",
-                        args="",
-                        host="localhost",
-                        exit_code=-1,
-                        command=f"{interpreter} {script_path}",
-                    )
+                    elapsed = (time.monotonic() - script_start) * 1000
+                    log_script_result(lang, -1, elapsed, script_file=script_path)
                     return {
                         "exit_code": -1,
                         "stdout": "",
@@ -1355,12 +1435,15 @@ async def execute_script(
                 stderr = sanitize_output(stderr)
 
                 rc = process.returncode if process.returncode is not None else -1
-                log_execution(
-                    tool_name=f"script:{lang}",
-                    args="",
-                    host="localhost",
-                    exit_code=rc,
-                    command=f"{interpreter} {script_path}",
+                elapsed = (time.monotonic() - script_start) * 1000
+                log_script_result(
+                    lang,
+                    rc,
+                    elapsed,
+                    script_file=script_path,
+                    stdout_len=len(stdout),
+                    stderr_len=len(stderr),
+                    truncated=truncated,
                 )
 
                 return {
@@ -1374,13 +1457,8 @@ async def execute_script(
                 }
 
             except FileNotFoundError:
-                log_execution(
-                    tool_name=f"script:{lang}",
-                    args="",
-                    host="localhost",
-                    exit_code=-1,
-                    command=f"{interpreter} {script_path}",
-                )
+                elapsed = (time.monotonic() - script_start) * 1000
+                log_script_result(lang, -1, elapsed, script_file=script_path)
                 return {
                     "exit_code": -1,
                     "stdout": "",
@@ -1391,13 +1469,8 @@ async def execute_script(
                     "working_dir": cwd,
                 }
             except OSError as e:
-                log_execution(
-                    tool_name=f"script:{lang}",
-                    args="",
-                    host="localhost",
-                    exit_code=-1,
-                    command=f"{interpreter} {script_path}",
-                )
+                elapsed = (time.monotonic() - script_start) * 1000
+                log_script_result(lang, -1, elapsed, script_file=script_path)
                 return {
                     "exit_code": -1,
                     "stdout": "",

@@ -112,22 +112,32 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         "methodology": [
             "1. IDENTIFY: Use hashid/name-that-hash, check encoding (base64, hex, rot13)",
             "2. ANALYZE: Find key length (xortool), RSA parameters (n, e, c), cipher type",
-            "3. ATTACK: RSA (RsaCtfTool, factordb), XOR (xortool), hash (hashcat/john)",
-            "4. SIDE-CHANNEL: Load power traces as numpy arrays, identify POI (sample with highest "
-            "variance across key guesses), use correlation (CPA) or difference-of-means (DPA) to recover secret",
-            "5. SOLVE: Use run_script with z3 for constraints, PyCryptodome for custom crypto",
-            "6. VERIFY: Decrypt and validate output, check for nested encoding",
+            "3. CLASSICAL: RSA (RsaCtfTool, factordb), XOR (xortool), hash (hashcat/john)",
+            "4. MODERN: Lattice attacks (LLL/BKZ via SageMath/fpylll) for knapsack, hidden number, "
+            "ECDSA nonce reuse/bias. Padding oracle (byte-at-a-time decrypt). "
+            "Elliptic curve: invalid curve, small subgroup, twist attacks",
+            "5. SIDE-CHANNEL: Load power traces as numpy arrays, identify POI (sample with highest "
+            "variance across key guesses), use correlation (CPA) or difference-of-means (DPA) "
+            "to recover secret",
+            "6. SOLVE: Use run_script with z3 for constraints, PyCryptodome for custom crypto, "
+            "SageMath for number theory (lattice reduction, polynomial rings, ECC math)",
+            "7. VERIFY: Decrypt and validate output, check for nested encoding",
         ],
         "quick_wins": [
             "Try base64 -d, xxd -r, rot13 on ciphertext",
             "Check if RSA n is factorable via factordb",
+            "RSA: check for small e with small plaintext (cube root attack), "
+            "shared primes across multiple n values (GCD), Wiener's for large e/small d",
             "Test common ciphers: Caesar, Vigenere, XOR with known plaintext",
             "Run hashcat/john with rockyou.txt on unknown hashes",
+            "ECDSA: if two signatures share nonce (same r value), recover private key instantly",
+            "Padding oracle: if server leaks padding validity, decrypt ciphertext byte-by-byte",
             "Side-channel: correlate power traces with Hamming weight of intermediate values per key guess",
         ],
     },
     "pwn": {
-        "description": "Binary exploitation — buffer overflows, ROP chains, format strings, heap exploits",
+        "description": "Binary exploitation — buffer overflows, ROP chains, format strings, "
+        "heap exploits, custom VM/allocator",
         "modules": ["pwn", "reversing"],
         "tools": [
             ("pwntools", "CTF framework for exploit development"),
@@ -139,27 +149,41 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("boofuzz", "Network protocol fuzzer"),
             ("afl++", "Coverage-guided fuzzer"),
             ("checksec", "Binary security property checker"),
+            ("pwninit", "Auto-setup: patches binary with correct libc/ld for local testing"),
             ("ROPgadget", "ROP gadget search tool"),
         ],
         "methodology": [
             "1. RECON: checksec for protections (NX, PIE, canary, RELRO), file/readelf for type",
             "2. ANALYZE: objdump/radare2 for disassembly, find vulnerable function (gets, strcpy, printf)",
             "3. FIND PRIMITIVES: Buffer overflow offset (cyclic), format string leaks, heap bugs",
-            "4. BUILD EXPLOIT: run_script with pwntools — ROP chain, shellcode, ret2libc, GOT overwrite",
-            "5. EXPLOIT: Connect to target, send payload, handle interaction, capture the flag",
+            "4. HEAP: glibc heap — tcache poisoning (overwrite fd pointer), fastbin dup "
+            "(double-free), unsorted bin attack (leak libc via fd/bk), house-of techniques. "
+            "Map chunk layout with heap commands in pwndbg/GEF. "
+            "Custom allocator? Map header fields, freelist structure, coalescing logic",
+            "5. CUSTOM VM: Identify opcode table, stack effects, type system. "
+            "Test each instruction empirically. Look for UAF (refcount bugs), "
+            "type confusion, missing bounds checks, double-free",
+            "6. BUILD EXPLOIT: run_script with pwntools — ROP chain, shellcode, "
+            "ret2libc, GOT overwrite, heap spray, tcache poison → arbitrary write",
+            "7. EXPLOIT: Connect to target, send payload, handle interaction, capture the flag",
         ],
         "quick_wins": [
             "Run checksec to see which protections are missing",
             "Try cyclic(200) + core dump to find offset",
             "Check for format string: %p%p%p%p in input",
+            "Heap: use pwndbg 'vis_heap_chunks' or GEF 'heap chunks' to visualize layout",
             "Look for win/flag function in symbols (nm/objdump)",
+            "Custom allocator: map chunk header (size/flags/fd/bk), look for off-by-one or overflow into next header",
+            "Custom VM: use built-in assembler/disassembler if present. "
+            "Test each opcode to discover exact stack effects",
+            "pwninit to auto-patch binary with challenge libc/ld for local testing",
         ],
     },
     "reversing": {
-        "description": "Reverse engineering — disassembly, decompilation, crackmes, cross-arch analysis",
+        "description": "Reverse engineering — disassembly, decompilation, crackmes, cross-arch, custom VM/bytecode",
         "modules": ["reversing"],
         "tools": [
-            ("ghidra", "NSA reverse engineering framework"),
+            ("ghidra", "NSA RE framework (GUI — download from ghidra-sre.org, run on Windows)"),
             ("radare2", "RE framework and hex editor"),
             ("rizin", "Fork of radare2 with improved APIs"),
             ("binwalk", "Firmware analysis and extraction"),
@@ -168,28 +192,49 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("upx", "UPX packer/unpacker"),
             ("angr", "Binary analysis framework"),
             ("uncompyle6", "Python bytecode decompiler"),
+            ("checksec", "Binary security property checker"),
+            ("frida-tools", "Dynamic instrumentation for runtime analysis"),
         ],
         "methodology": [
             "1. IDENTIFY: file for arch + linking + stripped status. strings for flag format, "
             "error messages, decoy strings. Non-x86? Use qemu-<arch> for dynamic analysis",
-            "2. MAP STRUCTURE: Ghidra/r2 auto-analysis to list functions. Trace entry → main. "
-            "Follow string xrefs to find key functions (input, comparison, output)",
+            "2. MAP STRUCTURE: Use r2/rizin via run_tool for CLI disassembly. "
+            "For GUI analysis: download Ghidra from ghidra-sre.org (Java, cross-platform) "
+            "and open the binary on the Windows host. "
+            "List functions, trace entry → main, follow string xrefs to key functions",
             "3. FIND THE CHECK: Work backwards from success/failure strings to the validation "
             "logic. Watch for decoys (fake comparisons before the real check), multi-stage "
             "validation, and indirect calls",
             "4. ANALYZE TRANSFORMS: XOR (static key, rolling key, multi-byte), lookup tables, "
             "custom hashing, S-boxes, RC4-like streams. Identify the loop structure, "
             "extract encoded data, reverse the transform in Python",
-            "5. HANDLE ANTI-RE: Timing checks, debugger detection (ptrace/IsDebuggerPresent), "
+            "5. NON-C BINARIES: Java/Android → jadx (CLI via run_tool) or "
+            "jadx-gui (download from github.com/skylot/jadx/releases, run on Windows). "
+            ".NET → ILSpy (download from github.com/icsharpcode/ILSpy/releases, Windows GUI) "
+            "or ilspycmd (CLI, install via: dotnet tool install ilspycmd -g). "
+            "Go → look for runtime.main, strings embedded in binary. "
+            "Rust → similar to C, look for core::fmt patterns. "
+            "Python → uncompyle6/pycdc for .pyc (CLI, via run_tool/run_script)",
+            "6. HANDLE ANTI-RE: Timing checks, debugger detection (ptrace/IsDebuggerPresent), "
             "obfuscated control flow, self-modifying code, VM-based protection. "
             "Often simpler to extract the algorithm statically than to bypass all checks",
+            "7. CUSTOM VM/BYTECODE: Identify dispatch loop (switch/jump table on opcode byte). "
+            "Map every opcode: name, operand encoding (LEB128? fixed-width?), stack effect (push/pop count). "
+            "Check for type system (int vs buffer vs closure). Test instructions empirically — "
+            "do NOT assume semantics. Look for: missing refcount on DUP, UAF via GC, type confusion in CALL",
         ],
         "quick_wins": [
             "strings | grep for flag format — multiple hits may indicate decoys",
             "Non-x86 (ARM/RISC-V/MIPS)? qemu-<arch> to run, qemu -strace for syscall trace",
             "ltrace to see strcmp/memcmp with expected input (instant solve if not stripped)",
-            "r2/Ghidra: find strings, trace xrefs, disassemble validation functions",
+            "CLI: r2 -A binary → afl (functions), axt (xrefs), pdf (disasm). "
+            "GUI: open in Ghidra on Windows for decompiler view",
             "Check if packed: UPX (upx -d), custom packers (high entropy sections)",
+            "Go binary? strings are embedded — grep for flag format directly. "
+            "Java .jar? unzip + jadx. Python .pyc? uncompyle6/pycdc",
+            "frida-trace to hook specific functions at runtime without full debugger setup",
+            "Custom VM: find dispatch loop (large switch or jump table), extract opcode→handler mapping, "
+            "test each opcode with minimal programs to discover exact behavior before attempting exploit",
         ],
     },
     "forensics": {
@@ -197,7 +242,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         "modules": ["forensics"],
         "tools": [
             ("volatility3", "Memory forensics framework"),
-            ("autopsy", "Digital forensics GUI platform"),
+            ("autopsy", "Digital forensics GUI (download from sleuthkit.org, run on Windows)"),
             ("sleuthkit", "Filesystem forensics toolkit"),
             ("foremost", "File carving tool"),
             ("binwalk", "Firmware and file extraction"),
@@ -212,16 +257,26 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         "methodology": [
             "1. IDENTIFY: file, xxd, binwalk for file type and embedded data",
             "2. EXTRACT: binwalk -e, foremost, photorec for file carving",
-            "3. ANALYZE: volatility3 for memory dumps, sleuthkit for disk images",
-            "4. METADATA: exiftool, oletools, peepdf for document analysis",
-            "5. USB/HID: tshark to extract usb.capdata from PCAPs, USB-HID-decoders for keyboard/mouse reconstruction",
-            "6. RECONSTRUCT: run_script for custom parsers, timeline analysis, data recovery",
+            "3. MEMORY: volatility3 for memory dumps — pslist, filescan, dumpfiles, "
+            "hashdump, netscan. Profile detection: windows.info or linux.bash",
+            "4. DISK: sleuthkit (fls, icat) for filesystem analysis, deleted file "
+            "recovery (extundelete/ext4magic), timeline (mactime)",
+            "5. WINDOWS: Registry hives (RegRipper, regipy) — SAM for users, "
+            "SYSTEM for services, NTUSER.DAT for MRU/recent. Event logs "
+            "(chainsaw/evtx) — Security.evtx for logons, PowerShell logs "
+            "for commands. Prefetch for execution timeline",
+            "6. METADATA: exiftool, oletools for Office macros, peepdf for PDF",
+            "7. USB/HID: tshark to extract usb.capdata from PCAPs, USB-HID-decoders for keyboard/mouse reconstruction",
+            "8. RECONSTRUCT: run_script for custom parsers, timeline analysis, data recovery",
         ],
         "quick_wins": [
             "Run binwalk -e for automatic extraction of embedded files",
             "Check exiftool for hidden metadata and comments",
             "Use strings | grep -i flag on the entire file",
             "Try foremost for file carving from disk/memory dumps",
+            "Memory dump: volatility3 windows.hashdump + windows.filescan for quick password hashes and file listing",
+            "Windows registry: RegRipper on SAM/SYSTEM/NTUSER.DAT hives "
+            "for user accounts, services, and recent activity",
             "USB keyboard PCAP: extract usb.capdata with tshark, decode with "
             "USB-HID-decoders or ctf-usb-keyboard-parser",
         ],
@@ -245,23 +300,42 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("exiftool", "Image metadata analysis"),
             ("stegoveritas", "Multi-tool stego analyzer"),
             ("snow", "Whitespace steganography tool"),
+            ("sonic-visualiser", "Audio spectrogram and waveform analysis"),
+            ("pngcheck", "PNG file structure validation and diagnostics"),
         ],
         "methodology": [
             "1. IDENTIFY: file, exiftool for file type and metadata, pngcheck for PNG validation",
-            "2. VISUAL: stegsolve for bit-plane analysis, color channel manipulation",
-            "3. EXTRACT: steghide extract, zsteg, binwalk for embedded data",
-            "4. CRACK: stegseek with wordlist if steghide is password-protected",
-            "5. CUSTOM: run_script for LSB extraction, audio spectrogram, custom stego algorithms",
+            "2. VISUAL (IMAGE): stegsolve (GUI — download JAR from "
+            "github.com/Giotino/stegsolve, run: java -jar stegsolve.jar on Windows) "
+            "for bit-plane analysis. Check each RGB/alpha plane separately. "
+            "CLI alternative: run_script with PIL to extract individual bit planes",
+            "3. AUDIO (GUI on Windows): Download sonic-visualiser from sonicvisualiser.org "
+            "or use Audacity (audacityteam.org). Open file, switch to spectrogram view "
+            "— hidden images/text in spectrograms are extremely common in CTF. "
+            "Check for DTMF tones (phone dialing), morse code in waveform, SSTV signals. "
+            "Try different spectrogram scales (linear, log, mel). "
+            "CLI alternative: run_script with scipy/matplotlib to generate spectrogram",
+            "4. EXTRACT: steghide extract, zsteg, binwalk for embedded data. "
+            "Audio: extract LSB from WAV samples with run_script",
+            "5. CRACK: stegseek with wordlist if steghide is password-protected",
+            "6. CUSTOM: run_script for LSB extraction (image or audio), "
+            "pixel value manipulation, custom stego algorithms",
         ],
         "quick_wins": [
             "Run exiftool for hidden comments and metadata",
             "Try steghide extract -sf image.jpg -p '' (empty password)",
             "Use zsteg on PNG/BMP for LSB data",
             "Check strings for embedded text or flag",
+            "Audio file? Open spectrogram on Windows (sonic-visualiser or Audacity) — "
+            "hidden images in spectrogram are extremely common in CTF",
+            "WAV file with unusual size? Check LSB of audio samples for "
+            "hidden data (each sample's least significant bit)",
+            "Multiple images? Check for visual differences — XOR or diff two images to reveal hidden data",
         ],
     },
     "misc": {
-        "description": "Miscellaneous CTF — general tools, encoding, scripting, cracking",
+        "description": "Miscellaneous CTF — encoding, pyjail, sandbox escape, "
+        "scripting, cracking, privilege escalation",
         "modules": ["misc", "cracking"],
         "tools": [
             ("cyberchef", "Data transformation Swiss army knife"),
@@ -275,23 +349,38 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         ],
         "methodology": [
             "1. IDENTIFY: file, strings, xxd to understand what you're working with",
-            "2. DECODE: Try common encodings — base64, hex, URL, rot13, morse",
-            "3. CRACK: hashcat/john with rockyou.txt, hydra for online brute-force",
-            "4. SCRIPT: run_script for custom decode chains, brute-force logic",
-            "5. COMBINE: Combine findings from multiple steps, think laterally",
+            "2. DECODE: Try common encodings — base64, hex, URL, rot13, morse, "
+            "multi-layer encoding (base64 of hex of rot13, etc.)",
+            "3. PYJAIL/SANDBOX ESCAPE: Identify blocked builtins/keywords. "
+            "Bypass via: __class__.__mro__[1].__subclasses__() to find "
+            "os._wrap_close or subprocess.Popen, chr() to build strings "
+            "without quotes, getattr() for attribute access, "
+            "exec(bytes([...])) to bypass keyword filters. "
+            "Check: breakpoint(), help(), license() for interactive shells",
+            "4. PRIV-ESC (if shell access): sudo -l for allowed commands, "
+            "SUID binaries (find / -perm -4000), capabilities (getcap), "
+            "cron jobs, writable PATH dirs, kernel exploits. "
+            "Check GTFOBins for exploit methods per binary",
+            "5. CRACK: hashcat/john with rockyou.txt, hydra for online brute-force",
+            "6. SCRIPT: run_script for custom decode chains, brute-force, race conditions, timing attacks",
+            "7. COMBINE: Combine findings from multiple steps, think laterally",
         ],
         "quick_wins": [
             "Try CyberChef Magic function for automatic decoding",
             "Run base64 -d, xxd -r, and rot13 on unknown data",
             "Use john/hashcat with rockyou.txt on hashes",
+            "Pyjail: try __import__('os').system('sh'), eval(), exec(), breakpoint(), help() first",
+            "Priv-esc: sudo -l, find / -perm -4000 2>/dev/null, check /etc/crontab and writable PATH directories",
+            "QR code? Use zbarimg or pyzbar to decode. Braille/morse/semaphore? Look up encoding table",
         ],
     },
     "networking": {
-        "description": "Network challenges — packet analysis, protocol exploitation, traffic manipulation",
+        "description": "Network challenges — packet analysis, protocol exploitation, "
+        "traffic manipulation, covert channels",
         "modules": ["networking", "pwn", "enterprise"],
         "tools": [
-            ("wireshark", "Network protocol analyzer (GUI)"),
-            ("tshark", "CLI packet analyzer"),
+            ("wireshark", "Network protocol analyzer (GUI — run on Windows host)"),
+            ("tshark", "CLI packet analyzer (use via run_tool in WSL)"),
             ("nmap", "Network scanner and service detection"),
             ("tcpdump", "Command-line packet capture"),
             ("scapy", "Packet manipulation framework"),
@@ -300,20 +389,40 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("masscan", "Fast port scanner"),
             ("responder", "LLMNR/NBT-NS/MDNS poisoner"),
             ("mitmproxy", "Intercepting HTTP/HTTPS proxy"),
+            ("impacket", "Network protocol exploitation toolkit"),
         ],
         "methodology": [
             "1. METADATA: capinfos for file info, merge history, interface count, capture comments",
             "2. OVERVIEW: tshark -z io,phs for protocol hierarchy, identify unusual protocols",
             "3. ISOLATE: Split large PCAPs by interface/filter: tshark -Y 'filter' -w /tmp/subset.pcap",
-            "4. ANALYZE: Follow TCP streams, extract files, check for covert channels (timing, ICMP, DNS)",
-            "5. DECODE: run_script for timing analysis, payload reconstruction, protocol-specific parsing",
+            "4. ANALYZE: Follow TCP streams, extract files, check for covert "
+            "channels (timing, ICMP, DNS). Look for unusual protocols "
+            "(ICMP with data, DNS with long subdomains, HTTP with odd headers)",
+            "5. DNS EXFIL/TUNNELING: Extract DNS query names — long hex/base64 "
+            "subdomains indicate exfiltration. Reassemble: strip domain suffix, "
+            "concatenate labels, base64/hex decode. TXT records may carry data "
+            "in responses. Tools: tshark -Y dns -T fields -e dns.qry.name",
+            "6. PROTOCOL EXPLOIT: Replay attacks (scapy), credential capture "
+            "(responder, impacket), MITM (mitmproxy, bettercap). "
+            "Custom protocols: reverse the framing, write parser in run_script",
+            "7. DECODE: run_script for timing analysis, payload reconstruction, protocol-specific parsing",
         ],
         "quick_wins": [
             "Run capinfos first — reveals merge history, capture comments, and hidden metadata",
             "Use tshark -z io,phs for instant protocol overview on any size PCAP",
             "Check for covert channels: unusual timing patterns, ICMP data, DNS TXT exfil",
             "Follow TCP streams: tshark -r file.pcap -z follow,tcp,ascii,0",
+            "DNS exfil: tshark -Y dns -T fields -e dns.qry.name | sort -u "
+            "— look for hex/base64 encoded subdomain labels",
             "Check DNS queries in PCAP for exfiltrated data",
+            "Extract files: tshark -r file.pcap --export-objects http,/tmp/out or foremost on raw TCP payload",
+        ],
+        "notable_cves": [
+            "CVE-2014-0160 — Heartbleed: OpenSSL TLS heartbeat buffer over-read. "
+            "Leaks up to 64KB of server memory per request (keys, session data). "
+            "Common in PCAP forensics — look for heartbeat requests with large payload length",
+            "CVE-2020-1350 — SIGRed: Windows DNS Server RCE via crafted SIG record. "
+            "Wormable, affects all Windows Server DNS versions",
         ],
     },
     "wireless": {
@@ -334,13 +443,21 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "1. DISCOVER: airmon-ng for monitor mode, kismet for network scanning",
             "2. CAPTURE: airodump-ng for handshake capture, tcpdump for raw packets",
             "3. CRACK: aircrack-ng/hashcat on WPA handshake, reaver for WPS",
-            "4. MITM: bettercap for ARP spoofing, mitmproxy for HTTP intercept",
-            "5. ADVANCED: SDR with HackRF/GNURadio, Bluetooth with bluez",
+            "4. BLE: Scan with bluetoothctl/hcitool lescan, enumerate services "
+            "with gatttool. Read/write GATT characteristics. Sniff BLE traffic "
+            "with Ubertooth or nRF Sniffer. Crack BLE pairing with crackle",
+            "5. MITM: bettercap for ARP spoofing and BLE MITM, mitmproxy for HTTP intercept",
+            "6. SDR: HackRF/RTL-SDR for signal capture, GNURadio for "
+            "demodulation. Common targets: car key fobs, garage doors, "
+            "weather stations, pagers (POCSAG/FLEX)",
         ],
         "quick_wins": [
             "Run wifite for automated WiFi attacks",
             "Check for WPS with wash/reaver",
             "Use aircrack-ng with rockyou.txt on captured handshake",
+            "BLE: bluetoothctl → scan on → list devices → connect → enumerate characteristics and read values",
+            "PCAP with BLE? Open in Wireshark on Windows, filter btatt, "
+            "look for Read/Write Request values containing flag data",
         ],
     },
     "osint": {
@@ -362,14 +479,20 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "1. TARGET: Define scope — username, domain, email, organization",
             "2. ENUMERATE: sherlock/maigret for usernames, amass/subfinder for subdomains",
             "3. HARVEST: theHarvester for email/IP, holehe for account checking",
-            "4. CORRELATE: Cross-reference findings, build relationship map",
-            "5. DEEP DIVE: Shodan for exposed services, wayback machine for history",
+            "4. IMAGE OSINT: exiftool for GPS coordinates, camera model, timestamps. "
+            "Reverse image search (Google Images, TinEye, Yandex). "
+            "Identify landmarks, street signs, vegetation for geolocation",
+            "5. CORRELATE: Cross-reference findings, build relationship map",
+            "6. DEEP DIVE: Shodan for exposed services, wayback machine for "
+            "history, certificate transparency (crt.sh) for subdomain discovery",
         ],
         "quick_wins": [
             "Run sherlock/maigret on usernames for social media",
             "Use subfinder + httpx for fast subdomain scanning",
             "Check Shodan for exposed services on target IP",
             "Search wayback machine for old/deleted pages",
+            "Image with GPS? exiftool -gps:all for exact coordinates",
+            "Check crt.sh for certificate transparency subdomain discovery",
         ],
     },
     "cloud": {
@@ -431,6 +554,13 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "Use jadx to read Java source code directly",
             "Check AndroidManifest.xml for exported activities/providers",
             "Try frida with objection for SSL pinning bypass",
+        ],
+        "notable_cves": [
+            "CVE-2023-45866 — Bluetooth keystroke injection: unauthenticated "
+            "attacker can pair with Android/Linux/iOS devices and inject keystrokes "
+            "without user confirmation. Affects Android 4.2+, Linux with BlueZ, iOS/macOS",
+            "CVE-2020-0069 — MediaTek-su: privilege escalation on MediaTek Android "
+            "devices via /proc/ged interaction. Instant root on affected chipsets",
         ],
     },
     "blockchain": {
@@ -497,6 +627,30 @@ CATEGORY_ALIASES: dict[str, str] = {
     "sca": "crypto",
     "dpa": "crypto",
     "cpa": "crypto",
+    "vm": "pwn",
+    "bytecode": "reversing",
+    "interpreter": "reversing",
+    "heap": "pwn",
+    "allocator": "pwn",
+    "pyjail": "misc",
+    "jail": "misc",
+    "sandbox": "misc",
+    "privesc": "misc",
+    "priv-esc": "misc",
+    "encoding": "misc",
+    "audio": "stego",
+    "spectrogram": "stego",
+    "ble": "wireless",
+    "bluetooth": "wireless",
+    "sdr": "wireless",
+    "pcap": "networking",
+    "packet": "networking",
+    "dns": "networking",
+    "geolocation": "osint",
+    "geoint": "osint",
+    "imint": "osint",
+    "evm": "blockchain",
+    "defi": "blockchain",
 }
 
 

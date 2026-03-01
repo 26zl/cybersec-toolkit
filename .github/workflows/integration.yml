@@ -63,7 +63,7 @@ jobs:
         run: |
           # Install a few fast, universally-available packages to test the real
           # install path including fixup_package_names and pkg_install.
-          bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois || true
+          bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois
           # Show install log on failure for debugging
           if [[ -f cybersec_install.log ]]; then
             echo "=== Install log ==="
@@ -78,7 +78,7 @@ jobs:
           done
 
       - name: Run verify script (smoke test)
-        run: bash scripts/verify.sh --module networking --summary || true
+        run: bash scripts/verify.sh --module networking --summary
 
       - name: Remove networking module
         run: bash scripts/remove.sh --module networking --yes

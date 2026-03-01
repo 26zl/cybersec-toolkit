@@ -290,12 +290,13 @@ class TestScriptAuditLogging:
         with (
             patch("mcp_server.security._allow_scripts", return_value=True),
             _patch_exec(proc),
-            patch("mcp_server.security.log_execution") as mock_log,
+            patch("mcp_server.security.log_script_result") as mock_log,
         ):
             await execute_script("print('ok')")
         mock_log.assert_called_once()
-        kwargs = mock_log.call_args.kwargs
-        assert kwargs["tool_name"] == "script:python"
+        args = mock_log.call_args
+        assert args[0][0] == "python"  # language
+        assert args[0][1] == 0  # exit_code
 
 
 # Working directory

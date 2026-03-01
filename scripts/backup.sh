@@ -414,13 +414,13 @@ cmd_schedule() {
     printf "BACKUP_PASSPHRASE='%s'\n" "$_escaped" > "$env_file"
     chmod 600 "$env_file"
     local cron_cmd=". $env_file && $SCRIPT_DIR/scripts/backup.sh backup"
-    (crontab -l 2>/dev/null | grep -v "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd") | crontab -
+    (crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd") | crontab -
     log_success "Backup scheduled: $frequency at $time"
     log_info "Passphrase stored in $env_file (mode 600)"
 }
 
 cmd_unschedule() {
-    crontab -l 2>/dev/null | grep -v "$SCRIPT_DIR/scripts/backup.sh" | crontab -
+    crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh" | crontab -
     log_success "Backup schedule removed"
 }
 

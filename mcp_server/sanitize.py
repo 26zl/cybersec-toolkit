@@ -40,7 +40,8 @@ def truncate_output(text: str, max_bytes: int) -> tuple[str, bool]:
     trunc_msg = f"\n... [truncated at {max_bytes} bytes]"
     trunc_msg_bytes = trunc_msg.encode("utf-8")
     # Truncate at byte level and decode back, ignoring partial characters
-    truncated = encoded[: max_bytes - len(trunc_msg_bytes)].decode("utf-8", errors="ignore")
+    cut = max(0, max_bytes - len(trunc_msg_bytes))
+    truncated = encoded[:cut].decode("utf-8", errors="ignore")
     return truncated + trunc_msg, True
 
 
