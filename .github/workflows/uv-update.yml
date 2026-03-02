@@ -16,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          token: ${{ secrets.PAT_TOKEN }}
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.3.1
@@ -54,8 +55,10 @@ jobs:
 
       - name: Create pull request
         if: steps.upgrade.outputs.changed == 'true'
+        id: cpr
         uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
         with:
+          token: ${{ secrets.PAT_TOKEN }}
           commit-message: "chore: bump uv dependencies"
           branch: auto/uv-update
           delete-branch: true
@@ -69,3 +72,9 @@ jobs:
 
             MCP server import test passed.
           labels: dependencies
+
+      - name: Enable auto-merge
+        if: steps.upgrade.outputs.changed == 'true' && steps.cpr.outputs.pull-request-number != ''
+        run: gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}"
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
