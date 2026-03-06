@@ -609,8 +609,7 @@ if [[ -n "$PROFILE" ]]; then
     read -ra MODULES_TO_INSTALL <<< "$MODULES"
     # Validate profile module names
     for mod in "${MODULES_TO_INSTALL[@]}"; do
-        # shellcheck disable=SC2076  # Intentional literal match
-        if [[ ! " ${ALL_MODULES[*]} " =~ " $mod " ]]; then
+        if [[ " ${ALL_MODULES[*]} " != *" $mod "* ]]; then
             log_error "Profile '$PROFILE' references unknown module: $mod"
             exit 1
         fi
@@ -622,7 +621,7 @@ elif [[ ${#SELECTED_MODULES[@]} -gt 0 ]]; then
             log_error "Invalid module name (no path components allowed): $mod"
             exit 1
         fi
-        if [[ ! " ${ALL_MODULES[*]} " =~ " $mod " ]]; then
+        if [[ " ${ALL_MODULES[*]} " != *" $mod "* ]]; then
             log_error "Unknown module: $mod (use --list-modules to see available modules)"
             exit 1
         fi

@@ -65,7 +65,7 @@ else
             log_error "Invalid module name (no path components allowed): $_vmod"
             exit 1
         fi
-        if [[ ! " ${ALL_MODULES[*]} " =~ " $_vmod " ]]; then
+        if [[ " ${ALL_MODULES[*]} " != *" $_vmod "* ]]; then
             log_error "Unknown module: $_vmod (use --help to see available modules)"
             exit 1
         fi

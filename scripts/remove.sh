@@ -74,7 +74,7 @@ else
             log_error "Invalid module name (no path components allowed): $_rmod"
             exit 1
         fi
-        if [[ ! " ${ALL_MODULES[*]} " =~ " $_rmod " ]]; then
+        if [[ " ${ALL_MODULES[*]} " != *" $_rmod "* ]]; then
             log_error "Unknown module: $_rmod (use --help to see available modules)"
             exit 1
         fi
