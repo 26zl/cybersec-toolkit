@@ -831,13 +831,38 @@ def validate_tool_for_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
     return binary
 
 
+# Max length for args string to prevent DoS from huge input (100KB is plenty for CLI args)
+MAX_ARGS_LEN = 100_000
+
+
+def _step_args_to_str(step: dict) -> str:
+    """Normalize pipeline step 'args' to a string for sanitize_args.
+
+    Accepts str or list of strings (e.g. from JSON API). Other types are stringified.
+    """
+    raw = step.get("args", "")
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, list):
+        return " ".join(shlex.quote(str(a)) for a in raw)
+    return str(raw) if raw is not None else ""
+
+
 def sanitize_args(args: str) -> list[str]:
     """Parse and sanitize command-line arguments.
 
     Raises ValueError on dangerous patterns.
     """
+    if not isinstance(args, str):
+        args = str(args) if args is not None else ""
     if not args or not args.strip():
         return []
+
+    if len(args) > MAX_ARGS_LEN:
+        raise ValueError(
+            f"Arguments string exceeds max length ({MAX_ARGS_LEN} bytes). "
+            "Split into multiple tool calls or shorten arguments."
+        )
 
     # Check for dangerous shell metacharacters before parsing
     if _DANGEROUS_PATTERNS.search(args):
@@ -913,7 +938,10 @@ async def execute_tool(
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
                 process.kill()
-                await process.wait()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass  # Process may be in D state; leave as zombie rather than hang
                 cmd_str = shlex.join(command)
                 elapsed = (time.monotonic() - exec_start) * 1000
                 log_execution(
@@ -1042,7 +1070,7 @@ async def _run_pipeline_steps(
 
         step_start = time.monotonic()
         binary = validate_tool_for_execution(step["tool"], tools_db)
-        arg_list = sanitize_args(step.get("args", ""))
+        arg_list = sanitize_args(_step_args_to_str(step))
         command = [binary] + arg_list
         cmd_str = shlex.join(command)
         commands.append(cmd_str)
@@ -1064,7 +1092,10 @@ async def _run_pipeline_steps(
                 )
             except asyncio.TimeoutError:
                 process.kill()
-                await process.wait()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
                 step_elapsed = (time.monotonic() - step_start) * 1000
                 log_pipeline_step(pipeline_id, i + 1, step["tool"], -1, step_elapsed)
                 return {
@@ -1100,6 +1131,7 @@ async def _run_pipeline_steps(
                 stdout, truncated = truncate_output(stdout, max_output)
                 stdout = sanitize_output(stdout)
                 stderr = stderr_bytes.decode("utf-8", errors="replace")
+                stderr = sanitize_output(stderr)
                 return {
                     "exit_code": rc,
                     "stdout": stdout,
@@ -1185,10 +1217,11 @@ async def execute_pipeline(
             return _pipeline_error(f"Step {i + 1} missing required 'tool' key")
         try:
             validate_tool_for_execution(step["tool"], tools_db)
-            arg_list = sanitize_args(step.get("args", ""))
+            args_str = _step_args_to_str(step)
+            arg_list = sanitize_args(args_str)
             await asyncio.to_thread(check_policy, step["tool"], arg_list)
         except ValueError as e:
-            log_blocked(tool_name=step["tool"], args=step.get("args", ""), reason=str(e))
+            log_blocked(tool_name=step["tool"], args=_step_args_to_str(step), reason=str(e))
             return _pipeline_error(f"Step {i + 1} ({step['tool']}): {e}")
 
     # Clamp timeout
@@ -1236,12 +1269,18 @@ def _resolve_venv_interpreter(venv_name: str) -> str | None:
     venvs_dir = os.environ.get("CYBERSEC_MCP_VENVS_DIR", "").strip()
     if not venvs_dir:
         venvs_dir = os.path.expanduser("~/.ctf-venvs")
-    venvs_dir = os.path.realpath(venvs_dir)
-    # Ensure the venv directory itself is inside venvs_dir (check before
-    # following any symlinks inside the venv — python binary may be a
-    # symlink to the system interpreter, which is expected and safe).
+    try:
+        venvs_dir = os.path.realpath(venvs_dir)
+    except OSError:
+        return None
     venv_root = os.path.join(venvs_dir, venv_name)
-    if not os.path.realpath(venv_root).startswith(venvs_dir + os.sep):
+    # Require venv path to exist and be a directory before resolving (avoids realpath on missing path)
+    if not os.path.isdir(venv_root):
+        return None
+    try:
+        if not os.path.realpath(venv_root).startswith(venvs_dir + os.sep):
+            return None
+    except OSError:
         return None
     venv_python = os.path.join(venv_root, "bin", "python")
     if os.path.isfile(venv_python):
@@ -1411,7 +1450,10 @@ async def execute_script(
                     )
                 except asyncio.TimeoutError:
                     process.kill()
-                    await process.wait()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        pass
                     elapsed = (time.monotonic() - script_start) * 1000
                     log_script_result(lang, -1, elapsed, script_file=script_path)
                     return {

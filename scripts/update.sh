@@ -166,7 +166,10 @@ if [[ "$SKIP_GO" == "false" ]]; then
             bin_path=$(command -v "$tool_name" 2>/dev/null || echo "")
             [[ -n "$bin_path" ]] && old_sum=$(sha256sum "$bin_path" 2>/dev/null | cut -d' ' -f1)
 
-            if _as_builder "GOPATH='$GOPATH' GOBIN='$_effective_gobin' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
+            _upd_go_gopath="$(_escape_single_quoted "$GOPATH")"
+            _upd_go_gobin="$(_escape_single_quoted "$_effective_gobin")"
+            _upd_go_tool="$(_escape_single_quoted "$tool")"
+            if _as_builder "GOPATH='$_upd_go_gopath' GOBIN='$_upd_go_gobin' $(command -v go) install $_upd_go_tool" >> "$LOG_FILE" 2>&1; then
                 # Compare checksums before moving — detect real changes
                 new_sum=""
                 if [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$tool_name" ]]; then
@@ -224,7 +227,8 @@ if [[ "$SKIP_GIT" == "false" ]]; then
             GIT_TOTAL=$((GIT_TOTAL + 1))
 
             pull_output=""
-            if pull_output=$(_as_builder "git -C '$dir' pull" 2>>"$LOG_FILE"); then
+            _dir_escaped="$(_escape_single_quoted "$dir")"
+            if pull_output=$(_as_builder "git -C '$_dir_escaped' pull" 2>>"$LOG_FILE"); then
                 if echo "$pull_output" | grep -q "Already up to date"; then
                     log_debug "Already latest: $name"
                     GIT_SKIPPED=$((GIT_SKIPPED + 1))
@@ -249,10 +253,12 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                 # Retry: reset to remote HEAD and pull again (handles dirty trees, e.g. SecLists)
                 log_debug "git pull failed for $name — resetting to remote HEAD..."
                 _remote_branch=""
-                _remote_branch=$(_as_builder "git -C '$dir' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'") || true
+                _remote_branch=$(_as_builder "git -C '$_dir_escaped' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'") || true
+                _remote_branch="${_remote_branch%%[[:space:]]*}"
                 [[ -z "$_remote_branch" ]] && _remote_branch="main"
-                if _as_builder "git -C '$dir' fetch origin" >> "$LOG_FILE" 2>&1 \
-                    && _as_builder "git -C '$dir' reset --hard 'origin/$_remote_branch'" >> "$LOG_FILE" 2>&1; then
+                _branch_escaped="$(_escape_single_quoted "origin/$_remote_branch")"
+                if _as_builder "git -C '$_dir_escaped' fetch origin" >> "$LOG_FILE" 2>&1 \
+                    && _as_builder "git -C '$_dir_escaped' reset --hard '$_branch_escaped'" >> "$LOG_FILE" 2>&1; then
                     log_success "Updated: $name (reset to origin/$_remote_branch)"
                     GIT_UPDATED=$((GIT_UPDATED + 1))
                     track_version "$name" "git" "HEAD"
@@ -291,7 +297,11 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
             done
             if [[ ${#GEMS_TO_UPDATE[@]} -gt 0 ]]; then
                 log_info "Updating Ruby gems (${GEMS_TO_UPDATE[*]})..."
-                if _as_builder "$(command -v gem) update ${GEMS_TO_UPDATE[*]} --no-document" >> "$LOG_FILE" 2>&1; then
+                _gem_update_args=""
+                for _g in "${GEMS_TO_UPDATE[@]}"; do
+                    _gem_update_args+=" '$(_escape_single_quoted "$_g")'"
+                done
+                if _as_builder "$(command -v gem) update $_gem_update_args --no-document" >> "$LOG_FILE" 2>&1; then
                     log_success "Ruby gems updated"
                     # Refresh symlinks (new version may have new binary paths)
                     _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
@@ -341,7 +351,8 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                 fi
                 # Without --force, cargo skips if the installed version matches latest
                 cargo_output=""
-                if cargo_output=$(_as_builder "$(command -v cargo) install $crate" 2>&1); then
+                _upd_crate_esc="$(_escape_single_quoted "$crate")"
+                if cargo_output=$(_as_builder "$(command -v cargo) install $_upd_crate_esc" 2>&1); then
                     if echo "$cargo_output" | grep -q "already installed"; then
                         log_debug "Already latest: $crate"
                         CARGO_LATEST=$((CARGO_LATEST + 1))
@@ -574,8 +585,9 @@ for _bmod in "${ALL_MODULES[@]}"; do
     for _bname in "${_bnames[@]}"; do
         _bdir="$GITHUB_TOOL_DIR/$_bname"
         [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_SKIPPED=$((BUILD_SKIPPED + 1)); continue; }
+        _bdir_escaped="$(_escape_single_quoted "$_bdir")"
         _pull_out=""
-        if _pull_out=$(_as_builder "git -C '$_bdir' pull" 2>>"$LOG_FILE"); then
+        if _pull_out=$(_as_builder "git -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
             if echo "$_pull_out" | grep -q "Already up to date"; then
                 log_debug "Already latest: $_bname"
                 BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
@@ -583,13 +595,13 @@ for _bmod in "${ALL_MODULES[@]}"; do
                 log_success "Updated source: $_bname — attempting rebuild..."
                 # Try common build patterns (use _as_builder for consistent ownership)
                 if [[ -f "$_bdir/Makefile" ]]; then
-                    if _as_builder "make -C '$_bdir' -j$(nproc 2>/dev/null || echo 2)" >> "$LOG_FILE" 2>&1; then
+                    if _as_builder "make -C '$_bdir_escaped' -j$(nproc 2>/dev/null || echo 2)" >> "$LOG_FILE" 2>&1; then
                         log_success "Rebuilt: $_bname"
                     else
                         log_warn "Rebuild failed for $_bname (make failed) — source updated"
                     fi
                 elif [[ -f "$_bdir/Cargo.toml" ]]; then
-                    if _as_builder "cd '$_bdir' && $(command -v cargo) build --release" >> "$LOG_FILE" 2>&1; then
+                    if _as_builder "cd '$_bdir_escaped' && $(command -v cargo) build --release" >> "$LOG_FILE" 2>&1; then
                         log_success "Rebuilt: $_bname"
                     else
                         log_warn "Rebuild failed for $_bname (cargo build failed) — source updated"

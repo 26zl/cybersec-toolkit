@@ -358,6 +358,21 @@ cmd_delete() {
             log_error "File not found: $target"
             return 1
         fi
+        # Restrict delete to files under BACKUP_DIR (prevent path traversal)
+        local _canon_target _canon_backup
+        if command -v realpath &>/dev/null; then
+            _canon_target=$(realpath "$target" 2>/dev/null) || true
+            _canon_backup=$(realpath "$BACKUP_DIR" 2>/dev/null) || true
+            if [[ -z "$_canon_target" || -z "$_canon_backup" || "$_canon_target" != "$_canon_backup"/* ]]; then
+                log_error "Can only delete files under $BACKUP_DIR (got: $target)"
+                return 1
+            fi
+        else
+            if [[ "$target" != "$BACKUP_DIR"/* ]] || [[ "$target" == *"/../"* ]] || [[ "$target" == *"/.." ]]; then
+                log_error "Can only delete files under $BACKUP_DIR (got: $target)"
+                return 1
+            fi
+        fi
         read -rp "Delete $target? (y/N) " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             log_warn "Cancelled"

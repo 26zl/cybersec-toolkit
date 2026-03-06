@@ -67,6 +67,18 @@ done
 
 if [[ ${#REMOVE_MODULES[@]} -eq 0 ]]; then
     REMOVE_MODULES=("${ALL_MODULES[@]}")
+else
+    # Validate each --module argument is a known module (prevent path traversal / typos)
+    for _rmod in "${REMOVE_MODULES[@]}"; do
+        if [[ "$_rmod" == */* || "$_rmod" == *..* ]]; then
+            log_error "Invalid module name (no path components allowed): $_rmod"
+            exit 1
+        fi
+        if [[ ! " ${ALL_MODULES[*]} " =~ " $_rmod " ]]; then
+            log_error "Unknown module: $_rmod (use --help to see available modules)"
+            exit 1
+        fi
+    done
 fi
 
 _init_log_file "$SCRIPT_DIR/tool_removal.log"

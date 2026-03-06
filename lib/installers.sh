@@ -49,7 +49,7 @@ _load_distro_compat() {
         dnf="${_rest%%	*}";    _rest="${_rest#*	}"
         pacman="${_rest%%	*}"; _rest="${_rest#*	}"
         zypper="${_rest%%	*}"; _rest="${_rest#*	}"
-        pkg="$_rest"
+        pkg="${_rest%%	*}"   # 5th column only; ignore any trailing tabs
         [[ -n "$dnf" ]]    && _COMPAT_DNF["$debian"]="$dnf"
         [[ -n "$pacman" ]] && _COMPAT_PACMAN["$debian"]="$pacman"
         [[ -n "$zypper" ]] && _COMPAT_ZYPPER["$debian"]="$zypper"
@@ -408,10 +408,15 @@ install_go_batch() {
 
             _wait_for_job_slot
 
+            # Escape for safe use inside _as_builder (single-quoted bash -c string)
+            local _go_gopath_escaped _go_gobin_escaped _go_tool_escaped
+            _go_gopath_escaped="$(_escape_single_quoted "$GOPATH")"
+            _go_gobin_escaped="$(_escape_single_quoted "$_effective_gobin")"
+            _go_tool_escaped="$(_escape_single_quoted "$tool")"
             (
                 trap '_release_job_slot' EXIT
                 _report_tool_start "Go" "$name"
-                if _as_builder "GOPATH='$GOPATH' GOBIN='$_effective_gobin' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
+                if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1; then
                     # Move binary from staging dir to system GOBIN (runs as root)
                     [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$name" ]] \
                         && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"
@@ -445,7 +450,10 @@ install_go_batch() {
                 _report_tool_done "Go" "$name" "skip"
                 continue
             fi
-            if ! _as_builder "GOPATH='$GOPATH' GOBIN='$_effective_gobin' $(command -v go) install $tool" >> "$LOG_FILE" 2>&1; then
+            _go_gopath_escaped="$(_escape_single_quoted "$GOPATH")"
+            _go_gobin_escaped="$(_escape_single_quoted "$_effective_gobin")"
+            _go_tool_escaped="$(_escape_single_quoted "$tool")"
+            if ! _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed go: $name$(_disk_hint)"
                 failed=$((failed + 1))
                 track_session "$name" "go" "failed" 2>/dev/null || true
@@ -524,9 +532,10 @@ install_cargo_batch() {
             continue
         fi
         local _installed=false
+        local _crate_escaped; _crate_escaped="$(_escape_single_quoted "$crate")"
         # Try cargo-binstall first (downloads pre-compiled binary, ~3s vs ~20s)
         if [[ "$_use_binstall" == "true" ]]; then
-            if _as_builder "$(command -v cargo) binstall $crate --no-confirm" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(command -v cargo) binstall $_crate_escaped --no-confirm" >> "$LOG_FILE" 2>&1; then
                 _installed=true
                 log_debug "Installed $crate via cargo-binstall"
             else
@@ -535,7 +544,7 @@ install_cargo_batch() {
         fi
         # Fall back to cargo install (compiles from source)
         if [[ "$_installed" == "false" ]]; then
-            if ! _as_builder "$(command -v cargo) install $crate" >> "$LOG_FILE" 2>&1; then
+            if ! _as_builder "$(command -v cargo) install $_crate_escaped" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed cargo: $crate$(_disk_hint)"
                 failed=$((failed + 1))
                 track_session "$crate" "cargo" "failed" 2>/dev/null || true
@@ -602,7 +611,8 @@ install_gem_batch() {
             _report_tool_done "Gems" "$gem_name" "skip"
             continue
         fi
-        if _as_builder "$(command -v gem) install $gem_name --no-document" >> "$LOG_FILE" 2>&1; then
+        local _gem_escaped; _gem_escaped="$(_escape_single_quoted "$gem_name")"
+        if _as_builder "$(command -v gem) install $_gem_escaped --no-document" >> "$LOG_FILE" 2>&1; then
             # Symlink gem executables to PIPX_BIN_DIR (gems install to user-local
             # dir under _as_builder, which isn't in system PATH)
             local _gem_bin_dir=""
@@ -1503,7 +1513,8 @@ build_from_source() {
     fi
     # Run build in a subshell to avoid changing the caller's working directory.
     # Uses _as_builder for privilege dropping (build as user, not root).
-    if (cd "$dest" && _as_builder "$build_cmd") >> "$LOG_FILE" 2>&1; then
+    local _build_cmd_escaped; _build_cmd_escaped="$(_escape_single_quoted "$build_cmd")"
+    if (cd "$dest" && _as_builder "$_build_cmd_escaped") >> "$LOG_FILE" 2>&1; then
         _stop_spinner
         log_success "Built: $name"
         track_version "$name" "source" "HEAD"

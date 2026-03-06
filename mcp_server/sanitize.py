@@ -23,8 +23,11 @@ _XML_INJECTION_RE = re.compile(
 )
 
 # Line-level injection prefixes (case-insensitive, at line start)
+# Marked with [SANITIZED] so the LLM sees them as neutralized; content preserved for debugging.
 _INJECTION_PREFIXES = re.compile(
-    r"^(IMPORTANT:|Ignore previous|You are now|As an AI|Human:|Assistant:|Disregard|New instructions)",
+    r"^(IMPORTANT:|Ignore previous|You are now|As an AI|Human:|Assistant:|Disregard|New instructions"
+    r"|Override|Forget (all )?previous|Your new (role|task)|System: you are|### Instruction"
+    r"|Jailbreak|Ignore (the )?above|Follow these instructions instead|From now on|I am (now )?(re)?programming)",
     re.IGNORECASE | re.MULTILINE,
 )
 

@@ -11,6 +11,11 @@ set -uo pipefail
 DISTRO="${1:-}"
 WSL_DISTRO_FLAG=()
 if [[ -n "$DISTRO" ]]; then
+    # Restrict to safe distro name (no path/shell metacharacters)
+    if [[ "$DISTRO" =~ [^a-zA-Z0-9_.-] ]]; then
+        echo "Invalid distro name (use only letters, numbers, underscore, hyphen, dot): $DISTRO" >&2
+        exit 1
+    fi
     WSL_DISTRO_FLAG=(-d "$DISTRO")
 fi
 
@@ -23,4 +28,5 @@ DEST="\$HOME/cybersec-toolkit"
 
 echo "Syncing MCP server to WSL (${DISTRO:-default distro})..."
 
-wsl.exe "${WSL_DISTRO_FLAG[@]}" bash -c "mkdir -p ${DEST}/mcp_server/tests && cp ${SRC}/mcp_server/*.py ${DEST}/mcp_server/ && cp ${SRC}/mcp_server/tests/*.py ${DEST}/mcp_server/tests/ 2>/dev/null; cp ${SRC}/mcp_server/pyproject.toml ${DEST}/mcp_server/ && cp ${SRC}/mcp_server/uv.lock ${DEST}/mcp_server/ 2>/dev/null; ln -sf ${SRC}/tools_config.json ${DEST}/tools_config.json 2>/dev/null; echo Done"
+# Quote SRC so paths with spaces work inside the inner bash -c
+wsl.exe "${WSL_DISTRO_FLAG[@]}" bash -c "mkdir -p ${DEST}/mcp_server/tests && cp \"${SRC}\"/mcp_server/*.py ${DEST}/mcp_server/ && cp \"${SRC}\"/mcp_server/tests/*.py ${DEST}/mcp_server/tests/ 2>/dev/null; cp \"${SRC}\"/mcp_server/pyproject.toml ${DEST}/mcp_server/ && cp \"${SRC}\"/mcp_server/uv.lock ${DEST}/mcp_server/ 2>/dev/null; ln -sf \"${SRC}\"/tools_config.json ${DEST}/tools_config.json 2>/dev/null; echo Done"

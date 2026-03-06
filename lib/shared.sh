@@ -262,7 +262,7 @@ ensure_cargo() {
     if curl -L --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_rustup_tmp" 'rustup' 'RUSTUP' 'sh' \
             && chmod +r "$_rustup_tmp" \
-            && _as_builder "sh '$_rustup_tmp' -y" >> "$LOG_FILE" 2>&1; then
+            && _as_builder "sh '$(_escape_single_quoted "$_rustup_tmp")' -y" >> "$LOG_FILE" 2>&1; then
         # Add cargo to PATH for the current session.
         # _as_builder installs rustup to $SUDO_USER's home, not root's $HOME.
         local _cargo_home
@@ -313,7 +313,7 @@ ensure_cargo_binstall() {
             -o "$_binstall_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_binstall_tmp" 'cargo-binstall' 'install' 'github.com' \
             && chmod +r "$_binstall_tmp" \
-            && _as_builder "bash '$_binstall_tmp'" >> "$LOG_FILE" 2>&1; then
+            && _as_builder "bash '$(_escape_single_quoted "$_binstall_tmp")'" >> "$LOG_FILE" 2>&1; then
         local _cbdir
         _cbdir="$(_builder_home)/.cargo/bin"
         export PATH="$_cbdir:$PATH"

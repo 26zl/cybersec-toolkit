@@ -294,14 +294,17 @@ install_single_tool() {
                 ensure_go || { log_error "Go not available — cannot install $tool"; return 1; }
                 log_info "Installing $tool via go install..."
                 # Use _as_builder + staging GOBIN (consistent with batch installer)
-                local _gobin_stage
+                local _gobin_stage _go_gopath_esc _go_gobin_esc _go_pkg_esc
                 _gobin_stage=$(mktemp -d "/tmp/cybersec-gobin.XXXXXX")
                 _register_cleanup "$_gobin_stage"
                 if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
                     _chown_for_builder "$_gobin_stage"
                     chown -R "$SUDO_USER" "$GOPATH" 2>/dev/null || true
                 fi
-                if _as_builder "GOPATH='$GOPATH' GOBIN='$_gobin_stage' $(command -v go) install $gopkg" >> "$LOG_FILE" 2>&1; then
+                _go_gopath_esc="$(_escape_single_quoted "$GOPATH")"
+                _go_gobin_esc="$(_escape_single_quoted "$_gobin_stage")"
+                _go_pkg_esc="$(_escape_single_quoted "$gopkg")"
+                if _as_builder "GOPATH='$_go_gopath_esc' GOBIN='$_go_gobin_esc' $(command -v go) install $_go_pkg_esc" >> "$LOG_FILE" 2>&1; then
                     [[ -f "$_gobin_stage/$tool" ]] && mv "$_gobin_stage/$tool" "$GOBIN/$tool" && chmod +x "$GOBIN/$tool"
                     log_success "Installed: $tool"
                     track_version "$tool" "go" "latest"
@@ -322,7 +325,8 @@ install_single_tool() {
         if _arr_has "$a" "$tool"; then
             ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
             log_info "Installing $tool via cargo..."
-            if _as_builder "$(command -v cargo) install $tool" >> "$LOG_FILE" 2>&1; then
+            local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
+            if _as_builder "$(command -v cargo) install $_tool_esc" >> "$LOG_FILE" 2>&1; then
                 log_success "Installed: $tool"
                 track_version "$tool" "cargo" "latest"
             else
@@ -341,7 +345,8 @@ install_single_tool() {
     for a in "${gem_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via gem..."
-            if _as_builder "$(command -v gem) install $tool --no-document" >> "$LOG_FILE" 2>&1; then
+            local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
+            if _as_builder "$(command -v gem) install $_tool_esc --no-document" >> "$LOG_FILE" 2>&1; then
                 # Symlink gem binary to PIPX_BIN_DIR (consistent with batch installer)
                 local _gem_bin_dir
                 _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
@@ -428,6 +433,11 @@ fi
 
 # Rollback a previous install session
 if [[ -n "$ROLLBACK_TARGET" ]]; then
+    # Sanitize rollback target: only "last" or session ID (no path traversal)
+    if [[ "$ROLLBACK_TARGET" != "last" ]] && [[ "$ROLLBACK_TARGET" == */* || "$ROLLBACK_TARGET" == *..* ]]; then
+        log_error "Invalid rollback target (no path components allowed): $ROLLBACK_TARGET"
+        exit 1
+    fi
     check_root
     LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
     _init_log_file "$LOG_FILE"
@@ -573,7 +583,12 @@ fi
 # Resolve modules to install
 MODULES_TO_INSTALL=()
 
+# Sanitize profile name: no path components (prevent path traversal)
 if [[ -n "$PROFILE" ]]; then
+    if [[ "$PROFILE" == */* || "$PROFILE" == *..* ]]; then
+        log_error "Invalid profile name (no path components allowed): $PROFILE"
+        exit 1
+    fi
     local_profile="$SCRIPT_DIR/profiles/${PROFILE}.conf"
     if [[ ! -f "$local_profile" ]]; then
         log_error "Profile not found: $PROFILE"
@@ -601,6 +616,17 @@ if [[ -n "$PROFILE" ]]; then
         fi
     done
 elif [[ ${#SELECTED_MODULES[@]} -gt 0 ]]; then
+    # Validate each --module argument is a known module (prevent path traversal)
+    for mod in "${SELECTED_MODULES[@]}"; do
+        if [[ "$mod" == */* || "$mod" == *..* ]]; then
+            log_error "Invalid module name (no path components allowed): $mod"
+            exit 1
+        fi
+        if [[ ! " ${ALL_MODULES[*]} " =~ " $mod " ]]; then
+            log_error "Unknown module: $mod (use --list-modules to see available modules)"
+            exit 1
+        fi
+    done
     MODULES_TO_INSTALL=("${SELECTED_MODULES[@]}")
 else
     # Default: full install

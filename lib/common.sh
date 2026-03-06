@@ -843,22 +843,35 @@ pipx_remove() {
     fi
 }
 
+# Escape a string for safe use inside single-quoted bash (e.g. for _as_builder).
+# Replaces each ' with '\'' so the result can be used as 'result' in a bash -c string.
+_escape_single_quoted() {
+    local s="$1"
+    echo "${s//\'/\'\\\'\'}"
+}
+
 # Git clone helper — clones/pulls as $SUDO_USER when available (privilege dropping)
 # Creates the destination directory as root, then chowns it to $SUDO_USER so the
 # privilege-dropped git clone can write into it.
+# repo_url and dest are escaped for safe use in _as_builder.
 git_clone_or_pull() {
     local repo_url="$1"
     local dest="$2"
+    local _dest_escaped _url_escaped
+    _dest_escaped="$(_escape_single_quoted "$dest")"
+    _url_escaped="$(_escape_single_quoted "$repo_url")"
     if [[ -d "$dest/.git" ]]; then
         log_info "Updating $(basename "$dest")..."
-        if ! _as_builder "git -C '$dest' pull -q" >> "$LOG_FILE" 2>&1; then
+        if ! _as_builder "git -C '$_dest_escaped' pull -q" >> "$LOG_FILE" 2>&1; then
             log_debug "git pull failed for $(basename "$dest") — resetting to remote HEAD..."
             local _remote_branch=""
-            _remote_branch=$(_as_builder "git -C '$dest' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+            _remote_branch=$(_as_builder "git -C '$_dest_escaped' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
                 | sed 's|refs/remotes/origin/||'") || true
+            _remote_branch="${_remote_branch%%[[:space:]]*}"
             [[ -z "$_remote_branch" ]] && _remote_branch="main"
-            if ! _as_builder "git -C '$dest' fetch origin" >> "$LOG_FILE" 2>&1 \
-                || ! _as_builder "git -C '$dest' reset --hard 'origin/$_remote_branch'" >> "$LOG_FILE" 2>&1; then
+            local _branch_escaped; _branch_escaped="$(_escape_single_quoted "origin/$_remote_branch")"
+            if ! _as_builder "git -C '$_dest_escaped' fetch origin" >> "$LOG_FILE" 2>&1 \
+                || ! _as_builder "git -C '$_dest_escaped' reset --hard '$_branch_escaped'" >> "$LOG_FILE" 2>&1; then
                 log_warn "git update failed for $(basename "$dest")"
                 return 1
             fi
@@ -867,7 +880,7 @@ git_clone_or_pull() {
         mkdir -p "$dest" 2>/dev/null || true
         _chown_for_builder "$dest"
         log_info "Cloning $(basename "$dest")..."
-        if ! _as_builder "git clone --depth 1 -q '$repo_url' '$dest'" >> "$LOG_FILE" 2>&1; then
+        if ! _as_builder "git clone --depth 1 -q '$_url_escaped' '$_dest_escaped'" >> "$LOG_FILE" 2>&1; then
             log_warn "git clone failed for $(basename "$dest")"
             return 1
         fi
