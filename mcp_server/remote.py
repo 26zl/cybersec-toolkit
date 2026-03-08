@@ -184,7 +184,10 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
             stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             process.kill()
-            await process.wait()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pass  # Process may be in D state; leave as zombie rather than hang
             return {
                 "success": False,
                 "message": f"SSH connection timed out after {timeout} seconds",
@@ -249,7 +252,10 @@ async def execute_remote_command(
             stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             process.kill()
-            await process.wait()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pass  # Process may be in D state; leave as zombie rather than hang
             return {
                 "exit_code": -1,
                 "stdout": "",
