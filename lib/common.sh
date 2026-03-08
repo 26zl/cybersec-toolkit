@@ -24,6 +24,7 @@ VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
 LOG_FILE="${LOG_FILE:-/dev/null}"
 VERBOSE="${VERBOSE:-false}"
 PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
+UNSUPPORTED_HOST_OS="${UNSUPPORTED_HOST_OS:-}"
 # Installer version (read from VERSION file at repo root)
 INSTALLER_VERSION=""
 if [[ -f "${SCRIPT_DIR:-.}/VERSION" ]]; then
@@ -419,7 +420,7 @@ _cleanup_global_semaphore() {
 # Falls back to job-count polling when the semaphore is not initialised.
 _wait_for_job_slot() {
     if [[ -n "${_GLOBAL_SEM_FD:-}" ]]; then
-        read -r _ <&${_GLOBAL_SEM_FD}
+        read -r _ <&"${_GLOBAL_SEM_FD}"
     else
         while [[ $(jobs -rp | wc -l) -ge $PARALLEL_JOBS ]]; do
             wait -n 2>/dev/null || sleep 0.1
@@ -482,25 +483,28 @@ detect_distro() {
 
 # Determine the package-manager family: apt | dnf | pacman | zypper | pkg | unknown
 detect_pkg_manager() {
+    UNSUPPORTED_HOST_OS=""
     # Unsupported OS — hard stop on Windows and macOS
     local _kernel
     _kernel="$(uname -s 2>/dev/null || echo unknown)"
     case "$_kernel" in
         MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            echo ""
-            log_error "Windows is not supported."
-            log_info "  This installer requires Linux or Termux (Android)."
-            log_info "  Use WSL (Windows Subsystem for Linux) instead:"
-            log_info "    https://learn.microsoft.com/en-us/windows/wsl/install"
-            exit 1
+            DISTRO_ID="windows"
+            DISTRO_ID_LIKE=""
+            DISTRO_NAME="Windows"
+            PKG_MANAGER="unknown"
+            UNSUPPORTED_HOST_OS="windows"
+            export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME PKG_MANAGER UNSUPPORTED_HOST_OS
+            return 0
             ;;
         Darwin)
-            echo ""
-            log_error "macOS is not supported."
-            log_info "  This installer requires Linux or Termux (Android)."
-            log_info "  On macOS, use a Linux VM or Docker container:"
-            log_info "    docker build -t cybersec-installer . && docker run cybersec-installer"
-            exit 1
+            DISTRO_ID="darwin"
+            DISTRO_ID_LIKE=""
+            DISTRO_NAME="macOS"
+            PKG_MANAGER="unknown"
+            UNSUPPORTED_HOST_OS="macos"
+            export DISTRO_ID DISTRO_ID_LIKE DISTRO_NAME PKG_MANAGER UNSUPPORTED_HOST_OS
+            return 0
             ;;
     esac
 
@@ -740,6 +744,24 @@ _builder_home() {
 # _check_pkg_manager — fail early if the distro/package manager is unsupported.
 # Usage: _check_pkg_manager
 _check_pkg_manager() {
+    if [[ -n "${UNSUPPORTED_HOST_OS:-}" ]]; then
+        echo ""
+        case "$UNSUPPORTED_HOST_OS" in
+            windows)
+                log_error "Windows is not supported."
+                log_info "  This installer requires Linux or Termux (Android)."
+                log_info "  Use WSL (Windows Subsystem for Linux) instead:"
+                log_info "    https://learn.microsoft.com/en-us/windows/wsl/install"
+                ;;
+            macos)
+                log_error "macOS is not supported."
+                log_info "  This installer requires Linux or Termux (Android)."
+                log_info "  On macOS, use a Linux VM or Docker container:"
+                log_info "    docker build -t cybersec-installer . && docker run cybersec-installer"
+                ;;
+        esac
+        exit 1
+    fi
     if [[ "$PKG_MANAGER" == "unknown" ]]; then
         log_error "Unsupported distribution — could not detect package manager"
         log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
