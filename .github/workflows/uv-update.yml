@@ -75,6 +75,9 @@ jobs:
 
       - name: Enable auto-merge
         if: steps.upgrade.outputs.changed == 'true' && steps.cpr.outputs.pull-request-number != ''
-        run: gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}"
+        run: |
+          gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}" || true
+          # If this fails with "Auto merge is not allowed", enable it under
+          # repo Settings → General → Pull Requests → Allow auto-merge
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
