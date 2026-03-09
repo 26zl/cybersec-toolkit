@@ -366,9 +366,10 @@ install_go_batch() {
     fi
 
     if ! command_exists go; then
-        log_warn "Go not found — skipping ${label}"
-        _report_method_total "Go" 0
-        return 0
+        log_error "Go not found — cannot install ${label}"
+        _report_method_total "Go" "$total"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + total))
+        return 1
     fi
     # GOPATH and GOBIN are set in common.sh (GOPATH=$GOPATH, GOBIN=$GOBIN)
     # When privilege-dropping via _as_builder, $SUDO_USER cannot write to root-owned
@@ -492,10 +493,11 @@ install_cargo_batch() {
     fi
 
     if ! command_exists cargo; then
-        log_warn "Cargo not found — skipping ${label}"
-        log_warn "Install Rust first: https://rustup.rs/"
-        _report_method_total "Cargo" 0
-        return 0
+        log_error "Cargo not found — cannot install ${label}"
+        log_error "Install Rust first: https://rustup.rs/"
+        _report_method_total "Cargo" "$total"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + total))
+        return 1
     fi
     local _cbdir
     _cbdir="$(_builder_home)/.cargo/bin"

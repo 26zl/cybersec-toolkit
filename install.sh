@@ -128,6 +128,10 @@ EOF
     exit 0
 }
 
+_installation_failed() {
+    [[ "${TOTAL_TOOL_FAILURES:-0}" -gt 0 || "${TOTAL_MODULE_FAILURES:-0}" -gt 0 ]]
+}
+
 list_profiles() {
     echo "Available profiles:"
     echo ""
@@ -252,6 +256,7 @@ install_single_tool() {
                 track_version "$tool" "$PKG_MANAGER" "latest"
             else
                 log_error "Failed: ${_tmp_pkg[*]}"
+                return 1
             fi
             return 0
         fi
@@ -273,6 +278,7 @@ install_single_tool() {
                 track_version "$tool" "pipx" "latest"
             else
                 log_error "Failed: $tool"
+                return 1
             fi
             return 0
         fi
@@ -310,6 +316,8 @@ install_single_tool() {
                     track_version "$tool" "go" "latest"
                 else
                     log_error "Failed: $tool"
+                    rm -rf "$_gobin_stage"
+                    return 1
                 fi
                 rm -rf "$_gobin_stage"
                 return 0
@@ -319,7 +327,7 @@ install_single_tool() {
 
     # Cargo
     local cargo_arrs=(
-        WEB_CARGO NET_CARGO PWN_CARGO BLUETEAM_CARGO
+        WEB_CARGO NET_CARGO PWN_CARGO BLUETEAM_CARGO BLOCKCHAIN_CARGO
     )
     for a in "${cargo_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
@@ -331,6 +339,7 @@ install_single_tool() {
                 track_version "$tool" "cargo" "latest"
             else
                 log_error "Failed: $tool"
+                return 1
             fi
             local _cargo_bin_dir; _cargo_bin_dir="$(_builder_home)/.cargo/bin"
             if [[ -f "$_cargo_bin_dir/$tool" ]]; then
@@ -358,6 +367,7 @@ install_single_tool() {
                 track_version "$tool" "gem" "latest"
             else
                 log_error "Failed: $tool"
+                return 1
             fi
             return 0
         fi
@@ -386,6 +396,7 @@ install_single_tool() {
                     track_version "$tool" "git" "HEAD"
                 else
                     log_error "Failed: $tool"
+                    return 1
                 fi
                 return 0
             fi
@@ -402,6 +413,7 @@ install_single_tool() {
             track_version "$tool" "npm" "$_pf_ver"
         else
             log_error "Failed: $tool"
+            return 1
         fi
         return 0
     fi
@@ -606,7 +618,7 @@ if [[ -n "$PROFILE" ]]; then
     [[ "$_CLI_SET_ENABLE_DOCKER" == "true" ]]  && ENABLE_DOCKER="$_cli_enable_docker"
     [[ "$_CLI_SET_INCLUDE_C2" == "true" ]]     && INCLUDE_C2="$_cli_include_c2"
     # MODULES variable set by profile
-    read -ra MODULES_TO_INSTALL <<< "$MODULES"
+    read -ra MODULES_TO_INSTALL <<< "${MODULES:-}"
     # Validate profile module names
     for mod in "${MODULES_TO_INSTALL[@]}"; do
         if [[ " ${ALL_MODULES[*]} " != *" $mod "* ]]; then
@@ -931,7 +943,7 @@ main() {
     local seconds=$(( elapsed % 60 ))
 
     echo ""
-    if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
+    if _installation_failed; then
         _separator_line "$YELLOW"
         log_warn "Installation finished with errors (${minutes}m ${seconds}s)"
         _separator_line "$YELLOW"
@@ -948,8 +960,8 @@ main() {
         tools_installed=$(grep -cv '^#' "$VERSION_FILE" 2>/dev/null) || tools_installed=0
     fi
     log_info "Tools installed: $tools_installed"
-    if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
-        log_error "Modules with failures: $TOTAL_MODULE_FAILURES"
+    if _installation_failed; then
+        [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]] && log_error "Modules with failures: $TOTAL_MODULE_FAILURES"
         log_error "Total tool failures: $TOTAL_TOOL_FAILURES"
     fi
     log_info "Log file: $LOG_FILE"
@@ -976,7 +988,7 @@ main() {
     _gh_api_cache_cleanup 2>/dev/null || true
 
     # Finalize session manifest
-    if [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]]; then
+    if _installation_failed; then
         _finalize_session "partial"
         exit 1
     else
@@ -1178,7 +1190,9 @@ install_modules() {
 
     # Track batch-stage failures (not counted as a module — tools span multiple modules)
     local _batch_failures=$TOTAL_TOOL_FAILURES
+    local _batch_stage_failed=false
     if [[ "$_batch_failures" -gt 0 ]]; then
+        _batch_stage_failed=true
         log_warn "Batch install stages: $_batch_failures tool(s) failed (see log for details)"
     fi
 
@@ -1203,7 +1217,11 @@ install_modules() {
 
             # Batch tools (apt/pipx/go/cargo/gems/git/binary) were already installed
             # in Stage 3 — show confirmation, then run module-specific custom logic.
-            log_success "All tools installed via batch (Stage 3)"
+            if [[ "$_batch_stage_failed" == "true" ]]; then
+                log_warn "Batch install phase had prior failures; running custom setup only"
+            else
+                log_success "Batch install phase completed successfully"
+            fi
             "$func_name" 2>&1 || true
 
             if [[ $TOTAL_TOOL_FAILURES -gt $_pre_failures ]]; then
@@ -1221,4 +1239,6 @@ install_modules() {
     _SKIP_BATCH_REINSTALL=false
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

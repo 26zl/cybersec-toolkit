@@ -172,3 +172,51 @@ setup() {
     assert_output --partial "--parallel"
     assert_output --partial "PARALLEL_JOBS"
 }
+
+@test "_installation_failed returns true when tool failures exist" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        tmpdir=$(mktemp -d)
+        trap "rm -rf \"$tmpdir\"" EXIT
+        export LOG_FILE=/dev/null VERSION_FILE="$tmpdir/.versions"
+        TOTAL_TOOL_FAILURES=1
+        TOTAL_MODULE_FAILURES=0
+        _installation_failed
+    '
+    assert_success
+}
+
+@test "install_single_tool returns failure when package install fails" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        tmpdir=$(mktemp -d)
+        trap "rm -rf \"$tmpdir\"" EXIT
+        export LOG_FILE=/dev/null VERSION_FILE="$tmpdir/.versions"
+        pkg_install() { return 1; }
+        install_single_tool nmap
+    '
+    assert_failure
+    assert_output --partial "Failed:"
+}
+
+@test "install_single_tool finds blockchain cargo tools" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        tmpdir=$(mktemp -d)
+        trap "rm -rf \"$tmpdir\"" EXIT
+        export LOG_FILE=/dev/null VERSION_FILE="$tmpdir/.versions"
+        cargo() { :; }
+        ensure_cargo() { return 0; }
+        _as_builder() { return 0; }
+        _builder_home() { echo /tmp; }
+        install_single_tool aderyn
+    '
+    assert_success
+    assert_output --partial "Installing aderyn via cargo"
+}

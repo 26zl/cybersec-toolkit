@@ -258,6 +258,36 @@ setup() {
     [[ -f "$VERSION_FILE" ]]
 }
 
+@test "install_go_batch counts missing Go as failures" {
+    source_libs --installers debian apt
+    TOTAL_TOOL_FAILURES=0
+    command_exists() {
+        [[ "$1" != "go" ]]
+    }
+
+    local status=0
+    install_go_batch "Go test" \
+        "github.com/example/one@latest" \
+        "github.com/example/two@latest" || status=$?
+
+    [[ "$status" -eq 1 ]]
+    [[ "$TOTAL_TOOL_FAILURES" -eq 2 ]]
+}
+
+@test "install_cargo_batch counts missing Cargo as failures" {
+    source_libs --installers debian apt
+    TOTAL_TOOL_FAILURES=0
+    command_exists() {
+        [[ "$1" != "cargo" ]]
+    }
+
+    local status=0
+    install_cargo_batch "Cargo test" rustscan aderyn || status=$?
+
+    [[ "$status" -eq 1 ]]
+    [[ "$TOTAL_TOOL_FAILURES" -eq 2 ]]
+}
+
 # ---------- _load_distro_compat — TSV loader ---------------------------------
 
 @test "TSV loader populates _COMPAT_DNF array" {
