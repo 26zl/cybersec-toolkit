@@ -4,23 +4,43 @@
 Checks:
   - Column count: every data line has exactly 5 tab-separated fields
   - No duplicate Debian package names
-  - Valid cell values: empty, '-', or package-name characters [a-zA-Z0-9._@+-]
+  - Valid cell values: empty, '-', or package name token(s) [a-zA-Z0-9._@-]
+    joined by '+' when a mapping expands to multiple packages
 
 Usage:
     python3 scripts/validate_distro_compat.py
 """
 
-import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TSV_PATH = ROOT / "lib" / "distro_compat.tsv"
 
-# Valid cell: empty, single dash (skip), or package name(s) joined by +
-CELL_RE = re.compile(r'^(-|[a-zA-Z0-9._@+-]+(\+[a-zA-Z0-9._@+-]+)*)$')
+PACKAGE_TOKEN_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    "._@-"
+)
 
 COLUMNS = ("debian", "dnf", "pacman", "zypper", "pkg")
+
+
+def _is_valid_package_token(token: str) -> bool:
+    """Return True when token only contains allowed package-name characters."""
+    return bool(token) and all(char in PACKAGE_TOKEN_CHARS for char in token)
+
+
+def _is_valid_cell(value: str) -> bool:
+    """Validate a TSV cell.
+
+    '+' is reserved as the multi-package separator in distro_compat.tsv.
+    """
+    if value == "-":
+        return True
+
+    return all(_is_valid_package_token(token) for token in value.split("+"))
 
 
 def validate():
@@ -65,7 +85,7 @@ def validate():
         for col_idx, value in enumerate(fields):
             if not value:
                 continue  # empty = passthrough
-            if not CELL_RE.match(value):
+            if not _is_valid_cell(value):
                 print(
                     f"ERROR: line {lineno}: invalid value in column "
                     f"'{COLUMNS[col_idx]}': {value!r}"
