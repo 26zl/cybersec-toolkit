@@ -103,6 +103,7 @@ sudo ./install.sh -v                    # Verbose / debug output
 ```
 
 `--tool` installs only the specified tool without running the full dependency setup.
+Dry-run time estimates count install entries across methods, so the estimate can be higher than the de-duplicated 580+ tool registry.
 
 ### Why does a full install take 15-45 minutes?
 
@@ -337,6 +338,23 @@ This opens a web-based MCP Inspector for interactively testing each tool.
 
 See [`mcp_server/README.md`](mcp_server/README.md) for Claude Desktop setup and full documentation.
 
+## Development
+
+Public contributor docs live in [`CONTRIBUTING.md`](CONTRIBUTING.md). The quick-start is:
+
+```bash
+git submodule update --init --recursive
+shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
+bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
+python3 scripts/validate_tools_config.py
+python3 scripts/validate_mcp_sync.py
+python3 scripts/validate_distro_compat.py
+./tests/bats/bin/bats tests/*.bats
+cd mcp_server && uv sync --group dev && uv run ruff check . && uv run ruff format --check . && uv run pytest tests/ -q
+```
+
+Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendored Bats submodules with CRLF and cause `$'\r'` failures.
+
 ## Tool Locations
 
 Non-system tools (pipx, Go, Cargo, git, binary releases) are installed to `/usr/local/bin/` on Linux and `$PREFIX/bin` on Termux. System packages go to their default location (`/usr/bin/`).
@@ -367,13 +385,13 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- all 580+ tools available. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific). pipx, Go, Cargo, gem, git, and binary installs work identically across all distros. Windows and macOS are detected and blocked with a clear error message.
+__Debian/Ubuntu/Kali is the primary target__ -- the full 580+ registry is available there, and it has the strongest test coverage. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific) and are covered by the integration workflow. WSL and ARM are supported in practice, but they do not yet have dedicated CI jobs. Windows and macOS are detected and blocked with a clear error message.
 
 | Platform | Status |
 | -------- | ------ |
-| __WSL__ | Supported. Wireless module auto-skipped (no hardware access). Kernel-level packages filtered. |
-| __ARM__ (aarch64/armv7) | Supported. x86-only binary releases and build-from-source tools skipped. |
-| __Termux__ (Android) | Under development -- not fully tested on physical devices. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
+| __WSL__ | Supported for installs and MCP usage. Wireless module auto-skipped (no hardware access) and kernel-level packages filtered. Validate release-critical changes in a local WSL distro because there is no dedicated CI job yet. |
+| __ARM__ (aarch64/armv7) | Supported with automatic skips for x86-only binary releases and build-from-source tools. No dedicated CI job yet. |
+| __Termux__ (Android) | Experimental. Under development, not covered by CI, and not yet broadly tested on physical devices. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
 | __Windows__ (native) | Not supported. Use WSL. |
 | __macOS__ | Not supported. Use Docker container. |
 
@@ -399,6 +417,9 @@ Checksum verification is best-effort by default. Some upstream releases do not p
 ## License
 
 MIT License -- see [LICENSE](LICENSE) for details.
+
+For contribution workflow and review expectations, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+For vulnerability reporting, see [`SECURITY.md`](SECURITY.md).
 
 ## Disclaimer
 

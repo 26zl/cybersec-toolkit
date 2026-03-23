@@ -1362,12 +1362,7 @@ async def execute_script(
                     "working_dir": "",
                 }
         else:
-            # Static override via env var, fallback to sys.executable
-            custom_python = os.environ.get("CYBERSEC_MCP_SCRIPT_PYTHON", "").strip()
-            if custom_python and os.path.isfile(custom_python):
-                interpreter = custom_python
-            else:
-                interpreter = sys.executable
+            interpreter = sys.executable
     else:
         interpreter = shutil.which("bash")
         if not interpreter:

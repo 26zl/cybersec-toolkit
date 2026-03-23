@@ -1099,16 +1099,16 @@ class TestRedactSensitive:
     def test_token_flag_redacted(self) -> None:
         from mcp_server.audit import _redact_sensitive
 
-        result = _redact_sensitive("--token ghp_abc123xyz")
+        result = _redact_sensitive("--token example_token_value_123")
         assert "[REDACTED]" in result
-        assert "ghp_abc123xyz" not in result
+        assert "example_token_value_123" not in result
 
     def test_api_key_flag_redacted(self) -> None:
         from mcp_server.audit import _redact_sensitive
 
-        result = _redact_sensitive("--api-key AKIAIOSFODNN7EXAMPLE")
+        result = _redact_sensitive("--api-key example_api_key_value_123")
         assert "[REDACTED]" in result
-        assert "AKIAIOSFODNN7EXAMPLE" not in result
+        assert "example_api_key_value_123" not in result
 
     def test_no_redaction_for_normal_args(self) -> None:
         from mcp_server.audit import _redact_sensitive

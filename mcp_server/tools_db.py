@@ -8,8 +8,39 @@ import time
 from pathlib import Path
 from typing import Optional
 
-# Project root: CYBERSEC_INSTALLER_ROOT env var, or parent of mcp_server/
-PROJECT_ROOT = Path(os.environ.get("CYBERSEC_INSTALLER_ROOT", Path(__file__).parent.parent))
+
+def _resolve_registry_path(root: Path) -> Path:
+    """Resolve the fixed tools registry path under a validated project root."""
+    resolved_root = root.resolve(strict=True)
+    config_path = (resolved_root / "tools_config.json").resolve(strict=True)
+    if config_path.parent != resolved_root:
+        raise FileNotFoundError(f"tools_config.json not found directly under {resolved_root}")
+    return config_path
+
+
+def _discover_project_root() -> Path:
+    """Locate the installer root that contains tools_config.json.
+
+    Resolution order:
+    1. Current working directory and its parents
+    2. The source tree relative to this file
+    """
+    module_path = Path(__file__).resolve()
+    search_roots = [Path.cwd().resolve(), module_path.parent, module_path.parent.parent]
+    seen: set[Path] = set()
+
+    for start in search_roots:
+        for candidate in (start, *start.parents):
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if (candidate / "tools_config.json").exists():
+                return candidate
+
+    return module_path.parent.parent
+
+
+PROJECT_ROOT = _discover_project_root()
 
 # Pipx package name → binary name mapping (from scripts/verify.sh:130-155).
 # Most pipx packages install a binary with the same name — these are the exceptions.
@@ -92,7 +123,7 @@ class ToolsDatabase:
         self._load_tools()
 
     def _load_tools(self) -> None:
-        config_path = self.root / "tools_config.json"
+        config_path = _resolve_registry_path(self.root)
         with open(config_path, "r", encoding="utf-8") as f:
             self._tools = json.load(f)
         self.tools_by_name = {t["name"]: t for t in self._tools}

@@ -1,6 +1,6 @@
 # MCP Server for Cybersec Toolkit
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that exposes the 580+ cybersecurity registry to AI assistants. Query installed tools, get CTF recommendations, get profile/install advice, and execute tools — all from Claude Code, Claude Desktop, or any MCP-capable client.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that exposes the parent repo's 580+ cybersecurity registry to AI assistants. Query installed tools, get CTF recommendations, get profile/install advice, and execute tools — all from Claude Code, Claude Desktop, or any MCP-capable client.
 
 ## Tools Provided
 
@@ -33,6 +33,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Windows
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
+
+Clone the main repository first. The server reads `tools_config.json` from the repository checkout, so run it from the repo root or from `mcp_server/`.
 
 ### Claude Code
 
@@ -181,14 +183,6 @@ run_tool("ls", "-la /mnt/c/Users/<username>/Downloads/")     # browse Windows fi
 
 **Tip:** Create a working directory for challenges (e.g. `~/ctf/`) and tell Claude Desktop the path. It can then use `ls` to discover files and MCP tools to analyze them.
 
-### Custom Project Root
-
-If running from a different directory, set the environment variable:
-
-```bash
-export CYBERSEC_INSTALLER_ROOT=/path/to/cybersec-toolkit
-```
-
 ## Testing
 
 ### MCP Inspector
@@ -205,6 +199,7 @@ This opens a web-based inspector for interactively testing each tool.
 ```bash
 # Start the server via the CLI entrypoint
 cd mcp_server
+uv sync
 uv run cybersec-mcp
 
 # Or via fastmcp directly
@@ -282,6 +277,4 @@ The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safe
 | -------- | ------- | ----------- |
 | `CYBERSEC_MCP_ALLOW_SCRIPTS` | `""` (disabled) | Set to `1` to enable `run_script` |
 | `CYBERSEC_MCP_ALLOW_EXTERNAL` | `""` (disabled) | Set to `1` to allow network tools to target external IPs |
-| `CYBERSEC_MCP_SCRIPT_PYTHON` | `""` (sys.executable) | Static override for Python interpreter used by `run_script` (when no `venv` is set) |
 | `CYBERSEC_MCP_VENVS_DIR` | `~/.ctf-venvs` | Directory containing named Python venvs for the `venv` parameter |
-| `CYBERSEC_INSTALLER_ROOT` | Auto-detected | Override the project root path |

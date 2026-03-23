@@ -152,6 +152,31 @@ jobs:
           print(f'MCP server OK: {_db.total_tools} tools, {mcp.name}')
           "
 
+      - name: Verify cybersec-mcp console script
+        run: |
+          cd mcp_server && uv sync --no-editable --quiet
+          uv run python - <<'PY'
+          import subprocess
+          import sys
+          import time
+
+          p = subprocess.Popen(
+              ["cybersec-mcp"],
+              stdin=subprocess.PIPE,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              text=True,
+          )
+          time.sleep(2)
+          running = p.poll() is None
+          if running:
+              p.terminate()
+          out, err = p.communicate(timeout=5)
+          if not running or "Starting MCP server" not in err:
+              sys.stderr.write(err)
+              sys.exit(1)
+          PY
+
       - name: Validate MCP data in sync with bash sources
         run: python3 scripts/validate_mcp_sync.py
 

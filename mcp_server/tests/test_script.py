@@ -6,11 +6,16 @@ import asyncio
 import os
 import sys
 import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_server.security import _RateLimiter, _resolve_venv_interpreter, execute_script
+from mcp_server.security import (
+    _RateLimiter,
+    _resolve_venv_interpreter,
+    execute_script,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -356,46 +361,17 @@ class TestScriptInterpreterNotFound:
         assert "not found" in result["stderr"].lower()
 
 
-# Python env var override
-class TestScriptPythonEnvVar:
+class TestScriptPythonInterpreter:
     @pytest.mark.asyncio
-    async def test_custom_python_interpreter(self) -> None:
-        """CYBERSEC_MCP_SCRIPT_PYTHON points to a valid file — it should be used."""
+    async def test_python_scripts_use_sys_executable(self) -> None:
         proc = _make_proc(b"ok\n")
         with (
             patch("mcp_server.security._allow_scripts", return_value=True),
-            patch.dict(os.environ, {"CYBERSEC_MCP_SCRIPT_PYTHON": sys.executable}),
             _patch_exec(proc) as mock_exec,
         ):
             await execute_script("print('ok')", language="python")
         call_args = mock_exec.call_args[0]
-        assert call_args[0] == sys.executable
-
-    @pytest.mark.asyncio
-    async def test_custom_python_nonexistent_falls_back(self) -> None:
-        """CYBERSEC_MCP_SCRIPT_PYTHON points to nonexistent path — falls back to sys.executable."""
-        proc = _make_proc(b"ok\n")
-        with (
-            patch("mcp_server.security._allow_scripts", return_value=True),
-            patch.dict(os.environ, {"CYBERSEC_MCP_SCRIPT_PYTHON": "/nonexistent/python3.12"}),
-            _patch_exec(proc) as mock_exec,
-        ):
-            await execute_script("print('ok')", language="python")
-        call_args = mock_exec.call_args[0]
-        assert call_args[0] == sys.executable
-
-    @pytest.mark.asyncio
-    async def test_env_var_empty_uses_sys_executable(self) -> None:
-        """Empty CYBERSEC_MCP_SCRIPT_PYTHON — uses sys.executable."""
-        proc = _make_proc(b"ok\n")
-        with (
-            patch("mcp_server.security._allow_scripts", return_value=True),
-            patch.dict(os.environ, {"CYBERSEC_MCP_SCRIPT_PYTHON": ""}),
-            _patch_exec(proc) as mock_exec,
-        ):
-            await execute_script("print('ok')", language="python")
-        call_args = mock_exec.call_args[0]
-        assert call_args[0] == sys.executable
+        assert call_args[0] == str(Path(sys.executable).resolve())
 
 
 # Temp file cleanup

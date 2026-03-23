@@ -792,7 +792,7 @@ estimate_install_time() {
     local min_minutes=$(( (total_min_s + 59) / 60 ))
     local max_minutes=$(( (total_max_s + 59) / 60 ))
 
-    log_warn "Estimated install time: ~${min_minutes}-${max_minutes} minutes (${#MODULES_TO_INSTALL[@]} modules, ${total}+ tools)"
+    log_warn "Estimated install time: ~${min_minutes}-${max_minutes} minutes (${#MODULES_TO_INSTALL[@]} modules, ${total}+ install entries)"
     log_info "  Breakdown: ${apt_count} apt, ${pipx_count} pipx, ${go_count} go, ${cargo_count} cargo, ${gem_count} gem, ${git_count} git, ${binary_count} binary, ${build_count} source"
     [[ $((snap_count + special_count + docker_count)) -gt 0 ]] && \
         log_info "  Custom: ${snap_count} snap, ${special_count} special, ${docker_count} docker"

@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 
 LABEL maintainer="26zl" \
-      description="Cybersec Toolkit — 570 security tools, one command"
+      description="Cybersec Toolkit — 580+ security tools, one command"
 
 ENV DEBIAN_FRONTEND=noninteractive
 

@@ -121,7 +121,6 @@ def log_server_start() -> None:
             "allow_scripts": os.environ.get("CYBERSEC_MCP_ALLOW_SCRIPTS", "0").strip(),
             "allow_external": os.environ.get("CYBERSEC_MCP_ALLOW_EXTERNAL", "0").strip(),
             "venvs_dir": os.environ.get("CYBERSEC_MCP_VENVS_DIR", "~/.ctf-venvs"),
-            "installer_root": os.environ.get("CYBERSEC_INSTALLER_ROOT", ""),
             "pid": os.getpid(),
         },
     )

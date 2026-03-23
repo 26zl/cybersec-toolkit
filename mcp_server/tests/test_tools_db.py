@@ -1,4 +1,4 @@
-"""Tests for mcp_server.tools_db — tool loading, filtering, install checks."""
+"""Tests for mcp_server.tools_db — root discovery, loading, filtering, install checks."""
 
 from __future__ import annotations
 
@@ -7,9 +7,17 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_server.tools_db import ToolsDatabase
+from mcp_server.tools_db import ToolsDatabase, _discover_project_root
 
 from .conftest import SAMPLE_TOOLS
+
+
+class TestProjectRootDiscovery:
+    def test_finds_repo_root_from_cwd_parents(self, tmp_tools_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        workdir = tmp_tools_config / "mcp_server"
+        workdir.mkdir()
+        monkeypatch.chdir(workdir)
+        assert _discover_project_root() == tmp_tools_config.resolve()
 
 
 # ---------------------------------------------------------------------------
