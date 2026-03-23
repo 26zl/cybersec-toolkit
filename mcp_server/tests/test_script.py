@@ -6,7 +6,6 @@ import asyncio
 import os
 import sys
 import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -371,7 +370,7 @@ class TestScriptPythonInterpreter:
         ):
             await execute_script("print('ok')", language="python")
         call_args = mock_exec.call_args[0]
-        assert call_args[0] == str(Path(sys.executable).resolve())
+        assert call_args[0] == sys.executable
 
 
 # Temp file cleanup
