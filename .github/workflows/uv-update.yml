@@ -6,8 +6,7 @@ on:
   workflow_dispatch: # Manual trigger
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   uv-update:
