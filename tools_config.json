@@ -498,7 +498,6 @@
   {"name": "deepce", "method": "git", "module": "containers", "url": "https://github.com/stealthcopter/deepce"},
   {"name": "docker-bench-security", "method": "git", "module": "containers", "url": "https://github.com/docker/docker-bench-security"},
   {"name": "peirates", "method": "git", "module": "containers", "url": "https://github.com/inguardians/peirates"},
-  {"name": "trivy", "method": "binary", "module": "containers", "url": "https://github.com/aquasecurity/trivy"},
   {"name": "grype", "method": "binary", "module": "containers", "url": "https://github.com/anchore/grype"},
   {"name": "kubeaudit", "method": "binary", "module": "containers", "url": "https://github.com/Shopify/kubeaudit"},
   {"name": "cdk", "method": "binary", "module": "containers", "url": "https://github.com/cdk-team/CDK"},

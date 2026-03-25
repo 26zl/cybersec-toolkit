@@ -1191,7 +1191,7 @@ _download_github_release_impl() {
         pattern="${pattern//amd64/$SYS_ARCH}"
         pattern="${pattern//x86_64/$SYS_ARCH_ALT}"
         pattern="${pattern//x64/$SYS_ARCH}"
-        # Replace standalone 64bit (used by gophish, evilginx, trivy)
+        # Replace standalone 64bit (used by gophish, evilginx)
         pattern="${pattern//64bit/${SYS_ARCH}}"
     fi
 
@@ -1574,7 +1574,6 @@ BINARY_RELEASES_BLUETEAM=(
     "Neo23x0/Loki-RS|loki|loki-linux-x86_64.*\\.tar\\.gz"
 )
 BINARY_RELEASES_CONTAINERS=(
-    "aquasecurity/trivy|trivy|Linux-64bit\\.tar\\.gz"
     "anchore/grype|grype|linux_amd64\\.tar\\.gz"
     "anchore/syft|syft|linux_amd64\\.tar\\.gz"
     "Shopify/kubeaudit|kubeaudit|linux_amd64\\.tar\\.gz"

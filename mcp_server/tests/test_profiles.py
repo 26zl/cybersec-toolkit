@@ -56,11 +56,11 @@ class TestRecommendInstall:
         # Use tool names that don't overlap with _KEYWORD_MAP keywords
         # ("hashcat" contains "hash" which triggers the crackstation profile)
         with patch("shutil.which", return_value=None):
-            result = recommend_install("I need lynis and trivy", tools_db)
+            result = recommend_install("I need lynis and grype", tools_db)
         assert result["recommendation"] == "individual_tools"
         tool_names = [t["name"] for t in result["tools"]]
         assert "lynis" in tool_names
-        assert "trivy" in tool_names
+        assert "grype" in tool_names
 
     def test_strong_profile_match(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):

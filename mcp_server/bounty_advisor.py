@@ -187,7 +187,6 @@ BOUNTY_TARGET_MAP: dict[str, dict] = {
             ("pacu", "AWS exploitation framework"),
             ("cloudfox", "Cloud penetration testing automation"),
             ("trufflehog", "Secret scanning in repos and cloud configs"),
-            ("trivy", "Container and cloud vulnerability scanning"),
             ("kube-hunter", "Kubernetes penetration testing"),
             ("deepce", "Docker/container enumeration and escape"),
             ("cloudsplaining", "AWS IAM policy analysis"),
@@ -199,7 +198,7 @@ BOUNTY_TARGET_MAP: dict[str, dict] = {
             "0. SCOPE: Verify cloud accounts, regions, and services are in scope "
             "— check for shared tenancy restrictions",
             "1. ENUMERATE: Discover cloud assets — S3 buckets, Azure blobs, GCP storage, subdomains, IPs",
-            "2. SCAN: Run prowler/scoutsuite for misconfigurations, trivy for container/IaC vulnerabilities",
+            "2. SCAN: Run prowler/scoutsuite for misconfigurations, grype for container vulnerabilities",
             "3. IAM: Analyze IAM policies (cloudsplaining), test for privilege escalation paths (pacu)",
             "4. SECRETS: Scan for exposed keys (trufflehog), check metadata endpoints (169.254.169.254)",
             "5. EXPLOIT: Test discovered misconfigurations — public buckets, overprivileged roles, "

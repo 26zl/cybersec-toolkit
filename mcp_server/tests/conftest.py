@@ -28,7 +28,7 @@ SAMPLE_TOOLS = [
     {"name": "volatility3", "method": "pipx", "module": "forensics", "url": ""},
     {"name": "steghide", "method": "apt", "module": "stego", "url": ""},
     {"name": "prowler", "method": "pipx", "module": "cloud", "url": ""},
-    {"name": "trivy", "method": "apt", "module": "containers", "url": ""},
+    {"name": "grype", "method": "apt", "module": "containers", "url": ""},
     {"name": "lynis", "method": "apt", "module": "blueteam", "url": ""},
     {"name": "apktool", "method": "apt", "module": "mobile", "url": ""},
     {"name": "slither-analyzer", "method": "pipx", "module": "blockchain", "url": ""},

@@ -135,7 +135,10 @@ Security workflow (`.github/workflows/security.yml`, separate from CI):
 
 - **gitleaks** — secret detection via Gitleaks
 - **custom-security-scan** — hardcoded IPs, secrets, non-HTTPS URLs, unsafe eval, curl|bash, chmod 777
+- **pin-check** — enforces all GitHub Actions use full SHA commit pins (blocks tag-only references)
 - **scorecard** — OSSF Scorecard (public repos only, push to main)
+
+Supply chain hardening: all workflow jobs use `step-security/harden-runner` (egress audit mode) as the first step, and all actions are SHA-pinned with version comments.
 
 Integration tests (`.github/workflows/integration.yml`, push to main + weekly): Ubuntu 24.04, Fedora 41, Arch, openSUSE.
 

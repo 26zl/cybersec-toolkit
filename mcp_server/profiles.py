@@ -295,7 +295,7 @@ _MODULE_KEYWORDS: dict[str, list[str]] = {
     "cracking": ["crack", "hash", "password", "brute force", "wordlist", "hashcat", "john"],
     "stego": ["stego", "steganography", "hidden", "watermark", "lsb"],
     "cloud": ["cloud", "aws", "azure", "gcp", "s3", "iam", "lambda"],
-    "containers": ["container", "docker", "kubernetes", "k8s", "pod", "trivy"],
+    "containers": ["container", "docker", "kubernetes", "k8s", "pod"],
     "blueteam": ["blue team", "defensive", "ids", "ips", "siem", "yara", "sigma", "incident response", "detection"],
     "mobile": ["mobile", "android", "ios", "apk", "frida", "objection"],
     "blockchain": ["blockchain", "smart contract", "solidity", "evm", "ethereum", "defi"],

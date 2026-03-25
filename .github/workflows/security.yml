@@ -15,6 +15,10 @@ jobs:
     name: Secret Detection (Gitleaks)
     runs-on: ubuntu-latest
     steps:
+      - uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
@@ -27,6 +31,10 @@ jobs:
     name: Custom Security Scanner
     runs-on: ubuntu-latest
     steps:
+      - uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run security checks on shell scripts
@@ -134,6 +142,47 @@ jobs:
             echo "Security scan passed — no issues found"
           fi
 
+  pin-check:
+    name: Enforce SHA-pinned Actions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Check all actions are SHA-pinned
+        run: |
+          errors=0
+          echo "=== Checking GitHub Actions are SHA-pinned ==="
+
+          for wf in .github/workflows/*.yml; do
+            # Extract 'uses:' lines, skip local actions (./), docker://, and comment lines
+            while IFS= read -r line; do
+              # Extract the action reference (after 'uses:')
+              ref=$(echo "$line" | grep -oP 'uses:\s*\K\S+')
+
+              # Skip local actions and docker references
+              if echo "$ref" | grep -qE '^\./|^docker://'; then
+                continue
+              fi
+
+              # Check if it contains a 40-char hex SHA (commit pin)
+              if ! echo "$ref" | grep -qP '@[0-9a-f]{40}'; then
+                echo "::error file=$wf::Action not SHA-pinned: $ref"
+                errors=$((errors + 1))
+              fi
+            done < <(grep -n '^\s*-\?\s*uses:' "$wf" | grep -v '^\s*#' || true)
+          done
+
+          echo ""
+          if [[ $errors -gt 0 ]]; then
+            echo "::error::Found $errors action(s) without SHA pinning — use full commit SHA instead of tags"
+            exit 1
+          fi
+          echo "All actions are SHA-pinned"
+
   scorecard:
     name: OSSF Scorecard
     runs-on: ubuntu-latest
@@ -149,6 +198,10 @@ jobs:
       id-token: write
       actions: read
     steps:
+      - uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false

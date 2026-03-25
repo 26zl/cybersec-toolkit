@@ -164,7 +164,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | `cracking` | 28 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | 13 | Image/audio steganography, detection, StegCracker |
 | `cloud` | 15 | AWS/Azure/GCP security auditing, Checkov |
-| `containers` | 9 | Docker/Kubernetes security (Trivy, Grype, Syft, Kubescape, kubeaudit) |
+| `containers` | 8 | Docker/Kubernetes security (Grype, Syft, Kubescape, kubeaudit) |
 | `blueteam` | 31 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
 | `mobile` | 12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
 | `blockchain` | 12 | Smart contract auditing (Slither, Mythril, Foundry, Aderyn), blockchain forensics, Echidna (Docker) |

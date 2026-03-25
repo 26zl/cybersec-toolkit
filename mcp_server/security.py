@@ -284,7 +284,6 @@ _NETWORK_TOOLS: set[str] = {
     "dalfox",
     "prowler",
     "pacu",
-    "trivy",
     "scapy",
     "tshark",
     "tcpdump",

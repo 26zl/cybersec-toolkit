@@ -550,7 +550,7 @@ if should_verify "containers"; then
     log_info "Containers (Git):"
     check_git_repos "${CONTAINER_GIT_NAMES[@]}"
     log_info "Containers (Binary):"
-    check_cmds trivy grype kubeaudit cdk syft kubescape
+    check_cmds grype kubeaudit cdk syft kubescape
 fi
 
 if should_verify "mobile"; then
