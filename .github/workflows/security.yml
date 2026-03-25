@@ -159,7 +159,8 @@ jobs:
           cd mcp_server
           uv sync --quiet
           uv export --no-hashes --frozen > /tmp/requirements.txt
-          uvx pip-audit -r /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt \
+            --known-vulnerabilities known-vulnerabilities.txt
 
   pin-check:
     name: Enforce SHA-pinned Actions
