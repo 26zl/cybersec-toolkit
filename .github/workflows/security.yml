@@ -159,8 +159,15 @@ jobs:
           cd mcp_server
           uv sync --quiet
           uv export --no-hashes --frozen > /tmp/requirements.txt
-          uvx pip-audit -r /tmp/requirements.txt \
-            --known-vulnerabilities known-vulnerabilities.txt
+          # Ignore IDs listed in known-vulnerabilities.txt (no fix available yet)
+          ignore_args=""
+          while IFS= read -r line; do
+            line="${line%%#*}"
+            line="$(echo "$line" | xargs)"
+            [[ -z "$line" ]] && continue
+            ignore_args="$ignore_args --ignore-vuln $line"
+          done < known-vulnerabilities.txt
+          uvx pip-audit -r /tmp/requirements.txt $ignore_args
 
   pin-check:
     name: Enforce SHA-pinned Actions
