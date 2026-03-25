@@ -135,6 +135,7 @@ Security workflow (`.github/workflows/security.yml`, separate from CI):
 
 - **gitleaks** — secret detection via Gitleaks
 - **custom-security-scan** — hardcoded IPs, secrets, non-HTTPS URLs, unsafe eval, curl|bash, chmod 777
+- **pip-audit** — audits MCP server Python dependencies for known CVEs (via `uvx pip-audit`)
 - **pin-check** — enforces all GitHub Actions use full SHA commit pins (blocks tag-only references)
 - **scorecard** — OSSF Scorecard (public repos only, push to main)
 
