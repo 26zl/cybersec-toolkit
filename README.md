@@ -13,7 +13,9 @@
               Toolkit
 ```
 
-The most comprehensive modular installer and AI-integrated toolkit for cybersecurity tools on Linux and Termux (Android). __580+ tools__, __18 modules__, __14 profiles__, __12 install methods__, plus an __MCP server__ for AI-assisted hacking.
+__Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets any MCP-capable AI -- Claude Code, Claude Desktop, Cursor -- query the tool registry, check install status, recommend the right tools for a CTF category or bug-bounty target, and execute them with enforced safety policies (argument sanitization, network allowlists, rate limiting, audit logging). Jump to [MCP Server (AI Integration)](#mcp-server-ai-integration).
+
+Bundled with a modular installer for Linux and Termux (Android) covering __580+ tools__, __18 modules__, __14 profiles__, and __12 install methods__.
 
 ---
 
@@ -36,9 +38,7 @@ All required runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pi
 > ```
 
 ```bash
-git clone https://github.com/26zl/cybersec-toolkit.git
-cd cybersec-toolkit
-sudo ./install.sh
+git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
 ```
 
 That installs all 580+ tools. To install a subset:
