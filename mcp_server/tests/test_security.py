@@ -725,6 +725,57 @@ class TestSystemUtilityNetworkPolicy:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("dig", ["example.com"])
 
+    # ----- Regression: -u for curl is HTTP auth, not a target (issue: false positive) -----
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_dash_u_auth_with_private_url_allowed(self, _mock_ext) -> None:
+        """curl -u admin:pass http://10.0.0.1/ → allowed (-u is HTTP auth, not a target)."""
+        check_policy("curl", ["-u", "admin:pass", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_dash_u_auth_with_loopback_url_allowed(self, _mock_ext) -> None:
+        """curl -u user:pw http://127.0.0.1:8080/ → allowed."""
+        check_policy("curl", ["-u", "user:pw", "http://127.0.0.1:8080/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_dash_u_auth_with_external_url_still_blocked(self, _mock_ext) -> None:
+        """curl -u admin:pass http://evil.com/ → blocked on the URL, not on creds."""
+        with pytest.raises(ValueError, match=r"target 'http://evil\.com/'"):
+            check_policy("curl", ["-u", "admin:pass", "http://evil.com/"])
+
+    # -u is a legitimate target flag for sqlmap/nuclei/ffuf etc., keep validation there.
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_sqlmap_dash_u_still_validates_target(self, _mock_ext) -> None:
+        """sqlmap -u http://evil.com/ → blocked (-u is URL for sqlmap)."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("sqlmap", ["-u", "http://evil.com/"])
+
+    # ----- Regression: config/input-file flags bypass target validation -----
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_config_short_flag_blocked(self, _mock_ext) -> None:
+        """curl -K cfg.txt → blocked (config file can inject external URLs)."""
+        with pytest.raises(ValueError, match="config file"):
+            check_policy("curl", ["-K", "cfg.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_config_long_flag_blocked(self, _mock_ext) -> None:
+        """curl --config cfg.txt → blocked."""
+        with pytest.raises(ValueError, match="config file"):
+            check_policy("curl", ["--config", "cfg.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_wget_input_file_short_flag_blocked(self, _mock_ext) -> None:
+        """wget -i urls.txt → blocked (URL list from file bypasses target validation)."""
+        with pytest.raises(ValueError, match="URL list"):
+            check_policy("wget", ["-i", "urls.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_wget_input_file_long_flag_blocked(self, _mock_ext) -> None:
+        """wget --input-file=urls.txt → blocked."""
+        with pytest.raises(ValueError, match="URL list"):
+            check_policy("wget", ["--input-file=urls.txt"])
+
 
 class TestSystemUtilityRemote:
     """System utilities validate for remote execution without PATH check."""

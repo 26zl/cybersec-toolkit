@@ -255,6 +255,22 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"EXEC[12]?\s*:", re.IGNORECASE), "socat: EXEC address (arbitrary command execution)"),
         (re.compile(r"SYSTEM\s*:", re.IGNORECASE), "socat: SYSTEM address (arbitrary command execution)"),
     ],
+    "curl": [
+        (re.compile(r"^-K$"), "curl: config file flag bypasses target validation"),
+        (re.compile(r"^--config(?:$|=)"), "curl: config file flag bypasses target validation"),
+    ],
+    "wget": [
+        (re.compile(r"^-i$"), "wget: URL list from file bypasses target validation"),
+        (re.compile(r"^--input-file(?:$|=)"), "wget: URL list from file bypasses target validation"),
+    ],
+}
+
+# Flags whose values look like a network target to the heuristic but are
+# actually something else for specific tools (e.g. curl's ``-u user:pass``
+# is HTTP Basic auth, not a target). When one of these is present for its
+# owning tool, the flag+value pair is skipped during target validation.
+_TARGET_FLAG_EXEMPTIONS: dict[str, set[str]] = {
+    "curl": {"-u", "--user"},
 }
 
 # Tools that perform network operations and need target validation.
@@ -727,10 +743,23 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
     # Targets passed via short flags are still caught by the positional-arg
     # heuristic below.
     target_flags = {"--target", "-u", "--url", "--host", "--ip"}
+    exempt = _TARGET_FLAG_EXEMPTIONS.get(tool_name, set()) | _TARGET_FLAG_EXEMPTIONS.get(binary, set())
     i = 0
     while i < len(arg_list):
         arg = arg_list[i]
         value = None
+
+        # Tool-specific exemption: flag+value pair that must not be validated
+        # as a target (e.g. curl's "-u user:pass" is HTTP auth, not a URL).
+        if arg in exempt:
+            if i + 1 < len(arg_list) and not arg_list[i + 1].startswith("-"):
+                i += 2
+            else:
+                i += 1
+            continue
+        if "=" in arg and arg.split("=", 1)[0] in exempt:
+            i += 1
+            continue
 
         if arg in target_flags and i + 1 < len(arg_list):
             value = arg_list[i + 1]
