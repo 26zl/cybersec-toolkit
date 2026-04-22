@@ -76,7 +76,8 @@ cd cybersec-toolkit
 ./install.sh --profile lightweight
 ```
 
-### All flags
+<details>
+<summary><strong>All flags</strong></summary>
 
 ```bash
 sudo ./install.sh --help                # Full help
@@ -105,7 +106,10 @@ sudo ./install.sh -v                    # Verbose / debug output
 `--tool` installs only the specified tool without running the full dependency setup.
 Dry-run time estimates count install entries across methods, so the estimate can be higher than the de-duplicated 580+ tool registry.
 
-### Why does a full install take 15-45 minutes?
+</details>
+
+<details>
+<summary><strong>Why does a full install take 15-45 minutes?</strong></summary>
 
 The installer orchestrates 580+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
 
@@ -125,6 +129,8 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 - Use `--skip-cargo` to skip Rust compilation (the slowest per-tool method)
 - Increase parallelism with `-j 8` for faster Go/git/binary downloads
 - Set up an [apt-cacher-ng](https://wiki.debian.org/AptCacherNg) proxy for repeated installs
+
+</details>
 
 ---
 
