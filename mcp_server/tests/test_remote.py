@@ -40,6 +40,33 @@ class TestRemoteHostConfig:
         assert "box1" in hosts
         assert hosts["box1"]["hostname"] == "10.0.0.5"
 
+    def test_save_uses_mode_0600(self, remote_config: RemoteHostConfig) -> None:
+        """Config file must not be world/group-readable — it holds hostnames and key paths."""
+        import stat
+
+        remote_config.add_host(name="box1", hostname="10.0.0.5", ssh_key="~/.ssh/id_kali")
+        mode = remote_config._path.stat().st_mode & 0o777
+        # Owner rw only; no group/other read. (Skipped on Windows where POSIX modes don't apply.)
+        if hasattr(stat, "S_IRWXG"):
+            import sys as _sys
+
+            if not _sys.platform.startswith("win"):
+                assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+
+    def test_save_is_atomic_no_tmp_leftover(self, remote_config: RemoteHostConfig) -> None:
+        """After a successful save, the config dir contains only the target file."""
+        remote_config.add_host(name="box1", hostname="10.0.0.5")
+        # Any leftover .tmp files would indicate a non-atomic write that crashed.
+        leftovers = [p for p in remote_config._path.parent.iterdir() if p.name.endswith(".tmp")]
+        assert leftovers == [], f"unexpected tmp files: {leftovers}"
+
+    def test_save_does_not_lose_data_on_rename_race(self, remote_config: RemoteHostConfig) -> None:
+        """Back-to-back saves don't corrupt the file (os.replace is atomic)."""
+        for i in range(10):
+            remote_config.add_host(name=f"box{i}", hostname=f"10.0.0.{i + 1}")
+        reloaded = RemoteHostConfig(config_path=remote_config._path)
+        assert len(reloaded.list_hosts()) == 10
+
     def test_add_host_empty_name_raises(self, remote_config: RemoteHostConfig) -> None:
         with pytest.raises(ValueError, match="name must not be empty"):
             remote_config.add_host(name="", hostname="10.0.0.1")
@@ -154,9 +181,41 @@ class TestRemoteHostConfig:
         with pytest.raises(ValueError, match="SSH key file not found"):
             remote_config.get_ssh_base_args("bad-key")
 
-    def test_corrupted_config_loads_empty(self, tmp_path: Path) -> None:
+    def test_corrupt_json_raises_and_backs_up(self, tmp_path: Path) -> None:
+        """Corrupt config must fail loudly and preserve the bad file for recovery.
+
+        Supersedes the older silent-reset behaviour, which could quietly lose
+        every registered host on the next save.
+        """
         config_path = tmp_path / "remote_hosts.json"
         config_path.write_text("NOT VALID JSON {{{", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="not valid JSON"):
+            RemoteHostConfig(config_path=config_path)
+
+        # Original corrupt file was renamed out of the way — a .corrupt.* sibling
+        # exists and the main path no longer does.
+        assert not config_path.exists()
+        backups = list(tmp_path.glob("remote_hosts.json.corrupt.*"))
+        assert len(backups) == 1
+        assert backups[0].read_text() == "NOT VALID JSON {{{"
+
+    def test_non_object_top_level_raises(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "remote_hosts.json"
+        config_path.write_text('["not", "an", "object"]', encoding="utf-8")
+        with pytest.raises(ValueError, match="must be a JSON object"):
+            RemoteHostConfig(config_path=config_path)
+
+    def test_non_object_hosts_key_raises(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "remote_hosts.json"
+        config_path.write_text('{"hosts": ["a", "b"]}', encoding="utf-8")
+        with pytest.raises(ValueError, match="must be an object"):
+            RemoteHostConfig(config_path=config_path)
+
+    def test_missing_hosts_key_is_empty(self, tmp_path: Path) -> None:
+        """Valid JSON without a 'hosts' key is treated as an empty host table."""
+        config_path = tmp_path / "remote_hosts.json"
+        config_path.write_text('{"version": 1}', encoding="utf-8")
         cfg = RemoteHostConfig(config_path=config_path)
         assert cfg.list_hosts() == {}
 
@@ -276,3 +335,41 @@ class TestExecuteRemoteCommand:
         assert result["exit_code"] == -1
         assert "not found" in result["stderr"].lower()
         assert result["remote"] is True
+
+
+class TestExecuteRemoteCommandOutputBounds:
+    """execute_remote_command routes through _bounded_communicate, so remote
+    output is memory-capped the same way local execute_tool is."""
+
+    @pytest.mark.asyncio
+    async def test_huge_remote_output_truncated(self) -> None:
+        """A remote tool producing ~500 KB caps at max_output with the standard marker."""
+        import sys as _sys
+
+        # Run python directly (no SSH) — the bridge fixture won't route this
+        # through the real bounded reader unless process.stdout is a real stream,
+        # so we bypass create_subprocess_exec's patching and call execute_remote_command
+        # with ssh args that resolve to local python via side_effect.
+        mock_process = await asyncio.create_subprocess_exec(
+            _sys.executable,
+            "-c",
+            "print('A' * 500000, end='')",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        async def _fake_exec(*args, **kwargs):
+            return mock_process
+
+        with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+            result = await execute_remote_command(
+                ["user@host"],
+                ["cat", "bigfile"],
+                timeout=10,
+                max_output=4096,
+            )
+
+        assert result["exit_code"] == 0
+        assert result["truncated"] is True
+        assert len(result["stdout"].encode("utf-8")) <= 4096 + 64
+        assert "[truncated at 4096 bytes]" in result["stdout"]

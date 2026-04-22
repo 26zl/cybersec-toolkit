@@ -1,0 +1,25 @@
+title = "cybersec-toolkit gitleaks config"
+
+# Start from the upstream default ruleset so we inherit every real-secret
+# detector (OpenAI, GitHub, AWS, JWT, Slack, private keys, etc.).
+[extend]
+useDefault = true
+
+# Allowlist scoped to specific test files where fake credentials are part of
+# the fixtures. Broader project paths stay fully scanned.
+#
+# - test_audit.py intentionally embeds shaped-like-real tokens (sk-..., ghp_...,
+#   a fake JWT) to prove that _redact_script_code() strips them before they hit
+#   the audit log. Those strings match generic-api-key / jwt rules.
+# - test_security.py uses "-u admin:pass" / "user:pw" as curl auth fixtures to
+#   verify the curl-policy exemption. Those match the curl-auth-user rule.
+#
+# Any real leak committed inside these two files would still slip through, so
+# keep them small and review-heavy. New test files are NOT covered here by
+# default — add paths explicitly as needed.
+[allowlist]
+description = "Test fixtures with intentionally fake credentials"
+paths = [
+    '''mcp_server/tests/test_audit\.py''',
+    '''mcp_server/tests/test_security\.py''',
+]

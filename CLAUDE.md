@@ -133,7 +133,7 @@ Ten parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 
 Security workflow (`.github/workflows/security.yml`, separate from CI):
 
-- **gitleaks** — secret detection via Gitleaks
+- **gitleaks** — secret detection via Gitleaks. `.gitleaks.toml` at repo root path-allowlists `mcp_server/tests/test_audit.py` and `mcp_server/tests/test_security.py` where fake-credential fixtures (sk-..., ghp_..., `-u admin:pass`) intentionally match default rules. Other files stay fully scanned
 - **custom-security-scan** — hardcoded IPs, secrets, non-HTTPS URLs, unsafe eval, curl|bash, chmod 777
 - **pip-audit** — audits MCP server Python dependencies for known CVEs (via `uvx pip-audit`)
 - **pin-check** — enforces all GitHub Actions use full SHA commit pins (blocks tag-only references)
@@ -180,8 +180,8 @@ Separate Python package (FastMCP). 13 AI-accessible tools: `list_tools`, `check_
 - `ctf_advisor.py` — CTF category suggestions, `TOOL_ALIASES` mapping, methodology steps
 - `bounty_advisor.py` — Bug bounty target-type suggestions, methodology, common vulns
 - `remote.py` — `RemoteHostConfig` for SSH-based remote tool execution
-- `audit.py` — JSON-line audit logging (5MB rotating) for blocked/executed tools and scripts
-- `sanitize.py` — Output processing: ANSI stripping, control char removal, 200KB truncation
+- `audit.py` — JSON-line audit logging (5MB rotating) for blocked/executed tools and scripts. `_redact_script_code()` scrubs credential-shaped strings (OpenAI/GitHub/AWS/JWT tokens, `API_KEY=...` assignments, HTTP Authorization headers) from script content before it hits `audit.log`; the original's SHA256 + byte length are logged for forensic correlation.
+- `sanitize.py` — Output processing: ANSI stripping, LLM prompt-injection marker stripping. (Size truncation is enforced during subprocess read by `security._bounded_communicate()`, not post-hoc here.)
 
 **Key design decisions:**
 
@@ -221,7 +221,9 @@ Separate Python package (FastMCP). 13 AI-accessible tools: `list_tools`, `check_
 - Thread-safe DNS resolution via daemon thread (no process-global `socket.setdefaulttimeout`)
 - `$`, `>`, `<` are NOT blocked — no shell is used (`create_subprocess_exec`), and tools need them for regex/awk/XML
 - Tool-specific blocked flags use `pattern.search()` not `pattern.match()` (must match anywhere in arg, not just position 0)
-- IPv6-aware target parsing. No `shell=True`. Timeout 1-300s. Output capped at 200KB
+- IPv6-aware target parsing. No `shell=True`. Timeout 1-300s. Output capped at 200KB per stream
+- Subprocess stdout/stderr drained via `_bounded_communicate()` — caps in-memory buffer at `max_output` per stream while continuing to drain the pipe so the child can exit. Replaces `process.communicate()` in all four execution paths (`execute_tool`, `execute_pipeline`, `execute_script` in `security.py`, `execute_remote_command` / `check_ssh_connection` in `remote.py` via `_security._bounded_communicate`). Any new subprocess code must use this pattern, not `communicate()`
+- `check_policy()` uses `_TARGET_FLAG_EXEMPTIONS` (e.g. `curl`: `{-u, --user}`) so HTTP Basic auth credentials aren't mis-validated as network targets. Tool-specific target-file flags are blocked (`curl -K/--config`, `wget -i/--input-file`, `nmap -iL/-iR`, `masscan --includefile`) — they can inject external targets past the allowlist
 
 ### Install Method Hierarchy
 
@@ -251,7 +253,8 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 - `scripts/remove.sh` removes in dependency order: pipx/gems/cargo FIRST, system packages LAST. Includes build-from-source binary cleanup (`/usr/local/bin`)
 - `scripts/update.sh` handles build-from-source tools via git pull + rebuild
 - `_as_builder()` prepends `$HOME/.cargo/bin:/usr/local/bin` to PATH in the sudo branch so Rust and locally-installed tools are found
-- `git_clone_or_pull()` retries with `fetch + reset --hard origin/<branch>` when `git pull` fails (e.g., CRLF-dirty working tree)
+- `git_clone_or_pull()` and the retry loop in `scripts/update.sh` both delegate to `_git_safe_reset_to_remote()` (in `lib/common.sh`) on `git pull` failure — stashes local edits first (`stash push -u`), fetches + resets to `origin/<branch>`, then pops the stash. Preserves manual edits in cloned tool repos (e.g. SecLists, PayloadsAllTheThings); conflicts during stash pop are left in the stash list with a warning rather than discarded
+- `RemoteHostConfig._save()` in `mcp_server/remote.py` is the reference pattern for config persistence: mkstemp in same dir → fsync → chmod 0600 → `os.replace`. Atomic on POSIX and Windows; `_load()` raises on corrupt JSON and renames the bad file to `<path>.corrupt.<epoch>` instead of silently resetting to empty state
 - `install_shared_deps()` dynamically installs `gcc-N-plugin-dev` on apt systems (needed by AFLplusplus gcc_plugin)
 - Curl-pipe installs use `_validate_curl_pipe` which checks minimum file size + multiple keywords before piping to `sh`/`bash`
 - `track_session` uses `flock` FD-redirect pattern (not `flock -c`) for parallel safety without injection risk

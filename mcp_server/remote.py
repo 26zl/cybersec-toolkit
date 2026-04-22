@@ -8,19 +8,16 @@ import os
 import re
 import shlex
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
-
-try:
-    import fcntl
-except ImportError:
-    fcntl = None  # type: ignore[assignment]  # unavailable on Windows
 
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from mcp_server.sanitize import truncate_output  # noqa: E402
+from mcp_server import security as _security  # noqa: E402
 
 # Default path for remote hosts configuration.
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "remote_hosts.json"
@@ -49,28 +46,89 @@ class RemoteHostConfig:
         self._load()
 
     def _load(self) -> None:
-        if self._path.exists():
-            try:
-                data = json.loads(self._path.read_text(encoding="utf-8"))
-                self._hosts = data.get("hosts", {})
-            except (json.JSONDecodeError, KeyError):
-                self._hosts = {}
-        else:
+        """Load the host table, failing loudly on corrupt config.
+
+        Previously a malformed ``remote_hosts.json`` was silently reset to an
+        empty host table — an operator could lose every registered host (and
+        the subsequent ``_save`` would persist the empty state) without ever
+        seeing an error. Now:
+
+        - Corrupt JSON raises :class:`ValueError` with a message pointing at
+          the offending file and, when possible, the byte offset.
+        - The corrupt file is renamed to ``<path>.corrupt.<epoch>`` so the
+          operator can recover state or inspect what went wrong.
+        - Type mismatches (non-object top level, non-object ``hosts`` key)
+          also raise rather than fall through to an empty dict.
+        """
+        if not self._path.exists():
             self._hosts = {}
+            return
+        raw = self._path.read_text(encoding="utf-8")
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            backup = self._path.with_suffix(self._path.suffix + f".corrupt.{int(time.time())}")
+            backup_note = ""
+            try:
+                os.replace(self._path, backup)
+                backup_note = f" Corrupt file moved to {backup}."
+            except OSError:
+                pass
+            raise ValueError(
+                f"Remote host config at {self._path} is not valid JSON "
+                f"({e.msg} at line {e.lineno}, column {e.colno})."
+                f"{backup_note} Fix the JSON or delete the file to start fresh."
+            ) from e
+        if not isinstance(data, dict):
+            raise ValueError(f"Remote host config at {self._path} must be a JSON object, got {type(data).__name__}.")
+        hosts = data.get("hosts", {})
+        if not isinstance(hosts, dict):
+            raise ValueError(f"'hosts' key in {self._path} must be an object, got {type(hosts).__name__}.")
+        self._hosts = hosts
 
     def _save(self) -> None:
+        """Atomically persist the host table with 0600 permissions.
+
+        Writes to a temp file in the same directory, fsyncs, chmods, and
+        renames over the target. ``os.replace`` is atomic on POSIX and Windows
+        (Python 3.3+), so a crash mid-write leaves either the previous file
+        or the fully-written new one — never a truncated/corrupt file that
+        would be silently loaded as an empty host table by ``_load``.
+
+        Concurrent savers race at the rename step; last writer wins without
+        interleaved writes, making the old advisory flock unnecessary. The
+        0600 mode keeps hostnames, IPs, and SSH key paths out of reach of
+        other local users.
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = json.dumps({"hosts": self._hosts}, indent=2) + "\n"
-        if fcntl is not None:
-            with open(self._path, "w", encoding="utf-8") as f:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self._path.parent),
+            prefix=f".{self._path.name}.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+                f.flush()
                 try:
-                    f.write(data)
-                finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-        else:
-            # fcntl unavailable on Windows — fallback to simple write
-            self._path.write_text(data, encoding="utf-8")
+                    os.fsync(f.fileno())
+                except OSError:
+                    # fsync is best-effort on some filesystems (e.g. tmpfs)
+                    pass
+            try:
+                os.chmod(tmp_path, 0o600)
+            except OSError:
+                # Windows/NTFS may not support POSIX modes; replace still works
+                pass
+            os.replace(tmp_path, self._path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+            raise
 
     def add_host(
         self,
@@ -181,7 +239,12 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
         )
 
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            # 64 KB cap — a healthy "echo ok" returns 3 bytes; anything larger is
+            # noise (or malicious) and we don't need to read past the cap.
+            stdout_bytes, _t1, stderr_bytes, _t2 = await asyncio.wait_for(
+                _security._bounded_communicate(process, max_stream_bytes=65536),
+                timeout=timeout,
+            )
         except asyncio.TimeoutError:
             process.kill()
             try:
@@ -249,7 +312,10 @@ async def execute_remote_command(
         )
 
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            stdout_bytes, t_read_stdout, stderr_bytes, t_read_stderr = await asyncio.wait_for(
+                _security._bounded_communicate(process, max_stream_bytes=max_output),
+                timeout=timeout,
+            )
         except asyncio.TimeoutError:
             process.kill()
             try:
@@ -268,9 +334,11 @@ async def execute_remote_command(
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-        stdout, t1 = truncate_output(stdout, max_output)
-        stderr, t2 = truncate_output(stderr, max_output)
-        truncated = t1 or t2
+        if t_read_stdout:
+            stdout = _security._append_truncation_marker(stdout, max_output)
+        if t_read_stderr:
+            stderr = _security._append_truncation_marker(stderr, max_output)
+        truncated = t_read_stdout or t_read_stderr
 
         return {
             "exit_code": process.returncode if process.returncode is not None else -1,

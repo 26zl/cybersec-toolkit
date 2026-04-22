@@ -1470,10 +1470,17 @@ track_version() {
     else
         # mkdir is atomic on all POSIX systems — use as spinlock fallback
         local _lockdir="${version_file}.lockdir" _tries=0
-        # Clean up stale lock (older than 30 seconds — likely from a crashed process)
+        # Clean up stale lock (older than 30 seconds — likely from a crashed process).
+        # `stat -c %Y` is GNU, `stat -f %m` is BSD/macOS. If both fail we fall back
+        # to the current time (lock treated as fresh, not stale) — safer than the
+        # old fallback which treated a failed stat as epoch 0 and nuked every lock.
         if [[ -d "$_lockdir" ]]; then
-            local _lock_age=0
-            _lock_age=$(( $(date +%s) - $(stat -c %Y "$_lockdir" 2>/dev/null || echo "0") ))
+            local _lock_mtime _now _lock_age=0
+            _now=$(date +%s)
+            _lock_mtime=$(stat -c %Y "$_lockdir" 2>/dev/null \
+                || stat -f %m "$_lockdir" 2>/dev/null \
+                || echo "$_now")
+            _lock_age=$(( _now - _lock_mtime ))
             if [[ "$_lock_age" -gt 30 ]]; then
                 rmdir "$_lockdir" 2>/dev/null || rm -rf "$_lockdir" 2>/dev/null || true
             fi
@@ -1737,7 +1744,7 @@ install_searchsploit_symlink() {
 }
 
 # Metasploit
-# Install order: apt (Kali/Parrot repos) → snap → Rapid7 script → apt.metasploit.com repo
+# Install order: apt (Kali/Parrot repos) → snap → apt.metasploit.com repo (GPG-verified)
 install_metasploit() {
     if command_exists msfconsole; then
         log_success "Metasploit already installed"
@@ -1770,49 +1777,20 @@ install_metasploit() {
                 return 0
             fi
             _stop_spinner
-            log_warn "Metasploit snap install failed — trying Rapid7 installer"
+            log_warn "Metasploit snap install failed — trying apt.metasploit.com repo"
         else
-            log_warn "snap not available — trying Rapid7 installer"
+            log_warn "snap not available — trying apt.metasploit.com repo"
         fi
     fi
 
-    # 3) Fallback: official Rapid7 installer script (with basic verification)
-    local tmp_installer
-    tmp_installer=$(mktemp); _register_cleanup "$tmp_installer"
-    local msf_url="https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb"
-    if ! curl -fsSL "$msf_url" -o "$tmp_installer" 2>> "$LOG_FILE"; then
-        log_error "Failed to download Metasploit installer"
-        rm -f "$tmp_installer"
-        # Don't return yet — try apt.metasploit.com repo below
-    else
-        # Content verification — check multiple Rapid7/Metasploit-specific markers
-        # to reduce risk of running a spoofed script. A legitimate msfupdate.erb
-        # contains all of these strings.
-        local _msf_checks=0
-        grep -q "metasploit" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-        grep -q "rapid7" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-        grep -q "msfupdate\|msfconsole\|metasploit-framework" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-        grep -q "apt\|dpkg\|yum\|rpm" "$tmp_installer" 2>/dev/null && _msf_checks=$((_msf_checks + 1))
-        if [[ "$_msf_checks" -lt 3 ]]; then
-            log_error "Metasploit installer content verification failed (only $_msf_checks/4 markers matched) — skipping"
-        else
-            chmod 755 "$tmp_installer"
-            _start_spinner "Installing Metasploit via Rapid7 installer..."
-            if "$tmp_installer" >> "$LOG_FILE" 2>&1; then
-                _stop_spinner
-                log_success "Metasploit installed via Rapid7 script"
-                track_version "metasploit" "special" "latest"
-                rm -f "$tmp_installer"
-                return 0
-            fi
-            _stop_spinner
-        fi
-    fi
-    rm -f "$tmp_installer"
-
-    # 4) Last resort: manually add apt.metasploit.com repo (modern signed-by keyring)
+    # 3) apt.metasploit.com repo with GPG-verified keyring (modern signed-by).
+    # We previously had a fallback that ran Rapid7's msfupdate.erb via
+    # curl-pipe, guarded only by a keyword grep on the downloaded script. A
+    # poisoned host could have satisfied that check, so the curl-pipe path
+    # was removed entirely. apt-based installs use this repo; non-apt users
+    # get a clear pointer to manual install below.
     if [[ "$PKG_MANAGER" == "apt" ]]; then
-        log_warn "Rapid7 script failed — trying manual apt.metasploit.com repo setup"
+        log_info "Trying apt.metasploit.com repo setup (GPG-verified)..."
         local _keyring="/usr/share/keyrings/metasploit-framework.gpg"
         local _tmp_key
         _tmp_key=$(mktemp); _register_cleanup "$_tmp_key"
@@ -1867,7 +1845,13 @@ install_metasploit() {
         fi
     fi
 
-    log_error "All Metasploit installation methods failed"
+    if [[ "$PKG_MANAGER" != "apt" ]]; then
+        log_error "Metasploit automatic install requires apt (Debian/Ubuntu/Kali/Parrot)."
+        log_info "  On $PKG_MANAGER, install manually from https://docs.metasploit.com/docs/using-metasploit/getting-started/nightly-installers.html"
+        log_info "  or build from source: https://github.com/rapid7/metasploit-framework/wiki/Setting-Up-a-Metasploit-Development-Environment"
+    else
+        log_error "All Metasploit installation methods failed"
+    fi
     TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
     return 1
 }

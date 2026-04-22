@@ -409,7 +409,7 @@ def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
         log_dns(hostname, resolved=False, duration_ms=elapsed, error=str(error[0]))
         raise error[0]
     if result:
-        first_ip = result[0][4][0] if result else ""
+        first_ip = result[0][4][0]
         is_safe = all(any(ipaddress.ip_address(sa[4][0]) in net for net in _SAFE_NETWORKS) for sa in result)
         log_dns(hostname, resolved=True, ip=first_ip, safe=is_safe, duration_ms=elapsed)
     else:

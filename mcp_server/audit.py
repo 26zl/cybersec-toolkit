@@ -10,6 +10,7 @@ Format: one JSON object per line, always with ``ts`` and ``event`` fields.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -50,6 +51,72 @@ def _redact_sensitive(value: str) -> str:
     for pattern, replacement in _SENSITIVE_PATTERNS:
         value = pattern.sub(replacement, value)
     return value
+
+
+# Script-content patterns — target inline assignments that rarely appear in CLI
+# args but are common in Python/Bash/JSON script bodies. Run AFTER
+# _SENSITIVE_PATTERNS so CLI-style cases stay covered.
+_SCRIPT_SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # assignment or key:value form — e.g. API_KEY = "sk-xxx", token: "abc",
+    # password='hunter2', os.environ["SECRET_KEY"] = "zzz"
+    (
+        re.compile(
+            r"""
+            (
+                (?:\b|['"])                                 # word or quoted key
+                (?:api[_-]?key|apikey|access[_-]?key|secret[_-]?key|
+                   auth[_-]?token|bearer[_-]?token|client[_-]?secret|
+                   session[_-]?id|session[_-]?token|private[_-]?key|
+                   aws[_-]?secret[_-]?access[_-]?key|aws[_-]?access[_-]?key[_-]?id|
+                   github[_-]?token|openai[_-]?api[_-]?key|
+                   token|passwd|passphrase|password|secret)
+                ['"]?                                       # optional close quote on key
+                \s*[:=]\s*                                  # assignment
+            )
+            (?:
+                "[^"\r\n]*"                                 # double-quoted
+                |'[^'\r\n]*'                                # single-quoted
+                |`[^`\r\n]*`                                # backtick-quoted
+                |[^\s,;)\}\]]+                              # bare token
+            )
+            """,
+            re.IGNORECASE | re.VERBOSE,
+        ),
+        r"\1[REDACTED]",
+    ),
+    # Known high-entropy token formats (catches secrets outside assignments).
+    (
+        re.compile(
+            r"""\b(
+                sk-[A-Za-z0-9]{16,}                          # OpenAI
+                |ghp_[A-Za-z0-9]{20,}                        # GitHub PAT
+                |gho_[A-Za-z0-9]{20,}                        # GitHub OAuth
+                |ghu_[A-Za-z0-9]{20,}                        # GitHub user
+                |ghs_[A-Za-z0-9]{20,}                        # GitHub server
+                |github_pat_[A-Za-z0-9_]{20,}                # GitHub fine-grained
+                |AIza[0-9A-Za-z_\-]{20,}                     # Google API
+                |xox[abprs]-[0-9A-Za-z\-]+                   # Slack
+                |eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+  # JWT
+            )\b""",
+            re.VERBOSE,
+        ),
+        "[REDACTED]",
+    ),
+]
+
+
+def _redact_script_code(code: str) -> str:
+    """Redact likely credentials from script source code.
+
+    Runs both the CLI-style ``_SENSITIVE_PATTERNS`` and script-specific
+    assignment/high-entropy-token patterns, so ``log_script_execution`` never
+    persists credentials in the audit log. Callers still get a SHA256 hash and
+    length of the original code for forensic correlation.
+    """
+    code = _redact_sensitive(code)
+    for pattern, replacement in _SCRIPT_SENSITIVE_PATTERNS:
+        code = pattern.sub(replacement, code)
+    return code
 
 
 # ---------------------------------------------------------------------------
@@ -273,8 +340,10 @@ def log_script_execution(
 ) -> None:
     """Write a single JSON audit line for a script execution (BEFORE running).
 
-    Logs the full source code so that every script run through ``execute_script``
-    is captured for forensic review.
+    Captures the script's logic for forensic review while keeping credentials
+    off disk: the code is run through :func:`_redact_script_code` first, and a
+    SHA256 of the *original* code plus its byte length are logged alongside
+    for correlation (e.g. matching an incident against an exact script body).
     """
     _log(
         logging.INFO,
@@ -282,7 +351,9 @@ def log_script_execution(
             "ts": _ts(),
             "event": "script",
             "language": language,
-            "code": code,
+            "code": _redact_script_code(code),
+            "code_sha256": hashlib.sha256(code.encode("utf-8", errors="replace")).hexdigest(),
+            "code_len": len(code),
             "script_file": script_file,
             "working_dir": working_dir,
             "venv": venv,
@@ -448,31 +519,6 @@ def log_remote_op(action: str, host: str = "", detail: str = "") -> None:
             "event": "remote_op",
             "action": action,
             "host": host,
-            "detail": detail,
-        },
-    )
-
-
-# ---------------------------------------------------------------------------
-# Policy / config events
-# ---------------------------------------------------------------------------
-
-
-def log_policy_check(
-    tool_name: str,
-    check: str,
-    result: str,
-    detail: str = "",
-) -> None:
-    """Log policy enforcement decisions."""
-    _log(
-        logging.DEBUG,
-        {
-            "ts": _ts(),
-            "event": "policy",
-            "tool": tool_name,
-            "check": check,
-            "result": result,
             "detail": detail,
         },
     )

@@ -736,8 +736,8 @@ class TestSystemUtilityNetworkPolicy:
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_curl_dash_u_auth_with_loopback_url_allowed(self, _mock_ext) -> None:
-        """curl -u user:pw http://127.0.0.1:8080/ → allowed."""
-        check_policy("curl", ["-u", "user:pw", "http://127.0.0.1:8080/"])
+        """curl -u admin:pass http://127.0.0.1:8080/ → allowed."""
+        check_policy("curl", ["-u", "admin:pass", "http://127.0.0.1:8080/"])
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_curl_dash_u_auth_with_external_url_still_blocked(self, _mock_ext) -> None:

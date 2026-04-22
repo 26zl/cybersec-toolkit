@@ -872,6 +872,49 @@ _escape_single_quoted() {
     echo "${s//\'/\'\\\'\'}"
 }
 
+# Non-destructive fallback when `git pull` fails on a cloned tool repo.
+# Preserves any local user edits by stashing them first, then fetches + resets
+# to origin/<branch>, then pops the stash back. If stash pop leaves conflicts
+# the user's work remains in the stash list — better than the old behaviour
+# which silently discarded local changes via a bare `git reset --hard`.
+# Callers:  git_clone_or_pull below, scripts/update.sh
+# Args:     $1 = repo path (must contain .git)
+#           $2 = log file for verbose git output
+# Returns:  0 on success, 1 on failure
+_git_safe_reset_to_remote() {
+    local repo_path="$1"
+    local log_file="$2"
+    local _repo_escaped; _repo_escaped="$(_escape_single_quoted "$repo_path")"
+
+    local _remote_branch=""
+    _remote_branch=$(_as_builder "git -C '$_repo_escaped' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+        | sed 's|refs/remotes/origin/||'") || true
+    _remote_branch="${_remote_branch%%[[:space:]]*}"
+    [[ -z "$_remote_branch" ]] && _remote_branch="main"
+    local _branch_escaped; _branch_escaped="$(_escape_single_quoted "origin/$_remote_branch")"
+
+    # Stash any local edits (including untracked) so reset --hard doesn't
+    # discard real user work. A clean tree makes this a no-op.
+    local _stashed=0 _stash_top=""
+    if _as_builder "git -C '$_repo_escaped' stash push -u -m 'cybersec-toolkit: auto-stash before update' --quiet" >> "$log_file" 2>&1; then
+        _stash_top=$(_as_builder "git -C '$_repo_escaped' stash list -n 1 --format='%s'") || true
+        [[ "$_stash_top" == *"cybersec-toolkit: auto-stash before update"* ]] && _stashed=1
+    fi
+
+    if ! _as_builder "git -C '$_repo_escaped' fetch origin" >> "$log_file" 2>&1 \
+        || ! _as_builder "git -C '$_repo_escaped' reset --hard '$_branch_escaped'" >> "$log_file" 2>&1; then
+        [[ "$_stashed" == "1" ]] && log_warn "Local changes preserved in stash for $(basename "$repo_path") — run 'git -C $repo_path stash list'"
+        return 1
+    fi
+
+    if [[ "$_stashed" == "1" ]]; then
+        if ! _as_builder "git -C '$_repo_escaped' stash pop --quiet" >> "$log_file" 2>&1; then
+            log_warn "Stashed local changes remain for $(basename "$repo_path") — resolve with 'git -C $repo_path stash pop'"
+        fi
+    fi
+    return 0
+}
+
 # Git clone helper — clones/pulls as $SUDO_USER when available (privilege dropping)
 # Creates the destination directory as root, then chowns it to $SUDO_USER so the
 # privilege-dropped git clone can write into it.
@@ -885,15 +928,8 @@ git_clone_or_pull() {
     if [[ -d "$dest/.git" ]]; then
         log_info "Updating $(basename "$dest")..."
         if ! _as_builder "git -C '$_dest_escaped' pull -q" >> "$LOG_FILE" 2>&1; then
-            log_debug "git pull failed for $(basename "$dest") — resetting to remote HEAD..."
-            local _remote_branch=""
-            _remote_branch=$(_as_builder "git -C '$_dest_escaped' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-                | sed 's|refs/remotes/origin/||'") || true
-            _remote_branch="${_remote_branch%%[[:space:]]*}"
-            [[ -z "$_remote_branch" ]] && _remote_branch="main"
-            local _branch_escaped; _branch_escaped="$(_escape_single_quoted "origin/$_remote_branch")"
-            if ! _as_builder "git -C '$_dest_escaped' fetch origin" >> "$LOG_FILE" 2>&1 \
-                || ! _as_builder "git -C '$_dest_escaped' reset --hard '$_branch_escaped'" >> "$LOG_FILE" 2>&1; then
+            log_debug "git pull failed for $(basename "$dest") — stashing local changes and resetting to remote HEAD..."
+            if ! _git_safe_reset_to_remote "$dest" "$LOG_FILE"; then
                 log_warn "git update failed for $(basename "$dest")"
                 return 1
             fi

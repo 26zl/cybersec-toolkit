@@ -421,15 +421,55 @@ cmd_schedule() {
         exit 1
     fi
 
+    # /etc writes and system crontab changes both need root. Fail fast instead
+    # of letting the user discover a broken half-configured schedule later.
+    if [[ $EUID -ne 0 ]]; then
+        log_error "Scheduling requires root: rerun with 'sudo $0 schedule $frequency $time'"
+        exit 1
+    fi
+
     # Write passphrase to a root-only env file instead of embedding in crontab
     # (avoids single-quote injection and keeps secrets out of crontab -l)
     local env_file="/etc/cybersec-backup.env"
     # Escape single quotes in passphrase to prevent shell injection when sourced
     local _escaped="${BACKUP_PASSPHRASE//\'/\'\\\'\'}"
-    printf "BACKUP_PASSPHRASE='%s'\n" "$_escaped" > "$env_file"
-    chmod 600 "$env_file"
+
+    # Atomic install: write to temp file in same dir, chmod, then mv. If any
+    # step fails we clean up and abort instead of logging a false success.
+    local tmp_env
+    if ! tmp_env="$(mktemp "${env_file}.XXXXXX")"; then
+        log_error "Failed to create temp file in $(dirname "$env_file") (is it writable as root?)"
+        exit 1
+    fi
+
+    if ! printf "BACKUP_PASSPHRASE='%s'\n" "$_escaped" > "$tmp_env"; then
+        log_error "Failed to write passphrase to $tmp_env"
+        rm -f "$tmp_env"
+        exit 1
+    fi
+
+    if ! chmod 600 "$tmp_env"; then
+        log_error "Failed to set mode 600 on $tmp_env"
+        rm -f "$tmp_env"
+        exit 1
+    fi
+
+    if ! mv "$tmp_env" "$env_file"; then
+        log_error "Failed to install $env_file"
+        rm -f "$tmp_env"
+        exit 1
+    fi
+
     local cron_cmd=". $env_file && $SCRIPT_DIR/scripts/backup.sh backup"
-    (crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd") | crontab -
+    local new_crontab
+    new_crontab="$(crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd")"
+
+    if ! printf '%s\n' "$new_crontab" | crontab -; then
+        log_error "Failed to install crontab entry (crontab - returned non-zero)"
+        log_info "Passphrase file $env_file remains on disk — remove manually if you want to abort"
+        exit 1
+    fi
+
     log_success "Backup scheduled: $frequency at $time"
     log_info "Passphrase stored in $env_file (mode 600)"
 }

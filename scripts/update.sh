@@ -250,16 +250,13 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                     fi
                 fi
             else
-                # Retry: reset to remote HEAD and pull again (handles dirty trees, e.g. SecLists)
-                log_debug "git pull failed for $name — resetting to remote HEAD..."
-                _remote_branch=""
-                _remote_branch=$(_as_builder "git -C '$_dir_escaped' symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'") || true
-                _remote_branch="${_remote_branch%%[[:space:]]*}"
-                [[ -z "$_remote_branch" ]] && _remote_branch="main"
-                _branch_escaped="$(_escape_single_quoted "origin/$_remote_branch")"
-                if _as_builder "git -C '$_dir_escaped' fetch origin" >> "$LOG_FILE" 2>&1 \
-                    && _as_builder "git -C '$_dir_escaped' reset --hard '$_branch_escaped'" >> "$LOG_FILE" 2>&1; then
-                    log_success "Updated: $name (reset to origin/$_remote_branch)"
+                # Retry: stash local changes, fetch + reset to remote HEAD, pop
+                # the stash. Handles dirty trees (e.g. SecLists) without
+                # destroying user edits — see _git_safe_reset_to_remote in
+                # lib/common.sh.
+                log_debug "git pull failed for $name — stashing local changes and resetting to remote HEAD..."
+                if _git_safe_reset_to_remote "$dir" "$LOG_FILE"; then
+                    log_success "Updated: $name (reset to origin HEAD)"
                     GIT_UPDATED=$((GIT_UPDATED + 1))
                     track_version "$name" "git" "HEAD"
                 else
