@@ -23,7 +23,7 @@ RUN chmod +x install.sh scripts/*.sh
 
 # MCP server: install uv + resolve dependencies so `uv run` works offline.
 # Install uv as root, then move binary so it's available to all users.
-RUN curl -LsSf https://astral.sh/uv/0.6.6/install.sh | sh \
+RUN curl -LsSf https://astral.sh/uv/0.11.7/install.sh | sh \
     && mv /root/.local/bin/uv /usr/local/bin/uv \
     && mv /root/.local/bin/uvx /usr/local/bin/uvx
 RUN cd mcp_server && uv sync
