@@ -32,7 +32,7 @@ from mcp_server.audit import (  # noqa: E402
     log_script_result,
     log_validation,
 )
-from mcp_server.sanitize import sanitize_output, truncate_output  # noqa: E402
+from mcp_server.sanitize import sanitize_output  # noqa: E402
 from mcp_server.tools_db import PIPX_BIN_NAMES, ToolsDatabase  # noqa: E402
 
 # Methods that are not directly executable as CLI commands.
@@ -862,6 +862,94 @@ def validate_tool_for_execution(tool_name: str, tools_db: ToolsDatabase) -> str:
 # Max length for args string to prevent DoS from huge input (100KB is plenty for CLI args)
 MAX_ARGS_LEN = 100_000
 
+# Per-read chunk size for _bounded_communicate.
+_READ_CHUNK = 65_536
+
+
+async def _bounded_communicate(
+    process: asyncio.subprocess.Process,
+    *,
+    input_bytes: bytes | None = None,
+    max_stream_bytes: int,
+) -> tuple[bytes, bool, bytes, bool]:
+    """Bounded, concurrent replacement for ``process.communicate()``.
+
+    Streams stdout/stderr off the child concurrently (so a full pipe buffer
+    on either stream does not deadlock the child), keeping at most
+    *max_stream_bytes* in memory per stream. Any bytes past the cap are
+    still drained from the pipe — and discarded — so the child can exit.
+
+    Returns ``(stdout_bytes, stdout_truncated, stderr_bytes, stderr_truncated)``.
+
+    A process that produces unbounded output no longer risks unbounded memory
+    growth; memory is O(max_stream_bytes) regardless of how much the child
+    writes. The caller is still responsible for timeout + kill on hang.
+    """
+    stdout_truncated = [False]
+    stderr_truncated = [False]
+
+    async def _drain(stream: asyncio.StreamReader | None, flag: list[bool]) -> bytes:
+        if stream is None:
+            return b""
+        captured = bytearray()
+        while True:
+            chunk = await stream.read(_READ_CHUNK)
+            if not chunk:
+                break
+            if len(captured) < max_stream_bytes:
+                space = max_stream_bytes - len(captured)
+                captured.extend(chunk[:space])
+                if len(chunk) > space:
+                    flag[0] = True
+            else:
+                flag[0] = True
+        return bytes(captured)
+
+    async def _write_stdin() -> None:
+        if process.stdin is None or input_bytes is None:
+            return
+        try:
+            process.stdin.write(input_bytes)
+            await process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            try:
+                process.stdin.close()
+            except Exception:
+                pass
+
+    tasks = [
+        asyncio.create_task(_drain(process.stdout, stdout_truncated)),
+        asyncio.create_task(_drain(process.stderr, stderr_truncated)),
+    ]
+    if input_bytes is not None and process.stdin is not None:
+        tasks.append(asyncio.create_task(_write_stdin()))
+
+    results = await asyncio.gather(*tasks)
+    stdout_bytes = results[0]
+    stderr_bytes = results[1]
+
+    await process.wait()
+
+    return stdout_bytes, stdout_truncated[0], stderr_bytes, stderr_truncated[0]
+
+
+def _append_truncation_marker(text: str, max_bytes: int) -> str:
+    """Append the standard truncation marker, keeping total UTF-8 size <= max_bytes.
+
+    Mirrors :func:`mcp_server.sanitize.truncate_output` so callers can rely on
+    ``len(result.encode('utf-8')) <= max_bytes`` after marking. Trims ``text``
+    from the tail when it would overflow, keeping the marker intact.
+    """
+    marker = f"\n... [truncated at {max_bytes} bytes]"
+    encoded = text.encode("utf-8")
+    marker_bytes = marker.encode("utf-8")
+    if len(encoded) + len(marker_bytes) <= max_bytes:
+        return text + marker
+    cut = max(0, max_bytes - len(marker_bytes))
+    return encoded[:cut].decode("utf-8", errors="ignore") + marker
+
 
 def _step_args_to_str(step: dict) -> str:
     """Normalize pipeline step 'args' to a string for sanitize_args.
@@ -963,7 +1051,10 @@ async def execute_tool(
             )
 
             try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
+                stdout_bytes, t_read_stdout, stderr_bytes, t_read_stderr = await asyncio.wait_for(
+                    _bounded_communicate(process, max_stream_bytes=max_output),
+                    timeout=timeout,
+                )
             except asyncio.TimeoutError:
                 process.kill()
                 try:
@@ -991,9 +1082,11 @@ async def execute_tool(
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-            stdout, t1 = truncate_output(stdout, max_output)
-            stderr, t2 = truncate_output(stderr, max_output)
-            truncated = t1 or t2
+            if t_read_stdout:
+                stdout = _append_truncation_marker(stdout, max_output)
+            if t_read_stderr:
+                stderr = _append_truncation_marker(stderr, max_output)
+            truncated = t_read_stdout or t_read_stderr
 
             stdout = sanitize_output(stdout)
             stderr = sanitize_output(stderr)
@@ -1082,6 +1175,7 @@ async def _run_pipeline_steps(
     deadline = asyncio.get_event_loop().time() + timeout
     prev_output: bytes | None = None
     commands: list[str] = []
+    truncated_any = False
 
     for i, step in enumerate(steps):
         remaining = deadline - asyncio.get_event_loop().time()
@@ -1114,8 +1208,12 @@ async def _run_pipeline_steps(
             )
 
             try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    process.communicate(input=prev_output if i > 0 else None),
+                stdout_bytes, t_read_stdout, stderr_bytes, t_read_stderr = await asyncio.wait_for(
+                    _bounded_communicate(
+                        process,
+                        input_bytes=prev_output if i > 0 else None,
+                        max_stream_bytes=max_output,
+                    ),
                     timeout=remaining,
                 )
             except asyncio.TimeoutError:
@@ -1135,6 +1233,8 @@ async def _run_pipeline_steps(
                     "step_count": i + 1,
                     "failed_step": i + 1,
                 }
+
+            truncated_any = truncated_any or t_read_stdout or t_read_stderr
 
             rc = process.returncode if process.returncode is not None else -1
             step_elapsed = (time.monotonic() - step_start) * 1000
@@ -1156,7 +1256,8 @@ async def _run_pipeline_steps(
                 # Last step with non-zero exit — return output along with
                 # the exit code (like a shell pipe does).
                 stdout = stdout_bytes.decode("utf-8", errors="replace")
-                stdout, truncated = truncate_output(stdout, max_output)
+                if truncated_any:
+                    stdout = _append_truncation_marker(stdout, max_output)
                 stdout = sanitize_output(stdout)
                 stderr = stderr_bytes.decode("utf-8", errors="replace")
                 stderr = sanitize_output(stderr)
@@ -1164,7 +1265,7 @@ async def _run_pipeline_steps(
                     "exit_code": rc,
                     "stdout": stdout,
                     "stderr": stderr,
-                    "truncated": truncated,
+                    "truncated": truncated_any,
                     "commands": commands,
                     "step_count": len(steps),
                 }
@@ -1196,16 +1297,17 @@ async def _run_pipeline_steps(
                 "failed_step": i + 1,
             }
 
-    # Final output — truncate and sanitize
+    # Final output — append truncation marker if any step was bounded
     stdout = (prev_output or b"").decode("utf-8", errors="replace")
-    stdout, truncated = truncate_output(stdout, max_output)
+    if truncated_any:
+        stdout = _append_truncation_marker(stdout, max_output)
     stdout = sanitize_output(stdout)
 
     return {
         "exit_code": 0,
         "stdout": stdout,
         "stderr": "",
-        "truncated": truncated,
+        "truncated": truncated_any,
         "commands": commands,
         "step_count": len(steps),
     }
@@ -1467,8 +1569,8 @@ async def execute_script(
                 )
 
                 try:
-                    stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                        process.communicate(),
+                    stdout_bytes, t_read_stdout, stderr_bytes, t_read_stderr = await asyncio.wait_for(
+                        _bounded_communicate(process, max_stream_bytes=max_output),
                         timeout=timeout,
                     )
                 except asyncio.TimeoutError:
@@ -1492,9 +1594,11 @@ async def execute_script(
                 stdout = stdout_bytes.decode("utf-8", errors="replace")
                 stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-                stdout, t1 = truncate_output(stdout, max_output)
-                stderr, t2 = truncate_output(stderr, max_output)
-                truncated = t1 or t2
+                if t_read_stdout:
+                    stdout = _append_truncation_marker(stdout, max_output)
+                if t_read_stderr:
+                    stderr = _append_truncation_marker(stderr, max_output)
+                truncated = t_read_stdout or t_read_stderr
 
                 stdout = sanitize_output(stdout)
                 stderr = sanitize_output(stderr)

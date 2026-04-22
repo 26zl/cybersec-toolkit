@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mcp_server.security import (
     SYSTEM_UTILITIES,
+    _bounded_communicate,
     _is_safe_target,
     _RateLimiter,
     check_policy,
@@ -1173,3 +1175,145 @@ class TestRedactSensitive:
         result = _redact_sensitive("--secret my_secret_value")
         assert "[REDACTED]" in result
         assert "my_secret_value" not in result
+
+
+class TestBoundedCommunicate:
+    """_bounded_communicate caps per-stream memory so `max_output` bounds actual RAM."""
+
+    @pytest.mark.asyncio
+    async def test_short_output_returned_verbatim(self) -> None:
+        """Output under the cap is returned unchanged and not marked truncated."""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            "print('hello world')",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, t1, stderr, t2 = await _bounded_communicate(process, max_stream_bytes=1024)
+        assert stdout == b"hello world\n"
+        assert t1 is False
+        assert stderr == b""
+        assert t2 is False
+        assert process.returncode == 0
+
+    @pytest.mark.asyncio
+    async def test_stdout_over_cap_is_truncated_without_buffering_all(self) -> None:
+        """Child writes 2 MB; we cap at 4 KB. Captured bytes == cap, truncated=True."""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write('A' * 2_000_000); sys.stdout.flush()",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, t1, stderr, t2 = await _bounded_communicate(process, max_stream_bytes=4096)
+        assert len(stdout) == 4096
+        assert t1 is True
+        assert stderr == b""
+        assert t2 is False
+        assert process.returncode == 0
+
+    @pytest.mark.asyncio
+    async def test_stderr_over_cap_is_truncated(self) -> None:
+        """Child writes 2 MB to stderr; cap at 4 KB. Independent from stdout."""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('B' * 2_000_000); sys.stderr.flush()",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, t1, stderr, t2 = await _bounded_communicate(process, max_stream_bytes=4096)
+        assert stdout == b""
+        assert t1 is False
+        assert len(stderr) == 4096
+        assert t2 is True
+
+    @pytest.mark.asyncio
+    async def test_both_streams_drained_concurrently_no_deadlock(self) -> None:
+        """Child writes >64 KB to both stdout and stderr — without concurrent drain
+        this deadlocks because the pipe buffers fill before communicate reads.
+        """
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "sys.stdout.write('A' * 200_000); sys.stdout.flush(); "
+                "sys.stderr.write('B' * 200_000); sys.stderr.flush()"
+            ),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, t1, stderr, t2 = await asyncio.wait_for(
+            _bounded_communicate(process, max_stream_bytes=1_000_000),
+            timeout=10.0,
+        )
+        assert len(stdout) == 200_000
+        assert len(stderr) == 200_000
+        assert t1 is False
+        assert t2 is False
+
+    @pytest.mark.asyncio
+    async def test_stdin_input_delivered(self) -> None:
+        """input_bytes is piped to the child's stdin and echoed back on stdout."""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write(sys.stdin.read())",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, t1, stderr, t2 = await _bounded_communicate(
+            process,
+            input_bytes=b"piped data",
+            max_stream_bytes=1024,
+        )
+        assert stdout == b"piped data"
+        assert t1 is False
+
+    @pytest.mark.asyncio
+    async def test_large_output_with_large_cap_fully_captured(self) -> None:
+        """Child produces ~500 KB; cap at 1 MB → full capture, no truncation."""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            "import sys\nsys.stdout.write('D' * 500_000)",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, t1, _, _ = await asyncio.wait_for(
+            _bounded_communicate(process, max_stream_bytes=1_000_000),
+            timeout=10.0,
+        )
+        assert len(stdout) == 500_000
+        assert t1 is False
+
+
+class TestExecuteToolOutputBounds:
+    """Integration: execute_tool caps actual output RAM at max_output."""
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_truncates_large_output(self, tools_db) -> None:
+        """python3 writes 500 KB; execute_tool cap=4 KB → truncated output."""
+        # Single-expression code: no semicolons (would be blocked by sanitize_args).
+        code = "print('A' * 500000, end='')"
+        with patch.object(
+            sys.modules["mcp_server.security"],
+            "SYSTEM_UTILITIES",
+            SYSTEM_UTILITIES | {"python3"},
+        ):
+            result = await execute_tool(
+                "python3",
+                f'-c "{code}"',
+                tools_db,
+                timeout=30,
+                max_output=4096,
+            )
+        assert result["exit_code"] == 0, f"stderr: {result['stderr']!r}"
+        assert result["truncated"] is True
+        # UTF-8 encoded output should be at most cap + marker length
+        assert len(result["stdout"].encode("utf-8")) <= 4096 + 64
+        assert "[truncated at 4096 bytes]" in result["stdout"]

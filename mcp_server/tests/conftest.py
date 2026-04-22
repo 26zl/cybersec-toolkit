@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -10,6 +11,38 @@ import pytest
 
 from mcp_server.remote import RemoteHostConfig
 from mcp_server.tools_db import ToolsDatabase
+
+
+@pytest.fixture(autouse=True)
+def _bounded_communicate_mock_bridge(monkeypatch):
+    """Route _bounded_communicate through process.communicate() for mock processes.
+
+    Existing tests mock asyncio.create_subprocess_exec to return an AsyncMock with
+    mock_proc.communicate.return_value = (stdout, stderr). The production path now
+    streams from process.stdout/stderr via _bounded_communicate(), which those mocks
+    don't provide. Rather than rewrite every test, this fixture transparently falls
+    back to the mock's .communicate() when the process isn't a real StreamReader —
+    so tests keep asserting on mock_proc.communicate while the bounded path still
+    runs unchanged for real subprocesses (see TestBoundedCommunicate).
+    """
+    import mcp_server.security as mod
+
+    original = mod._bounded_communicate
+
+    async def _bridge(process, *, input_bytes=None, max_stream_bytes):
+        stdout = getattr(process, "stdout", None)
+        if not isinstance(stdout, asyncio.StreamReader):
+            stdout_bytes, stderr_bytes = await process.communicate(input=input_bytes)
+            return (
+                stdout_bytes[:max_stream_bytes],
+                len(stdout_bytes) > max_stream_bytes,
+                stderr_bytes[:max_stream_bytes],
+                len(stderr_bytes) > max_stream_bytes,
+            )
+        return await original(process, input_bytes=input_bytes, max_stream_bytes=max_stream_bytes)
+
+    monkeypatch.setattr(mod, "_bounded_communicate", _bridge)
+
 
 SAMPLE_TOOLS = [
     {"name": "nmap", "method": "apt", "module": "networking", "url": ""},
