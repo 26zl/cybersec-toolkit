@@ -91,6 +91,7 @@ jobs:
             !tests/bats/**/*.md
             !tests/test_helper/**/*.md
             !mcp_server/.venv/**/*.md
+            !.claude/skills/**/*.md
 
   tests:
     name: Tests (bats-core)

@@ -4,7 +4,8 @@
 *.swp
 *.swo
 *~
-.claude/
+.claude/*
+!.claude/skills/
 AGENTS.md
 nul
 instructions/
