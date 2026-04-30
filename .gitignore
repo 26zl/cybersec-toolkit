@@ -4,11 +4,12 @@
 *.swp
 *.swo
 *~
-.claude/*
-!.claude/skills/
-AGENTS.md
 nul
 instructions/
+
+# Claude Code — track .claude/skills/ but not user-local settings
+.claude/settings.local.json
+.claude/.credentials*
 
 # Logs
 *.log
