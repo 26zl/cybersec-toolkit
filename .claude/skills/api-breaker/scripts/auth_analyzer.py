@@ -17,6 +17,9 @@ import urllib.parse
 from datetime import datetime
 
 
+# Operator-facing console helpers. By design, this pentest tool prints
+# discovered tokens / cracked secrets / weak JWTs to the operator's terminal
+# during authorized API testing — that is the deliverable of the run.
 def log(msg):
     print(f"[*] {msg}")
 

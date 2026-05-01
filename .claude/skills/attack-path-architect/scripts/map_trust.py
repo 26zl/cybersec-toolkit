@@ -186,6 +186,9 @@ def check_certificate_sharing(assets):
     for asset in assets:
         host = asset.get("host", "")
         try:
+            # Cert validation intentionally disabled: this routine extracts the
+            # peer cert to group hosts by shared issuer/serial, so it must
+            # accept invalid/self-signed certs to inspect them.
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE

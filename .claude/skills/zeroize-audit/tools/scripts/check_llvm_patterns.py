@@ -469,6 +469,8 @@ def main() -> int:
 
     findings = analyze(level_to_ir)
 
+    # `findings` is the LLVM-IR pattern report (e.g. "memset elided at -O2").
+    # It is analysis output about *code*, not secret material.
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(findings, indent=2), encoding="utf-8")

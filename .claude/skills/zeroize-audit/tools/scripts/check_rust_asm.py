@@ -182,6 +182,9 @@ def load_secrets(secrets_path: str) -> list[str] | None:
     except FileNotFoundError:
         return []
     except json.JSONDecodeError as e:
+        # `secrets_path` is a path to a JSON file listing sensitive *type names*
+        # to track (e.g. `Zeroizing<T>`, `Secret<T>`). The path itself contains
+        # no secret material — it is operator-supplied tooling input.
         print(
             f"[check_rust_asm] ERROR: corrupt secrets JSON at {secrets_path!r}: {e}",
             file=sys.stderr,

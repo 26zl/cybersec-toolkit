@@ -523,6 +523,9 @@ def main() -> int:
         print(f"check_mir_patterns.py: MIR file not found: {mir_path}", file=sys.stderr)
         return 1
 
+    # `secrets_path` points to a JSON file enumerating sensitive *type names*
+    # for the audit (e.g. `Zeroizing<T>`); contents and path are tooling input,
+    # not secret material.
     secrets_path = Path(args.secrets)
     if not secrets_path.exists():
         print(f"check_mir_patterns.py: secrets file not found: {secrets_path}", file=sys.stderr)

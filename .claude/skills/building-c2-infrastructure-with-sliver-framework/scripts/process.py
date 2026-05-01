@@ -32,6 +32,9 @@ def check_port_open(host: str, port: int, timeout: float = 5.0) -> bool:
 def check_ssl_certificate(host: str, port: int = 443) -> dict:
     """Check SSL certificate validity on a listener."""
     try:
+        # Cert validation intentionally disabled: this routine inspects the
+        # listener's cert (subject/issuer/expiry) and must accept invalid or
+        # self-signed certs to retrieve and report them.
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE

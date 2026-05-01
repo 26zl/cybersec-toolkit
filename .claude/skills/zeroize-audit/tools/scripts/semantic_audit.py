@@ -911,6 +911,9 @@ def main() -> int:
 
     findings = analyze(rustdoc, args.cargo_toml)
 
+    # `findings` is the static-analysis report describing secret-handling
+    # *code patterns* (e.g. "type X drops without zeroize"). It contains no
+    # secret values — it is the auditor's deliverable.
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(findings, indent=2), encoding="utf-8")

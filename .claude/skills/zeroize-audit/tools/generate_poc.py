@@ -1199,7 +1199,9 @@ def run(
         sys.stderr.write(f"Error: cannot create output directory: {exc}\n")
         return 3
 
-    # Write poc_common.h
+    # Write poc_common.h. `secret_fill` is a fixed scan-pattern byte value
+    # (e.g. 0xAA) the PoC writes into a buffer to detect non-zeroized leftovers
+    # — it is a magic number, not a secret.
     common_h = _generate_common_header(secret_fill, stack_probe_max)
     with open(os.path.join(out_dir, "poc_common.h"), "w") as f:
         f.write(common_h)
