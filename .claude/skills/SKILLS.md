@@ -1,6 +1,6 @@
 # Claude Code Skills
 
-This directory contains 71 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
+This directory contains 65 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
 ## Project-specific developer skills (6)
 
@@ -105,17 +105,6 @@ Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/An
 - `building-detection-rules-with-sigma`
 - `building-c2-infrastructure-with-sliver-framework`
 
-## Orizon — automated pentest lifecycle (6)
-
-MIT — see `LICENSE-Orizon-MIT`. Source: <https://github.com/Orizon-eu/claude-code-pentest>. Each skill bundles executable Python scripts (43 total).
-
-- `recon-dominator` — Full-scope recon: subdomain enum, port scan, tech fingerprint, OSINT, dorking, Wayback (8 scripts)
-- `attack-path-architect` — MITRE ATT&CK-aligned asset classification + attack tree generation (3 scripts)
-- `webapp-exploit-hunter` — SQLi/XSS/SSRF/SSTI/IDOR/upload/race testing with PoC generation (11 scripts)
-- `api-breaker` — API discovery, schema reconstruction, BOLA/BFLA/JWT/GraphQL testing (8 scripts)
-- `cloud-pivot-finder` — S3/GCS/Azure bucket detection, subdomain takeover, serverless/CI-CD exposure (7 scripts)
-- `vuln-chain-composer` — Cross-domain finding correlation, exploit chain building, CVSS, bug bounty reports (6 scripts)
-
 ## Transilience — high-level workflows (4)
 
 MIT — see `LICENSE-Transilience-MIT`. Source: <https://github.com/transilienceai/communitytools>.
@@ -154,7 +143,5 @@ This project is MIT-licensed. The vendored skills retain their original licenses
 - Trail of Bits skills: CC-BY-SA 4.0 (`LICENSE-CC-BY-SA-4.0`)
 - Anthropic Cybersecurity Skills: Apache 2.0 (`LICENSE-Apache-2.0`)
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
-
-- Orizon pentest skills: MIT (`LICENSE-Orizon-MIT`)
 
 When modifying vendored skills, retain the source attribution in their SKILL.md frontmatter.
