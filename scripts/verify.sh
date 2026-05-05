@@ -337,8 +337,8 @@ if should_verify "networking"; then
     log_info "Networking (packages):"
     check_cmds nmap masscan netdiscover tcpdump hping3 arp-scan \
         socat p0f ncrack sslscan nbtscan onesixtyone snmpwalk smbclient \
-        iodine zmap mitmproxy tshark sslsplit \
-        tor proxychains4 macchanger snort yersinia whois traceroute nc
+        iodine zmap tshark sslsplit \
+        tor proxychains4 macchanger whois traceroute nc
     log_info "Networking (pipx):"
     check_pipx_arr "${NET_PIPX[@]}"
     log_info "Networking (Go):"

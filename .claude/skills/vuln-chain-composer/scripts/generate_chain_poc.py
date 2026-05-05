@@ -83,7 +83,8 @@ def generate_curl_command(step, finding):
         if method == "GET":
             return f"curl -s -k '{url}'"
         else:
-            return f"curl -s -k -X POST '{url}' -d '{parameter}={payload or \"test\"}'"
+            value = payload or "test"
+            return f"curl -s -k -X POST '{url}' -d '{parameter}={value}'"
 
 
 def generate_python_poc(chain):

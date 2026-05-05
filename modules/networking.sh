@@ -8,15 +8,13 @@ NET_PACKAGES=(
     iftop iptraf-ng whois dnsutils traceroute
     netcat-openbsd socat p0f ncrack sslscan nbtscan
     onesixtyone snmp smbclient iodine redsocks stunnel4 zmap
-    mitmproxy
     wireshark-common tshark sslsplit
     tor proxychains4 macchanger
-    snort yersinia
     fping ngrep dns2tcp tcpflow tcpreplay
     netsniff-ng arping
 )
 
-NET_PIPX=(sshuttle smbmap)
+NET_PIPX=(sshuttle smbmap mitmproxy)
 
 NET_GO=(
     "github.com/jpillora/chisel@latest"
@@ -29,11 +27,12 @@ NET_GIT=(
     "PRET=https://github.com/RUB-NDS/PRET.git"
     "pwnat=https://github.com/samyk/pwnat.git"
     "dnschef=https://github.com/iphelix/dnschef.git"
+    "yersinia=https://github.com/tomac/yersinia.git"
 )
 
 NET_CARGO=(rustscan)
 NET_GO_BINS=(chisel)
-NET_GIT_NAMES=(bettercap dnscat2 nipe PRET pwnat dnschef)
+NET_GIT_NAMES=(bettercap dnscat2 nipe PRET pwnat dnschef yersinia)
 
 install_module_networking() {
     install_apt_batch "Networking - Packages" "${NET_PACKAGES[@]}"

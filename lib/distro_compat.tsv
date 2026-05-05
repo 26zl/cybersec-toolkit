@@ -68,6 +68,8 @@ llvm-dev	llvm-devel	llvm	llvm-devel	-
 libpixman-1-dev	pixman-devel	pixman	libpixman-1-devel	-
 libunwind-dev	libunwind-devel	libunwind	libunwind-devel	-
 libini-config-dev	ding-libs-devel	-	-	-
+libcairo2-dev	cairo-devel	cairo	cairo-devel	cairo
+libgirepository1.0-dev	gobject-introspection-devel	gobject-introspection	gobject-introspection-devel	-
 #
 # ----- Tool renames ----------------------------------------------------------
 #debian	dnf	pacman	zypper	pkg
@@ -109,11 +111,8 @@ libnfc-dev	-	-	-	-
 #
 # ----- Skipped: per-distro availability --------------------------------------
 #debian	dnf	pacman	zypper	pkg
-snort	-	-	-	
-yersinia	-	-	-	
 dns2tcp	-	-	-	
 redsocks	-	-	-	
-mitmproxy	-	-	-	
 autopsy	-	-	-	
 scalpel	-	-	-	
 dc3dd	-	-	-	

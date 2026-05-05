@@ -26,6 +26,10 @@ SHARED_BASE_PACKAGES=(
     libcapstone-dev libgmp-dev libecm-dev
     libldap2-dev libsasl2-dev
     libpixman-1-dev libunwind-dev libini-config-dev
+    # Cairo + GObject introspection — needed by pycairo/PyGObject when pulled in
+    # transitively by pipx tools (e.g. maigret -> pycairo). Pip builds pycairo
+    # from source against libcairo headers.
+    libcairo2-dev libgirepository1.0-dev
 
     # Compiler toolchains — needed by fuzzing, build-from-source, and native extensions
     llvm llvm-dev clang lld flex bison

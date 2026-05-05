@@ -3,7 +3,7 @@
 # Module: Web Security
 # Web application testing, scanning, fuzzing, exploitation
 
-WEB_PACKAGES=(whatweb nikto)
+WEB_PACKAGES=(whatweb)
 
 WEB_PIPX=(
     sqlmap wafw00f sslyze arjun
@@ -33,6 +33,7 @@ WEB_CARGO=(feroxbuster)
 WEB_GEMS=(wpscan brakeman)
 
 WEB_GIT=(
+    "nikto=https://github.com/sullo/nikto.git"
     "XSStrike=https://github.com/s0md3v/XSStrike.git"
     "Corsy=https://github.com/s0md3v/Corsy.git"
     "jwt_tool=https://github.com/ticarpi/jwt_tool.git"
@@ -54,7 +55,7 @@ WEB_GIT=(
 
 # Binary names for verify/remove
 WEB_GO_BINS=(nuclei katana ffuf crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice gobuster)
-WEB_GIT_NAMES=(XSStrike Corsy jwt_tool smuggler NoSQLMap testssl.sh Gopherus CMSmap PhpSploit phpggc PadBuster h2csmuggler pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider)
+WEB_GIT_NAMES=(nikto XSStrike Corsy jwt_tool smuggler NoSQLMap testssl.sh Gopherus CMSmap PhpSploit phpggc PadBuster h2csmuggler pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider)
 
 install_module_web() {
     install_apt_batch "Web - Packages" "${WEB_PACKAGES[@]}"

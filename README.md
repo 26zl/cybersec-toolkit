@@ -409,7 +409,7 @@ __Debian/Ubuntu/Kali is the primary target__ -- the full 580+ registry is availa
 
 | Platform | Status |
 | -------- | ------ |
-| __WSL__ | Supported for installs and MCP usage. Wireless module auto-skipped (no hardware access) and kernel-level packages filtered. Validate release-critical changes in a local WSL distro because there is no dedicated CI job yet. |
+| __WSL__ | Supported for installs and MCP usage. Wireless module auto-skipped (no hardware access) and kernel-level packages filtered. Validate release-critical changes in a local WSL distro because there is no dedicated CI job yet. See the [Windows Defender note](#windows-defender-false-positives) below if you keep the repo on a Windows-mounted path. |
 | __ARM__ (aarch64/armv7) | Supported with automatic skips for x86-only binary releases and build-from-source tools. No dedicated CI job yet. |
 | __Termux__ (Android) | Experimental. Under development, not covered by CI, and not yet broadly tested on physical devices. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
 | __Windows__ (native) | Not supported. Use WSL. |
@@ -433,6 +433,23 @@ The `.versions` file logs what was installed and when.
 Checksum verification is best-effort by default. Some upstream releases do not publish checksums or signatures, so downloads may proceed without cryptographic verification in those cases. Use `--require-checksums` to fail-closed when no checksum file is available. Go SDK downloads are SHA256-verified against go.dev when the API is reachable; use `--require-checksums` to hard-fail if it is not.
 
 `--fast` skips __all__ checksum verification for binary releases (both SHA256 checks and the missing-checksum warning), including releases that _do_ publish checksums. This trades integrity verification for speed. It is mutually exclusive with `--require-checksums`. Do not use `--fast` in CI pipelines or environments where supply-chain integrity matters.
+
+### Windows Defender false positives
+
+If you clone this repo onto a Windows-mounted path (e.g. `C:\Users\<you>\...` or any folder visible from Windows while you work in WSL), Microsoft Defender and other AV products may quarantine individual files. Defensive content -- IOC reference tables, sample obfuscated PowerShell, malware analysis snippets, exploit PoC strings inside `.claude/skills/`, `workflows/`, and parts of `mcp_server/` -- contains the same byte-strings real attackers use, so signature- and ML-based engines can flag them. Common detections include `Trojan:Script/Wacatac.B!ml`, `HackTool:*`, and generic `Heur.*` verdicts.
+
+These are false positives in the context of a security toolkit. To work with the repo on Windows you have three options:
+
+1. __Add a Defender exclusion for the repo folder__ (recommended for a personal dev box). Run from an elevated PowerShell:
+
+   ```powershell
+   Add-MpPreference -ExclusionPath "C:\path\to\cybersec-toolkit"
+   ```
+
+2. __Restore individual files from quarantine__ via Windows Security -> Virus & threat protection -> Protection history -> "Allow on device". Per-file, but does not prevent re-detection on update.
+3. __Keep the repo inside the WSL filesystem__ (e.g. `~/cybersec-toolkit` in your distro). Defender does not scan WSL2's vhdx by default, so detections do not occur. `scripts/sync-wsl.sh` already does this for the MCP server subdirectory.
+
+Files removed by Defender will appear as `D` in `git status`. The content is preserved in git history; restore with `git checkout -- <path>` once an exclusion is in place.
 
 ## License
 
