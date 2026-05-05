@@ -28,5 +28,28 @@ DEST="\$HOME/cybersec-toolkit"
 
 echo "Syncing MCP server to WSL (${DISTRO:-default distro})..."
 
-# Quote SRC so paths with spaces work inside the inner bash -c
-wsl.exe "${WSL_DISTRO_FLAG[@]}" bash -c "mkdir -p ${DEST}/mcp_server/tests && cp \"${SRC}\"/mcp_server/*.py ${DEST}/mcp_server/ && cp \"${SRC}\"/mcp_server/tests/*.py ${DEST}/mcp_server/tests/ 2>/dev/null; cp \"${SRC}\"/mcp_server/pyproject.toml ${DEST}/mcp_server/ && cp \"${SRC}\"/mcp_server/uv.lock ${DEST}/mcp_server/ 2>/dev/null; ln -sf \"${SRC}\"/tools_config.json ${DEST}/tools_config.json 2>/dev/null; echo Done"
+# Quote SRC so paths with spaces work inside the inner bash -c.
+# Errors are surfaced (no 2>/dev/null) so symlink/copy failures aren't hidden —
+# silent failure here is what produces the "tools_config.json not found" error
+# at MCP server startup.
+wsl.exe "${WSL_DISTRO_FLAG[@]}" bash -c "
+set -e
+mkdir -p ${DEST}/mcp_server/tests
+cp \"${SRC}\"/mcp_server/*.py ${DEST}/mcp_server/
+if compgen -G \"${SRC}/mcp_server/tests/*.py\" > /dev/null; then
+    cp \"${SRC}\"/mcp_server/tests/*.py ${DEST}/mcp_server/tests/
+fi
+cp \"${SRC}\"/mcp_server/pyproject.toml ${DEST}/mcp_server/
+if [ -f \"${SRC}/mcp_server/uv.lock\" ]; then
+    cp \"${SRC}\"/mcp_server/uv.lock ${DEST}/mcp_server/
+fi
+# tools_config.json must be reachable from the WSL project root — symlink to
+# the Windows source so registry edits don't need re-syncing. Force-replace
+# any existing file/symlink. Verify the link resolves before exiting.
+ln -sfn \"${SRC}\"/tools_config.json ${DEST}/tools_config.json
+if [ ! -f ${DEST}/tools_config.json ]; then
+    echo \"ERROR: tools_config.json symlink at ${DEST}/tools_config.json is broken\" >&2
+    echo \"       (target: ${SRC}/tools_config.json)\" >&2
+    exit 1
+fi
+echo Done"

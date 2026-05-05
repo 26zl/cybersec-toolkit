@@ -10,10 +10,17 @@ from typing import Optional
 
 
 def _resolve_registry_path(root: Path) -> Path:
-    """Resolve the fixed tools registry path under a validated project root."""
+    """Resolve the fixed tools registry path under a validated project root.
+
+    Supports symlinks where ``tools_config.json`` itself is a link out of the
+    project tree — e.g. WSL setups where the registry symlinks to a
+    Windows-mounted path under ``/mnt/c/...``. The path is *constructed* under
+    ``root``, so the "directly under root" guarantee comes from construction;
+    we do not need to additionally constrain where the symlink target lives.
+    """
     resolved_root = root.resolve(strict=True)
-    config_path = (resolved_root / "tools_config.json").resolve(strict=True)
-    if config_path.parent != resolved_root:
+    config_path = resolved_root / "tools_config.json"
+    if not config_path.is_file():
         raise FileNotFoundError(f"tools_config.json not found directly under {resolved_root}")
     return config_path
 

@@ -333,6 +333,48 @@ ensure_cargo_binstall() {
     return 1
 }
 
+# ensure_uv — install uv (astral.sh) for the invoking user.
+# Used by tools that need uv-managed venvs (theHarvester, MCP server, etc.).
+# Installs to $SUDO_USER's ~/.local/bin (not /root/.local/bin) so the user's
+# WSL session can find the binary at $HOME/.local/bin/uv. Same `_as_builder`
+# pattern as ensure_cargo above.
+ensure_uv() {
+    if command_exists uv; then
+        log_debug "uv already available"
+        return 0
+    fi
+
+    # curl-pipe install — respect --skip-source
+    if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
+        log_warn "Skipping uv install (--skip-source) — uv-dependent tools will not be available"
+        return 1
+    fi
+
+    log_info "Installing uv (astral.sh) for $(_builder_home | xargs basename)..."
+
+    local _uv_tmp
+    _uv_tmp=$(mktemp); _register_cleanup "$_uv_tmp"
+    if curl -L --proto '=https' --tlsv1.2 -sSf https://astral.sh/uv/install.sh -o "$_uv_tmp" 2>>"$LOG_FILE" \
+            && _validate_curl_pipe "$_uv_tmp" 'uv' 'astral' 'install' \
+            && chmod +r "$_uv_tmp" \
+            && _as_builder "sh '$(_escape_single_quoted "$_uv_tmp")'" >> "$LOG_FILE" 2>&1; then
+        # Add the invoking user's bin dir to PATH so the rest of the install
+        # finds uv regardless of which user owns it.
+        local _uvdir
+        _uvdir="$(_builder_home)/.local/bin"
+        export PATH="$_uvdir:$HOME/.local/bin:$PATH"
+    fi
+    rm -f "$_uv_tmp"
+
+    if command_exists uv; then
+        log_success "uv installed"
+        return 0
+    fi
+
+    log_error "Failed to install uv — uv-dependent tools (theHarvester, MCP server) unavailable"
+    return 1
+}
+
 # ensure_python_modern — install a modern Python (>= PYTHON_MIN_VERSION) alongside
 # the system Python when needed.  Some pipx tools have transitive dependencies
 # requiring Python 3.11+ (e.g., sectools>=1.5.0).  Follows the ensure_go()/

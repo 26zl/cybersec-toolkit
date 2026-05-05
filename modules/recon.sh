@@ -77,28 +77,13 @@ install_module_recon() {
     install_go_batch "Recon / OSINT - Go" "${RECON_GO[@]}"
     install_git_batch "Recon / OSINT - Git" "${RECON_GIT[@]}"
 
-    # theHarvester (requires uv — not pipx compatible)
+    # theHarvester (requires uv — not pipx compatible).
+    # ensure_uv() lives in lib/shared.sh and is the canonical uv installer for
+    # the project (centralised so the MCP server and any future uv-based tools
+    # share the same install path).
     local _th_dir="$GITHUB_TOOL_DIR/theHarvester"
     if [[ -f "$_th_dir/pyproject.toml" ]]; then
-        if ! command_exists uv; then
-            if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
-                log_warn "Skipping uv install (--skip-source) — theHarvester setup skipped"
-            elif {
-                local _uv_tmp
-                _uv_tmp=$(mktemp); _register_cleanup "$_uv_tmp"
-                curl -fsSL https://astral.sh/uv/install.sh -o "$_uv_tmp" 2>>"$LOG_FILE" \
-                    && grep -q 'uv' "$_uv_tmp" && grep -q 'astral' "$_uv_tmp" \
-                    && sh "$_uv_tmp" >> "$LOG_FILE" 2>&1
-                local _uv_rc=$?
-                rm -f "$_uv_tmp"
-                (( _uv_rc == 0 ))
-            }; then
-                export PATH="$HOME/.local/bin:$PATH"
-                log_success "uv installed"
-            else
-                log_error "Failed to install uv — theHarvester setup skipped"
-            fi
-        fi
+        ensure_uv || true
         if command_exists uv; then
             _start_spinner "Setting up theHarvester with uv..."
             if (cd "$_th_dir" && uv sync) >> "$LOG_FILE" 2>&1; then
