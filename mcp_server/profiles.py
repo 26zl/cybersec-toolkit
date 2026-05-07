@@ -86,7 +86,7 @@ PROFILES: dict[str, dict] = {
     },
     "web": {
         "description": "Web application security testing",
-        "modules": ["misc", "networking", "recon", "web"],
+        "modules": ["misc", "networking", "recon", "web", "llm"],
         "skip_heavy": True,
         "enable_docker": False,
         "include_c2": False,
