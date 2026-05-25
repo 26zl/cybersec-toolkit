@@ -26,6 +26,9 @@ python3 scripts/validate_mcp_sync.py
 # Validate distro compatibility TSV (0 errors = pass)
 python3 scripts/validate_distro_compat.py
 
+# Validate Claude Code skill metadata and SKILLS.md counts
+python3 scripts/validate_claude_skills.py
+
 # Populate missing URLs in tools_config.json from module source
 python3 scripts/validate_tools_config.py --sync
 
@@ -118,7 +121,7 @@ docker run -i --rm --entrypoint bash cybersec-toolkit \  # Run MCP server
 
 ## CI Pipeline
 
-Ten parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
+Eleven parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 
 1. **shellcheck** — `shellcheck --severity=warning` on all `.sh` files
 2. **bash-syntax** — `bash -n` on all `.sh` files
@@ -126,10 +129,11 @@ Ten parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 4. **bats-tests** — `bats tests/*.bats` (unit tests)
 5. **validate-tools-config** — `python3 scripts/validate_tools_config.py` (0 errors, 0 warnings)
 6. **distro-compat-validate** — `python3 scripts/validate_distro_compat.py` (distro package mappings)
-7. **python-lint** — `ruff check` + `ruff format --check` on MCP server
-8. **python-tests** — `pytest` on MCP server tests
-9. **mcp-server-check** — `uv sync`, import test, `validate_mcp_sync.py`
-10. **validate-profiles** — checks every `profiles/*.conf` module name against `ALL_MODULES`
+7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py` (skill frontmatter + index counts)
+8. **python-lint** — `ruff check` + `ruff format --check` on MCP server
+9. **python-tests** — `pytest` on MCP server tests
+10. **mcp-server-check** — `uv sync`, import test, `validate_mcp_sync.py`
+11. **validate-profiles** — checks every `profiles/*.conf` module name against `ALL_MODULES`
 
 Security workflow (`.github/workflows/security.yml`, separate from CI):
 
@@ -194,7 +198,8 @@ Separate Python package (FastMCP). 13 AI-accessible tools: `list_tools`, `check_
 **Environment variables** (set in `.mcp.json` / `claude_desktop_config.json`):
 
 - `CYBERSEC_MCP_ALLOW_SCRIPTS=1` — enables `run_script()` (Python/Bash execution)
-- `CYBERSEC_MCP_ALLOW_EXTERNAL=1` — allows network tools to target external IPs (default: private/loopback only)
+- `CYBERSEC_MCP_ALLOW_EXTERNAL=0` — safest default; network tools can target private/loopback only
+- `CYBERSEC_MCP_ALLOW_EXTERNAL=1` — opt in only for explicitly authorized external scopes
 - `CYBERSEC_MCP_VENVS_DIR` — custom location for script venvs (default: `~/.ctf-venvs/`)
 - `CYBERSEC_INSTALLER_ROOT` — override project root path for tools_config.json lookup
 

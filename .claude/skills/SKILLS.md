@@ -2,7 +2,7 @@
 
 This directory contains 65 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
-## Project-specific developer skills (6)
+## Project-specific developer skills (7)
 
 Maintained in this repo. Cover the install-side workflow.
 

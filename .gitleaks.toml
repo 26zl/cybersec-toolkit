@@ -13,6 +13,9 @@ useDefault = true
 #   the audit log. Those strings match generic-api-key / jwt rules.
 # - test_security.py uses "-u admin:pass" / "user:pw" as curl auth fixtures to
 #   verify the curl-policy exemption. Those match the curl-auth-user rule.
+# - Some historical Claude skill examples used literal placeholder strings
+#   (YOUR_API_KEY / YOUR_VT_API_KEY) in curl auth headers. They are not
+#   credentials, but git-history scanning still sees those old examples.
 #
 # Any real leak committed inside these two files would still slip through, so
 # keep them small and review-heavy. New test files are NOT covered here by
@@ -22,4 +25,8 @@ description = "Test fixtures with intentionally fake credentials"
 paths = [
     '''mcp_server/tests/test_audit\.py''',
     '''mcp_server/tests/test_security\.py''',
+]
+regexes = [
+    '''YOUR_API_KEY''',
+    '''YOUR_VT_API_KEY''',
 ]

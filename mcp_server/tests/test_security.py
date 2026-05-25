@@ -1186,7 +1186,7 @@ class TestBoundedCommunicate:
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-c",
-            "print('hello world')",
+            "import sys; sys.stdout.buffer.write(b'hello world\\n')",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

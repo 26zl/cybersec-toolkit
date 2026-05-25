@@ -134,6 +134,19 @@ jobs:
       - name: Validate distro compatibility mappings
         run: python3 scripts/validate_distro_compat.py
 
+  claude-skills-validate:
+    name: Validate Claude Skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Validate Claude Code skill metadata
+        run: python3 scripts/validate_claude_skills.py
+
   python-lint:
     name: Python Lint (ruff)
     runs-on: ubuntu-latest

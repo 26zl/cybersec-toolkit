@@ -301,7 +301,8 @@ Once connected, just talk to the AI naturally:
 
 ### Script Execution
 
-`run_script` lets the AI write and execute Python or Bash scripts. Requires `CYBERSEC_MCP_ALLOW_SCRIPTS=1`:
+`run_script` lets the AI write and execute Python or Bash scripts. Requires `CYBERSEC_MCP_ALLOW_SCRIPTS=1`.
+External targets stay blocked by default; set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` only for explicitly authorized scopes:
 
 ```json
 {
@@ -311,7 +312,7 @@ Once connected, just talk to the AI naturally:
       "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py"],
       "env": {
         "CYBERSEC_MCP_ALLOW_SCRIPTS": "1",
-        "CYBERSEC_MCP_ALLOW_EXTERNAL": "1"
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0"
       }
     }
   }

@@ -157,8 +157,9 @@ PYEOF
 
 # Check if sending IP is in known malicious IP lists
 # Query AbuseIPDB or VirusTotal
+ABUSEIPDB_HEADER=$(printf 'Key: %s' "${ABUSEIPDB_API_KEY:?set ABUSEIPDB_API_KEY}")
 curl -s "https://api.abuseipdb.com/api/v2/check?ipAddress=${SENDING_IP}" \
-   -H "Key: YOUR_API_KEY" -H "Accept: application/json" | python3 -m json.tool
+   -H "$ABUSEIPDB_HEADER" -H "Accept: application/json" | python3 -m json.tool
 ```
 
 ### Step 4: Analyze Sender Domain and Infrastructure
@@ -193,8 +194,9 @@ if ratio > 0.8:
 PYEOF
 
 # Check domain reputation on VirusTotal
+VT_HEADER=$(printf 'x-apikey: %s' "${VT_API_KEY:?set VT_API_KEY}")
 curl -s "https://www.virustotal.com/api/v3/domains/${SENDER_DOMAIN}" \
-   -H "x-apikey: YOUR_VT_API_KEY" | python3 -m json.tool
+   -H "$VT_HEADER" | python3 -m json.tool
 
 # Check if the Reply-To differs from From (common phishing indicator)
 python3 -c "

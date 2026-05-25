@@ -78,8 +78,9 @@ result = dkim.verify(message)
 
 ### API Endpoint
 ```bash
+ABUSEIPDB_HEADER=$(printf 'Key: %s' "${ABUSEIPDB_API_KEY:?set ABUSEIPDB_API_KEY}")
 curl -G "https://api.abuseipdb.com/api/v2/check" \
-  -H "Key: YOUR_API_KEY" \
+  -H "$ABUSEIPDB_HEADER" \
   -H "Accept: application/json" \
   -d "ipAddress=203.0.113.45" -d "maxAgeInDays=90"
 ```

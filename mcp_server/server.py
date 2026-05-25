@@ -753,7 +753,7 @@ async def run_tool(
     """Execute an installed cybersecurity tool or system utility and return its output.
 
     Runs tools from the 580+ registry as well as ~120 standard system
-    utilities (strings, file, curl, grep, base64, xxd, jq, python3, etc.)
+    utilities (strings, file, curl, grep, base64, xxd, jq, etc.)
     that are allowed without being in the registry. Arguments are sanitized
     to prevent shell injection. Timeout is clamped to 1-300s. Output is
     truncated at 200KB.

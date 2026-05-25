@@ -480,7 +480,8 @@ class TestScriptVenvParam:
         venv_dir = tmp_path / "testvenv" / "bin"
         venv_dir.mkdir(parents=True)
         python_bin = venv_dir / "python"
-        python_bin.symlink_to(sys.executable)
+        python_bin.touch()
+        python_bin.chmod(0o755)
 
         proc = _make_proc(b"ok\n")
         with (
