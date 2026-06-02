@@ -53,6 +53,14 @@ _global_cleanup() {
     type -t _gh_api_cache_cleanup &>/dev/null && _gh_api_cache_cleanup 2>/dev/null || true
 }
 
+# Run cleanup on normal exit too, not only on INT/TERM. Without this, a normal
+# early `return`/`exit` (e.g. before the per-function `rm -rf`) would leave
+# registered temp paths behind — notably the gh-netrc file holding GITHUB_TOKEN
+# (mode 600). INT/TERM handlers additionally `exit 130`; this is the catch-all.
+# `( )` subshells reset traps to the shell's inherited defaults, so this does
+# not fire inside flock/parallel-job subshells.
+trap '_global_cleanup' EXIT
+
 # ── Session tracking for rollback ──
 # Each install run creates a manifest in .install_sessions/<id>.manifest
 # Used by --rollback and --list-sessions.
@@ -1338,6 +1346,40 @@ _collect_module_arrays() {
     for _mod in "${ALL_MODULES[@]}"; do
         _prefix=$(_module_prefix "$_mod")
         _append_module_array _cma_dest "${_prefix}_${_suffix}"
+    done
+}
+
+# _module_array_names — append PREFIX_SUFFIX array names (one per module) to a
+# destination array. Lets single-tool lookups enumerate every module's arrays
+# without hardcoding the list — nonexistent arrays are skipped by the caller
+# (via declare -p / _arr_has), so listing all modules is harmless.
+# Usage: _module_array_names "PIPX" dest_array
+_module_array_names() {
+    local _suffix="$1"
+    local -n _man_dest="$2"
+    local _mod
+    for _mod in "${ALL_MODULES[@]}"; do
+        _man_dest+=("$(_module_prefix "$_mod")_${_suffix}")
+    done
+}
+
+# _validate_module_names — exit 1 if any listed module is unknown or contains
+# path components (prevents path traversal / typos). $1 is the help hint shown
+# on an unknown module; remaining args are the module names to check. Shared by
+# the --module handling in install.sh, verify.sh and remove.sh.
+# Usage: _validate_module_names "use --help to see available modules" "${MODS[@]}"
+_validate_module_names() {
+    local _hint="$1"; shift
+    local _vmn
+    for _vmn in "$@"; do
+        if [[ "$_vmn" == */* || "$_vmn" == *..* ]]; then
+            log_error "Invalid module name (no path components allowed): $_vmn"
+            exit 1
+        fi
+        if [[ " ${ALL_MODULES[*]} " != *" $_vmn "* ]]; then
+            log_error "Unknown module: $_vmn ($_hint)"
+            exit 1
+        fi
     done
 }
 

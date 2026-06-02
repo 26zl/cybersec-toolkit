@@ -216,6 +216,16 @@ BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^--exploit$"), "active exploitation flag --exploit"),
 ]
 
+# radare2/r2 share a command interface with shell-escape (`!`), pipe (`#!`) and
+# source (`. file`) syntax, plus -i/-I to run a script file. Best-effort denylist.
+_R2_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"^-i$"), "radare2: -i run script file"),
+    (re.compile(r"^-I$"), "radare2: -I run startup script file"),
+    (re.compile(r"(?:^|[\s;])!"), "radare2: ! shell escape"),
+    (re.compile(r"#!"), "radare2: #! pipe/lang execution"),
+    (re.compile(r"(?:^|[\s;])\.\s"), "radare2: . source/interpret command"),
+]
+
 # Tool-specific blocked flags — dangerous per-tool options.
 TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "sqlmap": [
@@ -234,6 +244,8 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "nmap": [
         (re.compile(r"^-iL$"), "nmap: target list from file (bypasses target validation)"),
         (re.compile(r"^-iR$"), "nmap: random target generation (bypasses target validation)"),
+        # --script / --script-args load arbitrary NSE (Lua with os.execute) = RCE.
+        (re.compile(r"^--script"), "nmap: NSE script execution (--script*)"),
     ],
     "masscan": [
         (re.compile(r"^--includefile$"), "masscan: target list from file"),
@@ -245,7 +257,36 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "tar": [
         (re.compile(r"^--checkpoint-action"), "tar: checkpoint-action command execution"),
         (re.compile(r"^--to-command"), "tar: to-command command execution"),
+        # -I / --use-compress-program run an arbitrary program as the (de)compressor.
+        (re.compile(r"^-I$"), "tar: -I external compressor (command execution)"),
+        (re.compile(r"^--use-compress-program(?:$|=)"), "tar: external compressor (command execution)"),
+        (re.compile(r"^--rmt-command(?:$|=)"), "tar: --rmt-command (command execution)"),
+        (re.compile(r"^--rsh-command(?:$|=)"), "tar: --rsh-command (command execution)"),
     ],
+    # Debuggers / disassemblers with interactive command interfaces can shell
+    # out or run inline interpreters — treat their command-bearing flags and
+    # known shell-escape syntax as RCE. Best-effort denylist (use run_script for
+    # advanced debugging); covers the obvious vectors.
+    "gdb": [
+        (re.compile(r"^-x$"), "gdb: -x command file execution"),
+        (re.compile(r"^--command(?:$|=)"), "gdb: command file execution"),
+        (re.compile(r"^--init-command(?:$|=)"), "gdb: init command file"),
+        (re.compile(r"^--init-eval-command(?:$|=)"), "gdb: init eval command"),
+        (re.compile(r"(?:^|[\s'\"(])shell\b", re.IGNORECASE), "gdb: shell command execution"),
+        (re.compile(r"(?:^|[\s'\"(])(?:python|py|pi)\b", re.IGNORECASE), "gdb: python/pipe execution"),
+        (re.compile(r"system\s*\("), "gdb: call system()"),
+        (re.compile(r"(?:^|[\s'\"(])!"), "gdb: shell escape"),
+    ],
+    "tshark": [
+        (re.compile(r"^-X$"), "tshark: -X extension (lua_script: command execution)"),
+        (re.compile(r"lua_script:", re.IGNORECASE), "tshark: lua_script extension (command execution)"),
+    ],
+    "tcpdump": [
+        (re.compile(r"^-z$"), "tcpdump: -z postrotate command execution"),
+        (re.compile(r"^--postrotate-command(?:$|=)"), "tcpdump: postrotate command execution"),
+    ],
+    "radare2": _R2_BLOCKED_FLAGS,
+    "r2": _R2_BLOCKED_FLAGS,
     "gpg": [
         (re.compile(r"^--recv-keys?$"), "gpg: key import from external keyserver"),
         (re.compile(r"^--keyserver$"), "gpg: external keyserver specification"),
@@ -417,10 +458,46 @@ def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
     return result
 
 
+def _decode_encoded_ipv4(value: str) -> ipaddress.IPv4Address | None:
+    """Decode a non-dotted IPv4 encoding (decimal/hex/octal) to an address.
+
+    Catches obfuscations like ``134744072`` (== 8.8.8.8) and ``0x08080808``
+    that bare-positional tools (nc, ncat, ping) accept as a host but that the
+    dotted-quad parser misses, letting an external host slip past the allowlist.
+
+    Returns ``None`` when *value* is not a single-integer host encoding — bare
+    decimals <= 65535 are excluded so ports/timeouts (``-p 80``) are not
+    mis-validated as targets.
+    """
+    s = value.strip()
+    if not s:
+        return None
+    try:
+        if s.lower().startswith(("0x", "0o", "0b")):
+            n = int(s, 0)
+        elif s.isdigit():
+            n = int(s, 10)
+            if n <= 65535:  # port / timeout range — not an encoded IP
+                return None
+        else:
+            return None
+    except ValueError:
+        return None
+    if 0 <= n <= 0xFFFFFFFF:
+        return ipaddress.IPv4Address(n)
+    return None
+
+
 def _is_safe_target(value: str) -> bool:
     """Check if a string looks like a network target and is in a safe range."""
     if not value:
         return True  # Empty string is not a network target
+
+    # Non-dotted encoded IPv4 (decimal/hex/octal) — e.g. 134744072 == 8.8.8.8.
+    # Resolve before the dotted-quad parser so obfuscated externals are caught.
+    encoded = _decode_encoded_ipv4(value)
+    if encoded is not None:
+        return any(encoded in net for net in _SAFE_NETWORKS)
 
     # Try parsing as IP address directly
     try:
@@ -698,6 +775,11 @@ def _looks_like_target(value: str) -> bool:
         return True
     # localhost special case
     if value.lower() == "localhost":
+        return True
+    # Encoded IPv4 (decimal/hex/octal, e.g. 134744072 == 8.8.8.8). Bare ports
+    # and timeouts (<= 65535) are excluded by _decode_encoded_ipv4 so flag
+    # values like "80" are still skipped.
+    if _decode_encoded_ipv4(value) is not None:
         return True
     # Single-label hostname: alphabetic word (possibly with hyphens/digits) that
     # is not purely numeric.  Values like "google", "scanme" are valid DNS names

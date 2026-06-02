@@ -60,16 +60,7 @@ if [[ ${#VERIFY_MODULES[@]} -eq 0 ]]; then
     VERIFY_MODULES=("${ALL_MODULES[@]}")
 else
     # Validate each --module argument is a known module (prevent path traversal / typos)
-    for _vmod in "${VERIFY_MODULES[@]}"; do
-        if [[ "$_vmod" == */* || "$_vmod" == *..* ]]; then
-            log_error "Invalid module name (no path components allowed): $_vmod"
-            exit 1
-        fi
-        if [[ " ${ALL_MODULES[*]} " != *" $_vmod "* ]]; then
-            log_error "Unknown module: $_vmod (use --help to see available modules)"
-            exit 1
-        fi
-    done
+    _validate_module_names "use --help to see available modules" "${VERIFY_MODULES[@]}"
 fi
 
 # --installed-only: load tracked tools from .versions file

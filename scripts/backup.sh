@@ -85,17 +85,41 @@ encrypt_archive() {
     printf '%s' "$_PASSPHRASE" > "$pass_file"
     unset _PASSPHRASE
 
+    # Encrypt-then-MAC. ChaCha20 is an unauthenticated stream cipher, so the
+    # ciphertext is malleable and corruption/tampering would silently decrypt
+    # into garbage. We authenticate the ciphertext with HMAC-SHA256 (key
+    # derived from the passphrase) and store the tag alongside; decryption
+    # verifies it first and fails closed on any mismatch.
+    local mac_key
+    mac_key=$(_backup_mac_key "$pass_file")
     if openssl enc -chacha20 -salt -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
-        -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null; then
+        -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null \
+        && openssl dgst -sha256 -mac HMAC -macopt "hexkey:$mac_key" "${archive_path}.enc" 2>/dev/null \
+            | awk '{print $NF}' > "${archive_path}.enc.hmac" \
+        && [[ -s "${archive_path}.enc.hmac" ]]; then
+        unset mac_key
         rm -f "$pass_file" "$archive_path"
-        log_success "Archive encrypted: ${archive_path}.enc"
+        chmod 600 "${archive_path}.enc" "${archive_path}.enc.hmac" 2>/dev/null || true
+        log_success "Archive encrypted: ${archive_path}.enc (+ HMAC integrity tag)"
         log_info "Remember your passphrase (it is NOT stored)"
         return 0
     else
-        rm -f "$pass_file" "${archive_path}.enc"
+        unset mac_key
+        rm -f "$pass_file" "${archive_path}.enc" "${archive_path}.enc.hmac"
         log_error "Encryption failed"
         return 1
     fi
+}
+
+# _backup_mac_key — derive a hex HMAC key from the passphrase file.
+# Uses the passphrase content (not the raw arg) so the secret is not placed
+# on a command line; the resulting hex digest is what openssl dgst consumes.
+_backup_mac_key() {
+    local pass_file="$1"
+    # sha256 of "hmac:" + passphrase — a domain-separated key distinct from the
+    # PBKDF2-derived ChaCha20 key, reproducible from the passphrase alone.
+    { printf 'cybersec-backup-hmac:'; cat "$pass_file"; } \
+        | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}'
 }
 
 decrypt_archive() {
@@ -103,6 +127,25 @@ decrypt_archive() {
     local output_path="${encrypted_path%.enc}"
 
     _read_passphrase_to_file
+
+    # Verify the HMAC integrity tag before decrypting (fail closed on tamper).
+    # Backups written before integrity tags have no .hmac — warn and proceed so
+    # old archives still restore, but flag that integrity can't be guaranteed.
+    local hmac_file="${encrypted_path}.hmac"
+    if [[ -f "$hmac_file" ]]; then
+        local mac_key expected actual
+        mac_key=$(_backup_mac_key "$_PASS_FILE")
+        expected=$(tr -d '[:space:]' < "$hmac_file")
+        actual=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$mac_key" "$encrypted_path" 2>/dev/null | awk '{print $NF}')
+        unset mac_key
+        if [[ -z "$actual" || "$expected" != "$actual" ]]; then
+            rm -f "$_PASS_FILE"
+            log_error "Integrity check FAILED — archive is corrupt, tampered, or passphrase is wrong. Refusing to decrypt."
+            return 1
+        fi
+    else
+        log_warn "No HMAC tag found ($hmac_file) — legacy backup, integrity cannot be verified"
+    fi
 
     if openssl enc -chacha20 -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
         -in "$encrypted_path" -out "$output_path" -pass file:"$_PASS_FILE" 2>/dev/null; then

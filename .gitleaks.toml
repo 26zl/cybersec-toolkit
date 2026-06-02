@@ -5,28 +5,61 @@ title = "cybersec-toolkit gitleaks config"
 [extend]
 useDefault = true
 
-# Allowlist scoped to specific test files where fake credentials are part of
-# the fixtures. Broader project paths stay fully scanned.
+# Allowlists scoped to specific fixtures where fake credentials are part of
+# the test data or vendored documentation. Broader project paths stay fully
+# scanned.
 #
 # - test_audit.py intentionally embeds shaped-like-real tokens (sk-..., ghp_...,
 #   a fake JWT) to prove that _redact_script_code() strips them before they hit
 #   the audit log. Those strings match generic-api-key / jwt rules.
 # - test_security.py uses "-u admin:pass" / "user:pw" as curl auth fixtures to
 #   verify the curl-policy exemption. Those match the curl-auth-user rule.
-# - Some historical Claude skill examples used literal placeholder strings
-#   (YOUR_API_KEY / YOUR_VT_API_KEY) in curl auth headers. They are not
-#   credentials, but git-history scanning still sees those old examples.
 #
 # Any real leak committed inside these two files would still slip through, so
 # keep them small and review-heavy. New test files are NOT covered here by
 # default — add paths explicitly as needed.
-[allowlist]
+[[allowlists]]
 description = "Test fixtures with intentionally fake credentials"
 paths = [
     '''mcp_server/tests/test_audit\.py''',
     '''mcp_server/tests/test_security\.py''',
 ]
+
+# Literal placeholder strings used in old examples and fixtures. These are not
+# credentials, but git-history scanning can still see them.
+[[allowlists]]
+description = "Literal placeholder API keys"
 regexes = [
     '''YOUR_API_KEY''',
     '''YOUR_VT_API_KEY''',
+]
+
+[[allowlists]]
+description = "Generated Python bytecode caches"
+paths = [
+    '''__pycache__/''',
+    '''\.pyc$''',
+]
+
+# Vendored Claude skills contain many instructional examples. Keep this
+# allowlist constrained to the vendored skill tree and to line-level patterns
+# that are placeholders, public protocol examples, or code variable references.
+[[allowlists]]
+description = "Vendored Claude skill examples with placeholder credentials"
+condition = "AND"
+regexTarget = "line"
+paths = [
+    '''^\.claude/skills/''',
+]
+regexes = [
+    '''Authorization:\s*(?:Bearer|Token)?\s*(?:MISP_KEY|USER_TOKEN|\$TOKEN[A-Z_]*|\$[A-Z_]*TOKEN[A-Z_]*|YOUR_[A-Z0-9_]+|<TOKEN>)''',
+    '''(?:X-Api-Key|hibp-api-key):\s*(?:your-api-key|YOUR_KEY|\$?[A-Z_]*KEY[A-Z_]*)''',
+    '''(?:curl|python3\s+tplmap\.py|python3\s+proxyshell_exploit\.py|sqlmap|ffuf)\b.*\s-u\s+(?:https?://|user:key|email:api_key|kismet:kismet)''',
+    '''Sec-WebSocket-Key["':\s]+dGhlIHNhbXBsZSBub25jZQ==''',
+    '''key\s*=\s*"[A-Za-z0-9+/]{8,}\.\.\."''',
+    '''(?:OSQUERY_KEY|GPP_AES_KEY_B64)\s*=''',
+    '''(?:args|self)\.(?:key|token|api_key|vt_key|abuseipdb_key|shodan_key|greynoise_key)\b''',
+    '''(?:api_key|password)\s*=\s*"(?:sk-abcdef1234567890abcdef|SuperSecret123!)"''',
+    '''(?:key_algorithm|key_share|Hybrid Key Exchange|Server Temp Key|File Accessed:)''',
+    '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkw''',
 ]

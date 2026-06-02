@@ -129,7 +129,7 @@ Eleven parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 4. **bats-tests** — `bats tests/*.bats` (unit tests)
 5. **validate-tools-config** — `python3 scripts/validate_tools_config.py` (0 errors, 0 warnings)
 6. **distro-compat-validate** — `python3 scripts/validate_distro_compat.py` (distro package mappings)
-7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py` (skill frontmatter + index counts)
+7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py` (skill frontmatter + index counts + helper script syntax)
 8. **python-lint** — `ruff check` + `ruff format --check` on MCP server
 9. **python-tests** — `pytest` on MCP server tests
 10. **mcp-server-check** — `uv sync`, import test, `validate_mcp_sync.py`
@@ -137,7 +137,7 @@ Eleven parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 
 Security workflow (`.github/workflows/security.yml`, separate from CI):
 
-- **gitleaks** — secret detection via Gitleaks. `.gitleaks.toml` at repo root path-allowlists `mcp_server/tests/test_audit.py` and `mcp_server/tests/test_security.py` where fake-credential fixtures (sk-..., ghp_..., `-u admin:pass`) intentionally match default rules. Other files stay fully scanned
+- **gitleaks** — secret detection via Gitleaks. `.gitleaks.toml` at repo root keeps default rules and narrowly allowlists fake test fixtures, generated Python bytecode caches, and vendored `.claude/skills/` placeholder examples. Other files stay fully scanned
 - **custom-security-scan** — hardcoded IPs, secrets, non-HTTPS URLs, unsafe eval, curl|bash, chmod 777
 - **pip-audit** — audits MCP server Python dependencies for known CVEs (via `uvx pip-audit`)
 - **pin-check** — enforces all GitHub Actions use full SHA commit pins (blocks tag-only references)
@@ -210,7 +210,8 @@ Separate Python package (FastMCP). 13 AI-accessible tools: `list_tools`, `check_
 | `tools_db.py` → `PIPX_BIN_NAMES` | `scripts/verify.sh` `_PIPX_BIN_NAMES` |
 | `tools_db.py` → `MODULE_DESCRIPTIONS` | `lib/common.sh` `MODULE_DESCRIPTIONS` |
 | `tools_db.py` → `DOCKER_IMAGES` | `lib/installers.sh` `ALL_DOCKER_IMAGES` |
-| `profiles.py` → `PROFILES` | `profiles/*.conf` files |
+| `profiles.py` → `PROFILES` (modules **and** `skip_heavy`/`enable_docker`/`include_c2` flags) | `profiles/*.conf` files |
+| `ctf_advisor.py` → `TOOL_ALIASES` (targets must exist) | `tools_config.json` tool names |
 
 **Execution security** (`security.py`):
 

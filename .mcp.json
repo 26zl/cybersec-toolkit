@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "cybersec-tools": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "mcp_server",
+        "fastmcp",
+        "run",
+        "server.py",
+        "--transport",
+        "stdio",
+        "--no-banner"
+      ],
+      "env": {
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
+      }
+    }
+  }
+}

@@ -233,14 +233,18 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 
 ### Quick Start
 
-Requires [uv](https://docs.astral.sh/uv/). Add to `.mcp.json` in the project root:
+Requires [uv](https://docs.astral.sh/uv/). Claude Code can use the tracked project `.mcp.json` directly. It runs the MCP server over stdio with scripts and external network targets disabled by default:
 
 ```json
 {
   "mcpServers": {
     "cybersec-tools": {
       "command": "uv",
-      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py"]
+      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py", "--transport", "stdio", "--no-banner"],
+      "env": {
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
+      }
     }
   }
 }
@@ -356,6 +360,7 @@ bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
 python3 scripts/validate_tools_config.py
 python3 scripts/validate_mcp_sync.py
 python3 scripts/validate_distro_compat.py
+python3 scripts/validate_claude_skills.py
 ./tests/bats/bin/bats tests/*.bats
 cd mcp_server && uv sync --group dev && uv run ruff check . && uv run ruff format --check . && uv run pytest tests/ -q
 ```
@@ -364,16 +369,31 @@ Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendor
 
 ## Claude Code Skills
 
-This repo ships 65 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
+This repo ships 799 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
 
-- 7 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`)
+- 9 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `skill-dependency-audit`, `skill-curation-router`)
+- 7 coverage gap anchor skills (GRC/privacy, AI/LLM security, IoT/embedded/hardware, mainframe, telecom/5G, SAP/ERP, supply-chain/product security)
+- 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
 - 6 CTF methodology skills (`ctf-crypto`, `ctf-pwn`, `ctf-web`, `ctf-rev`, `ctf-forensics`, `ctf-stego`)
 - 4 bug bounty methodology skills (`bounty-recon`, `bounty-web`, `bounty-api`, `bounty-mobile`)
 - 14 code audit skills from [Trail of Bits](https://github.com/trailofbits/skills) (CC-BY-SA 4.0)
-- 30 operational how-tos from [Anthropic Cybersecurity Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) (Apache 2.0)
+- 754 operational how-tos from [Anthropic Cybersecurity Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) (Apache 2.0)
 - 4 high-level workflows from [Transilience](https://github.com/transilienceai/communitytools) (MIT)
 
-Full index in [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
+Source and category index in [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
+
+`scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Audit those extras with:
+
+```bash
+python3 scripts/audit_skill_dependencies.py
+```
+
+Skill ranking/curation lives in `.claude/skills/CURATION.md` and `.claude/skills/curation.json`.
+Regenerate it with:
+
+```bash
+python3 scripts/curate_claude_skills.py --write
+```
 
 ## Tool Locations
 

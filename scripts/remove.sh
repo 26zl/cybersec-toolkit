@@ -69,16 +69,7 @@ if [[ ${#REMOVE_MODULES[@]} -eq 0 ]]; then
     REMOVE_MODULES=("${ALL_MODULES[@]}")
 else
     # Validate each --module argument is a known module (prevent path traversal / typos)
-    for _rmod in "${REMOVE_MODULES[@]}"; do
-        if [[ "$_rmod" == */* || "$_rmod" == *..* ]]; then
-            log_error "Invalid module name (no path components allowed): $_rmod"
-            exit 1
-        fi
-        if [[ " ${ALL_MODULES[*]} " != *" $_rmod "* ]]; then
-            log_error "Unknown module: $_rmod (use --help to see available modules)"
-            exit 1
-        fi
-    done
+    _validate_module_names "use --help to see available modules" "${REMOVE_MODULES[@]}"
 fi
 
 _init_log_file "$SCRIPT_DIR/tool_removal.log"
@@ -88,12 +79,7 @@ print_banner
 
 # When disk space is critically low, free package cache FIRST so that
 # subsequent pkg_remove calls have enough room for dpkg temp files.
-_avail_mb=0
-if [[ "$PKG_MANAGER" == "pkg" ]]; then
-    _avail_mb=$(df -Pm "$PREFIX" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
-else
-    _avail_mb=$(df -Pm / 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
-fi
+_avail_mb=$(_avail_disk_mb)
 if [[ "$_avail_mb" =~ ^[0-9]+$ ]] && [[ "$_avail_mb" -lt 100 ]]; then
     log_warn "Very low disk space (${_avail_mb}MB free) — clearing package cache first"
     case "$PKG_MANAGER" in

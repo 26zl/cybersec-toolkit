@@ -39,23 +39,25 @@ install_module_blockchain() {
         log_success "Foundry already installed"
     else
         log_warn "Installing Foundry via curl | bash (review: https://foundry.paradigm.xyz)"
-        local _foundry_tmp
+        local _foundry_tmp _foundry_home
+        _foundry_home="$(_builder_home)"
         _foundry_tmp=$(mktemp); _register_cleanup "$_foundry_tmp"
-        if curl -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE"; then
-            if grep -q 'foundry' "$_foundry_tmp" && grep -q 'foundryup' "$_foundry_tmp"; then
-                bash "$_foundry_tmp" >> "$LOG_FILE" 2>&1 || true
-            else
-                log_error "Foundry install script failed content verification — skipping"
-                TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-            fi
+        # Mirror the privilege-drop + validation discipline used by every other
+        # curl-pipe bootstrap (rustup/uv/nodesource): download to a temp file,
+        # validate size + keywords, then run as $SUDO_USER (not root).
+        if curl -L --proto '=https' --tlsv1.2 -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE" \
+                && _validate_curl_pipe "$_foundry_tmp" 'foundry' 'foundryup' \
+                && chmod +r "$_foundry_tmp" \
+                && _as_builder "bash '$(_escape_single_quoted "$_foundry_tmp")'" >> "$LOG_FILE" 2>&1; then
+            : # foundryup bootstrap placed in builder's ~/.foundry; run it below
         else
-            log_error "Failed to download Foundry install script"
+            log_error "Foundry install script failed (download or content verification) — skipping"
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         fi
         rm -f "$_foundry_tmp"
-        if [[ -f "$HOME/.foundry/bin/foundryup" ]]; then
+        if [[ -f "$_foundry_home/.foundry/bin/foundryup" ]]; then
             _start_spinner "Running foundryup..."
-            if "$HOME/.foundry/bin/foundryup" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "'$_foundry_home/.foundry/bin/foundryup'" >> "$LOG_FILE" 2>&1; then
                 _stop_spinner
                 log_success "Foundry installed"
                 track_version "foundry" "special" "latest"
@@ -70,7 +72,9 @@ install_module_blockchain() {
     # Symlink Foundry binaries to $PIPX_BIN_DIR for PATH access
     # NOTE: 'chisel' is skipped — it collides with jpillora/chisel (TCP tunnel)
     # from the networking module.  Access Foundry's chisel via ~/.foundry/bin/chisel.
-    local _foundry_dir="$HOME/.foundry/bin"
+    # foundryup installs under $SUDO_USER's home when privilege-dropping; resolve
+    # the builder's home so the symlinks point at the real install location.
+    local _foundry_dir; _foundry_dir="$(_builder_home)/.foundry/bin"
     if [[ -d "$_foundry_dir" ]]; then
         local _linked=0
         for _bin in foundryup forge cast anvil; do

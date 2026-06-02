@@ -72,7 +72,7 @@ tests/.bats-run-*
 docker-*.tar
 
 # MCP
-.mcp.json
+.mcp.local.json
 remote_hosts.json
 audit.log
 audit.log.*

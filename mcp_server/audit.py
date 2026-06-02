@@ -43,6 +43,18 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1[REDACTED]",
     ),
+    # HTTP Basic auth: curl/wget "-u user:pass" / "--user user:pass".
+    (
+        re.compile(r"((?:\B-u|--user)[\s=]+)\S+", re.IGNORECASE),
+        r"\1[REDACTED]",
+    ),
+    # Inline no-space password flag: mysql/mariadb "-pSECRET". The lookahead
+    # requires a non-digit in the value so pure-numeric ports ("-p3306", "-p80")
+    # are left intact.
+    (
+        re.compile(r"(\B-p)(?=\d*[^\d\s])\S+"),
+        r"\1[REDACTED]",
+    ),
 ]
 
 
@@ -291,7 +303,7 @@ def log_blocked(
             "ts": _ts(),
             "event": "blocked",
             "tool": tool_name,
-            "args": _redact_sensitive(args),
+            "args": _redact_script_code(args),
             "host": host,
             "remote": remote,
             "reason": reason,
@@ -318,10 +330,10 @@ def log_execution(
             "ts": _ts(),
             "event": "execution",
             "tool": tool_name,
-            "args": _redact_sensitive(args),
+            "args": _redact_script_code(args),
             "host": host,
             "remote": remote,
-            "command": _redact_sensitive(command),
+            "command": _redact_script_code(command),
             "exit_code": exit_code,
             "duration_ms": round(duration_ms, 1),
             "stdout_bytes": stdout_len,

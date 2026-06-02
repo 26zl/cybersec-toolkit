@@ -1,8 +1,8 @@
 # Claude Code Skills
 
-This directory contains 65 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
+This directory contains 799 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
-## Project-specific developer skills (7)
+## Project-specific developer skills (9)
 
 Maintained in this repo. Cover the install-side workflow.
 
@@ -15,6 +15,28 @@ Maintained in this repo. Cover the install-side workflow.
 | `writeup-template` | Generating workflows/<comp>/<chal>.md after a solve |
 | `security-wordlists` | Pointing to SecLists / PayloadsAllTheThings paths |
 | `security-payloads` | Quick-reference exploit payloads |
+| `skill-dependency-audit` | Auditing optional Python imports used by vendored skill helper scripts |
+| `skill-curation-router` | Choosing/ranking skills for broad tasks and reducing duplicate skill noise |
+
+## Coverage gap anchor skills (7)
+
+Maintained in this repo to cover domains that are intentionally thinner in the vendored operational skill set.
+
+| Skill | Domain |
+| --- | --- |
+| `grc-compliance-privacy-program` | GRC, compliance, privacy, audit readiness, evidence mapping |
+| `ai-llm-security-review` | AI/LLM app security, RAG, agent tools, evals, model supply chain |
+| `iot-embedded-hardware-security-assessment` | IoT, embedded, firmware, hardware interfaces, OTA, device cloud |
+| `mainframe-security-assessment` | z/OS, RACF/ACF2/Top Secret, CICS, DB2, JCL, APF, USS |
+| `telecom-5g-security-assessment` | 5G/mobile core, RAN, roaming, SS7/Diameter/GTP, SBA APIs |
+| `sap-erp-security-assessment` | SAP, S/4HANA, NetWeaver, ABAP, HANA, RFC, Gateway, SoD |
+| `supply-chain-prodsec-hardening` | SBOM, SLSA, provenance, signing, pinning, CI/CD release security |
+
+## Coding-agent workflow skills (1)
+
+| Skill | What it does |
+| --- | --- |
+| `karpathy-guidelines` | Keeps coding agents simple, surgical, assumption-aware, and verification-driven |
 
 ## CTF methodology (6)
 
@@ -59,51 +81,59 @@ CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailof
 | `dimensional-analysis` | Detect unit/formula bugs |
 | `variant-analysis` | Find similar bugs across codebases |
 
-## Anthropic Cybersecurity Skills — operational how-tos (30)
+## Anthropic Cybersecurity Skills — operational how-tos (754)
 
-Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/Anthropic-Cybersecurity-Skills> (754 skills total, this is a curated subset). Each skill maps to MITRE ATT&CK / D3FEND / NIST CSF.
+Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/Anthropic-Cybersecurity-Skills>. The full upstream skill set is mirrored here as local Claude Code skills. Each skill maps to MITRE ATT&CK / D3FEND / NIST CSF.
 
-### Malware & forensics (12)
+Subdomain coverage:
 
-- `analyzing-memory-dumps-with-volatility`
-- `analyzing-network-traffic-with-wireshark`
-- `analyzing-network-packets-with-scapy`
-- `analyzing-malicious-pdf-with-peepdf`
-- `analyzing-macro-malware-in-office-documents`
-- `analyzing-android-malware-with-apktool`
-- `analyzing-ios-app-security-with-objection`
-- `analyzing-cobalt-strike-beacon-configuration`
-- `analyzing-disk-image-with-autopsy`
-- `analyzing-mft-for-deleted-file-recovery`
-- `analyzing-email-headers-for-phishing-investigation`
-- `analyzing-ethereum-smart-contract-vulnerabilities`
-
-### Extraction (2)
-
-- `extracting-credentials-from-memory-dump`
-- `extracting-iocs-from-malware-samples`
-
-### Exploitation (11)
-
-- `exploiting-active-directory-with-bloodhound`
-- `exploiting-kerberoasting-with-impacket`
-- `exploiting-zerologon-vulnerability-cve-2020-1472`
-- `exploiting-ms17-010-eternalblue-vulnerability`
-- `exploiting-jwt-algorithm-confusion-attack`
-- `exploiting-http-request-smuggling`
-- `exploiting-server-side-request-forgery`
-- `exploiting-insecure-deserialization`
-- `exploiting-nosql-injection-vulnerabilities`
-- `exploiting-prototype-pollution-in-javascript`
-- `exploiting-race-condition-vulnerabilities`
-
-### Threat hunting & detection (5)
-
-- `hunting-for-cobalt-strike-beacons`
-- `hunting-for-anomalous-powershell-execution`
-- `hunting-for-data-exfiltration-indicators`
-- `building-detection-rules-with-sigma`
-- `building-c2-infrastructure-with-sliver-framework`
+| Subdomain | Skills |
+| --- | ---: |
+| `cloud-security` | 63 |
+| `threat-hunting` | 56 |
+| `threat-intelligence` | 50 |
+| `network-security` | 43 |
+| `web-application-security` | 42 |
+| `malware-analysis` | 39 |
+| `digital-forensics` | 37 |
+| `identity-access-management` | 33 |
+| `soc-operations` | 33 |
+| `container-security` | 29 |
+| `api-security` | 28 |
+| `ot-ics-security` | 28 |
+| `security-operations` | 28 |
+| `incident-response` | 26 |
+| `vulnerability-management` | 25 |
+| `red-teaming` | 24 |
+| `penetration-testing` | 20 |
+| `endpoint-security` | 17 |
+| `devsecops` | 17 |
+| `zero-trust-architecture` | 17 |
+| `cryptography` | 15 |
+| `phishing-defense` | 15 |
+| `ransomware-defense` | 13 |
+| `mobile-security` | 13 |
+| `threat-detection` | 7 |
+| `application-security` | 4 |
+| `compliance-governance` | 4 |
+| `deception-technology` | 3 |
+| `supply-chain-security` | 3 |
+| `ai-security` | 2 |
+| `identity-and-access-management` | 2 |
+| `offensive-security` | 2 |
+| `privacy-compliance` | 2 |
+| `red-team` | 2 |
+| `wireless-security` | 2 |
+| `blockchain-security` | 1 |
+| `data-protection` | 1 |
+| `firmware-analysis` | 1 |
+| `firmware-security` | 1 |
+| `governance-risk-compliance` | 1 |
+| `identity-security` | 1 |
+| `ot-security` | 1 |
+| `purple-team` | 1 |
+| `social-engineering-defense` | 1 |
+| `zero-trust` | 1 |
 
 ## Transilience — high-level workflows (4)
 
@@ -115,6 +145,12 @@ MIT — see `LICENSE-Transilience-MIT`. Source: <https://github.com/transilience
 - `blockchain-security` — Smart contract logic, EVM storage, DeFi vectors
 
 ## Adding more skills
+
+Curated ranking lives in `CURATION.md` and `curation.json`. Regenerate after inventory changes:
+
+```bash
+python3 scripts/curate_claude_skills.py --write
+```
 
 ```bash
 # Format
@@ -143,5 +179,6 @@ This project is MIT-licensed. The vendored skills retain their original licenses
 - Trail of Bits skills: CC-BY-SA 4.0 (`LICENSE-CC-BY-SA-4.0`)
 - Anthropic Cybersecurity Skills: Apache 2.0 (`LICENSE-Apache-2.0`)
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
+- Karpathy guidelines skill: MIT, source <https://github.com/multica-ai/andrej-karpathy-skills>
 
 When modifying vendored skills, retain the source attribution in their SKILL.md frontmatter.

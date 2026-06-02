@@ -232,16 +232,11 @@ install_single_tool() {
         return 1
     }
 
-    # APT packages
-    local pkg_arrs=(
-        SHARED_BASE_PACKAGES
-        MISC_PACKAGES MISC_HEAVY_PACKAGES
-        NET_PACKAGES RECON_PACKAGES WEB_PACKAGES PWN_PACKAGES RE_PACKAGES
-        FORENSICS_PACKAGES WIRELESS_PACKAGES WIRELESS_HEAVY_PACKAGES
-        CRACKING_PACKAGES STEGO_PACKAGES BLUETEAM_PACKAGES MOBILE_PACKAGES
-        ENTERPRISE_PACKAGES CRYPTO_PACKAGES CLOUD_PACKAGES CONTAINER_PACKAGES
-        BLOCKCHAIN_PACKAGES LLM_PACKAGES
-    )
+    # APT packages — array names derived from ALL_MODULES so new modules are
+    # picked up automatically (nonexistent arrays are skipped by _arr_has).
+    local pkg_arrs=(SHARED_BASE_PACKAGES)
+    _module_array_names PACKAGES pkg_arrs
+    _module_array_names HEAVY_PACKAGES pkg_arrs
     for a in "${pkg_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             local _tmp_pkg=("$tool")
@@ -263,12 +258,7 @@ install_single_tool() {
     done
 
     # pipx
-    local pipx_arrs=(
-        MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
-        STEGO_PIPX CLOUD_PIPX CONTAINER_PIPX BLUETEAM_PIPX MOBILE_PIPX
-        BLOCKCHAIN_PIPX LLM_PIPX
-    )
+    local pipx_arrs=(); _module_array_names PIPX pipx_arrs
     for a in "${pipx_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via pipx..."
@@ -285,10 +275,7 @@ install_single_tool() {
     done
 
     # Go (match binary name from full import path)
-    local go_arrs=(
-        MISC_GO NET_GO RECON_GO WEB_GO PWN_GO
-        ENTERPRISE_GO CLOUD_GO
-    )
+    local go_arrs=(); _module_array_names GO go_arrs
     for a in "${go_arrs[@]}"; do
         declare -p "$a" &>/dev/null || continue
         local -n _goref="$a"
@@ -326,9 +313,7 @@ install_single_tool() {
     done
 
     # Cargo
-    local cargo_arrs=(
-        WEB_CARGO NET_CARGO PWN_CARGO BLUETEAM_CARGO BLOCKCHAIN_CARGO
-    )
+    local cargo_arrs=(); _module_array_names CARGO cargo_arrs
     for a in "${cargo_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
@@ -350,18 +335,17 @@ install_single_tool() {
     done
 
     # Gems
-    local gem_arrs=(WEB_GEMS PWN_GEMS STEGO_GEMS ENTERPRISE_GEMS)
+    local gem_arrs=(); _module_array_names GEMS gem_arrs
     for a in "${gem_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via gem..."
             local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
             if _as_builder "$(command -v gem) install $_tool_esc --no-document" >> "$LOG_FILE" 2>&1; then
-                # Symlink gem binary to PIPX_BIN_DIR (consistent with batch installer)
-                local _gem_bin_dir
-                _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
-                # shellcheck disable=SC2086  # glob expansion intentional
-                for _gbin in $_gem_bin_dir/$tool; do
-                    [[ -f "$_gbin" ]] && ln -sf "$_gbin" "$PIPX_BIN_DIR/$(basename "$_gbin")" 2>/dev/null || true
+                # Symlink gem binary to PIPX_BIN_DIR (consistent with batch installer).
+                # Glob the ruby-version dir directly — do not store a literal '*'.
+                local _gdir
+                for _gdir in "$(_builder_home)/.local/share/gem/ruby"/*/bin; do
+                    [[ -f "$_gdir/$tool" ]] && ln -sf "$_gdir/$tool" "$PIPX_BIN_DIR/$tool" 2>/dev/null || true
                 done
                 log_success "Installed: $tool"
                 track_version "$tool" "gem" "latest"
@@ -374,12 +358,7 @@ install_single_tool() {
     done
 
     # Git repos (match name= prefix)
-    local git_arrs=(
-        MISC_GIT NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
-        FORENSICS_GIT ENTERPRISE_GIT WIRELESS_GIT CRACKING_GIT
-        STEGO_GIT CLOUD_GIT CONTAINER_GIT BLUETEAM_GIT MOBILE_GIT
-        BLOCKCHAIN_GIT LLM_GIT
-    )
+    local git_arrs=(); _module_array_names GIT git_arrs
     for a in "${git_arrs[@]}"; do
         declare -p "$a" &>/dev/null || continue
         local -n _gitref="$a"
@@ -628,16 +607,7 @@ if [[ -n "$PROFILE" ]]; then
     done
 elif [[ ${#SELECTED_MODULES[@]} -gt 0 ]]; then
     # Validate each --module argument is a known module (prevent path traversal)
-    for mod in "${SELECTED_MODULES[@]}"; do
-        if [[ "$mod" == */* || "$mod" == *..* ]]; then
-            log_error "Invalid module name (no path components allowed): $mod"
-            exit 1
-        fi
-        if [[ " ${ALL_MODULES[*]} " != *" $mod "* ]]; then
-            log_error "Unknown module: $mod (use --list-modules to see available modules)"
-            exit 1
-        fi
-    done
+    _validate_module_names "use --list-modules to see available modules" "${SELECTED_MODULES[@]}"
     MODULES_TO_INSTALL=("${SELECTED_MODULES[@]}")
 else
     # Default: full install

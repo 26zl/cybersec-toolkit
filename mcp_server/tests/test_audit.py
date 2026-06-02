@@ -202,6 +202,29 @@ class TestRedactScriptCode:
         redacted = _redact_script_code(code)
         assert redacted == code
 
+    def test_basic_auth_flag_redacted(self) -> None:
+        """curl/wget -u user:pass must not leak to the audit log."""
+        redacted = _redact_script_code("-u admin:s3cret http://10.0.0.1")
+        assert "s3cret" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_inline_password_flag_redacted(self) -> None:
+        """mysql -pSECRET (no space) must be redacted."""
+        redacted = _redact_script_code("mysql -h 10.0.0.1 -pMyP4ss -u root")
+        assert "MyP4ss" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_numeric_port_flag_preserved(self) -> None:
+        """Pure-numeric -p ports must stay readable (not a credential)."""
+        redacted = _redact_script_code("nmap -p80 -p3306 10.0.0.1")
+        assert "-p80" in redacted
+        assert "-p3306" in redacted
+
+    def test_url_query_apikey_redacted(self) -> None:
+        redacted = _redact_script_code("http://t/?api_key=sk-abc123def4567890")
+        assert "sk-abc123def4567890" not in redacted
+        assert "[REDACTED]" in redacted
+
     def test_log_script_execution_redacts_and_hashes(self, tmp_path: Path) -> None:
         """log_script_execution writes redacted code + SHA256 + len of original."""
         import hashlib

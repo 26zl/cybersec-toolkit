@@ -279,17 +279,66 @@ class TestCheckPolicy:
         with pytest.raises(ValueError, match="masscan: target list from file"):
             check_policy("masscan", ["--includefile"])
 
+    # Command-executing tools — flags/syntax that yield RCE must be blocked.
+    def test_nmap_script_blocked(self) -> None:
+        with pytest.raises(ValueError, match="nmap: NSE script execution"):
+            check_policy("nmap", ["--script", "/tmp/e.nse", "127.0.0.1"])
+
+    def test_gdb_shell_blocked(self) -> None:
+        with pytest.raises(ValueError, match="gdb: shell"):
+            check_policy("gdb", ["-batch", "-ex", "shell id", "/bin/ls"])
+
+    def test_gdb_info_allowed(self) -> None:
+        # Legitimate inspection must still work.
+        check_policy("gdb", ["-batch", "-ex", "info functions", "/bin/ls"])
+
+    def test_radare2_shell_escape_blocked(self) -> None:
+        with pytest.raises(ValueError, match="radare2: ! shell escape"):
+            check_policy("radare2", ["-c", "!id", "/bin/ls"])
+
+    def test_radare2_analysis_allowed(self) -> None:
+        check_policy("radare2", ["-c", "aaa;afl", "/bin/ls"])
+
+    def test_tar_compress_program_blocked(self) -> None:
+        with pytest.raises(ValueError, match="tar: -I external compressor"):
+            check_policy("tar", ["-I", "/tmp/e.sh", "-cf", "out.tar", "x"])
+
+    def test_tshark_lua_script_blocked(self) -> None:
+        with pytest.raises(ValueError, match="tshark"):
+            check_policy("tshark", ["-r", "x.pcap", "-X", "lua_script:/tmp/e.lua"])
+
+    def test_tcpdump_postrotate_blocked(self) -> None:
+        with pytest.raises(ValueError, match="tcpdump: -z postrotate"):
+            check_policy("tcpdump", ["-z", "/tmp/e.sh", "-i", "lo"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_decimal_encoded_external_ip_blocked(self, _mock_ext) -> None:
+        # 134744072 == 8.8.8.8 — must not slip past the allowlist.
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("nc", ["134744072", "80"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_hex_encoded_external_ip_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("nc", ["0x08080808", "80"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_bare_port_not_treated_as_target(self, _mock_ext) -> None:
+        # The second positional (80) is a port, not an encoded IP — must pass.
+        check_policy("nc", ["127.0.0.1", "80"])
+
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_long_flag_value_not_treated_as_target(self, _mock_ext) -> None:
         """Values of --long-flags must not be treated as network targets."""
-        # --script vuln: "vuln" is a script name, not a target
-        check_policy("nmap", ["--script", "vuln", "10.0.0.1"])
+        # --data-string foo: "foo" is a flag value, not a target.
+        # (--script is intentionally blocked outright; use a neutral flag here.)
+        check_policy("nmap", ["--data-string", "foo", "10.0.0.1"])
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_long_flag_value_with_external_target_still_blocked(self, _mock_ext) -> None:
         """The actual target after a --flag value pair must still be validated."""
         with pytest.raises(ValueError, match="not in a private/local"):
-            check_policy("nmap", ["--script", "vuln", "8.8.8.8"])
+            check_policy("nmap", ["--data-string", "foo", "8.8.8.8"])
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_short_t_flag_not_treated_as_target_flag(self, _mock_ext) -> None:

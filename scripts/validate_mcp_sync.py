@@ -123,12 +123,29 @@ def check_pipx_bin_names() -> None:
     print(f"PIPX_BIN_NAMES: {len(bash_names)} bash, {len(py_names)} python")
 
 
+def _parse_bash_bool(text: str, var: str) -> bool | None:
+    """Parse a bash boolean assignment: VAR=true / VAR=false. None if absent."""
+    m = re.search(rf'^{var}=(\w+)', text, re.MULTILINE)
+    if not m:
+        return None
+    return m.group(1) == "true"
+
+
+# .conf variable → profiles.py key for the boolean flags.
+_PROFILE_FLAGS = {
+    "SKIP_HEAVY": "skip_heavy",
+    "ENABLE_DOCKER": "enable_docker",
+    "INCLUDE_C2": "include_c2",
+}
+
+
 def check_profiles() -> None:
-    """Compare profile module lists between profiles/*.conf and profiles.py."""
+    """Compare profile module lists AND boolean flags between *.conf and profiles.py."""
     from mcp_server.profiles import PROFILES as py_profiles
 
     profiles_dir = ROOT / "profiles"
     bash_profiles: dict[str, list[str]] = {}
+    bash_flags: dict[str, dict[str, bool | None]] = {}
 
     for conf in sorted(profiles_dir.glob("*.conf")):
         name = conf.stem
@@ -136,6 +153,9 @@ def check_profiles() -> None:
         m = re.search(r'MODULES="([^"]+)"', text)
         if m:
             bash_profiles[name] = m.group(1).split()
+        bash_flags[name] = {
+            py_key: _parse_bash_bool(text, conf_var) for conf_var, py_key in _PROFILE_FLAGS.items()
+        }
 
     if not bash_profiles:
         errors.append("PROFILES: no profiles/*.conf files found")
@@ -150,12 +170,37 @@ def check_profiles() -> None:
             errors.append(
                 f"PROFILES['{name}'].modules: bash={modules} != python={py_modules}"
             )
+        # Boolean flags (skip_heavy / enable_docker / include_c2).
+        for py_key, bash_val in bash_flags[name].items():
+            py_val = py_profiles[name].get(py_key)
+            if bash_val is not None and bash_val != py_val:
+                errors.append(
+                    f"PROFILES['{name}'].{py_key}: bash={bash_val} != python={py_val}"
+                )
 
     for name in py_profiles:
         if name not in bash_profiles:
             errors.append(f"PROFILES: '{name}' in Python but missing in bash")
 
-    print(f"PROFILES: {len(bash_profiles)} bash, {len(py_profiles)} python")
+    print(f"PROFILES: {len(bash_profiles)} bash, {len(py_profiles)} python (modules + flags)")
+
+
+def check_tool_aliases() -> None:
+    """Every TOOL_ALIASES target must resolve to a real registry tool name."""
+    import json
+
+    from mcp_server.ctf_advisor import TOOL_ALIASES
+
+    tools = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
+    names = {t["name"] for t in tools}
+
+    for alias, target in TOOL_ALIASES.items():
+        if target not in names:
+            errors.append(
+                f"TOOL_ALIASES['{alias}']: target '{target}' not found in tools_config.json"
+            )
+
+    print(f"TOOL_ALIASES: {len(TOOL_ALIASES)} aliases checked against {len(names)} registry tools")
 
 
 def main() -> int:
@@ -165,6 +210,7 @@ def main() -> int:
     check_docker_images()
     check_pipx_bin_names()
     check_profiles()
+    check_tool_aliases()
 
     print()
     if errors:

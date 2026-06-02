@@ -5,20 +5,24 @@ description: Use when you need wordlists for fuzzing, password cracking, content
 
 # SecLists & wordlist locations
 
-This installer clones SecLists and PayloadsAllTheThings during install. Use these paths instead of downloading new wordlists.
+This installer clones SecLists and PayloadsAllTheThings during install via `git clone` into `$GITHUB_TOOL_DIR` — **`/opt` on Linux (root/sudo install), `~/tools` on Termux**. Use these paths instead of downloading new wordlists.
 
 ## Where things live
 
-| Resource | Path |
+`$GITHUB_TOOL_DIR` is the install root: `/opt` on a standard Linux install, `~/tools` on Termux. The paths below use `/opt`; swap in `~/tools` on Termux.
+
+| Resource | Path (installer-provided) |
 | --- | --- |
-| SecLists root | `/usr/share/seclists/` (apt) or `~/tools/SecLists/` (git clone) |
-| PayloadsAllTheThings | `~/tools/PayloadsAllTheThings/` |
-| rockyou.txt | `/usr/share/wordlists/rockyou.txt(.gz)` |
-| Crackstation | `~/tools/crackstation-human-only.txt` (if `crackstation` profile) |
+| SecLists root | `/opt/SecLists/` (or `~/tools/SecLists/` on Termux) |
+| PayloadsAllTheThings | `/opt/PayloadsAllTheThings/` (or `~/tools/...` on Termux) |
+| rockyou.txt | `/opt/SecLists/Passwords/Leaked-Databases/rockyou.txt.tar.gz` (untar to use) |
+| Crackstation | `/opt/crackstation-human-only.txt` (if `crackstation` profile) |
+
+> Kali ships `/usr/share/seclists/` and `/usr/share/wordlists/rockyou.txt` pre-baked, but **this installer does not create those** — it clones to `$GITHUB_TOOL_DIR`. Only fall back to the Kali paths if you are on Kali and they already exist.
 
 ```bash
-# Find your install root
-ls /usr/share/seclists/ 2>/dev/null || ls ~/tools/SecLists/
+# Find your install root (Linux clone first, then Termux, then Kali pre-baked)
+ls /opt/SecLists/ 2>/dev/null || ls ~/tools/SecLists/ 2>/dev/null || ls /usr/share/seclists/
 ```
 
 ## Common picks per task
@@ -26,7 +30,7 @@ ls /usr/share/seclists/ 2>/dev/null || ls ~/tools/SecLists/
 ### Web content discovery (ffuf / gobuster)
 
 ```bash
-SECLISTS=/usr/share/seclists  # adjust to your path
+SECLISTS="${GITHUB_TOOL_DIR:-/opt}/SecLists"  # /opt on Linux, ~/tools on Termux
 
 # Quick pass
 $SECLISTS/Discovery/Web-Content/common.txt
@@ -89,17 +93,17 @@ $SECLISTS/Fuzzing/User-Agents/UserAgents.fuzz.txt
 
 ### PayloadsAllTheThings
 
-Categorised by vulnerability class — read the README for each folder. Highlights:
+Categorised by vulnerability class — read the README for each folder. Paths below use `/opt` (swap in `~/tools` on Termux); set `PATT="${GITHUB_TOOL_DIR:-/opt}/PayloadsAllTheThings"`. Highlights:
 
 ```text
-~/tools/PayloadsAllTheThings/SQL Injection/                 # SQLi cheatsheets + bypasses
-~/tools/PayloadsAllTheThings/XSS Injection/                 # XSS variants + WAF bypass
-~/tools/PayloadsAllTheThings/Server Side Template Injection/
-~/tools/PayloadsAllTheThings/Server Side Request Forgery/
-~/tools/PayloadsAllTheThings/Insecure Deserialization/
-~/tools/PayloadsAllTheThings/CSV Injection/
-~/tools/PayloadsAllTheThings/JSON Web Token/
-~/tools/PayloadsAllTheThings/Methodology and Resources/     # cheatsheets per topic
+/opt/PayloadsAllTheThings/SQL Injection/                 # SQLi cheatsheets + bypasses
+/opt/PayloadsAllTheThings/XSS Injection/                 # XSS variants + WAF bypass
+/opt/PayloadsAllTheThings/Server Side Template Injection/
+/opt/PayloadsAllTheThings/Server Side Request Forgery/
+/opt/PayloadsAllTheThings/Insecure Deserialization/
+/opt/PayloadsAllTheThings/CSV Injection/
+/opt/PayloadsAllTheThings/JSON Web Token/
+/opt/PayloadsAllTheThings/Methodology and Resources/     # cheatsheets per topic
 ```
 
 ## Pattern-matching (regex catalogs)
@@ -121,4 +125,4 @@ Or use purpose-built tools: `trufflehog`, `gitleaks`, `detect-secrets`.
 
 - Download wordlists from random gists when SecLists already has the canonical version
 - Use rockyou.txt for hashcat without first knowing the hash type — pick a smaller list and graduate up
-- Forget to gunzip rockyou (`/usr/share/wordlists/rockyou.txt.gz`)
+- Forget to untar rockyou from SecLists (`/opt/SecLists/Passwords/Leaked-Databases/rockyou.txt.tar.gz`); on Kali it is pre-baked at `/usr/share/wordlists/rockyou.txt.gz`
