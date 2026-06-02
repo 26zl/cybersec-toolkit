@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -11,31 +10,8 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
+from mcp_server.advisor_utils import TOOL_ALIASES, check_tool_installed  # noqa: E402
 from mcp_server.tools_db import ToolsDatabase  # noqa: E402
-
-# Display name → tools_config.json registry name.
-# Only needed when the user-facing name differs from the registry entry.
-# Tools not listed here are assumed to match the registry name exactly.
-TOOL_ALIASES: dict[str, str] = {
-    # Case mismatches
-    "cyberchef": "CyberChef",
-    "responder": "Responder",
-    "rsactftool": "RsaCtfTool",
-    "seclists": "SecLists",
-    "theharvester": "theHarvester",
-    # Naming mismatches (display name → registry name)
-    "jwt-tool": "jwt_tool",
-    "afl++": "AFLplusplus",
-    "upx": "upx-ucl",
-    "exiftool": "libimage-exiftool-perl",
-    "wireshark": "wireshark-common",
-    "netcat": "netcat-openbsd",
-    "wifite": "wifite2",
-    "hashid": "hashid",
-    "snow": "stegsnow",
-    # Sub-components (display name → parent tool in registry)
-    "photorec": "testdisk",
-}
 
 # Maps challenge type → description, relevant modules, and top tools with descriptions.
 CTF_CATEGORY_MAP: dict[str, dict] = {
@@ -661,30 +637,6 @@ def resolve_category(challenge_type: str) -> Optional[str]:
     return CATEGORY_ALIASES.get(normalized)
 
 
-def _check_tool_installed(tool_name: str, tools_db: ToolsDatabase) -> tuple[bool, bool]:
-    """Check if a tool is installed. Returns (installed, in_registry).
-
-    Uses TOOL_ALIASES to map display names to registry names, and falls
-    back to PATH check for tools not in the registry.
-    """
-    # Resolve display name to registry name
-    registry_name = TOOL_ALIASES.get(tool_name, tool_name)
-
-    # Check if it's in the registry
-    in_registry = registry_name in tools_db.tools_by_name
-
-    if in_registry:
-        status = tools_db.check_installed(registry_name)
-        if status["installed"]:
-            return True, True
-
-    # PATH check using the display name (the binary users actually run)
-    if shutil.which(tool_name):
-        return True, in_registry
-
-    return False, in_registry
-
-
 def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
     """Return tool suggestions for a CTF challenge type with install status.
 
@@ -703,7 +655,7 @@ def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
     cat_info = CTF_CATEGORY_MAP[category]
     tools_with_status = []
     for tool_name, description in cat_info["tools"]:
-        installed, in_registry = _check_tool_installed(tool_name, tools_db)
+        installed, in_registry = check_tool_installed(tool_name, tools_db)
         entry = {
             "name": tool_name,
             "description": description,

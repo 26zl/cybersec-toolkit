@@ -189,7 +189,7 @@ def check_tool_aliases() -> None:
     """Every TOOL_ALIASES target must resolve to a real registry tool name."""
     import json
 
-    from mcp_server.ctf_advisor import TOOL_ALIASES
+    from mcp_server.advisor_utils import TOOL_ALIASES
 
     tools = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
     names = {t["name"] for t in tools}

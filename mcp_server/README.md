@@ -236,6 +236,7 @@ mcp_server/
   __init__.py          # Package marker
   server.py            # FastMCP server — 13 tool registrations + entry point
   tools_db.py          # ToolsDatabase — loads tools_config.json, checks installs (TTL-cached)
+  advisor_utils.py     # Shared alias/install-status helpers for advisor modules
   ctf_advisor.py       # CTF challenge-type → tool mapping with suggestions
   bounty_advisor.py    # Bug bounty target-type → tool mapping with methodology and common vulns
   profiles.py          # Profile recommendation engine — 14 profiles, keyword matching
@@ -244,7 +245,7 @@ mcp_server/
   sanitize.py          # Output sanitization — strips LLM markers, XML injection, Unicode evasion
   audit.py             # JSON audit logging with rotation for executions and blocked attempts
   remote.py            # Remote SSH execution — host config, connection testing, input validation
-  pyproject.toml       # UV dependency config (fastmcp>=3.0.0,<4.0.0) + CLI entrypoint
+  pyproject.toml       # UV dependency config, 3-day exclude-newer policy, CLI entrypoint
   README.md            # This file
 manual_scripts/        # Persistent scripts — exploits, solvers, reusable tools
 ```

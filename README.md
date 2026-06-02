@@ -365,6 +365,12 @@ python3 scripts/validate_claude_skills.py
 cd mcp_server && uv sync --group dev && uv run ruff check . && uv run ruff format --check . && uv run pytest tests/ -q
 ```
 
+The MCP Python project uses `uv` with `[tool.uv] exclude-newer = "3 days"`.
+New dependency resolutions intentionally ignore packages uploaded in the last
+72 hours to reduce dependency-confusion and compromised-release blast radius.
+Dependabot uses the matching 3-day cooldown, and the weekly uv update workflow
+inherits the same policy.
+
 Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendored Bats submodules with CRLF and cause `$'\r'` failures.
 
 ## Claude Code Skills
@@ -442,6 +448,7 @@ This installer downloads and runs code from the internet. On Linux it runs as ro
 - __System packages__: GPG-signed by your distro's repos (apt, dnf, pacman, zypper, pkg)
 - __pipx/Go/Cargo/Gem/npm__: Downloads from registries (no signature verification, pipx isolated in venvs)
 - __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch. Use `--require-checksums` to also fail when no checksum file is published. __Warning:__ `--fast` disables _all_ checksum verification, including for releases that do publish checksums — do not use in production or CI environments
+- __MCP Python dependencies__: Resolved by `uv` with a 3-day `exclude-newer` window; Dependabot also waits 3 days before proposing dependency PRs
 - __Go SDK__: SHA256 verified against go.dev published hashes when available; warns on API failure, hard-fails with `--require-checksums`
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
 - __Build from source__: Runs `make` (as root on Linux) -- review what you're building

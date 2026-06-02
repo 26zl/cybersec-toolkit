@@ -4,15 +4,19 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "ci"
     labels:
       - "dependencies"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/mcp_server"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "deps"
     labels:
@@ -23,6 +27,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "docker"
     labels:

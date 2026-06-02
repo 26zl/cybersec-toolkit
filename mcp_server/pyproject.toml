@@ -35,6 +35,7 @@ bypass-selection = true
 
 [tool.hatch.build.targets.wheel.force-include]
 "__init__.py" = "mcp_server/__init__.py"
+"advisor_utils.py" = "mcp_server/advisor_utils.py"
 "audit.py" = "mcp_server/audit.py"
 "bounty_advisor.py" = "mcp_server/bounty_advisor.py"
 "ctf_advisor.py" = "mcp_server/ctf_advisor.py"
@@ -47,6 +48,7 @@ bypass-selection = true
 
 [tool.hatch.build.targets.wheel.force-include-editable]
 "__init__.py" = "mcp_server/__init__.py"
+"advisor_utils.py" = "mcp_server/advisor_utils.py"
 "audit.py" = "mcp_server/audit.py"
 "bounty_advisor.py" = "mcp_server/bounty_advisor.py"
 "ctf_advisor.py" = "mcp_server/ctf_advisor.py"
@@ -56,6 +58,9 @@ bypass-selection = true
 "security.py" = "mcp_server/security.py"
 "server.py" = "mcp_server/server.py"
 "tools_db.py" = "mcp_server/tools_db.py"
+
+[tool.uv]
+exclude-newer = "3 days"
 
 [tool.ruff]
 target-version = "py310"

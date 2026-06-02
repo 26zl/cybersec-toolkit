@@ -13,3 +13,18 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 Dockerfile text eol=lf
+
+# Keep repository quality tooling in Git, but omit it from GitHub source
+# archives intended for end users.
+.github/ export-ignore
+tests/ export-ignore
+mcp_server/tests/ export-ignore
+.gitmodules export-ignore
+.gitleaks.toml export-ignore
+.markdownlint.jsonc export-ignore
+scripts/audit_skill_dependencies.py export-ignore
+scripts/curate_claude_skills.py export-ignore
+scripts/validate_claude_skills.py export-ignore
+scripts/validate_distro_compat.py export-ignore
+scripts/validate_mcp_sync.py export-ignore
+scripts/validate_tools_config.py export-ignore

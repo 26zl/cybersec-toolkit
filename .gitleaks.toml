@@ -53,13 +53,28 @@ paths = [
 ]
 regexes = [
     '''Authorization:\s*(?:Bearer|Token)?\s*(?:MISP_KEY|USER_TOKEN|\$TOKEN[A-Z_]*|\$[A-Z_]*TOKEN[A-Z_]*|YOUR_[A-Z0-9_]+|<TOKEN>)''',
+    '''Authorization:\s*Bearer\s*invalid_token_here''',
     '''(?:X-Api-Key|hibp-api-key):\s*(?:your-api-key|YOUR_KEY|\$?[A-Z_]*KEY[A-Z_]*)''',
     '''(?:curl|python3\s+tplmap\.py|python3\s+proxyshell_exploit\.py|sqlmap|ffuf)\b.*\s-u\s+(?:https?://|user:key|email:api_key|kismet:kismet)''',
+    '''(?:python3\s+tplmap\.py|sqlmap|ffuf)\b.*\s-u\s+["']?https?://''',
     '''Sec-WebSocket-Key["':\s]+dGhlIHNhbXBsZSBub25jZQ==''',
     '''key\s*=\s*"[A-Za-z0-9+/]{8,}\.\.\."''',
     '''(?:OSQUERY_KEY|GPP_AES_KEY_B64)\s*=''',
     '''(?:args|self)\.(?:key|token|api_key|vt_key|abuseipdb_key|shodan_key|greynoise_key)\b''',
+    '''def __init__\(self,\s*vt_key,\s*abuseipdb_key=''',
+    '''GoPhishClient\(api_url,\s*api_key\b''',
     '''(?:api_key|password)\s*=\s*"(?:sk-abcdef1234567890abcdef|SuperSecret123!)"''',
     '''(?:key_algorithm|key_share|Hybrid Key Exchange|Server Temp Key|File Accessed:)''',
     '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkw''',
+]
+
+[[allowlists]]
+description = "Vendored Claude skill multi-line tplmap URL examples"
+condition = "AND"
+regexTarget = "match"
+paths = [
+    '''^\.claude/skills/''',
+]
+regexes = [
+    '''(?s)curl -s "https://target\.example\.com/page\?name=\{\{(?:%27test%27|'test')\.class\}\}".*python3 tplmap\.py -u "https://target\.example\.com/page\?name=test"''',
 ]
