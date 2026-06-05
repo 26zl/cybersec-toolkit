@@ -57,7 +57,7 @@ regexes = [
     '''(?:X-Api-Key|hibp-api-key):\s*(?:your-api-key|YOUR_KEY|\$?[A-Z_]*KEY[A-Z_]*)''',
     '''(?:curl|python3\s+tplmap\.py|python3\s+proxyshell_exploit\.py|sqlmap|ffuf)\b.*\s-u\s+(?:https?://|user:key|email:api_key|kismet:kismet)''',
     '''(?:python3\s+tplmap\.py|sqlmap|ffuf)\b.*\s-u\s+["']?https?://''',
-    '''Sec-WebSocket-Key["':\s]+dGhlIHNhbXBsZSBub25jZQ==''',
+    '''Sec-WebSocket-Key["':\s]+[A-Za-z0-9+/]{16,}={0,2}''',
     '''key\s*=\s*"[A-Za-z0-9+/]{8,}\.\.\."''',
     '''(?:OSQUERY_KEY|GPP_AES_KEY_B64)\s*=''',
     '''(?:args|self)\.(?:key|token|api_key|vt_key|abuseipdb_key|shodan_key|greynoise_key)\b''',
