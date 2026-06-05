@@ -154,12 +154,9 @@ Integration tests (`.github/workflows/integration.yml`, push to main + weekly): 
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
 
-**CI gotcha (checkout v6 + git 2.54 auth):** `actions/checkout@v6` can fail with `fatal: could not read Username for 'https://github.com'`. Two distinct cases:
+**CI gotcha (checkout v6 auth):** `actions/checkout@v6` fails on its initial fetch with `fatal: could not read Username for 'https://github.com'` unless the token is passed explicitly (git 2.54). `uv-update.yml` and the scorecard job in `security.yml` both pass `token: ${{ secrets.GITHUB_TOKEN }}` on the checkout step. See github/community #183817.
 
-1. **Fetch-only jobs** with `persist-credentials: false` fail on the initial fetch — fix by passing `token: ${{ secrets.GITHUB_TOKEN }}` explicitly on the checkout step (done in the scorecard job in `security.yml`).
-2. **Jobs that push via `create-pull-request`** fail at the branch push regardless of `persist-credentials`/`token`: v6 stores the token in an `includeIf` credential file that `create-pull-request` hides but cannot fully unwind, so its `git push` finds no usable credential. Fix is to pin *that job's* checkout to **v5** (`actions/checkout@93cb6efe…` / v5.0.1), which persists a plain `.git/config` extraheader the push reuses — done in `uv-update.yml`. Keep it on v5 (do not let Dependabot bump to v6) until fixed upstream.
-
-See github/community #183817 and peter-evans/create-pull-request#2682.
+**`create-pull-request` token:** `uv-update.yml` opens its PR with `GITHUB_TOKEN` only (not a PAT). A stale `PAT_TOKEN` secret had expired and produced the *same* `could not read Username` error at push time — using `GITHUB_TOKEN` sidesteps the expiry entirely (the repo allows Actions to create PRs and the workflow grants `contents`/`pull-requests: write`). Trade-off: PRs opened by `GITHUB_TOKEN` do not trigger downstream CI workflows. The `could not read Username` symptom therefore has two unrelated causes here — checkout-v6 auth (fetch) and an expired/invalid push token — so check both.
 
 ## Architecture
 
