@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Modular bash installer for 580+ cybersecurity tools on Linux and Termux (Android). Multi-distro (Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux). 12 install methods, 18 modules, 14 profiles. Includes an MCP server for AI-assisted hacking.
 
+**Companion guidance:** [`AGENTS.md`](AGENTS.md) is a vendor-neutral copy of this file's project guidance (read natively by Codex and other agents). When you change shared guidance here — layout, commands, MCP rules, methodology — mirror it into `AGENTS.md`. `.claude/skills/` is the source of truth for skills; `scripts/sync-skills.sh` mirrors them to `.agents/skills/` (git-ignored) so non-Claude agents can use them.
+
 ## Commands
 
 ### Validation (run before pushing)
@@ -103,6 +105,8 @@ scripts/backup.sh schedule             # set up cron schedule
 
 The tracked project `.mcp.json` runs the MCP server with local `uv` from the repo root. When running Claude from Windows against a WSL tool environment, use `wsl.exe` in `.mcp.json` or `claude_desktop_config.json` to run the server from the WSL-local copy at `~/cybersec-toolkit/mcp_server/`. Run `sync-wsl.sh` after code changes.
 
+The same stdio server is exposed to other MCP clients (config differs per client, the server does not): `.codex/config.toml` for Codex (mirrors `.mcp.json` via a `bash -lc 'cd "$(git rev-parse --show-toplevel)" && exec uv run …'` wrapper so it works from any subdirectory); LM Studio (≥0.3.17) is itself an MCP host via its own `mcp.json`; Ollama is a model runtime that needs an MCP-capable agent (e.g. Kit) in front of it. Supporting a new local LLM requires no server-side changes.
+
 **WSL env variable forwarding:** Windows env vars set in MCP config `"env"` blocks do NOT propagate into WSL automatically. Two mechanisms are used together:
 
 1. `export VAR=val &&` inside the `bash -lc` command string
@@ -149,6 +153,8 @@ Supply chain hardening: all workflow jobs use `step-security/harden-runner` (egr
 Integration tests (`.github/workflows/integration.yml`, push to main + weekly): Ubuntu 26.04, Fedora 44, Arch, openSUSE.
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
+
+**CI gotcha:** `actions/checkout@v6` intermittently fails with `fatal: could not read Username for 'https://github.com'` when `persist-credentials: false` is set (the default token isn't injected before fetch). Fix is to pass `token: ${{ secrets.GITHUB_TOKEN }}` explicitly on the checkout step — done in `uv-update.yml` and the scorecard job in `security.yml`. See github/community discussion #183817.
 
 ## Architecture
 

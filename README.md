@@ -232,6 +232,69 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `run_script` | Write and execute Python/Bash scripts (pwntools, z3, requests, crypto). Supports per-script venv selection |
 | `manage_remote_hosts` | Add, remove, list, and test SSH remote hosts for remote tool execution |
 
+<details>
+<summary><strong>Usage examples — full workflows, offense to defense</strong></summary>
+
+The AI knows every tool, what's installed, and runs them under policy — so you can drive
+whole engagements conversationally, red team or blue. It selects tools, chains them, parses
+the output, and pivots on what it finds.
+
+#### External recon → attack surface (needs `CYBERSEC_MCP_ALLOW_EXTERNAL=1`, authorized scope only)
+
+- __"Enumerate the attack surface for target.com and flag anything exploitable"__ — fans out `amass` / `subfinder` → resolves and probes with `httpx` → fingerprints with `whatweb` → runs `nuclei` templates → content-discovery with `ffuf`, then ranks hosts by exposure and proposes next steps
+- __"Found an open redirect on `/go?url=` — weaponize it"__ — verifies with `curl`, then builds an SSRF / OAuth-token-theft PoC and probes for an exploitable callback
+
+#### Web exploitation
+
+- __"Confirm and exploit the SQLi on the login endpoint"__ — `sqlmap` to confirm and dump (destructive `--os-shell`/`--os-cmd` are policy-blocked), then `run_script` to automate the auth bypass and pull just enough for a PoC
+- __"GraphQL introspection is on — map it and hunt IDOR"__ — pulls the schema, generates queries, fuzzes object IDs, and diffs authenticated vs unauthenticated responses
+
+#### Active Directory / internal
+
+- __"Low-priv creds on 10.10.0.0/24 — find a path to Domain Admin"__ — collects with `bloodhound`, kerberoasts with `impacket` (`GetUserSPNs.py`), cracks the TGS in `hashcat`, then validates lateral movement with `netexec` — all over the Kali VM via SSH
+- __"Check for DCSync rights and dump if the path exists"__ — enumerates replication ACLs, then runs `secretsdump.py` against the DC
+
+#### Binary exploitation & reversing
+
+- __"Build a ret2libc exploit for this 64-bit binary"__ — triages with `checksec` / `readelf`, finds gadgets with `ROPgadget`, leaks libc via a `puts@plt` call, then writes the full `pwntools` chain in `venv="pwntools"` and pops a shell locally
+- __"Recover the algorithm from this stripped binary"__ — `objdump` / `radare2` disassembly piped into targeted analysis, then a `run_script` reimplementation to verify behavior
+
+#### Crypto
+
+- __"Break this RSA — small `e`, several ciphertexts"__ — detects the attack (Håstad / common-modulus / Wiener) and solves it with `pycryptodome` + `sympy` in a venv, returning plaintext
+- __"This JWT is HS256 with a weak key"__ — cracks the signing secret and forges an admin token
+
+#### Blue team · detection engineering
+
+- __"Write a Sigma rule for this technique and convert it to my SIEM"__ — authors the rule and renders it for the target backend (Splunk / Elastic) via `sigma-cli`
+- __"Hunt these Windows event logs for lateral movement"__ — runs `chainsaw` over the EVTX with Sigma rules, then summarizes hits by host and timeline
+- __"Build YARA rules from these samples and scan the tree"__ — generates `yara` signatures and runs them recursively
+
+#### DFIR · malware triage
+
+- __"Timeline this memory dump"__ — sweeps `volatility3` plugins (`pslist`, `netscan`, `malfind`) and chains them into one narrative
+- __"Hunt for C2 beaconing in this pcap"__ — `tshark` / `tcpdump` extraction → `suricata` rules → flags periodic callbacks
+- __"Statically triage this suspicious file"__ — `file` → `strings` → `capa` / `yara`, then extracts IOCs for enrichment
+
+#### Cloud · containers · ops
+
+- __"Audit this AWS account for public S3 and risky IAM"__ — runs `prowler` / `scoutsuite` and surfaces only the high-severity findings
+- __"Scan this image and k8s manifests before deploy"__ — `grype` image scan plus `kubescape` config checks
+- __"What's my redteam coverage — and fix the gaps"__ — diffs `get_profile_tools("redteam")` against install status and emits the exact install commands
+
+#### Mobile · wireless · blockchain
+
+- __"Static-analyze this APK for secrets and insecure storage"__ — `apktool` / `jadx` decompile → MobSF-style checks, then greps for keys and endpoints
+- __"Audit this Wi-Fi capture"__ — parses the handshake and runs `aircrack-ng` / `hashcat` against it
+- __"Review this Solidity contract for reentrancy"__ — runs `slither` / `mythril` and explains the findings
+
+Every execution is argument-sanitized, network-policed, rate-limited, and audit-logged.
+`run_script` and external targets are off by default; destructive flags (`--os-shell`,
+`-rf`, `--exploit`, …) are blocked outright. Use only against systems you are authorized
+to test.
+
+</details>
+
 ### Quick Start
 
 Requires [uv](https://docs.astral.sh/uv/). Claude Code can use the tracked project `.mcp.json` directly. It runs the MCP server over stdio with scripts and external network targets disabled by default:
@@ -276,9 +339,22 @@ bash -lc 'cd "$(git rev-parse --show-toplevel)" && exec uv run --directory mcp_s
 - __Cursor / Continue / Cline / Roo / Goose__ — add the same launch command in the
   client's MCP settings UI or config file (use the wrapper form if the client's working
   directory isn't the repo root).
-- __Local LLMs__ — a bare local model does not speak MCP on its own. Run it behind an
-  MCP-capable client (e.g. Cline, Continue, Goose, or any agent wrapper) and point that
-  client at the launch command above.
+- __LM Studio (≥0.3.17)__ — LM Studio is itself an MCP host, no bridge needed. Add the
+  server to its `mcp.json` (Cursor notation, same `mcpServers` shape as `.mcp.json`) using
+  an absolute path or the git-root wrapper, since LM Studio's working directory isn't the
+  repo root. Using MCP via LM Studio's API requires ≥0.4.0 and an MCP-capable endpoint such
+  as `/api/v1/chat` or `/v1/responses`.
+- __Ollama__ — Ollama is a model runtime, not an MCP host. Put an MCP-capable agent in
+  front of it (e.g. [Kit](https://github.com/mark3labs/kit)) and point it at the launch
+  command above.
+- __Other local LLMs__ — a bare model does not speak MCP on its own. Run it behind any
+  MCP-capable host (LM Studio, Cline, Continue, Goose, Kit, or Open WebUI via an
+  MCP→OpenAPI bridge like `mcpo`) and point that host at the launch command above.
+
+Security note: start with just this one server. It already enforces argument
+sanitization, network allowlists, rate limiting, and audit logging, and ships with
+script execution and external targets disabled by default — keep those off unless you
+have an authorized scope, and prefer hosts that support human-in-the-loop tool approval.
 
 Vendor-neutral repo instructions live in [`AGENTS.md`](AGENTS.md) (read natively by Codex
 and many agentic tools); Claude Code reads [`CLAUDE.md`](CLAUDE.md).
@@ -318,21 +394,6 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
   }
 }
 ```
-
-### Usage Examples
-
-Once connected, just talk to the AI naturally:
-
-- __"Which tools do I need for a web CTF?"__ -- suggests top tools with install status
-- __"What does the CTF profile install?"__ -- lists all 278 tools grouped by module
-- __"Tell me about the web module"__ -- 51 tools, methods breakdown, which profiles include it
-- __"How do I install sqlmap?"__ -- install/update/remove commands for the right module
-- __"I want to do bug bounty hunting"__ -- recommends the `web` profile
-- __"Is nmap installed?"__ -- multi-strategy detection (PATH, .versions, pipx, /opt, docker)
-- __"Run nmap --version"__ -- executes with output capture, network policy enforcement
-- __"Run nmap on my Kali VM"__ -- remote execution via SSH with per-host tool allowlists
-- __"Write a pwntools exploit for this binary"__ -- writes and runs a script with `venv="pwntools"`
-- __"Extract hidden data from this PNG"__ -- pipelines `strings`, `xxd`, `binwalk` + custom scripts
 
 ### Script Execution
 
@@ -537,4 +598,16 @@ For vulnerability reporting, see [`SECURITY.md`](SECURITY.md).
 
 ## Disclaimer
 
-For educational and authorized security testing only. Only use on systems you own or have explicit written permission to test.
+This project is provided for educational, defensive, and explicitly authorized
+security testing only. Use it only on systems you own or have written permission
+to assess, and follow all applicable laws, rules of engagement, third-party tool
+licenses, and service terms.
+
+The toolkit includes dual-use offensive and defensive tools. Some commands can
+scan networks, execute exploits, modify systems, or trigger security alerts.
+MCP/AI integrations are guarded by safety policies, but users remain responsible
+for reviewing scope, prompts, commands, and outputs before running actions.
+
+The project is provided "as is", without warranty. Maintainers are not
+responsible for misuse, damage, data loss, service disruption, or legal
+consequences from using this toolkit.

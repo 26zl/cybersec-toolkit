@@ -44,7 +44,9 @@ uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banne
 | Claude Desktop | `claude_desktop_config.json` | See `mcp_server/README.md`. |
 | Codex | `.codex/config.toml` (repo) or `~/.codex/config.toml` | `[mcp_servers.*]` block. Codex's primary config is `~/.codex/config.toml`; if project-level config is not picked up, merge the block into the home config. |
 | Cursor / Continue / Cline / Roo / Goose | client-specific MCP settings | Same command/args; consult the client's MCP docs. |
-| Local LLM | the MCP-capable client wrapping it | Configure the wrapper, not the model. |
+| LM Studio (≥0.3.17) | `mcp.json` (Cursor notation) | Native MCP host, no bridge needed. Add the server under `mcpServers` with an absolute path (or the git-root wrapper), since LM Studio's working directory isn't the repo. Using MCP via LM Studio's API requires ≥0.4.0 and an MCP-capable endpoint such as `/api/v1/chat` or `/v1/responses`. |
+| Ollama | the MCP host/agent in front of it | Ollama is a model runtime, not an MCP host. Put an MCP-capable agent in front of it (e.g. Kit). |
+| Local LLM (other) | the MCP-capable host/client wrapping it | A bare model doesn't speak MCP; configure the host (LM Studio, Cline, Continue, Goose, Kit, or Open WebUI via an MCP→OpenAPI bridge such as `mcpo`), not the model. |
 
 Default-safe environment for every client: `CYBERSEC_MCP_ALLOW_EXTERNAL=0` and
 `CYBERSEC_MCP_ALLOW_SCRIPTS=0`. Opt into scripts/external scopes only with explicit
