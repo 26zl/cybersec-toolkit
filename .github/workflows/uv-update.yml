@@ -18,14 +18,13 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          # Persist credentials (default) so the create-pull-request step can push
-          # the PR branch — persist-credentials: false breaks its push under git
-          # 2.54 ("could not read Username for github.com"). Pass the token
-          # explicitly too, to keep checkout v6's own fetch auth deterministic.
-          # See github/community #183817 and peter-evans/create-pull-request#1300.
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # Pinned to checkout v5 (NOT the v6 used elsewhere): v6 stores the token via
+      # an `includeIf` credential file that create-pull-request hides but cannot
+      # fully unwind, breaking its branch push under git 2.54 ("could not read
+      # Username for github.com"). v5 persists a plain .git/config extraheader that
+      # the push reuses. See peter-evans/create-pull-request#2682. Keep on v5 until
+      # that interaction is fixed upstream (do not let Dependabot bump to v6).
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 

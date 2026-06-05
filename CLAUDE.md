@@ -154,7 +154,12 @@ Integration tests (`.github/workflows/integration.yml`, push to main + weekly): 
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
 
-**CI gotcha (checkout v6 + git 2.54 auth):** `actions/checkout@v6` can fail with `fatal: could not read Username for 'https://github.com'`. Two distinct cases: (1) on the initial *fetch* when `persist-credentials: false` is set — fix by passing `token: ${{ secrets.GITHUB_TOKEN }}` explicitly (done in the fetch-only scorecard job in `security.yml`); (2) when a *later step pushes* (e.g. `create-pull-request`), `persist-credentials: false` also breaks the push — such workflows must leave `persist-credentials` at its default (`true`), so `uv-update.yml` passes the token and does **not** set `persist-credentials: false`. See github/community #183817 and peter-evans/create-pull-request#1300.
+**CI gotcha (checkout v6 + git 2.54 auth):** `actions/checkout@v6` can fail with `fatal: could not read Username for 'https://github.com'`. Two distinct cases:
+
+1. **Fetch-only jobs** with `persist-credentials: false` fail on the initial fetch — fix by passing `token: ${{ secrets.GITHUB_TOKEN }}` explicitly on the checkout step (done in the scorecard job in `security.yml`).
+2. **Jobs that push via `create-pull-request`** fail at the branch push regardless of `persist-credentials`/`token`: v6 stores the token in an `includeIf` credential file that `create-pull-request` hides but cannot fully unwind, so its `git push` finds no usable credential. Fix is to pin *that job's* checkout to **v5** (`actions/checkout@93cb6efe…` / v5.0.1), which persists a plain `.git/config` extraheader the push reuses — done in `uv-update.yml`. Keep it on v5 (do not let Dependabot bump to v6) until fixed upstream.
+
+See github/community #183817 and peter-evans/create-pull-request#2682.
 
 ## Architecture
 
