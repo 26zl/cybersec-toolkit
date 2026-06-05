@@ -154,6 +154,65 @@ setup() {
     [[ "$DISTRO_ID" == "android" ]]
 }
 
+# ---------- Package manager abstraction --------------------------------------
+
+@test "pkg_update retries zypper refresh after cleaning stale metadata" {
+    source_libs opensuse-tumbleweed zypper
+    make_test_tmpdir
+    export ZYPPER_REFRESH_DELAY=0
+    export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
+    export REFRESH_COUNT_FILE="$TEST_TMPDIR/zypper.refresh.count"
+    printf '0\n' > "$REFRESH_COUNT_FILE"
+
+    maybe_sudo() {
+        printf '%s\n' "$*" >> "$CALLS_FILE"
+        if [[ "$*" == "zypper --non-interactive --gpg-auto-import-keys refresh --force" ]]; then
+            local count
+            count=$(< "$REFRESH_COUNT_FILE")
+            count=$((count + 1))
+            printf '%s\n' "$count" > "$REFRESH_COUNT_FILE"
+            (( count >= 2 ))
+            return
+        fi
+        return 0
+    }
+
+    run pkg_update
+    assert_success
+
+    run grep -c -- "zypper --non-interactive --gpg-auto-import-keys refresh --force" "$CALLS_FILE"
+    assert_success
+    assert_output "2"
+
+    run grep -c -- "zypper --non-interactive clean --all" "$CALLS_FILE"
+    assert_success
+    assert_output "1"
+}
+
+@test "pkg_update fails zypper refresh after configured retries are exhausted" {
+    source_libs opensuse-tumbleweed zypper
+    make_test_tmpdir
+    export ZYPPER_REFRESH_ATTEMPTS=2
+    export ZYPPER_REFRESH_DELAY=0
+    export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
+
+    maybe_sudo() {
+        printf '%s\n' "$*" >> "$CALLS_FILE"
+        [[ "$*" == "zypper --non-interactive clean --all" ]]
+    }
+
+    run pkg_update
+    assert_failure
+
+    run grep -c -- "zypper --non-interactive --gpg-auto-import-keys refresh --force" "$CALLS_FILE"
+    assert_success
+    assert_output "2"
+
+    run grep -c -- "zypper --non-interactive clean --all" "$CALLS_FILE"
+    assert_success
+    assert_output "1"
+}
+
 # ---------- Exported paths (Linux) -------------------------------------------
 
 @test "GOBIN is /usr/local/bin on Linux" {

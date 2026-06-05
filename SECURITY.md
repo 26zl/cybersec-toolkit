@@ -23,7 +23,7 @@ Expect an initial response within 7 days. Credit is given in the release notes u
 
 - Code execution, privilege escalation, or sandbox escape in the installer (`install.sh`, `lib/`, `modules/`, `scripts/`)
 - Command injection, path traversal, or argument-sanitization bypass in the MCP server (`mcp_server/`)
-- Supply-chain weaknesses: unverified downloads, checksum bypasses, installation of compromised third-party tools through our scripts
+- Supply-chain weaknesses in project bootstrap/runtime or installer logic: unverified downloads, checksum bypasses, dependency update weaknesses, or fetching the wrong upstream artifact through our scripts
 - Secrets leakage in version-controlled files (`.versions`, audit logs, config samples)
 - CI/CD pipeline weaknesses: unpinned actions, missing egress controls, unauthenticated artifact uploads
 
@@ -45,6 +45,7 @@ For context when evaluating a report:
 - **System packages** — GPG-signed via the distro's repos (apt, dnf, pacman, zypper, pkg)
 - **Binary releases** — SHA256-verified against published checksums when available. `--require-checksums` turns missing checksums into a hard failure
 - **Go SDK** — SHA256-verified against `go.dev/dl/?mode=json` when reachable
+- **MCP Python dependencies** — resolved by `uv` with a 3-day `exclude-newer` release-age window for project runtime dependencies
 - **GitHub Actions** — all SHA-pinned with version comments; `step-security/harden-runner` enforces egress audit in every job
 - **MCP execution engine** — tool allowlisting, argument sanitization (blocks `;`, `&`, `|`, backtick, `$(`, `${`), per-tool blocked flags, network target allowlisting (private/loopback only by default — `CYBERSEC_MCP_ALLOW_EXTERNAL=1` opts in), rate limiting, and audit logging
 - **MCP script execution** — off by default; requires `CYBERSEC_MCP_ALLOW_SCRIPTS=1`
@@ -55,6 +56,8 @@ These run on every push and PR via `.github/workflows/security.yml`:
 
 - **gitleaks** — secret detection
 - **custom-security-scan** — hardcoded IPs, secrets, non-HTTPS URLs, unsafe eval, curl-pipe patterns, `chmod 777`
+- **pip-audit** — audits MCP server Python dependencies for known vulnerabilities
+- **pin-check** — enforces SHA-pinned GitHub Actions
 - **scorecard** — OSSF Scorecard (public-repo pushes to main)
 
 ## Disclosure

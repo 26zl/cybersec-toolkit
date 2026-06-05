@@ -101,7 +101,7 @@ scripts/backup.sh restore <file>       # restore from backup
 scripts/backup.sh schedule             # set up cron schedule
 ```
 
-MCP server config for Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`) both use `wsl.exe` to run the server from the WSL-local copy at `~/cybersec-toolkit/mcp_server/`. Run `sync-wsl.sh` after code changes.
+The tracked project `.mcp.json` runs the MCP server with local `uv` from the repo root. When running Claude from Windows against a WSL tool environment, use `wsl.exe` in `.mcp.json` or `claude_desktop_config.json` to run the server from the WSL-local copy at `~/cybersec-toolkit/mcp_server/`. Run `sync-wsl.sh` after code changes.
 
 **WSL env variable forwarding:** Windows env vars set in MCP config `"env"` blocks do NOT propagate into WSL automatically. Two mechanisms are used together:
 
@@ -115,8 +115,9 @@ MCP server config for Claude Code (`.mcp.json`) and Claude Desktop (`claude_desk
 ```bash
 docker build -t cybersec-toolkit .
 docker run cybersec-toolkit --profile ctf              # Run installer
-docker run -i --rm --entrypoint bash cybersec-toolkit \  # Run MCP server
-  -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py'
+# Run MCP server
+docker run -i --rm --entrypoint bash cybersec-toolkit \
+  -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner'
 ```
 
 ## CI Pipeline
@@ -143,9 +144,9 @@ Security workflow (`.github/workflows/security.yml`, separate from CI):
 - **pin-check** — enforces all GitHub Actions use full SHA commit pins (blocks tag-only references)
 - **scorecard** — OSSF Scorecard (public repos only, push to main)
 
-Supply chain hardening: all workflow jobs use `step-security/harden-runner` (egress audit mode) as the first step, and all actions are SHA-pinned with version comments.
+Supply chain hardening: all workflow jobs use `step-security/harden-runner` (egress audit mode) as the first step, and all actions are SHA-pinned with version comments. The 3-day release-age policy is scoped to project bootstrap/runtime dependencies, not the cybersecurity tools installed by module installers.
 
-Integration tests (`.github/workflows/integration.yml`, push to main + weekly): Ubuntu 24.04, Fedora 41, Arch, openSUSE.
+Integration tests (`.github/workflows/integration.yml`, push to main + weekly): Ubuntu 26.04, Fedora 44, Arch, openSUSE.
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
 
@@ -344,15 +345,15 @@ After solving ANY challenge (CTF, bug bounty, lab, practice box), **always** wri
 
 **The rule is simple: if a tool exists for it, use the tool.**
 
-## Discovering and Installing New Tools (MANDATORY)
+## Discovering and Adding New Tools (Approval-Gated)
 
 When working on a challenge, if you discover — through web searches, GitHub exploration, reading writeups, or any other means — a tool that would help solve the problem and is NOT already in our registry:
 
-1. **Install it immediately.** Do not mention it and move on. Do not say "there's a tool called X that could help" without installing it.
+1. **Recommend it with evidence first.** Include the use case, source URL, trust signal, and why existing registry tools are insufficient.
 2. **Preferred install methods** (in order): `apt`/`pipx`/`go install`/`cargo install` → `git clone` to `/opt/` or `~/tools/` → `pip install` in a venv
-3. **For one-off tools:** Clone to `/tmp/` or use `run_script` to install and run in one step
-4. **For reusable tools:** Clone to `~/tools/<name>` or install system-wide so it's available for future challenges
-5. After installing, use it immediately on the current problem
+3. **Install only with explicit user approval and authorized scope.** Prefer temporary/isolated installs for one-off tools.
+4. **For reusable tools:** Add them to `tools_config.json` and the matching module installer so future runs stay reproducible.
+5. After approval and installation, use it on the current problem and document why it was added.
 
 **Examples of when this applies:**
 

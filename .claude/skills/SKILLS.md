@@ -1,6 +1,6 @@
 # Claude Code Skills
 
-This directory contains 799 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
+This directory contains 857 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
 ## Project-specific developer skills (9)
 
@@ -59,6 +59,28 @@ Per-category decision trees + tool ordering.
 | `bounty-web` | OWASP web app testing |
 | `bounty-api` | OWASP API Top 10 + GraphQL |
 | `bounty-mobile` | APK/IPA static + dynamic + Frida |
+
+## SnailSploit Claude-Red — offensive methodology (58)
+
+MIT — see `LICENSE-Claude-Red-MIT`. Source: <https://github.com/SnailSploit/Claude-Red>, commit `aeb41eca7088a703c3a35fbcba3086d4a6c1aa4e`.
+
+Use these only for authorized security research, training, CTF/lab work, or scoped assessments.
+
+| Category | Skills |
+| --- | ---: |
+| `web` | 16 |
+| `wireless` | 14 |
+| `infrastructure` | 7 |
+| `exploit-dev` | 6 |
+| `fuzzing` | 4 |
+| `auth` | 2 |
+| `recon` | 2 |
+| `utility` | 2 |
+| `active-directory` | 1 |
+| `ai` | 1 |
+| `cloud` | 1 |
+| `iot` | 1 |
+| `mobile` | 1 |
 
 ## Trail of Bits — code audit & vulnerability research (14)
 
@@ -180,5 +202,6 @@ This project is MIT-licensed. The vendored skills retain their original licenses
 - Anthropic Cybersecurity Skills: Apache 2.0 (`LICENSE-Apache-2.0`)
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
 - Karpathy guidelines skill: MIT, source <https://github.com/multica-ai/andrej-karpathy-skills>
+- SnailSploit Claude-Red skills: MIT (`LICENSE-Claude-Red-MIT`)
 
 When modifying vendored skills, retain the source attribution in their SKILL.md frontmatter.

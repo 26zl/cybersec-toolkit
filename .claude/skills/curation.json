@@ -1,9 +1,9 @@
 {
   "domain_counts": {
     "agent_workflow": 6,
-    "ai_llm_security": 14,
-    "appsec_web_api": 68,
-    "cloud_security": 91,
+    "ai_llm_security": 15,
+    "appsec_web_api": 84,
+    "cloud_security": 92,
     "code_audit": 14,
     "crypto_blockchain": 14,
     "ctf_bounty": 10,
@@ -11,13 +11,13 @@
     "dfir_malware": 114,
     "general_security": 112,
     "grc_privacy": 38,
-    "identity_access": 41,
-    "iot_embedded_hardware": 14,
-    "mobile_security": 12,
-    "network_wireless": 33,
+    "identity_access": 44,
+    "iot_embedded_hardware": 15,
+    "mobile_security": 13,
+    "network_wireless": 47,
     "ot_ics_security": 15,
     "project_tooling": 9,
-    "redteam_pentest": 69,
+    "redteam_pentest": 90,
     "supply_chain_prodsec": 20,
     "telecom_mainframe_sap": 3
   },
@@ -372,6 +372,496 @@
     },
     {
       "domain": "ai_llm_security",
+      "name": "offensive-ai-security",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-business-logic",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-deserialization",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-graphql",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-parameter-pollution",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-request-smuggling",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-sqli",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-ssti",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-waf-bypass",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "cloud_security",
+      "name": "offensive-cloud",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "identity_access",
+      "name": "offensive-active-directory",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "identity_access",
+      "name": "offensive-jwt",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "identity_access",
+      "name": "offensive-oauth",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-bluetooth-classic",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-krack-fragattacks",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-wifi",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-wpa2-psk",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-wpa3-sae",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-wps",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-z-wave",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-zigbee-thread-matter",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-basic-exploitation",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-crash-analysis",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-edr-evasion",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-exploit-development",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-fuzzing",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-fuzzing-course",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-initial-access",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-mitigations",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-osint",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-shellcode",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-toctou",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-vuln-classes",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-windows-boundaries",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-windows-mitigations",
+      "priority": 93,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "ai_llm_security",
       "name": "ai-threat-testing",
       "priority": 92,
       "reasons": [
@@ -421,6 +911,305 @@
       ],
       "sensitivity": "normal",
       "source": "ctf",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-file-upload",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-idor",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-open-redirect",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-race-condition",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-rce",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-ssrf",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-xss",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-xxe",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "iot_embedded_hardware",
+      "name": "offensive-iot",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "mobile_security",
+      "name": "offensive-mobile",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-bluetooth-ble",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-deauth-disassoc",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-evil-twin",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-lorawan-sub-ghz",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-wifi-recon",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "network_wireless",
+      "name": "offensive-wpa-enterprise",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-advanced-redteam",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-bug-identification",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-exploit-dev-course",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-fast-checking",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-keylogger-arch",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-osint-methodology",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-reporting",
+      "priority": 90,
+      "reasons": [
+        "source:claude-red",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
       "tier": "T1-core"
     },
     {
@@ -9963,10 +10752,10 @@
   ],
   "tier_counts": {
     "T0-router-and-project": 9,
-    "T1-core": 20,
+    "T1-core": 78,
     "T1-coverage-anchor": 7,
     "T2-operational": 29,
     "T3-specialist": 734
   },
-  "total_skills": 799
+  "total_skills": 857
 }

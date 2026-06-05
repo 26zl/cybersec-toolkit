@@ -2,6 +2,7 @@
 [![Integration](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml)
 [![Security](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml)
 [![uv update](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml)
+![Status: Under Active Development](https://img.shields.io/badge/status-under%20active%20development-blue)
 
 ```text
    ______      __              _____
@@ -141,7 +142,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | `full` | All 18 | Complete security toolkit |
 | `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | CTF competitions |
 | `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | Offensive security |
-| `web` | misc, networking, recon, web | Web application testing |
+| `web` | misc, networking, recon, web, llm | Web application testing |
 | `osint` | misc, recon | OSINT gathering |
 | `forensics` | misc, forensics, blueteam, reversing, stego, cracking | Digital forensics and incident response |
 | `pwn` | misc, pwn, reversing, crypto | Binary exploitation and reverse engineering |
@@ -157,14 +158,14 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | 32 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
-| `networking` | 54 | Port scanning, packet capture, tunneling, MITM, protocol tools |
-| `recon` | 76 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
+| `misc` | 35 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
+| `networking` | 53 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `recon` | 74 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | 51 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
-| `crypto` | 12 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | 34 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `crypto` | 13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
+| `pwn` | 33 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | 31 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | 47 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
+| `forensics` | 50 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
 | `enterprise` | 76 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | 39 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | 28 | Hash cracking (john, hashcat), brute force, wordlist generation |
@@ -264,7 +265,7 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
       "args": [
         "-d", "kali-linux",
         "bash", "-lc",
-        "cd /path/to/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
+        "cd /path/to/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner"
       ]
     }
   }
@@ -281,7 +282,7 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
       "args": [
         "run", "-i", "--rm", "cybersec-toolkit",
         "bash", "-c",
-        "cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
+        "cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner"
       ]
     }
   }
@@ -293,7 +294,7 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
 Once connected, just talk to the AI naturally:
 
 - __"Which tools do I need for a web CTF?"__ -- suggests top tools with install status
-- __"What does the CTF profile install?"__ -- lists all 272 tools grouped by module
+- __"What does the CTF profile install?"__ -- lists all 278 tools grouped by module
 - __"Tell me about the web module"__ -- 51 tools, methods breakdown, which profiles include it
 - __"How do I install sqlmap?"__ -- install/update/remove commands for the right module
 - __"I want to do bug bounty hunting"__ -- recommends the `web` profile
@@ -313,7 +314,7 @@ External targets stay blocked by default; set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` on
   "mcpServers": {
     "cybersec-tools": {
       "command": "uv",
-      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py"],
+      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py", "--transport", "stdio", "--no-banner"],
       "env": {
         "CYBERSEC_MCP_ALLOW_SCRIPTS": "1",
         "CYBERSEC_MCP_ALLOW_EXTERNAL": "0"
@@ -371,17 +372,25 @@ New dependency resolutions intentionally ignore packages uploaded in the last
 Dependabot uses the matching 3-day cooldown, and the weekly uv update workflow
 inherits the same policy.
 
+This release-age policy is scoped to project bootstrap/runtime dependencies
+only: MCP Python packages, CI actions, and the Docker build inputs needed to get
+the project running. It does not delay or pin the cybersecurity tools installed
+from the registry; those tools intentionally follow their module installer and
+update flow so operators can get current scanners, exploits, signatures, and
+research utilities.
+
 Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendored Bats submodules with CRLF and cause `$'\r'` failures.
 
 ## Claude Code Skills
 
-This repo ships 799 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
+This repo ships 857 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
 
 - 9 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `skill-dependency-audit`, `skill-curation-router`)
 - 7 coverage gap anchor skills (GRC/privacy, AI/LLM security, IoT/embedded/hardware, mainframe, telecom/5G, SAP/ERP, supply-chain/product security)
 - 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
 - 6 CTF methodology skills (`ctf-crypto`, `ctf-pwn`, `ctf-web`, `ctf-rev`, `ctf-forensics`, `ctf-stego`)
 - 4 bug bounty methodology skills (`bounty-recon`, `bounty-web`, `bounty-api`, `bounty-mobile`)
+- 58 offensive methodology skills from [SnailSploit Claude-Red](https://github.com/SnailSploit/Claude-Red) (MIT)
 - 14 code audit skills from [Trail of Bits](https://github.com/trailofbits/skills) (CC-BY-SA 4.0)
 - 754 operational how-tos from [Anthropic Cybersecurity Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) (Apache 2.0)
 - 4 high-level workflows from [Transilience](https://github.com/transilienceai/communitytools) (MIT)
@@ -448,7 +457,7 @@ This installer downloads and runs code from the internet. On Linux it runs as ro
 - __System packages__: GPG-signed by your distro's repos (apt, dnf, pacman, zypper, pkg)
 - __pipx/Go/Cargo/Gem/npm__: Downloads from registries (no signature verification, pipx isolated in venvs)
 - __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch. Use `--require-checksums` to also fail when no checksum file is published. __Warning:__ `--fast` disables _all_ checksum verification, including for releases that do publish checksums — do not use in production or CI environments
-- __MCP Python dependencies__: Resolved by `uv` with a 3-day `exclude-newer` window; Dependabot also waits 3 days before proposing dependency PRs
+- __MCP Python dependencies__: Resolved by `uv` with a 3-day `exclude-newer` window; Dependabot also waits 3 days before proposing dependency PRs. This does not apply to installed security tools
 - __Go SDK__: SHA256 verified against go.dev published hashes when available; warns on API failure, hard-fails with `--require-checksums`
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
 - __Build from source__: Runs `make` (as root on Linux) -- review what you're building
@@ -483,6 +492,7 @@ Files removed by Defender will appear as `D` in `git status`. The content is pre
 MIT License -- see [LICENSE](LICENSE) for details.
 
 For contribution workflow and review expectations, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+For community behavior expectations, see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 For vulnerability reporting, see [`SECURITY.md`](SECURITY.md).
 
 ## Disclaimer

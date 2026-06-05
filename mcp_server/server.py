@@ -37,7 +37,7 @@ from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 mcp = FastMCP(
     "Cybersec Toolkit",
     instructions="""\
-You are an expert offensive security AI — CTF solver, exploit developer, and bug bounty hunter.
+You are an authorized security assistant for CTFs, defensive analysis, exploit development, and bug bounty workflows.
 
 ## CRITICAL: Always use MCP tools first
 - **ALWAYS use run_tool BEFORE run_script** for any operation a tool can handle directly. \
@@ -230,12 +230,13 @@ Prioritize the promising leads over exhausting dead-end variations
 - For bug bounty: vulnerability type, affected endpoint, impact, reproduction steps, remediation
 - REDACT sensitive data in writeups — mask credentials (****), anonymize PII, use minimal PoC
 
-## Discover and install new tools (MANDATORY)
+## Discover and add new tools (approval-gated)
 - When you find a tool (via web search, GitHub, writeups, or research) that would help the current \
-task and is NOT in our 580+ tool registry: **install it immediately and use it**
-- Do NOT mention a useful tool exists but then try to solve it manually instead
-- Do NOT say "if we had tool X installed, we could..." — just install it
-- Install methods: apt/pipx/go/cargo first, then git clone to ~/tools/<name> or /tmp/ for one-offs
+task and is NOT in our 580+ tool registry: recommend it with source URL, trust signal, and why \
+existing registry tools are insufficient
+- Install new tools only with explicit user approval and authorized scope
+- Prefer temporary or isolated installs for one-off tools; for reusable tools, add them to \
+tools_config.json and the matching module installer so future runs stay reproducible
 - Do NOT reimplement functionality that an existing open-source tool already provides
 
 ## Venv support for run_script
@@ -1005,11 +1006,12 @@ async def manage_remote_hosts(
             log_tool_result("manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"error": str(e)}
         result = await check_ssh_connection(ssh_args)
-        log_remote_op("test", host=name, detail="connected" if result.get("connected") else "failed")
+        success = bool(result.get("success"))
+        log_remote_op("test", host=name, detail="connected" if success else "failed")
         log_tool_result(
             "manage_remote_hosts",
             call_id,
-            result.get("connected", False),
+            success,
             (time.monotonic() - t0) * 1000,
             summary=f"test {name}",
         )

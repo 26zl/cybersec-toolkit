@@ -4,6 +4,14 @@ Thanks for helping make this toolkit better. Most contributions fall into one of
 
 Before starting anything non-trivial, open an issue first so we can agree on the approach. For small fixes (typos, broken URLs, a single tool addition), a PR is fine without prior discussion.
 
+By participating, follow the [Code of Conduct](CODE_OF_CONDUCT.md). Do not open public issues for vulnerabilities; use [SECURITY.md](SECURITY.md).
+
+## Issues and pull requests
+
+Use the GitHub issue form for bugs, install failures, tool requests, feature ideas, documentation issues, and MCP/Claude integration problems. It keeps the important context in one place without requiring separate templates for every case.
+
+Pull requests use the short PR template in `.github/PULL_REQUEST_TEMPLATE.md`. Fill in the summary, contribution type, and any validation you ran. It is fine to leave irrelevant validation boxes unchecked.
+
 ## Quick start
 
 ```bash
@@ -98,7 +106,8 @@ Hardcoded data in the MCP server must stay in sync with the bash source:
 
 - Keep PRs focused. Adding one tool: one PR. Refactoring: separate PR.
 - Include a brief description. For a tool addition, mention the module and install method.
-- Don't commit `.mcp.json`, `.versions`, or anything under `workflows/` (all gitignored).
+- The project `.mcp.json` is tracked intentionally. Do not add personal tokens, hostnames, or local-only MCP settings to it.
+- Don't commit `.versions`, generated install logs, local caches, local editor/Claude settings, or anything under `workflows/` (all gitignored).
 - Use clear commit subjects ("add subfinder to recon module", not "update"). Reference issue numbers when relevant.
 
 ## Code style

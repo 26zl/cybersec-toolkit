@@ -38,14 +38,18 @@ Clone the main repository first. The server reads `tools_config.json` from the r
 
 ### Claude Code
 
-Add to `.mcp.json` in the project root:
+The repository already includes a project `.mcp.json` for Claude Code:
 
 ```json
 {
   "mcpServers": {
     "cybersec-tools": {
       "command": "uv",
-      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py"]
+      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py", "--transport", "stdio", "--no-banner"],
+      "env": {
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
+      }
     }
   }
 }
@@ -62,7 +66,11 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "cybersec-tools": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/cybersec-toolkit/mcp_server", "fastmcp", "run", "server.py"]
+      "args": ["run", "--directory", "/path/to/cybersec-toolkit/mcp_server", "fastmcp", "run", "server.py", "--transport", "stdio", "--no-banner"],
+      "env": {
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
+      }
     }
   }
 }
@@ -80,7 +88,7 @@ docker build -t cybersec-toolkit .
 
 # Run MCP server inside container (stdio transport)
 docker run -i --rm --entrypoint bash cybersec-toolkit \
-  -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py'
+  -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner'
 ```
 
 Then point your `.mcp.json` or `claude_desktop_config.json` at the Docker command:
@@ -93,7 +101,7 @@ Then point your `.mcp.json` or `claude_desktop_config.json` at the Docker comman
       "args": [
         "run", "-i", "--rm", "--entrypoint", "bash", "cybersec-toolkit",
         "-c",
-        "export PATH=\"$HOME/.local/bin:$PATH\" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py"
+        "export PATH=\"$HOME/.local/bin:$PATH\" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner"
       ]
     }
   }
@@ -131,7 +139,7 @@ wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools
       "command": "wsl.exe",
       "args": [
         "bash", "-lc",
-        "export CYBERSEC_MCP_ALLOW_SCRIPTS=1 CYBERSEC_MCP_ALLOW_EXTERNAL=0 && cd ~/cybersec-toolkit/mcp_server && ~/.local/bin/uv run fastmcp run server.py"
+        "export CYBERSEC_MCP_ALLOW_SCRIPTS=1 CYBERSEC_MCP_ALLOW_EXTERNAL=0 && cd ~/cybersec-toolkit/mcp_server && ~/.local/bin/uv run fastmcp run server.py --transport stdio --no-banner"
       ],
       "env": {
         "CYBERSEC_MCP_ALLOW_SCRIPTS": "1",
@@ -203,7 +211,7 @@ uv sync
 uv run cybersec-mcp
 
 # Or via fastmcp directly
-uv run fastmcp run server.py
+uv run fastmcp run server.py --transport stdio --no-banner
 ```
 
 ### Example Queries
@@ -217,7 +225,7 @@ Once connected via an MCP client:
 - **Check a tool**: `check_installed("nmap")` — detailed install status
 - **Tool details**: `get_tool_info("sqlmap")` — method, module, URL, install/update/remove commands
 - **Full module view**: `get_module_info("web")` — all 51 tools, install status, which profiles include it
-- **Profile contents**: `get_profile_tools("ctf")` — all 272 tools grouped by module
+- **Profile contents**: `get_profile_tools("ctf")` — all 278 tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
 - **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning
 - **What to install**: `recommend_install("I want to do CTF competitions")` — recommends ctf profile
@@ -245,7 +253,7 @@ mcp_server/
   sanitize.py          # Output sanitization — strips LLM markers, XML injection, Unicode evasion
   audit.py             # JSON audit logging with rotation for executions and blocked attempts
   remote.py            # Remote SSH execution — host config, connection testing, input validation
-  pyproject.toml       # UV dependency config, 3-day exclude-newer policy, CLI entrypoint
+  pyproject.toml       # UV config, 3-day exclude-newer for MCP runtime deps, CLI entrypoint
   README.md            # This file
 manual_scripts/        # Persistent scripts — exploits, solvers, reusable tools
 ```

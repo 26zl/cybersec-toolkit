@@ -20,9 +20,9 @@ jobs:
       matrix:
         include:
           - distro: ubuntu
-            image: ubuntu:24.04
+            image: ubuntu:26.04
           - distro: fedora
-            image: fedora:41
+            image: fedora:44
           - distro: arch
             image: archlinux:latest
           - distro: opensuse
@@ -57,7 +57,26 @@ jobs:
       - name: Install prerequisites (openSUSE)
         if: matrix.distro == 'opensuse'
         run: |
-          zypper --non-interactive refresh
+          zypper_refresh() {
+            attempt=1
+            delay=15
+            max_attempts=3
+            while [ "$attempt" -le "$max_attempts" ]; do
+              if zypper --non-interactive --gpg-auto-import-keys refresh --force; then
+                return 0
+              fi
+              if [ "$attempt" -eq "$max_attempts" ]; then
+                return 1
+              fi
+              echo "zypper refresh failed (attempt ${attempt}/${max_attempts}); cleaning metadata and retrying in ${delay}s" >&2
+              zypper --non-interactive clean --all || true
+              sleep "$delay"
+              delay=$((delay * 2))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          zypper_refresh
           zypper --non-interactive install git curl wget sudo which awk
 
       - name: Dry-run full profile

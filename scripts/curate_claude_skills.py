@@ -77,6 +77,144 @@ KARPATHY_SKILLS = {
     "karpathy-guidelines",
 }
 
+CLAUDE_RED_SKILLS = {
+    "offensive-active-directory",
+    "offensive-advanced-redteam",
+    "offensive-ai-security",
+    "offensive-basic-exploitation",
+    "offensive-bluetooth-ble",
+    "offensive-bluetooth-classic",
+    "offensive-bug-identification",
+    "offensive-business-logic",
+    "offensive-cloud",
+    "offensive-crash-analysis",
+    "offensive-deauth-disassoc",
+    "offensive-deserialization",
+    "offensive-edr-evasion",
+    "offensive-evil-twin",
+    "offensive-exploit-dev-course",
+    "offensive-exploit-development",
+    "offensive-fast-checking",
+    "offensive-file-upload",
+    "offensive-fuzzing",
+    "offensive-fuzzing-course",
+    "offensive-graphql",
+    "offensive-idor",
+    "offensive-initial-access",
+    "offensive-iot",
+    "offensive-jwt",
+    "offensive-keylogger-arch",
+    "offensive-krack-fragattacks",
+    "offensive-lorawan-sub-ghz",
+    "offensive-mitigations",
+    "offensive-mobile",
+    "offensive-oauth",
+    "offensive-open-redirect",
+    "offensive-osint",
+    "offensive-osint-methodology",
+    "offensive-parameter-pollution",
+    "offensive-race-condition",
+    "offensive-rce",
+    "offensive-reporting",
+    "offensive-request-smuggling",
+    "offensive-shellcode",
+    "offensive-sqli",
+    "offensive-ssrf",
+    "offensive-ssti",
+    "offensive-toctou",
+    "offensive-vuln-classes",
+    "offensive-waf-bypass",
+    "offensive-wifi",
+    "offensive-wifi-recon",
+    "offensive-windows-boundaries",
+    "offensive-windows-mitigations",
+    "offensive-wpa-enterprise",
+    "offensive-wpa2-psk",
+    "offensive-wpa3-sae",
+    "offensive-wps",
+    "offensive-xss",
+    "offensive-xxe",
+    "offensive-z-wave",
+    "offensive-zigbee-thread-matter",
+}
+
+CLAUDE_RED_DOMAIN_OVERRIDES = {
+    "ai_llm_security": {
+        "offensive-ai-security",
+    },
+    "appsec_web_api": {
+        "offensive-business-logic",
+        "offensive-deserialization",
+        "offensive-file-upload",
+        "offensive-graphql",
+        "offensive-idor",
+        "offensive-open-redirect",
+        "offensive-parameter-pollution",
+        "offensive-race-condition",
+        "offensive-rce",
+        "offensive-request-smuggling",
+        "offensive-sqli",
+        "offensive-ssrf",
+        "offensive-ssti",
+        "offensive-waf-bypass",
+        "offensive-xss",
+        "offensive-xxe",
+    },
+    "cloud_security": {
+        "offensive-cloud",
+    },
+    "identity_access": {
+        "offensive-active-directory",
+        "offensive-jwt",
+        "offensive-oauth",
+    },
+    "iot_embedded_hardware": {
+        "offensive-iot",
+    },
+    "mobile_security": {
+        "offensive-mobile",
+    },
+    "network_wireless": {
+        "offensive-bluetooth-ble",
+        "offensive-bluetooth-classic",
+        "offensive-deauth-disassoc",
+        "offensive-evil-twin",
+        "offensive-krack-fragattacks",
+        "offensive-lorawan-sub-ghz",
+        "offensive-wifi",
+        "offensive-wifi-recon",
+        "offensive-wpa-enterprise",
+        "offensive-wpa2-psk",
+        "offensive-wpa3-sae",
+        "offensive-wps",
+        "offensive-z-wave",
+        "offensive-zigbee-thread-matter",
+    },
+    "redteam_pentest": {
+        "offensive-advanced-redteam",
+        "offensive-basic-exploitation",
+        "offensive-bug-identification",
+        "offensive-crash-analysis",
+        "offensive-edr-evasion",
+        "offensive-exploit-dev-course",
+        "offensive-exploit-development",
+        "offensive-fast-checking",
+        "offensive-fuzzing",
+        "offensive-fuzzing-course",
+        "offensive-initial-access",
+        "offensive-keylogger-arch",
+        "offensive-mitigations",
+        "offensive-osint",
+        "offensive-osint-methodology",
+        "offensive-reporting",
+        "offensive-shellcode",
+        "offensive-toctou",
+        "offensive-vuln-classes",
+        "offensive-windows-boundaries",
+        "offensive-windows-mitigations",
+    },
+}
+
 DOMAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("agent_workflow", ("agent", "coding-agent", "llm coding", "refactoring", "surgical", "overcomplication", "success criteria")),
     ("grc_privacy", ("grc", "governance", "compliance", "privacy", "legal", "audit", "policy", "soc2", "iso", "nist", "pci", "nerc", "gdpr", "risk")),
@@ -215,6 +353,8 @@ def source_for(name: str) -> str:
         return "transilience"
     if name in KARPATHY_SKILLS:
         return "karpathy"
+    if name in CLAUDE_RED_SKILLS:
+        return "claude-red"
     return "anthropic"
 
 
@@ -233,6 +373,9 @@ def domain_for(name: str, description: str) -> str:
         return "code_audit"
     if name in KARPATHY_SKILLS:
         return "agent_workflow"
+    for domain, names in CLAUDE_RED_DOMAIN_OVERRIDES.items():
+        if name in names:
+            return domain
 
     haystack = f"{name} {description}".lower()
     scores: Counter[str] = Counter()
@@ -266,6 +409,7 @@ def score_skill(name: str, description: str, source: str) -> tuple[int, list[str
         "trail-of-bits": 86,
         "transilience": 82,
         "karpathy": 84,
+        "claude-red": 80,
         "ctf": 78,
         "bug-bounty": 78,
         "anthropic": 58,

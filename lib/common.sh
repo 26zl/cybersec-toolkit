@@ -567,13 +567,36 @@ maybe_sudo() {
     fi
 }
 
+_zypper_refresh_with_retries() {
+    local max_attempts="${ZYPPER_REFRESH_ATTEMPTS:-3}"
+    local delay="${ZYPPER_REFRESH_DELAY:-15}"
+    local attempt
+
+    [[ "$max_attempts" =~ ^[0-9]+$ ]] || max_attempts=3
+    [[ "$delay" =~ ^[0-9]+$ ]] || delay=15
+    (( max_attempts >= 1 )) || max_attempts=1
+
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        if maybe_sudo zypper --non-interactive --gpg-auto-import-keys refresh --force; then
+            return 0
+        fi
+
+        (( attempt < max_attempts )) || return 1
+        printf 'zypper refresh failed (attempt %d/%d); cleaning metadata and retrying in %ss\n' \
+            "$attempt" "$max_attempts" "$delay" >&2
+        maybe_sudo zypper --non-interactive clean --all >/dev/null 2>&1 || true
+        sleep "$delay"
+        delay=$((delay * 2))
+    done
+}
+
 # Package manager abstraction
 pkg_update() {
     case "$PKG_MANAGER" in
         apt)     maybe_sudo apt-get update -qq ;;
         dnf)     maybe_sudo dnf check-update --setopt=max_parallel_downloads=10 -q || true ;;
         pacman)  _enable_pacman_parallel_downloads; maybe_sudo pacman -Sy --noconfirm ;;
-        zypper)  maybe_sudo zypper --non-interactive refresh ;;
+        zypper)  _zypper_refresh_with_retries ;;
         pkg)     pkg update -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
     esac

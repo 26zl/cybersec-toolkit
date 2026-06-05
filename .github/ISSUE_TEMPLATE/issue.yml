@@ -1,0 +1,81 @@
+name: Issue
+description: Bugs, install failures, tool requests, feature ideas, and MCP/Claude integration issues.
+title: "[issue]: "
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve cybersec-toolkit.
+
+        Please do not report vulnerabilities publicly. Use GitHub Security Advisories instead:
+        https://github.com/26zl/cybersec-toolkit/security/advisories/new
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Issue type
+      options:
+        - Bug
+        - Install or update failure
+        - Tool request
+        - Feature request
+        - MCP/Claude integration
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, or what would you like to change?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce or requested change
+      description: Include commands, profile/module/tool names, and relevant config.
+      placeholder: |
+        1. sudo ./install.sh --profile ...
+        2. ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Distro/WSL/Termux/Docker, architecture, shell, and relevant versions.
+      placeholder: |
+        OS:
+        Arch:
+        Shell:
+        Docker:
+        MCP client:
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Paste relevant output. Redact tokens, credentials, hostnames, and private targets.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues first.
+          required: false
+        - label: This is not a private security vulnerability report.
+          required: true
+        - label: I have authorization for any target, lab, or environment mentioned here.
+          required: true
