@@ -231,6 +231,10 @@ jobs:
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          # checkout v6 intermittently fails to inject the default token before
+          # fetch ("could not read Username for github.com"). Pass it explicitly
+          # for deterministic auth. See github/community discussion #183817.
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: false
 
       - uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
