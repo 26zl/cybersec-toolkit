@@ -253,6 +253,36 @@ Requires [uv](https://docs.astral.sh/uv/). Claude Code can use the tracked proje
 
 Restart Claude Code. The 13 tools appear in `/mcp`.
 
+### Other MCP clients (Codex, Cursor, local LLMs)
+
+MCP is an open standard, so the same stdio server works with any MCP-capable client. From
+the repo root the launch command is:
+
+```bash
+uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner
+```
+
+`--directory mcp_server` is relative to the working directory, so if a client may start
+the server from a subdirectory, wrap it to move to the repo root first:
+
+```bash
+bash -lc 'cd "$(git rev-parse --show-toplevel)" && exec uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner'
+```
+
+- __Codex__ — a project `.codex/config.toml` is included (mirrors `.mcp.json`, using the
+  git-root wrapper above so it works from any subdirectory). Codex's primary config is
+  `~/.codex/config.toml`; if the project file isn't picked up, copy the
+  `[mcp_servers.cybersec-tools]` block into your home config.
+- __Cursor / Continue / Cline / Roo / Goose__ — add the same launch command in the
+  client's MCP settings UI or config file (use the wrapper form if the client's working
+  directory isn't the repo root).
+- __Local LLMs__ — a bare local model does not speak MCP on its own. Run it behind an
+  MCP-capable client (e.g. Cline, Continue, Goose, or any agent wrapper) and point that
+  client at the launch command above.
+
+Vendor-neutral repo instructions live in [`AGENTS.md`](AGENTS.md) (read natively by Codex
+and many agentic tools); Claude Code reads [`CLAUDE.md`](CLAUDE.md).
+
 ### Connect from WSL (e.g. Kali Linux)
 
 The MCP server runs over stdio, so it works from any environment that Claude Code can spawn. To use tools installed inside WSL:
@@ -396,6 +426,16 @@ This repo ships 857 [Claude Code skills](https://docs.claude.com/en/docs/claude-
 - 4 high-level workflows from [Transilience](https://github.com/transilienceai/communitytools) (MIT)
 
 Source and category index in [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
+
+Skills are a Claude Code feature, but the content is plain Markdown plus helper scripts.
+To use them with Codex or other agents that read `.agents/skills/`, mirror them (the
+`.agents/skills/` copy is generated and git-ignored — `.claude/skills/` stays the source
+of truth):
+
+```bash
+scripts/sync-skills.sh            # mirror .claude/skills/ -> .agents/skills/
+scripts/sync-skills.sh --check    # report drift without writing (exit 1 if out of date)
+```
 
 `scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Audit those extras with:
 

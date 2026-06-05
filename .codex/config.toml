@@ -1,0 +1,21 @@
+# Codex MCP configuration for cybersec-tools-installer.
+#
+# Codex's primary config is ~/.codex/config.toml. If Codex does not pick up this
+# project-level file, copy the [mcp_servers.cybersec-tools] block into your home
+# config (~/.codex/config.toml).
+#
+# This mirrors the Claude Code .mcp.json at the repo root: the MCP server runs
+# over stdio via uv, with script execution and external network targets disabled
+# by default. The bash wrapper first moves to the Git root so the config works
+# even when Codex is launched from a subdirectory.
+
+[mcp_servers.cybersec-tools]
+command = "bash"
+args = [
+    "-lc",
+    "cd \"$(git rev-parse --show-toplevel)\" && exec uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner",
+]
+
+[mcp_servers.cybersec-tools.env]
+CYBERSEC_MCP_ALLOW_EXTERNAL = "0"
+CYBERSEC_MCP_ALLOW_SCRIPTS = "0"
