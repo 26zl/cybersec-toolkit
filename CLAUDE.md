@@ -154,7 +154,7 @@ Integration tests (`.github/workflows/integration.yml`, push to main + weekly): 
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
 
-**CI gotcha:** `actions/checkout@v6` intermittently fails with `fatal: could not read Username for 'https://github.com'` when `persist-credentials: false` is set (the default token isn't injected before fetch). Fix is to pass `token: ${{ secrets.GITHUB_TOKEN }}` explicitly on the checkout step — done in `uv-update.yml` and the scorecard job in `security.yml`. See github/community discussion #183817.
+**CI gotcha (checkout v6 + git 2.54 auth):** `actions/checkout@v6` can fail with `fatal: could not read Username for 'https://github.com'`. Two distinct cases: (1) on the initial *fetch* when `persist-credentials: false` is set — fix by passing `token: ${{ secrets.GITHUB_TOKEN }}` explicitly (done in the fetch-only scorecard job in `security.yml`); (2) when a *later step pushes* (e.g. `create-pull-request`), `persist-credentials: false` also breaks the push — such workflows must leave `persist-credentials` at its default (`true`), so `uv-update.yml` passes the token and does **not** set `persist-credentials: false`. See github/community #183817 and peter-evans/create-pull-request#1300.
 
 ## Architecture
 

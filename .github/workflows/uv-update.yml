@@ -20,11 +20,12 @@ jobs:
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          # checkout v6 intermittently fails to inject the default token before
-          # fetch ("could not read Username for github.com"). Pass it explicitly
-          # for deterministic auth. See github/community discussion #183817.
+          # Persist credentials (default) so the create-pull-request step can push
+          # the PR branch — persist-credentials: false breaks its push under git
+          # 2.54 ("could not read Username for github.com"). Pass the token
+          # explicitly too, to keep checkout v6's own fetch auth deterministic.
+          # See github/community #183817 and peter-evans/create-pull-request#1300.
           token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: false
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
