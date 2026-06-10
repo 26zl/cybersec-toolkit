@@ -587,7 +587,7 @@ provides-extras = ["ctf-core", "ctf-extra"]
 dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "ruff", specifier = ">=0.8" },
+    { name = "ruff", specifier = ">=0.15.16" },
 ]
 
 [[package]]
