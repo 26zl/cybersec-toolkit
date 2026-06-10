@@ -31,6 +31,10 @@ python3 scripts/validate_distro_compat.py
 # Validate Claude Code skill metadata and SKILLS.md counts
 python3 scripts/validate_claude_skills.py
 
+# Regenerate skill curation index after adding/removing/renaming a skill dir
+# (validate_claude_skills.py checks curation freshness; this writes curation.json + CURATION.md)
+python3 scripts/curate_claude_skills.py --write
+
 # Populate missing URLs in tools_config.json from module source
 python3 scripts/validate_tools_config.py --sync
 
@@ -178,15 +182,29 @@ All scripts source the chain in this order. `common.sh` auto-detects distro/pkg 
 
 14 profiles in `profiles/*.conf`. Each sets `MODULES="..."`, `SKIP_HEAVY`, `ENABLE_DOCKER`, `INCLUDE_C2`. Used via `install.sh --profile <name>`.
 
+### Skill Library (`.claude/skills/`)
+
+860 on-demand Claude Code skills (vendored sources + project-authored). Three files describe the set and must stay consistent or `validate_claude_skills.py` fails:
+
+- `SKILLS.md` — human index. Hand-maintained: the declared total ("contains N skills") and the per-section counts (`## Name (N)`) must both sum to the actual skill-dir count.
+- `curation.json` + `CURATION.md` — tier/domain ranking, **generated** by `scripts/curate_claude_skills.py --write`. Never hand-edit. Classification is rule-based in that script, with hardcoded sets for project/coverage-anchor/coordinator/source-specific skills — add a new project-authored skill's name there to control its tier/domain.
+
+Each skill is `<name>/SKILL.md` with YAML frontmatter where `name` **must equal the directory name** plus a `description`. After adding/removing/renaming a skill dir: update `SKILLS.md` counts, run `curate_claude_skills.py --write`, then `validate_claude_skills.py`.
+
+**Cross-skill coordinators** (project-authored, other skills route through them): `finding-triage` (normalize a finding → disposition), `security-comms` (translate for an audience), `authorization-gate` (pre-flight authorization check for offensive/simulation work).
+
+The repo is also a **Claude Code plugin marketplace** (`.claude-plugin/plugin.json` + `marketplace.json`). `plugin.json`'s `skills` field points at `.claude/skills/`, so the library installs via `/plugin marketplace add 26zl/cybersec-toolkit`. `scripts/sync-skills.sh` separately mirrors the skills to git-ignored `.agents/skills/` for non-Claude agents.
+
 ### MCP Server (`mcp_server/`)
 
 **CRITICAL: MCP tools must ALWAYS be used first.** Priority order: `run_tool` → `run_pipeline` → `run_script`. Use `run_tool("curl", ...)` for HTTP, `run_tool("nmap", ...)` for scanning, etc. Only fall back to `run_script` when you need actual programming logic (loops, exploit code, complex parsing). If `run_tool` is blocked by policy (e.g. `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), tell the user to fix config and restart — do NOT silently bypass with `run_script`.
 
-Separate Python package (FastMCP). 13 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`, `get_module_info`, `get_profile_tools`, `suggest_for_ctf`, `suggest_for_bounty`, `recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`, `run_script`, `manage_remote_hosts`.
+Separate Python package (FastMCP). 14 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`, `get_module_info`, `get_profile_tools`, `suggest_for_ctf`, `suggest_for_bounty`, `get_cve_info`, `recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`, `run_script`, `manage_remote_hosts`.
 
 **Module layout:**
 
-- `server.py` — FastMCP tool registrations (13 tools)
+- `server.py` — FastMCP tool registrations (14 tools)
+- `cve_advisor.py` — CVE → curated skills/tools/modules mapping + live NVD/KEV/EPSS lookup commands (local-first, no network calls of its own)
 - `security.py` — Execution engine: `execute_tool()`, `execute_pipeline()`, `execute_script()`, `execute_tool_remote()`, policy enforcement, argument sanitization
 - `tools_db.py` — Tool registry loader, install checks, version tracking
 - `profiles.py` — Profile data (synced from `profiles/*.conf`)

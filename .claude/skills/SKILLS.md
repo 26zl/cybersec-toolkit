@@ -1,6 +1,6 @@
 # Claude Code Skills
 
-This directory contains 857 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
+This directory contains 860 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
 ## Project-specific developer skills (9)
 
@@ -37,6 +37,16 @@ Maintained in this repo to cover domains that are intentionally thinner in the v
 | Skill | What it does |
 | --- | --- |
 | `karpathy-guidelines` | Keeps coding agents simple, surgical, assumption-aware, and verification-driven |
+
+## Cross-skill coordinators (3)
+
+Maintained in this repo. Other skills route their output through these for normalization, communication, and pre-flight authorization.
+
+| Skill | What it does |
+| --- | --- |
+| `finding-triage` | Normalizes a single finding (scanner/audit/pentest/CVE) into a defensible disposition: Fixed, Deferred, Accepted Risk, or False Positive |
+| `security-comms` | Translates a finding/incident/update for a specific audience — board, exec, engineering, customer, legal, procurement |
+| `authorization-gate` | Shared pre-flight authorization check for offensive/simulation work; defines scope confirmation and hard refusals |
 
 ## CTF methodology (6)
 

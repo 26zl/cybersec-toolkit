@@ -21,7 +21,7 @@ security work that any MCP-capable client can drive.
 The integration surface is split into two layers:
 
 1. **MCP server (`mcp_server/`) — vendor-neutral.** This is the core integration. Any
-   MCP-capable client can launch it over stdio and use its 13 tools. This works with
+   MCP-capable client can launch it over stdio and use its 14 tools. This works with
    Claude Code/Desktop, Codex, Cursor, Continue, Cline/Roo, Goose, and local LLMs that
    run behind an MCP-capable client. A bare local model does **not** speak MCP on its
    own — it needs an agent/client wrapper that can call MCP tools.
@@ -76,6 +76,10 @@ python3 scripts/validate_distro_compat.py
 # validator runs anywhere)
 python3 scripts/validate_claude_skills.py
 
+# Regenerate skill curation index after adding/removing/renaming a skill dir
+# (validate_claude_skills.py checks curation freshness)
+python3 scripts/curate_claude_skills.py --write
+
 # Populate missing URLs in tools_config.json from module source
 python3 scripts/validate_tools_config.py --sync
 ```
@@ -124,10 +128,10 @@ actual programming logic (loops, exploit code, complex parsing). If `run_tool` i
 blocked by policy (e.g. `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), tell the user to fix config
 and restart — do **not** silently bypass with `run_script`.
 
-13 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`,
+14 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`,
 `get_module_info`, `get_profile_tools`, `suggest_for_ctf`, `suggest_for_bounty`,
-`recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`, `run_script`,
-`manage_remote_hosts`.
+`get_cve_info`, `recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`,
+`run_script`, `manage_remote_hosts`.
 
 ### MCP environment variables
 
@@ -165,7 +169,8 @@ and an `install_module_<name>()` function. Arrays: `<PREFIX>_PACKAGES` (apt),
 
 Separate Python package (FastMCP), managed with `uv` (`pyproject.toml`), not pip/venv.
 
-- `server.py` — FastMCP tool registrations (13 tools)
+- `server.py` — FastMCP tool registrations (14 tools)
+- `cve_advisor.py` — CVE → curated skills/tools/modules mapping + live NVD/KEV/EPSS lookup commands (local-first)
 - `security.py` — execution engine + policy enforcement + argument sanitization
 - `tools_db.py` — tool registry loader, install checks, version tracking
 - `profiles.py` — profile data (synced from `profiles/*.conf`)
@@ -192,9 +197,10 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 
 ## Skills (portable via sync)
 
-`.claude/skills/` ships 850+ on-demand skills (CTF/bounty methodology, offensive/defensive
-how-tos, code-audit skills, and project developer skills). They are a **Claude Code
-feature**, but the content is plain Markdown + helper scripts and is useful to any agent.
+`.claude/skills/` ships 860 on-demand skills (CTF/bounty methodology, offensive/defensive
+how-tos, code-audit skills, project developer skills, and cross-skill coordinators). They
+are a **Claude Code feature**, but the content is plain Markdown + helper scripts and is
+useful to any agent.
 
 To make them available to Codex and other agents that read `.agents/skills/`, mirror them:
 
@@ -206,6 +212,14 @@ scripts/sync-skills.sh --check    # report drift without writing
 `.claude/skills/` is the **single source of truth**; `.agents/skills/` is a generated
 mirror and is git-ignored. Re-run the sync after editing skills. Source/category index:
 [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
+
+Each skill is `<name>/SKILL.md` with frontmatter where `name` must equal the directory
+name. `SKILLS.md` counts and the generated `curation.json` + `CURATION.md` (written by
+`scripts/curate_claude_skills.py --write`) must stay consistent or `validate_claude_skills.py`
+fails. **Cross-skill coordinators** other skills route through: `finding-triage` (finding →
+disposition), `security-comms` (audience translation), `authorization-gate` (pre-flight auth
+check). The repo is also a **Claude Code plugin marketplace** (`.claude-plugin/`); the skills
+install via `/plugin marketplace add 26zl/cybersec-toolkit`.
 
 ## Important Patterns
 

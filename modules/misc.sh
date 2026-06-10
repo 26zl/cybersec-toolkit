@@ -45,6 +45,13 @@ MISC_GIT=(
     "CyberChef=https://github.com/gchq/CyberChef.git"
     "Caldera=https://github.com/mitre/caldera.git"
     "RedEye=https://github.com/cisagov/RedEye.git"
+    # C2 — teamserver-less (Azure Blob channel). CLONED AS A RESOURCE ONLY: setup_git_repo
+    # auto-installs requirements.txt for Python repos but does NOT build Node projects, so
+    # Loki is not runnable post-clone. Manual setup per upstream README: install Node.js +
+    # javascript-obfuscator, run `node create_agent_payload.js`, and configure an Azure
+    # Storage account for the C2 channel. BSL-1.1 (non-commercial; → Apache-2.0 in 2030).
+    # Authorized red-team use only.
+    "Loki-C2=https://github.com/boku7/Loki.git"
 )
 
 # C2 Frameworks (Docker ONLY — these require complex multi-service setup)
@@ -60,7 +67,7 @@ MISC_GIT_NAMES=(
     PyExfil usbkill
     SET Zphisher EvilGoPhish SquarePhish CredMaster
     Modlishka
-    CyberChef Caldera RedEye
+    CyberChef Caldera RedEye Loki-C2
 )
 MISC_GO_BINS=(gf anew qsreplace notify pdtm)
 

@@ -1,4 +1,4 @@
-"""Main FastMCP server — 13 MCP tool registrations + entry point."""
+"""Main FastMCP server — 14 MCP tool registrations + entry point."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ if _parent not in sys.path:
 
 from mcp_server.bounty_advisor import suggest_for_bounty as _suggest_for_bounty  # noqa: E402, I001
 from mcp_server.ctf_advisor import suggest_for_ctf as _suggest_for_ctf  # noqa: E402
+from mcp_server.cve_advisor import get_cve_info as _get_cve_info  # noqa: E402
 from mcp_server.profiles import PROFILES  # noqa: E402
 from mcp_server.profiles import list_profiles as _list_profiles  # noqa: E402
 from mcp_server.profiles import recommend_install as _recommend_install  # noqa: E402
@@ -26,6 +27,7 @@ from mcp_server.security import execute_pipeline as _execute_pipeline  # noqa: E
 from mcp_server.security import execute_script as _execute_script  # noqa: E402
 from mcp_server.security import execute_tool as _execute_tool  # noqa: E402
 from mcp_server.security import execute_tool_remote as _execute_tool_remote  # noqa: E402
+from mcp_server.security import _allow_external  # noqa: E402
 from mcp_server.audit import (  # noqa: E402
     log_remote_op,
     log_server_start,
@@ -58,6 +60,8 @@ fix the env config and restart — do NOT silently fall back to run_script to by
 - **run_script**: Write and run Python/Bash scripts (pwntools, z3, requests, crypto, struct, etc.)
 - **suggest_for_ctf**: Get tool recommendations + methodology + quick wins per CTF category
 - **suggest_for_bounty**: Get tool recommendations + methodology + common vulns per bug bounty target type
+- **get_cve_info**: Map a CVE id or nickname (e.g. "log4shell") to curated skills, registry tools, modules, \
+and ready-to-run NVD/KEV/EPSS lookup commands
 
 ## Attack methodology
 1. **Recon** — Gather information with nmap, amass, subfinder, whatweb, curl, dig
@@ -556,6 +560,33 @@ def suggest_for_bounty(target_type: str) -> dict:
     log_tool_result(
         "suggest_for_bounty", call_id, "error" not in result, (time.monotonic() - t0) * 1000, summary=target_type
     )
+    return result
+
+
+@mcp.tool
+def get_cve_info(cve: str) -> dict:
+    """Map a CVE to the toolkit's tools, skills, and modules, plus live-lookup commands.
+
+    Local-first and deterministic: accepts a CVE id (e.g. "CVE-2021-44228") or a
+    common nickname (e.g. "log4shell", "eternalblue", "zerologon", "printnightmare")
+    and returns the curated exploitation skills, mapped registry tools with install
+    status, and relevant modules.
+
+    For live CVSS / CISA KEV / EPSS data it returns ready-to-run run_tool("curl", ...)
+    commands rather than fetching itself — those hit external hosts and are subject to
+    the CYBERSEC_MCP_ALLOW_EXTERNAL policy. Always clear the authorization-gate skill
+    before testing.
+
+    Args:
+        cve: A CVE id (CVE-YYYY-NNNN) or a known vulnerability nickname.
+
+    Returns:
+        Curated mapping (skills/tools/modules), install status, and live_lookup commands.
+    """
+    call_id = log_tool_call("get_cve_info", {"cve": cve})
+    t0 = time.monotonic()
+    result = _get_cve_info(cve, _db, _allow_external())
+    log_tool_result("get_cve_info", call_id, "error" not in result, (time.monotonic() - t0) * 1000, summary=cve)
     return result
 
 

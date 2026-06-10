@@ -31,6 +31,7 @@
   {"name": "CyberChef", "method": "git", "module": "misc", "url": "https://github.com/gchq/CyberChef"},
   {"name": "Caldera", "method": "git", "module": "misc", "url": "https://github.com/mitre/caldera"},
   {"name": "RedEye", "method": "git", "module": "misc", "url": "https://github.com/cisagov/RedEye"},
+  {"name": "Loki-C2", "method": "git", "module": "misc", "url": "https://github.com/boku7/Loki"},
   {"name": "pspy", "method": "binary", "module": "misc", "url": "https://github.com/DominicBreuker/pspy"},
   {"name": "gophish", "method": "binary", "module": "misc", "url": "https://github.com/gophish/gophish"},
   {"name": "jadx", "method": "binary", "module": "mobile", "url": "https://github.com/skylot/jadx"},

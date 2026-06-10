@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1f6feb"/>
+      <stop offset="0.5" stop-color="#a371f7"/>
+      <stop offset="1" stop-color="#2ea043"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1280" height="6" fill="url(#accent)"/>
+  <rect x="20" y="20" width="1240" height="600" rx="18" fill="none" stroke="#30363d" stroke-width="2"/>
+
+  <!-- terminal chrome -->
+  <g transform="translate(72,84)">
+    <circle cx="0" cy="0" r="9" fill="#f85149"/>
+    <circle cx="28" cy="0" r="9" fill="#d29922"/>
+    <circle cx="56" cy="0" r="9" fill="#2ea043"/>
+    <text x="92" y="6" font-family="monospace" font-size="22" fill="#8b949e">26zl/cybersec-toolkit</text>
+  </g>
+
+  <!-- prompt line -->
+  <text x="72" y="176" font-family="monospace" font-size="26" fill="#8b949e">$ sudo ./install.sh <tspan fill="#58a6ff">--profile</tspan> <tspan fill="#3fb950">redteam</tspan></text>
+
+  <!-- title -->
+  <text x="70" y="270" font-size="76" font-weight="700" fill="#e6edf3">CyberSec Toolkit</text>
+
+  <!-- hook -->
+  <text x="72" y="344" font-size="42" font-weight="700" fill="#e6edf3">
+    <tspan fill="#58a6ff">580+ tools</tspan> + <tspan fill="#a371f7">860 Claude Code skills</tspan> <tspan fill="#3fb950">— one command</tspan>
+  </text>
+
+  <!-- subtitle -->
+  <text x="72" y="398" font-size="27" fill="#8b949e">Modular bash installer for Linux &amp; Termux · MCP server for AI-assisted ethical hacking</text>
+
+  <!-- tag pills -->
+  <g font-size="24" font-weight="600">
+    <g transform="translate(72,452)">
+      <rect width="86" height="46" rx="23" fill="#1f6feb22" stroke="#1f6feb" stroke-width="1.5"/>
+      <text x="43" y="30" text-anchor="middle" fill="#79c0ff">CTF</text>
+    </g>
+    <g transform="translate(174,452)">
+      <rect width="148" height="46" rx="23" fill="#a371f722" stroke="#a371f7" stroke-width="1.5"/>
+      <text x="74" y="30" text-anchor="middle" fill="#d2a8ff">Pentest</text>
+    </g>
+    <g transform="translate(338,452)">
+      <rect width="186" height="46" rx="23" fill="#2ea04322" stroke="#2ea043" stroke-width="1.5"/>
+      <text x="93" y="30" text-anchor="middle" fill="#56d364">Bug Bounty</text>
+    </g>
+    <g transform="translate(540,452)">
+      <rect width="104" height="46" rx="23" fill="#d2992222" stroke="#d29922" stroke-width="1.5"/>
+      <text x="52" y="30" text-anchor="middle" fill="#e3b341">DFIR</text>
+    </g>
+    <g transform="translate(660,452)">
+      <rect width="248" height="46" rx="23" fill="#f8514922" stroke="#f85149" stroke-width="1.5"/>
+      <text x="124" y="30" text-anchor="middle" fill="#ff7b72">Red &amp; Blue Team</text>
+    </g>
+  </g>
+
+  <!-- footer -->
+  <text x="72" y="566" font-family="monospace" font-size="24" fill="#6e7681">14 profiles · 18 modules · 12 install methods</text>
+  <text x="1208" y="566" text-anchor="end" font-family="monospace" font-size="22" fill="#8b949e">github.com/26zl/cybersec-toolkit</text>
+</svg>

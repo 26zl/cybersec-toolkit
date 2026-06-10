@@ -1,0 +1,25 @@
+{
+  "name": "cybersec-toolkit",
+  "description": "860 on-demand security skills for CTF, pentest, bug bounty, DFIR, detection engineering, cloud, identity, and red/blue team work. Skills are plain Markdown and activate by task without permanently consuming context. Bundles vendored skills under mixed licenses (MIT, Apache-2.0, CC-BY-SA-4.0) — see per-source attribution in .claude/skills/SKILLS.md.",
+  "version": "1.0.0",
+  "author": {
+    "name": "26zl",
+    "url": "https://github.com/26zl"
+  },
+  "homepage": "https://github.com/26zl/cybersec-toolkit",
+  "repository": "https://github.com/26zl/cybersec-toolkit",
+  "license": "MIT AND Apache-2.0 AND CC-BY-SA-4.0",
+  "keywords": [
+    "security",
+    "cybersecurity",
+    "pentest",
+    "ctf",
+    "bug-bounty",
+    "dfir",
+    "red-team",
+    "blue-team",
+    "detection-engineering",
+    "cloud-security"
+  ],
+  "skills": "./.claude/skills/"
+}

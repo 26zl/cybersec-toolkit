@@ -25,6 +25,9 @@ PROJECT_SKILLS = {
     "security-payloads",
     "skill-dependency-audit",
     "skill-curation-router",
+    "finding-triage",
+    "security-comms",
+    "authorization-gate",
 }
 
 PROJECT_DOMAINS = {
@@ -37,6 +40,9 @@ PROJECT_DOMAINS = {
     "security-payloads": "project_tooling",
     "skill-dependency-audit": "project_tooling",
     "skill-curation-router": "project_tooling",
+    "finding-triage": "security_coordination",
+    "security-comms": "security_coordination",
+    "authorization-gate": "security_coordination",
 }
 
 COVERAGE_ANCHORS = {

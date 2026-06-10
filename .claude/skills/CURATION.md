@@ -14,7 +14,7 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 
 | Tier | Skills |
 | --- | ---: |
-| T0-router-and-project | 9 |
+| T0-router-and-project | 12 |
 | T1-core | 78 |
 | T1-coverage-anchor | 7 |
 | T2-operational | 29 |
@@ -42,6 +42,7 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | ot_ics_security | 15 |
 | project_tooling | 9 |
 | redteam_pentest | 90 |
+| security_coordination | 3 |
 | supply_chain_prodsec | 20 |
 | telecom_mainframe_sap | 3 |
 
@@ -54,6 +55,9 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | 100 | `iot-embedded-hardware-security-assessment` | iot_embedded_hardware | T1-coverage-anchor |
 | 100 | `skill-dependency-audit` | project_tooling | T0-router-and-project |
 | 100 | `writeup-template` | project_tooling | T0-router-and-project |
+| 100 | `authorization-gate` | security_coordination | T0-router-and-project |
+| 100 | `finding-triage` | security_coordination | T0-router-and-project |
+| 100 | `security-comms` | security_coordination | T0-router-and-project |
 | 100 | `supply-chain-prodsec-hardening` | supply_chain_prodsec | T1-coverage-anchor |
 | 100 | `mainframe-security-assessment` | telecom_mainframe_sap | T1-coverage-anchor |
 | 100 | `sap-erp-security-assessment` | telecom_mainframe_sap | T1-coverage-anchor |
@@ -76,9 +80,6 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | 96 | `zeroize-audit` | code_audit | T1-core |
 | 96 | `validate-all` | project_tooling | T0-router-and-project |
 | 93 | `offensive-ai-security` | ai_llm_security | T1-core |
-| 93 | `offensive-business-logic` | appsec_web_api | T1-core |
-| 93 | `offensive-deserialization` | appsec_web_api | T1-core |
-| 93 | `offensive-graphql` | appsec_web_api | T1-core |
 
 ## Domain Anchors
 
@@ -348,6 +349,14 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | 93 | `offensive-mitigations` | T1-core | sensitive-offensive |
 | 93 | `offensive-osint` | T1-core | sensitive-offensive |
 | 93 | `offensive-shellcode` | T1-core | normal |
+
+### security_coordination
+
+| Priority | Skill | Tier | Sensitivity |
+| ---: | --- | --- | --- |
+| 100 | `authorization-gate` | T0-router-and-project | sensitive-offensive |
+| 100 | `finding-triage` | T0-router-and-project | normal |
+| 100 | `security-comms` | T0-router-and-project | advisory-verify-current-sources |
 
 ### supply_chain_prodsec
 

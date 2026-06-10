@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "cybersec-toolkit",
+  "description": "Cybersecurity skill library — security how-tos, offensive/defensive methodology, and CTF/bounty playbooks for Claude Code.",
+  "owner": {
+    "name": "26zl",
+    "url": "https://github.com/26zl"
+  },
+  "plugins": [
+    {
+      "name": "cybersec-toolkit",
+      "source": "./",
+      "description": "860 on-demand security skills for CTF, pentest, bug bounty, DFIR, detection engineering, cloud, identity, and red/blue team work. Bundled skills carry mixed licenses — see .claude/skills/SKILLS.md attribution.",
+      "version": "1.0.0",
+      "license": "MIT AND Apache-2.0 AND CC-BY-SA-4.0",
+      "category": "security",
+      "keywords": [
+        "security",
+        "pentest",
+        "ctf",
+        "bug-bounty",
+        "dfir",
+        "red-team",
+        "blue-team"
+      ]
+    }
+  ]
+}

@@ -20,6 +20,65 @@ Bundled with a modular installer for Linux and Termux (Android) covering __580+ 
 
 ---
 
+## How it works
+
+Two entry points share one tool registry. An __operator__ runs the bash installer to put tools on disk; an __AI agent__ talks to the MCP server to discover, recommend, and safely execute those same tools. `tools_config.json` is the single source of truth the modules define and the MCP advisors read, and CI validators keep the Python and bash sides in sync.
+
+```mermaid
+flowchart TB
+    user(["Operator"]):::actor
+    ai(["AI agent — Claude Code / Cursor / local LLM"]):::actor
+
+    subgraph INSTALL["Installer (bash)"]
+        direction TB
+        sh["install.sh"]:::core
+        prof["14 profiles<br/>profiles/*.conf"]:::data
+        mod["18 modules<br/>modules/*.sh<br/>per-module tool arrays"]:::core
+        meth["12 install methods<br/>apt → pipx → go → cargo →<br/>binary → gem → docker → git"]:::core
+        sh --> prof --> mod --> meth
+    end
+
+    subgraph MCP["MCP server (Python / FastMCP)"]
+        direction TB
+        srv["server.py<br/>14 AI tools"]:::core
+        adv["tools_db · profiles<br/>ctf_advisor · bounty_advisor"]:::core
+        sec["security.py — policy engine<br/>allowlist · arg sanitize<br/>net policy · rate limit · audit"]:::sec
+        rem["remote.py<br/>SSH hosts"]:::core
+        srv --> adv
+        srv --> sec --> rem
+    end
+
+    reg[("tools_config.json<br/>tool registry — 580+")]:::data
+    disk["Installed tools<br/>/usr/local/bin + .versions"]:::data
+    post["verify · update · remove · backup"]:::core
+    skills["860 Claude skills + coordinators<br/>finding-triage · security-comms · authorization-gate"]:::skill
+    ci["CI validators<br/>shellcheck · bats · ruff · pytest<br/>validate_tools_config · validate_mcp_sync"]:::ci
+
+    user -->|"sudo ./install.sh"| sh
+    ai <-->|"stdio MCP"| srv
+    ai -.->|"activate on demand"| skills
+
+    meth -->|"installs"| disk
+    sec -->|"run_tool / run_pipeline / run_script"| disk
+    disk --- post
+
+    mod -.->|"defines"| reg
+    adv -.->|"reads"| reg
+    ci -.->|"keep Python ↔ bash in sync"| reg
+    ci -.-> srv
+
+    classDef actor fill:#1f6feb,stroke:#0b3d91,color:#ffffff;
+    classDef core fill:#161b22,stroke:#30363d,color:#e6edf3;
+    classDef data fill:#1c2a1c,stroke:#2ea043,color:#e6edf3;
+    classDef sec fill:#3d1d1d,stroke:#f85149,color:#ffffff;
+    classDef skill fill:#2d2238,stroke:#a371f7,color:#e6edf3;
+    classDef ci fill:#33291a,stroke:#d29922,color:#e6edf3;
+```
+
+__Reading the diagram:__ solid arrows are runtime/install actions, dashed arrows are data relationships. The installer (left) and MCP server (right) never call each other — they meet at the registry and at the tools on disk. `security.py` is the gate every AI-driven execution passes through; nothing reaches the shell without clearing the allowlist, argument sanitization, and network policy. Skills are methodology context the AI loads on demand; they guide _how_ tools get used but sit outside the execution path.
+
+---
+
 ## Install
 
 All required runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pipx, and build tools are installed automatically. The only prerequisite is a supported Linux distro. Windows and macOS are not supported (use WSL or Docker).
@@ -158,7 +217,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | 35 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker) |
+| `misc` | 36 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker + Loki) |
 | `networking` | 53 | Port scanning, packet capture, tunneling, MITM, protocol tools |
 | `recon` | 74 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | 51 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
@@ -225,6 +284,7 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `get_profile_tools` | See every tool a profile installs, grouped by module |
 | `suggest_for_ctf` | Curated tool recommendations for 13 CTF challenge categories |
 | `suggest_for_bounty` | Bug bounty tool recommendations for 6 target types with methodology and common vulns |
+| `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
 | `list_profiles` | All 14 profiles with tool counts and install commands |
 | `run_tool` | Execute installed tools safely (sanitized args, network policy, rate limiting, audit logging). Supports remote execution via SSH |
@@ -314,7 +374,7 @@ Requires [uv](https://docs.astral.sh/uv/). Claude Code can use the tracked proje
 }
 ```
 
-Restart Claude Code. The 13 tools appear in `/mcp`.
+Restart Claude Code. The 14 tools appear in `/mcp`.
 
 ### Other MCP clients (Codex, Cursor, local LLMs)
 
@@ -474,9 +534,10 @@ Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendor
 
 ## Claude Code Skills
 
-This repo ships 857 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
+This repo ships 860 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
 
 - 9 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `skill-dependency-audit`, `skill-curation-router`)
+- 3 cross-skill coordinators (`finding-triage`, `security-comms`, `authorization-gate`) that other skills route findings, communication, and authorization checks through
 - 7 coverage gap anchor skills (GRC/privacy, AI/LLM security, IoT/embedded/hardware, mainframe, telecom/5G, SAP/ERP, supply-chain/product security)
 - 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
 - 6 CTF methodology skills (`ctf-crypto`, `ctf-pwn`, `ctf-web`, `ctf-rev`, `ctf-forensics`, `ctf-stego`)
@@ -487,6 +548,17 @@ This repo ships 857 [Claude Code skills](https://docs.claude.com/en/docs/claude-
 - 4 high-level workflows from [Transilience](https://github.com/transilienceai/communitytools) (MIT)
 
 Source and category index in [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
+
+### Install as a Claude Code plugin
+
+The repo doubles as a [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins) (`.claude-plugin/`), so you can pull the whole skill library into any project without cloning manually:
+
+```text
+/plugin marketplace add 26zl/cybersec-toolkit
+/plugin install cybersec-toolkit@cybersec-toolkit
+```
+
+The plugin exposes the skills under `.claude/skills/` (declared via the `skills` field in `.claude-plugin/plugin.json`). The MCP server is configured separately via `.mcp.json` — see [MCP Server](#mcp-server-ai-integration).
 
 Skills are a Claude Code feature, but the content is plain Markdown plus helper scripts.
 To use them with Codex or other agents that read `.agents/skills/`, mirror them (the

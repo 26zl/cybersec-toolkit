@@ -13,6 +13,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `get_profile_tools` | List every tool a profile installs, grouped by module with install status |
 | `suggest_for_ctf` | Tool suggestions for 13 CTF challenge categories with descriptions |
 | `suggest_for_bounty` | Tool suggestions for 6 bug bounty target types with methodology and common vulns |
+| `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
 | `list_profiles` | List all 14 installation profiles with tool counts and details |
 | `run_tool` | Execute an installed tool safely (argument sanitization + network policy). Supports remote execution via `host` parameter |
@@ -249,6 +250,7 @@ Once connected via an MCP client:
 - **Profile contents**: `get_profile_tools("ctf")` — all 278 tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
 - **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning
+- **CVE lookup**: `get_cve_info("log4shell")` — curated skills/tools/modules + live NVD/KEV/EPSS lookup commands (also accepts ids like `CVE-2021-44228`)
 - **What to install**: `recommend_install("I want to do CTF competitions")` — recommends ctf profile
 - **Just a few tools**: `recommend_install("I need nmap and sqlmap")` — recommends individual modules
 - **List profiles**: `list_profiles()` — all 14 profiles with tool counts
@@ -263,11 +265,12 @@ Once connected via an MCP client:
 ```text
 mcp_server/
   __init__.py          # Package marker
-  server.py            # FastMCP server — 13 tool registrations + entry point
+  server.py            # FastMCP server — 14 tool registrations + entry point
   tools_db.py          # ToolsDatabase — loads tools_config.json, checks installs (TTL-cached)
   advisor_utils.py     # Shared alias/install-status helpers for advisor modules
   ctf_advisor.py       # CTF challenge-type → tool mapping with suggestions
   bounty_advisor.py    # Bug bounty target-type → tool mapping with methodology and common vulns
+  cve_advisor.py       # CVE → curated skills/tools/modules + live NVD/KEV/EPSS lookup commands
   profiles.py          # Profile recommendation engine — 14 profiles, keyword matching
   security.py          # Execution validation, argument sanitization, network policy, rate limiting,
                        #   script execution with venv support, pipeline execution

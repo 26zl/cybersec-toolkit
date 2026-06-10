@@ -79,6 +79,19 @@ After running, summarize results:
 
 If a single check fails, run it again with verbose output before suggesting a fix.
 
+## Verification discipline
+
+"It looks fine" is not evidence. A check is passed only when you have run it and read its actual output — not when you predict it would pass.
+
+| Rationalization | Reality |
+| --- | --- |
+| "This change is tiny, it can't break the validators" | Tiny changes break `validate_tools_config` (one missing array entry) and `validate_mcp_sync` (one drifted constant) constantly. Run them. |
+| "I only touched Python, skip shellcheck/bats" | Fine — but say so explicitly in the report; don't claim a clean run you didn't do. |
+| "Tests are slow, I'll assume they pass" | Then the suite is unverified. Run it, or report it as not run. |
+| "ruff format will probably be clean" | `--check` is one command. Run it instead of guessing. |
+
+If you skip a check for a real reason (e.g. no Docker locally), **state which check was skipped and why** in the report — a skipped check is a known gap; a silently-skipped check is a false "all green".
+
 ## Common failure patterns
 
 - **shellcheck SC2086**: unquoted variable expansion → wrap in `"..."`
