@@ -1,6 +1,6 @@
 # Claude Code Skills
 
-This directory contains 860 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
+This directory contains 870 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
 ## Project-specific developer skills (9)
 
@@ -69,6 +69,25 @@ Per-category decision trees + tool ordering.
 | `bounty-web` | OWASP web app testing |
 | `bounty-api` | OWASP API Top 10 + GraphQL |
 | `bounty-mobile` | APK/IPA static + dynamic + Frida |
+
+## BugHunter — bug bounty workflow (10)
+
+MIT — see `LICENSE-BugHunter-MIT`. Source: <https://github.com/shuvonsec/claude-bug-bounty>, commit `22ea70b763618984a08d6f601bb2e3e079e86a15`.
+
+Use these only for authorized security research, training, CTF/lab work, or testing within an approved bug bounty program scope.
+
+| Skill | Role |
+| --- | --- |
+| `bb-methodology` | Session orchestrator — 5-phase non-linear workflow + critical-thinking framework |
+| `bug-bounty` | Master end-to-end workflow (recon → hunt → LLM/AI testing → chaining → report) |
+| `web2-recon` | Subdomain enum, live host discovery, URL crawl, JS analysis, monitoring |
+| `web2-vuln-classes` | 22 web2 bug classes with root causes, bypass tables, paid examples |
+| `security-arsenal` | Payloads, bypass tables, gf patterns, always-rejected + chain-only lists |
+| `triage-validation` | 7-Question Gate + 4 pre-submission gates before writing a report |
+| `report-writing` | H1/Bugcrowd/Intigriti/Immunefi templates, impact-first, CVSS 3.1 |
+| `credential-attack` | Password-spray methodology + BBP legal guardrails (hard-stop before spray) |
+| `web3-audit` | Smart contract audit — 10 DeFi bug classes + Foundry PoC template |
+| `meme-coin-audit` | Token/meme-coin rug pull + honeypot + LP attack detection |
 
 ## SnailSploit Claude-Red — offensive methodology (58)
 
@@ -206,12 +225,14 @@ The description is what Claude matches against — be specific about when to act
 
 ## License attribution
 
-This project is MIT-licensed. The vendored skills retain their original licenses:
+This project is MIT-licensed. The vendored skills retain their original licenses
+(centralized index: [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md)):
 
 - Trail of Bits skills: CC-BY-SA 4.0 (`LICENSE-CC-BY-SA-4.0`)
 - Anthropic Cybersecurity Skills: Apache 2.0 (`LICENSE-Apache-2.0`)
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
 - Karpathy guidelines skill: MIT, source <https://github.com/multica-ai/andrej-karpathy-skills>
 - SnailSploit Claude-Red skills: MIT (`LICENSE-Claude-Red-MIT`)
+- BugHunter (claude-bug-bounty) skills: MIT (`LICENSE-BugHunter-MIT`)
 
 When modifying vendored skills, retain the source attribution in their SKILL.md frontmatter.

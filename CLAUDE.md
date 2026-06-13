@@ -184,7 +184,7 @@ All scripts source the chain in this order. `common.sh` auto-detects distro/pkg 
 
 ### Skill Library (`.claude/skills/`)
 
-860 on-demand Claude Code skills (vendored sources + project-authored). Three files describe the set and must stay consistent or `validate_claude_skills.py` fails:
+870 on-demand Claude Code skills (vendored sources + project-authored). Three files describe the set and must stay consistent or `validate_claude_skills.py` fails:
 
 - `SKILLS.md` — human index. Hand-maintained: the declared total ("contains N skills") and the per-section counts (`## Name (N)`) must both sum to the actual skill-dir count.
 - `curation.json` + `CURATION.md` — tier/domain ranking, **generated** by `scripts/curate_claude_skills.py --write`. Never hand-edit. Classification is rule-based in that script, with hardcoded sets for project/coverage-anchor/coordinator/source-specific skills — add a new project-authored skill's name there to control its tier/domain.

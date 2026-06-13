@@ -10,7 +10,7 @@
     {
       "name": "cybersec-toolkit",
       "source": "./",
-      "description": "860 on-demand security skills for CTF, pentest, bug bounty, DFIR, detection engineering, cloud, identity, and red/blue team work. Bundled skills carry mixed licenses — see .claude/skills/SKILLS.md attribution.",
+      "description": "870 on-demand security skills for CTF, pentest, bug bounty, DFIR, detection engineering, cloud, identity, and red/blue team work. Bundled skills carry mixed licenses — see .claude/skills/SKILLS.md attribution.",
       "version": "1.0.0",
       "license": "MIT AND Apache-2.0 AND CC-BY-SA-4.0",
       "category": "security",

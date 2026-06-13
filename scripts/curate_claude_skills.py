@@ -144,6 +144,38 @@ CLAUDE_RED_SKILLS = {
     "offensive-zigbee-thread-matter",
 }
 
+BUGHUNTER_SKILLS = {
+    "bb-methodology",
+    "bug-bounty",
+    "credential-attack",
+    "meme-coin-audit",
+    "report-writing",
+    "security-arsenal",
+    "triage-validation",
+    "web2-recon",
+    "web2-vuln-classes",
+    "web3-audit",
+}
+
+BUGHUNTER_DOMAIN_OVERRIDES = {
+    "ctf_bounty": {
+        "bb-methodology",
+        "bug-bounty",
+        "credential-attack",
+        "report-writing",
+        "triage-validation",
+        "web2-recon",
+    },
+    "appsec_web_api": {
+        "security-arsenal",
+        "web2-vuln-classes",
+    },
+    "crypto_blockchain": {
+        "meme-coin-audit",
+        "web3-audit",
+    },
+}
+
 CLAUDE_RED_DOMAIN_OVERRIDES = {
     "ai_llm_security": {
         "offensive-ai-security",
@@ -361,6 +393,8 @@ def source_for(name: str) -> str:
         return "karpathy"
     if name in CLAUDE_RED_SKILLS:
         return "claude-red"
+    if name in BUGHUNTER_SKILLS:
+        return "bughunter"
     return "anthropic"
 
 
@@ -380,6 +414,9 @@ def domain_for(name: str, description: str) -> str:
     if name in KARPATHY_SKILLS:
         return "agent_workflow"
     for domain, names in CLAUDE_RED_DOMAIN_OVERRIDES.items():
+        if name in names:
+            return domain
+    for domain, names in BUGHUNTER_DOMAIN_OVERRIDES.items():
         if name in names:
             return domain
 
@@ -418,6 +455,7 @@ def score_skill(name: str, description: str, source: str) -> tuple[int, list[str
         "claude-red": 80,
         "ctf": 78,
         "bug-bounty": 78,
+        "bughunter": 78,
         "anthropic": 58,
     }
     score = source_scores[source]

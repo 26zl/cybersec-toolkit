@@ -2,11 +2,11 @@
   "domain_counts": {
     "agent_workflow": 6,
     "ai_llm_security": 15,
-    "appsec_web_api": 84,
+    "appsec_web_api": 86,
     "cloud_security": 92,
     "code_audit": 14,
-    "crypto_blockchain": 14,
-    "ctf_bounty": 10,
+    "crypto_blockchain": 16,
+    "ctf_bounty": 16,
     "detection_soc_hunting": 102,
     "dfir_malware": 114,
     "general_security": 112,
@@ -916,6 +916,20 @@
       "tier": "T1-core"
     },
     {
+      "domain": "appsec_web_api",
+      "name": "web2-vuln-classes",
+      "priority": 91,
+      "reasons": [
+        "source:bughunter",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "bughunter",
+      "tier": "T1-core"
+    },
+    {
       "domain": "code_audit",
       "name": "dimensional-analysis",
       "priority": 91,
@@ -939,6 +953,20 @@
       ],
       "sensitivity": "normal",
       "source": "trail-of-bits",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "bb-methodology",
+      "priority": 91,
+      "reasons": [
+        "source:bughunter",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "bughunter",
       "tier": "T1-core"
     },
     {
@@ -1291,6 +1319,32 @@
       "tier": "T1-core"
     },
     {
+      "domain": "crypto_blockchain",
+      "name": "meme-coin-audit",
+      "priority": 88,
+      "reasons": [
+        "source:bughunter",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "bughunter",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "crypto_blockchain",
+      "name": "web3-audit",
+      "priority": 88,
+      "reasons": [
+        "source:bughunter",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "bughunter",
+      "tier": "T1-core"
+    },
+    {
       "domain": "ctf_bounty",
       "name": "bounty-recon",
       "priority": 88,
@@ -1301,6 +1355,19 @@
       ],
       "sensitivity": "sensitive-offensive",
       "source": "bug-bounty",
+      "tier": "T1-core"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "bug-bounty",
+      "priority": 88,
+      "reasons": [
+        "source:bughunter",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "bughunter",
       "tier": "T1-core"
     },
     {
@@ -1330,6 +1397,19 @@
       "tier": "T1-core"
     },
     {
+      "domain": "appsec_web_api",
+      "name": "security-arsenal",
+      "priority": 83,
+      "reasons": [
+        "source:bughunter",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "bughunter",
+      "tier": "T2-operational"
+    },
+    {
       "domain": "ctf_bounty",
       "name": "bounty-api",
       "priority": 83,
@@ -1353,6 +1433,19 @@
       ],
       "sensitivity": "sensitive-offensive",
       "source": "bug-bounty",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "credential-attack",
+      "priority": 83,
+      "reasons": [
+        "source:bughunter",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "bughunter",
       "tier": "T2-operational"
     },
     {
@@ -1422,6 +1515,19 @@
     },
     {
       "domain": "ctf_bounty",
+      "name": "web2-recon",
+      "priority": 83,
+      "reasons": [
+        "source:bughunter",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "bughunter",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
       "name": "bounty-web",
       "priority": 80,
       "reasons": [
@@ -1430,6 +1536,30 @@
       ],
       "sensitivity": "sensitive-offensive",
       "source": "bug-bounty",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "report-writing",
+      "priority": 80,
+      "reasons": [
+        "source:bughunter",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "bughunter",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "triage-validation",
+      "priority": 80,
+      "reasons": [
+        "source:bughunter",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "bughunter",
       "tier": "T2-operational"
     },
     {
@@ -10794,10 +10924,10 @@
   ],
   "tier_counts": {
     "T0-router-and-project": 12,
-    "T1-core": 78,
+    "T1-core": 83,
     "T1-coverage-anchor": 7,
-    "T2-operational": 29,
+    "T2-operational": 34,
     "T3-specialist": 734
   },
-  "total_skills": 860
+  "total_skills": 870
 }

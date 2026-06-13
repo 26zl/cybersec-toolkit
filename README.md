@@ -51,7 +51,7 @@ flowchart TB
     reg[("tools_config.json<br/>tool registry — 580+")]:::data
     disk["Installed tools<br/>/usr/local/bin + .versions"]:::data
     post["verify · update · remove · backup"]:::core
-    skills["860 Claude skills + coordinators<br/>finding-triage · security-comms · authorization-gate"]:::skill
+    skills["870 Claude skills + coordinators<br/>finding-triage · security-comms · authorization-gate"]:::skill
     ci["CI validators<br/>shellcheck · bats · ruff · pytest<br/>validate_tools_config · validate_mcp_sync"]:::ci
 
     user -->|"sudo ./install.sh"| sh
@@ -534,7 +534,7 @@ Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendor
 
 ## Claude Code Skills
 
-This repo ships 860 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
+This repo ships 870 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
 
 - 9 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `skill-dependency-audit`, `skill-curation-router`)
 - 3 cross-skill coordinators (`finding-triage`, `security-comms`, `authorization-gate`) that other skills route findings, communication, and authorization checks through
@@ -542,6 +542,7 @@ This repo ships 860 [Claude Code skills](https://docs.claude.com/en/docs/claude-
 - 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
 - 6 CTF methodology skills (`ctf-crypto`, `ctf-pwn`, `ctf-web`, `ctf-rev`, `ctf-forensics`, `ctf-stego`)
 - 4 bug bounty methodology skills (`bounty-recon`, `bounty-web`, `bounty-api`, `bounty-mobile`)
+- 10 bug bounty workflow skills from [BugHunter (claude-bug-bounty)](https://github.com/shuvonsec/claude-bug-bounty) (MIT)
 - 58 offensive methodology skills from [SnailSploit Claude-Red](https://github.com/SnailSploit/Claude-Red) (MIT)
 - 14 code audit skills from [Trail of Bits](https://github.com/trailofbits/skills) (CC-BY-SA 4.0)
 - 754 operational how-tos from [Anthropic Cybersecurity Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) (Apache 2.0)
@@ -680,6 +681,13 @@ scan networks, execute exploits, modify systems, or trigger security alerts.
 MCP/AI integrations are guarded by safety policies, but users remain responsible
 for reviewing scope, prompts, commands, and outputs before running actions.
 
+This repository does not redistribute the security tools themselves; it installs
+publicly available, open-source projects from their official upstream sources at
+install time. It is intended for lawful, authorized use only.
+
 The project is provided "as is", without warranty. Maintainers are not
 responsible for misuse, damage, data loss, service disruption, or legal
 consequences from using this toolkit.
+
+Third-party content is bundled under its original license — see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

@@ -15,9 +15,9 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | Tier | Skills |
 | --- | ---: |
 | T0-router-and-project | 12 |
-| T1-core | 78 |
+| T1-core | 83 |
 | T1-coverage-anchor | 7 |
-| T2-operational | 29 |
+| T2-operational | 34 |
 | T3-specialist | 734 |
 
 ## Domain Counts
@@ -26,11 +26,11 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | --- | ---: |
 | agent_workflow | 6 |
 | ai_llm_security | 15 |
-| appsec_web_api | 84 |
+| appsec_web_api | 86 |
 | cloud_security | 92 |
 | code_audit | 14 |
-| crypto_blockchain | 14 |
-| ctf_bounty | 10 |
+| crypto_blockchain | 16 |
+| ctf_bounty | 16 |
 | detection_soc_hunting | 102 |
 | dfir_malware | 114 |
 | general_security | 112 |
@@ -123,8 +123,8 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | 93 | `offensive-sqli` | T1-core | sensitive-offensive |
 | 93 | `offensive-ssti` | T1-core | sensitive-offensive |
 | 93 | `offensive-waf-bypass` | T1-core | sensitive-offensive |
+| 91 | `web2-vuln-classes` | T1-core | sensitive-offensive |
 | 90 | `offensive-file-upload` | T1-core | sensitive-offensive |
-| 90 | `offensive-idor` | T1-core | normal |
 
 ### cloud_security
 
@@ -160,6 +160,8 @@ Top skills per domain. Use these as the first candidates before searching the lo
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
+| 88 | `meme-coin-audit` | T1-core | sensitive-offensive |
+| 88 | `web3-audit` | T1-core | normal |
 | 68 | `implementing-rsa-key-pair-management` | T2-operational | normal |
 | 66 | `auditing-tls-certificate-transparency-logs` | T3-specialist | normal |
 | 63 | `analyzing-ethereum-smart-contract-vulnerabilities` | T3-specialist | normal |
@@ -168,23 +170,21 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | 61 | `analyzing-tls-certificate-transparency-logs` | T3-specialist | normal |
 | 60 | `performing-ssl-certificate-lifecycle-management` | T3-specialist | normal |
 | 58 | `implementing-vulnerability-remediation-sla` | T3-specialist | normal |
-| 58 | `validating-backup-integrity-for-recovery` | T3-specialist | normal |
-| 56 | `implementing-aes-encryption-for-data-at-rest` | T3-specialist | normal |
 
 ### ctf_bounty
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
+| 91 | `bb-methodology` | T1-core | normal |
 | 91 | `ctf-rev` | T1-core | normal |
 | 88 | `bounty-recon` | T1-core | sensitive-offensive |
+| 88 | `bug-bounty` | T1-core | sensitive-offensive |
 | 83 | `bounty-api` | T2-operational | sensitive-offensive |
 | 83 | `bounty-mobile` | T2-operational | sensitive-offensive |
+| 83 | `credential-attack` | T2-operational | sensitive-offensive |
 | 83 | `ctf-crypto` | T2-operational | sensitive-offensive |
 | 83 | `ctf-forensics` | T2-operational | normal |
 | 83 | `ctf-pwn` | T2-operational | normal |
-| 83 | `ctf-stego` | T2-operational | normal |
-| 83 | `ctf-web` | T2-operational | sensitive-offensive |
-| 80 | `bounty-web` | T2-operational | sensitive-offensive |
 
 ### detection_soc_hunting
 

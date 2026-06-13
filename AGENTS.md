@@ -197,7 +197,7 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 
 ## Skills (portable via sync)
 
-`.claude/skills/` ships 860 on-demand skills (CTF/bounty methodology, offensive/defensive
+`.claude/skills/` ships 870 on-demand skills (CTF/bounty methodology, offensive/defensive
 how-tos, code-audit skills, project developer skills, and cross-skill coordinators). They
 are a **Claude Code feature**, but the content is plain Markdown + helper scripts and is
 useful to any agent.
