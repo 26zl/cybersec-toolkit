@@ -220,3 +220,52 @@ setup() {
     assert_success
     assert_output --partial "Installing aderyn via cargo"
 }
+
+# ---------- platform module filtering shared with dry-run (F16) --------------
+
+@test "_apply_platform_module_filters drops wireless module under WSL" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        IS_WSL=true
+        MODULES_TO_INSTALL=(web wireless recon)
+        _apply_platform_module_filters
+        echo "RESULT=${MODULES_TO_INSTALL[*]}"
+    '
+    assert_success
+    assert_line "RESULT=web recon"
+}
+
+@test "_apply_platform_module_filters keeps wireless module when not WSL" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        IS_WSL=false
+        MODULES_TO_INSTALL=(web wireless recon)
+        _apply_platform_module_filters
+        echo "RESULT=${MODULES_TO_INSTALL[*]}"
+    '
+    assert_success
+    assert_line "RESULT=web wireless recon"
+}
+
+@test "_apply_platform_module_filters disables Docker on Termux" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=android
+        export PREFIX="/data/data/com.termux/files/usr"
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        IS_WSL=false
+        ENABLE_DOCKER=true
+        MODULES_TO_INSTALL=(misc)
+        _apply_platform_module_filters
+        echo "DOCKER=${ENABLE_DOCKER}"
+    '
+    assert_success
+    assert_line "DOCKER=false"
+}

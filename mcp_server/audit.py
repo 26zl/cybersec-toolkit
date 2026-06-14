@@ -85,13 +85,37 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"(?<!-)(\B-p)(?![\dUT,:\-]+(?:\s|$))(?=\S*[^\d\s,:\-])(?!\[REDACTED\])\S+"),
         r"\1" + _REDACTED,
     ),
+    # DB / cache password env-vars: PGPASSWORD=, MYSQL_PWD=, MARIADB_PASSWORD=,
+    # REDISCLI_AUTH=, MONGODB_PASSWORD=. These carry the secret directly in the
+    # value, so redact the assigned value (quoted or bare) while keeping the var
+    # name for context.
+    (
+        re.compile(
+            r"\b(PGPASSWORD|MYSQL_PWD|MARIADB_PASSWORD|REDISCLI_AUTH|MONGODB_PASSWORD)="
+            r"(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)",
+            re.IGNORECASE,
+        ),
+        r"\1=" + _REDACTED,
+    ),
 ]
+
+# Tools that take a password as a *separated* "-p <value>" argument. The
+# attached-form "-p" rule above is deliberately scoped to preserve nmap port
+# specs ("-p 80" would otherwise be ambiguous), so the separated form is only
+# redacted when one of these credential tools is present in the command — that
+# is what distinguishes a password from an nmap/curl port/path option.
+_CREDENTIAL_TOOLS = re.compile(r"\b(?:sshpass|hydra|medusa|ncrack)\b", re.IGNORECASE)
+_SEPARATED_PASSWORD_FLAG = re.compile(r"(\B-p[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
 
 
 def _redact_sensitive(value: str) -> str:
     """Replace likely credentials in a string with [REDACTED]."""
     for pattern, replacement in _SENSITIVE_PATTERNS:
         value = pattern.sub(replacement, value)
+    # Separated "-p <password>" only when a credential tool is present, so nmap
+    # "-p 80" stays readable (no credential tool to gate on).
+    if _CREDENTIAL_TOOLS.search(value):
+        value = _SEPARATED_PASSWORD_FLAG.sub(r"\1" + _REDACTED, value)
     return value
 
 
@@ -339,10 +363,13 @@ def log_tool_result(
         "success": success,
         "duration_ms": round(duration_ms, 1),
     }
+    # error/summary are free-text (often an exception string), so they can pick
+    # up a credential or a sensitive path that a tool surfaced. Redact both
+    # before they reach the audit log, same as args/command elsewhere.
     if error:
-        entry["error"] = error
+        entry["error"] = _redact_script_code(error)
     if summary:
-        entry["summary"] = summary
+        entry["summary"] = _redact_script_code(summary)
     _log(logging.INFO, entry)
 
 

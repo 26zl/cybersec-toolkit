@@ -20,6 +20,7 @@ from mcp_server.audit import (
     log_pipeline_start,
     log_script_execution,
     log_tool_call,
+    log_tool_result,
 )
 
 
@@ -101,6 +102,38 @@ class TestLogExecution:
         log_file = tmp_path / "audit.log"
         lines = log_file.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 3
+
+
+class TestLogToolResult:
+    def test_error_free_text_is_redacted(self, tmp_path: Path) -> None:
+        # An exception string surfaced by a tool can carry a credential; the
+        # free-text error field must be redacted before it hits the audit log.
+        log_tool_result(
+            tool_name="manage_remote_hosts",
+            call_id="1",
+            success=False,
+            duration_ms=1.0,
+            error="connection failed: PGPASSWORD=hunter2 rejected",
+        )
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert "hunter2" not in entry["error"]
+        assert "[REDACTED]" in entry["error"]
+
+    def test_summary_free_text_is_redacted(self, tmp_path: Path) -> None:
+        log_tool_result(
+            tool_name="run_tool",
+            call_id="2",
+            success=True,
+            duration_ms=1.0,
+            summary="ok --password s3cr3tvalue",
+        )
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert "s3cr3tvalue" not in entry["summary"]
+
+    def test_benign_summary_unchanged(self, tmp_path: Path) -> None:
+        log_tool_result("manage_remote_hosts", "3", True, 1.0, summary="list: 5 hosts")
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert entry["summary"] == "list: 5 hosts"
 
 
 class TestLogBlocked:
@@ -255,6 +288,59 @@ class TestRedactScriptCode:
         assert "-p-" in redacted
         assert "-pU:53,T:80" in redacted
         assert "[REDACTED]" not in redacted
+
+    def test_nmap_separated_port_preserved(self) -> None:
+        """nmap '-p 80' (separated, no credential tool) must stay readable."""
+        redacted = _redact_script_code("nmap -p 80 10.0.0.1")
+        assert "-p 80" in redacted
+        assert "[REDACTED]" not in redacted
+
+    def test_sshpass_separated_password_redacted(self) -> None:
+        """sshpass -p <pw> uses the separated form and must be redacted."""
+        redacted = _redact_script_code("sshpass -p mypassword ssh user@10.0.0.1")
+        assert "mypassword" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_hydra_separated_password_redacted(self) -> None:
+        """hydra -l u -p secretpass host must not leak the password."""
+        redacted = _redact_script_code("hydra -l u -p secretpass 10.0.0.1")
+        assert "secretpass" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_medusa_separated_password_redacted(self) -> None:
+        redacted = _redact_script_code("medusa -h 10.0.0.1 -u admin -p Sup3rSecret -M ssh")
+        assert "Sup3rSecret" not in redacted
+        assert "[REDACTED]" in redacted
+
+    def test_ncrack_separated_password_redacted(self) -> None:
+        redacted = _redact_script_code("ncrack --user root -p hunter22 10.0.0.1:22")
+        assert "hunter22" not in redacted
+        assert "[REDACTED]" in redacted
+
+    @pytest.mark.parametrize(
+        "var,secret",
+        [
+            ("PGPASSWORD", "pgsecret123"),
+            ("MYSQL_PWD", "hunter2"),
+            ("MARIADB_PASSWORD", "mariasecret"),
+            ("REDISCLI_AUTH", "redistoken"),
+            ("MONGODB_PASSWORD", "mongopw"),
+        ],
+    )
+    def test_db_password_env_var_redacted(self, var: str, secret: str) -> None:
+        """DB/cache password env-vars carry the secret directly in the value."""
+        redacted = _redact_script_code(f"{var}={secret} client --connect 10.0.0.1")
+        assert secret not in redacted
+        assert "[REDACTED]" in redacted
+        assert var in redacted  # var name preserved for context
+
+    def test_db_password_env_var_redacted_in_sensitive_path(self) -> None:
+        """The CLI-only _redact_sensitive path covers the env-vars too."""
+        from mcp_server.audit import _redact_sensitive
+
+        redacted = _redact_sensitive("MYSQL_PWD=hunter2 mysql -u root")
+        assert "hunter2" not in redacted
+        assert "[REDACTED]" in redacted
 
     def test_double_dash_password_flag_not_mangled_by_short_p_rule(self) -> None:
         """The short '-p' DB rule must not fire inside '--password'."""

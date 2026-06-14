@@ -442,13 +442,15 @@ def validate():
             if alt:
                 # Same tool name, different method — install-method drift.
                 # Name it explicitly so a pipx-vs-git style mismatch (e.g.
-                # theHarvester) can't slip past the validator as a bare 'pass'.
+                # theHarvester) can't slip past the validator. Treated as an
+                # ERROR (not a warning) so CI, which keys off the exit code,
+                # fails on method drift per the "0 errors, 0 warnings" contract.
                 print(
-                    f"WARNING: '{name}' method mismatch: installer array in "
+                    f"ERROR: '{name}' method mismatch: installer array in "
                     f"modules/{mod}.sh uses '{method}' but tools_config.json "
                     f"declares '{', '.join(sorted(set(alt)))}'"
                 )
-                warnings += 1
+                errors += 1
             else:
                 print(f"ERROR: '{name}' ({method}) in modules/{mod}.sh but MISSING from tools_config.json")
                 errors += 1

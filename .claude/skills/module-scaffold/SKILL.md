@@ -103,7 +103,7 @@ ENABLE_DOCKER=1
 INCLUDE_C2=0
 ```
 
-Profile validator (`scripts/validate_profiles.sh` / CI job) checks every name in `MODULES=` against `ALL_MODULES`.
+The `validate-profiles` CI job (inline in `.github/workflows/ci.yml`) checks every name in `MODULES=` against `ALL_MODULES`; run that same check locally by sourcing `lib/common.sh` and confirming each `MODULES=` entry appears in `ALL_MODULES`.
 
 ## 7. Validate
 

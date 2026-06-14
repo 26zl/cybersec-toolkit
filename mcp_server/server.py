@@ -180,7 +180,7 @@ custom payload generation, race conditions
 4. **Manual testing**: run_script for custom payload generation, race conditions, business logic flaws
 5. **Reporting**: Run triage-validation, evidence-hygiene, then report-writing with reproducible steps
 6. Use `suggest_for_bounty` for target-specific tools, methodology, and common vulns \
-(supports: web_app, api, mobile_app, cloud, network, iot)
+(supports: web_app, api, mobile_app, cloud, network, iot, llm)
 
 ## Manual scripts
 - The project has a `manual_scripts/` directory for persistent scripts (exploits, solvers, custom tools)
@@ -598,8 +598,8 @@ def suggest_for_ctf(challenge_type: str) -> dict:
     """Suggest cybersecurity tools for a CTF challenge category.
 
     Provides curated tool recommendations with installation status for
-    13 challenge types: web, crypto, pwn, reversing, forensics, stego,
-    misc, networking, wireless, osint, cloud, mobile, blockchain.
+    14 challenge types: web, crypto, pwn, reversing, forensics, stego,
+    misc, networking, wireless, osint, cloud, mobile, blockchain, llm.
 
     Also accepts aliases: re/rev (reversing), binary/exploitation (pwn),
     steganography (stego), network (networking), recon (osint), etc.
@@ -625,8 +625,8 @@ def suggest_for_bounty(target_type: str) -> dict:
 
     Provides curated tool recommendations with installation status,
     methodology steps (starting with scope verification), common
-    vulnerabilities, and quick wins for 6 target types: web_app, api,
-    mobile_app, cloud, network, iot.
+    vulnerabilities, and quick wins for 7 target types: web_app, api,
+    mobile_app, cloud, network, iot, llm.
 
     Also accepts aliases: web/webapp (web_app), rest/graphql (api),
     android/ios/mobile (mobile_app), aws/azure/gcp/k8s (cloud),
@@ -686,7 +686,7 @@ def recommend_install(task: str) -> dict:
     Examples:
         "I want to do CTF competitions" → ctf profile
         "web application pentesting" → web profile
-        "I just need nmap and burpsuite" → individual modules networking + web
+        "I just need nmap and ffuf" → individual tools (networking + web modules)
         "crack some password hashes" → crackstation profile
         "forensics and incident response" → forensics profile
         "everything" → full profile

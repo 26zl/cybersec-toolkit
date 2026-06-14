@@ -412,6 +412,130 @@ def check_c2_tools() -> None:
     print(f"C2_TOOLS: {len(bash_c2)} bash, {len(py_c2)} python")
 
 
+def _registered_mcp_tools() -> list[str]:
+    """Function names decorated with @mcp.tool in server.py, in source order.
+
+    Parses the source text (does not import server.py, which would pull in
+    FastMCP and the whole runtime) for `@mcp.tool` immediately followed by a
+    `def`/`async def` line.
+    """
+    server_text = (ROOT / "mcp_server" / "server.py").read_text(encoding="utf-8")
+    return re.findall(
+        r"@mcp\.tool\b[^\n]*\n(?:\s*@[^\n]*\n)*\s*(?:async\s+)?def\s+(\w+)",
+        server_text,
+    )
+
+
+def check_mcp_toolchain() -> None:
+    """guided_assessment.MCP_TOOLCHAIN must equal the @mcp.tool set in server.py.
+
+    The toolchain advertised to the agent is hardcoded; without this check a tool
+    rename/add/remove in server.py would silently drift from the guided-assessment
+    list. Compare as sets (order isn't load-bearing) and report both directions.
+    """
+    from mcp_server.guided_assessment import MCP_TOOLCHAIN
+
+    registered = _registered_mcp_tools()
+    if not registered:
+        errors.append("MCP_TOOLCHAIN: could not parse any @mcp.tool functions from server.py")
+        return
+
+    registered_set = set(registered)
+    toolchain_set = set(MCP_TOOLCHAIN)
+
+    for name in registered_set - toolchain_set:
+        errors.append(
+            f"MCP_TOOLCHAIN: '{name}' is an @mcp.tool in server.py but missing from MCP_TOOLCHAIN"
+        )
+    for name in toolchain_set - registered_set:
+        errors.append(
+            f"MCP_TOOLCHAIN: '{name}' in MCP_TOOLCHAIN but not an @mcp.tool in server.py"
+        )
+    if len(registered) != len(registered_set):
+        errors.append("MCP_TOOLCHAIN: server.py has duplicate @mcp.tool function names")
+
+    print(
+        f"MCP_TOOLCHAIN: {len(registered_set)} server.py tools, "
+        f"{len(toolchain_set)} guided_assessment entries"
+    )
+
+
+def check_cve_advisor() -> None:
+    """KNOWN_CVES references must resolve: tools→registry, skills→dir, modules→descs.
+
+    KNOWN_CVES is a hardcoded curated map with no sync validator, so a renamed
+    registry tool, deleted skill dir, or dropped module would silently break a CVE
+    mapping. Resolve every referenced tool through TOOL_ALIASES, confirm each skill
+    exists as .claude/skills/<name>, and each module is a MODULE_DESCRIPTIONS key.
+    """
+    import json
+
+    from mcp_server.advisor_utils import TOOL_ALIASES
+    from mcp_server.cve_advisor import KNOWN_CVES
+    from mcp_server.tools_db import MODULE_DESCRIPTIONS
+
+    tools = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
+    names = {t["name"] for t in tools}
+    skills_dir = ROOT / ".claude" / "skills"
+
+    tool_refs = skill_refs = module_refs = 0
+    for cve_id, entry in KNOWN_CVES.items():
+        for tool_name in entry.get("tools", []):
+            tool_refs += 1
+            resolved = TOOL_ALIASES.get(tool_name, tool_name)
+            if resolved not in names:
+                errors.append(
+                    f"KNOWN_CVES['{cve_id}'].tools: '{tool_name}' (resolves to "
+                    f"'{resolved}') not in tools_config.json"
+                )
+        for skill in entry.get("skills", []):
+            skill_refs += 1
+            if not (skills_dir / skill / "SKILL.md").is_file():
+                errors.append(
+                    f"KNOWN_CVES['{cve_id}'].skills: '{skill}' has no "
+                    f".claude/skills/{skill}/SKILL.md"
+                )
+        for module in entry.get("modules", []):
+            module_refs += 1
+            if module not in MODULE_DESCRIPTIONS:
+                errors.append(
+                    f"KNOWN_CVES['{cve_id}'].modules: '{module}' not in MODULE_DESCRIPTIONS"
+                )
+
+    print(
+        f"KNOWN_CVES: {len(KNOWN_CVES)} CVEs, {tool_refs} tool refs, "
+        f"{skill_refs} skill refs, {module_refs} module refs checked"
+    )
+
+
+def check_bin_name_maps() -> None:
+    """APT_BIN_NAMES / SPECIAL_BIN_NAMES keys must be real registry tool names.
+
+    Both maps translate a registry tool name to its on-PATH binary. A key that is
+    no longer a registry tool (rename/removal) is dead config that can mask a
+    genuinely-missing install — assert every key exists in tools_config.json.
+    """
+    import json
+
+    from mcp_server.tools_db import APT_BIN_NAMES, SPECIAL_BIN_NAMES
+
+    tools = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
+    names = {t["name"] for t in tools}
+
+    for map_name, mapping in (
+        ("APT_BIN_NAMES", APT_BIN_NAMES),
+        ("SPECIAL_BIN_NAMES", SPECIAL_BIN_NAMES),
+    ):
+        for key in mapping:
+            if key not in names:
+                errors.append(f"{map_name}: key '{key}' is not a tool in tools_config.json")
+
+    print(
+        f"BIN_NAMES: {len(APT_BIN_NAMES)} APT_BIN_NAMES + {len(SPECIAL_BIN_NAMES)} "
+        f"SPECIAL_BIN_NAMES keys checked against {len(names)} registry tools"
+    )
+
+
 def main() -> int:
     print("=== MCP Server Data Sync Check ===\n")
 
@@ -423,6 +547,9 @@ def main() -> int:
     check_tool_aliases()
     check_advisor_tool_names()
     check_c2_tools()
+    check_mcp_toolchain()
+    check_cve_advisor()
+    check_bin_name_maps()
 
     print()
     if errors:

@@ -21,9 +21,35 @@ INTENSITIES = {"low", "medium"}
 WORKFLOWS = {"bounty", "ctf", "generic"}
 MANUAL_SCRIPTS_DIR = "manual_scripts/"
 
+# The MCP tools the agent drives during a guided assessment. This MUST equal the
+# set of @mcp.tool functions registered in server.py — validate_mcp_sync.py asserts
+# the two stay in lock-step so a tool rename/add can't silently drift this list.
+MCP_TOOLCHAIN: list[str] = [
+    "list_tools",
+    "check_installed",
+    "get_tool_info",
+    "get_module_info",
+    "get_profile_tools",
+    "suggest_for_ctf",
+    "suggest_for_bounty",
+    "guided_assessment",
+    "get_cve_info",
+    "recommend_install",
+    "list_profiles",
+    "run_tool",
+    "run_pipeline",
+    "run_script",
+    "manage_remote_hosts",
+]
+
 _FILE_CTF_CATEGORIES = {"crypto", "pwn", "reversing", "forensics", "stego", "misc", "mobile", "blockchain"}
 _LOCAL_HOSTS = {"localhost", "localhost.localdomain"}
 _SHELL_META_RE = re.compile(r"[;&|`$<>]")
+# URL targets carry '&' and ';' legitimately in query strings (?id=1&x=2). There
+# is no shell on the execution path (create_subprocess_exec + shlex.quote), so a
+# URL only needs the genuinely dangerous shell metacharacters blocked; '&' and ';'
+# are allowed for URLs. Non-URL targets keep the stricter _SHELL_META_RE.
+_URL_META_RE = re.compile(r"[|`$<>]")
 
 _FINDING_TYPE_RULES = [
     ("xss", ("xss", "cross-site scripting", "cross site scripting", "script injection")),
@@ -172,6 +198,13 @@ def _target_kind(target: str, workflow: str, target_type: str | None) -> str:
         return "file"
     if workflow == "ctf" and target_type in _FILE_CTF_CATEGORIES:
         return "file"
+    # A bare token with a known challenge-file extension (e.g. "challenge.bin",
+    # "secret.png") is a CTF file, not a host. The extension lookup is purely
+    # lexical (no filesystem access) so it can't be tricked by a same-named file
+    # in the server CWD. A hostname-shaped token (TLD, no known file ext) still
+    # falls through to "host".
+    if Path(target).suffix.lower() in _FILE_EXT_CATEGORY:
+        return "file"
     return "host"
 
 
@@ -202,10 +235,14 @@ def _normalize_target(target: str, workflow: str, target_type: str | None) -> di
     clean = target.strip()
     if not clean:
         raise ValueError("target is required")
-    if _SHELL_META_RE.search(clean):
-        raise ValueError("target contains shell metacharacters; pass a bare URL, host, IP, or file path")
 
     kind = _target_kind(clean, workflow, target_type)
+    # URLs may contain '&'/';' in query strings; only genuine shell metacharacters
+    # are blocked there. Every other target type stays on the stricter rule.
+    meta_re = _URL_META_RE if kind == "url" else _SHELL_META_RE
+    if meta_re.search(clean):
+        raise ValueError("target contains shell metacharacters; pass a bare URL, host, IP, or file path")
+
     host = _host_from_target(clean, kind)
     parsed = urlparse(clean)
     return {
@@ -815,23 +852,7 @@ def build_guided_plan(
     model_driven_steps = [step for step in annotated_steps if step["id"] not in candidate_ids]
     recommended_next = _recommended_next_command(annotated_steps)
 
-    mcp_toolchain = [
-        "list_tools",
-        "check_installed",
-        "get_tool_info",
-        "get_module_info",
-        "get_profile_tools",
-        "suggest_for_ctf",
-        "suggest_for_bounty",
-        "guided_assessment",
-        "get_cve_info",
-        "recommend_install",
-        "list_profiles",
-        "run_tool",
-        "run_pipeline",
-        "run_script",
-        "manage_remote_hosts",
-    ]
+    mcp_toolchain = list(MCP_TOOLCHAIN)
     toolchain_scope = {
         "selection": (
             "Tool selection is not limited to the bootstrap steps. The agent may use the whole "

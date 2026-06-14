@@ -50,9 +50,12 @@ jobs:
           fi
           rm -f uv.lock.old
 
-      - name: Verify MCP server still works
+      - name: Verify upgraded lockfile (sync, import, lint, tests, audit, sync-check)
+        id: verify
         if: steps.upgrade.outputs.changed == 'true'
         run: |
+          # Exercise the upgraded uv.lock before it can auto-merge — GITHUB_TOKEN
+          # PRs do not trigger ci.yml/security.yml, so run the gating checks here.
           cd mcp_server && uv sync --quiet
           uv run python -c "
           import sys; sys.path.insert(0, '..')
@@ -60,9 +63,15 @@ jobs:
           assert _db.total_tools > 500, f'Expected 500+ tools, got {_db.total_tools}'
           print(f'MCP server OK: {_db.total_tools} tools')
           "
+          uv run --group dev ruff check .
+          uv run --group dev ruff format --check .
+          uv run --group dev python -m pytest tests/ -q
+          uvx pip-audit
+          cd ..
+          python3 scripts/validate_mcp_sync.py
 
       - name: Create pull request
-        if: steps.upgrade.outputs.changed == 'true'
+        if: success() && steps.upgrade.outputs.changed == 'true'
         id: cpr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
@@ -78,11 +87,13 @@ jobs:
             ${{ steps.upgrade.outputs.summary }}
             ```
 
-            MCP server import test passed.
+            Verified against the upgraded lock: `uv sync`, MCP import check, `ruff check`/`format --check`, `pytest`, `pip-audit`, and `validate_mcp_sync.py` all passed before auto-merge.
           labels: dependencies
 
       - name: Enable auto-merge
-        if: steps.upgrade.outputs.changed == 'true' && steps.cpr.outputs.pull-request-number != ''
+        # Only auto-merge when every prior step (including the verify gate above)
+        # succeeded — the upgraded lock has now passed import/lint/tests/audit/sync.
+        if: success() && steps.verify.outcome == 'success' && steps.upgrade.outputs.changed == 'true' && steps.cpr.outputs.pull-request-number != ''
         run: |
           gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}" || true
           # If this fails with "Auto merge is not allowed", enable it under

@@ -353,8 +353,6 @@ _is_kali=false
 if should_verify "misc"; then
     echo ""
     log_info "━━━━━ Module: misc ━━━━━"
-    log_info "Heavy Tools:"
-    check_cmd "sage" || true
     log_info "Misc (pipx):"
     check_pipx_arr "${MISC_PIPX[@]}"
     log_info "Misc (Go):"

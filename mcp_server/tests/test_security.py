@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mcp_server.sanitize import truncate_output
 from mcp_server.security import (
     SYSTEM_UTILITIES,
+    _append_truncation_marker,
     _bounded_communicate,
     _is_safe_target,
+    _is_sensitive_write_target,
     _RateLimiter,
     check_policy,
     execute_pipeline,
@@ -432,6 +436,26 @@ class TestCheckPolicy:
     def test_unknown_flag_numeric_value_consumed(self, _mock_ext) -> None:
         """A bare port/number after an unknown flag is a flag value, not a target."""
         check_policy("nc", ["--unknownflag", "4444", "10.0.0.1", "80"])
+
+    # ----- extension-TLD bypass: .zip/.mobi/.sh are file extensions AND TLDs (F1) -----
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_unknown_flag_url_with_extension_tld_blocked(self, _mock_ext) -> None:
+        """curl -sL http://evil.zip must not slip past validation just because
+        it 'ends in a file extension' (.zip is also a real TLD)."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["-sL", "http://evil.zip"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_unknown_flag_host_with_extension_tld_blocked(self, _mock_ext) -> None:
+        """nuclei -x example.zip — bare external host whose extension is a TLD."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("nuclei", ["-x", "example.zip"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_unknown_flag_local_wordlist_still_allowed(self, _mock_ext) -> None:
+        """A genuine local file value (.txt is not a TLD) is consumed, not validated."""
+        check_policy("httpx", ["-w", "wordlist.txt", "-u", "http://10.0.0.1/"])
 
 
 # ---------------------------------------------------------------------------
@@ -1047,6 +1071,117 @@ class TestSystemUtilityNetworkPolicy:
         check_policy("httpx", ["-location=true", "-u", "http://10.0.0.1/"])
 
 
+class TestSensitiveWriteGuard:
+    """Write-capable utilities (cp/mv/ln/tee/touch/mkdir) and curl/wget output
+    flags must not overwrite/symlink into dotfiles, shell-rc/login files, cron,
+    or system dirs (F2)."""
+
+    def test_is_sensitive_write_target_classification(self) -> None:
+        home = os.path.expanduser("~")
+        # Sensitive
+        assert _is_sensitive_write_target(os.path.join(home, ".bashrc")) is True
+        assert _is_sensitive_write_target(os.path.join(home, ".ssh", "authorized_keys")) is True
+        assert _is_sensitive_write_target(os.path.join(home, ".config", "autostart", "x.desktop")) is True
+        assert _is_sensitive_write_target(os.path.join(home, ".config", "systemd", "user", "x.service")) is True
+        assert _is_sensitive_write_target("/etc/passwd") is True
+        assert _is_sensitive_write_target("/etc/cron.d/evil") is True
+        assert _is_sensitive_write_target("/var/spool/cron/crontabs/root") is True
+        assert _is_sensitive_write_target("/usr/local/bin/x") is True
+        assert _is_sensitive_write_target("/root/.bashrc") is True
+        # Not sensitive
+        assert _is_sensitive_write_target("/tmp/out.log") is False
+        assert _is_sensitive_write_target("/tmp/b.txt") is False
+        assert _is_sensitive_write_target("a.txt") is False
+        assert _is_sensitive_write_target("-") is False
+        assert _is_sensitive_write_target("http://10.0.0.1/x") is False
+
+    def test_tee_to_bashrc_blocked(self) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("tee", [os.path.join(os.path.expanduser("~"), ".bashrc")])
+
+    def test_tee_to_tmp_allowed(self) -> None:
+        check_policy("tee", ["/tmp/out.log"])
+
+    def test_ln_symlink_target_sensitive_blocked(self) -> None:
+        """ln -s /etc/shadow /tmp/x — the symlink target is sensitive."""
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("ln", ["-s", "/etc/shadow", "/tmp/x"])
+
+    def test_ln_link_path_sensitive_blocked(self) -> None:
+        """ln -s /tmp/x ~/.ssh/authorized_keys — the link path is sensitive."""
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("ln", ["-s", "/tmp/x", os.path.join(os.path.expanduser("~"), ".ssh", "authorized_keys")])
+
+    def test_cp_to_tmp_allowed(self) -> None:
+        check_policy("cp", ["a.txt", "/tmp/b.txt"])
+
+    def test_mv_to_autostart_blocked(self) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy(
+                "mv", ["payload.desktop", os.path.join(os.path.expanduser("~"), ".config", "autostart", "x.desktop")]
+            )
+
+    def test_touch_tmp_allowed(self) -> None:
+        check_policy("touch", ["/tmp/x"])
+
+    def test_mkdir_autostart_blocked(self) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("mkdir", [os.path.join(os.path.expanduser("~"), ".config", "autostart")])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_output_to_bashrc_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("curl", ["http://127.0.0.1/x", "-o", os.path.join(os.path.expanduser("~"), ".bashrc")])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_output_long_flag_to_bashrc_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("curl", ["http://127.0.0.1/x", "--output=" + os.path.join(os.path.expanduser("~"), ".zshrc")])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_output_to_tmp_allowed(self, _mock_ext) -> None:
+        check_policy("curl", ["http://127.0.0.1/x", "-o", "/tmp/out"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_wget_output_document_to_bashrc_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("wget", ["http://127.0.0.1/x", "-O", os.path.join(os.path.expanduser("~"), ".bashrc")])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_wget_output_to_tmp_allowed(self, _mock_ext) -> None:
+        check_policy("wget", ["http://127.0.0.1/x", "-O", "/tmp/x"])
+
+
+class TestAwkProgramFileBlocked:
+    """awk/gawk -f/--file/--source/--load and @load run uninspected program
+    files, bypassing the inline system()/getline block (F3)."""
+
+    @pytest.mark.parametrize("tool", ["awk", "gawk"])
+    def test_awk_program_file_flag_blocked(self, tool) -> None:
+        with pytest.raises(ValueError, match="program file"):
+            check_policy(tool, ["-f", "/tmp/x.awk"])
+
+    def test_gawk_long_file_flag_blocked(self) -> None:
+        with pytest.raises(ValueError, match="program file"):
+            check_policy("gawk", ["--file=/tmp/x.awk"])
+
+    def test_gawk_source_flag_blocked(self) -> None:
+        with pytest.raises(ValueError, match="source"):
+            check_policy("gawk", ["--source", '{system("id")}'])
+
+    def test_gawk_load_flag_blocked(self) -> None:
+        with pytest.raises(ValueError, match="load"):
+            check_policy("gawk", ["--load", "evil_ext"])
+
+    def test_gawk_at_load_blocked(self) -> None:
+        with pytest.raises(ValueError, match="load"):
+            check_policy("gawk", ['@load "evil"', "file"])
+
+    def test_awk_inline_program_still_works(self) -> None:
+        check_policy("awk", ["{print $1}", "file.txt"])
+        check_policy("awk", ["-F:", "{print $1}", "/etc/passwd"])
+
+
 class TestSystemUtilityRemote:
     """System utilities validate for remote execution without PATH check."""
 
@@ -1558,6 +1693,31 @@ class TestBoundedCommunicate:
         )
         assert len(stdout) == 500_000
         assert t1 is False
+
+
+class TestTruncationMarkerDelegation:
+    """_append_truncation_marker delegates to sanitize.truncate_output (F4)."""
+
+    def test_marker_present_and_within_budget(self) -> None:
+        out = _append_truncation_marker("A" * 5000, 1000)
+        assert "[truncated at 1000 bytes]" in out
+        assert len(out.encode("utf-8")) <= 1000
+
+    def test_matches_truncate_output_for_oversized_input(self) -> None:
+        """When the input genuinely exceeds the cap, the result is exactly what
+        truncate_output produces — proving the two cannot drift."""
+        text = "B" * 5000
+        delegated = _append_truncation_marker(text, 1000)
+        canonical, was_truncated = truncate_output(text, 1000)
+        assert was_truncated is True
+        assert delegated == canonical
+
+    def test_marker_forced_even_when_text_fits(self) -> None:
+        """Bounded reader flags truncation even if captured bytes land under the
+        cap; the marker is still appended (truncate_output alone would not)."""
+        out = _append_truncation_marker("short", 1000)
+        assert "[truncated at 1000 bytes]" in out
+        assert out.startswith("short")
 
 
 class TestExecuteToolOutputBounds:

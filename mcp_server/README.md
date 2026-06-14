@@ -11,8 +11,8 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `get_tool_info` | Detailed info: method, module, URL, install status, install/update/remove commands |
 | `get_module_info` | Full module details: all tools, install status, management commands, which profiles use it |
 | `get_profile_tools` | List every tool a profile installs, grouped by module with install status |
-| `suggest_for_ctf` | Tool suggestions for 13 CTF challenge categories with descriptions |
-| `suggest_for_bounty` | Tool suggestions for 6 bug bounty target types with methodology and common vulns |
+| `suggest_for_ctf` | Tool suggestions for 14 CTF challenge categories with descriptions |
+| `suggest_for_bounty` | Tool suggestions for 7 bug bounty target types with methodology and common vulns |
 | `guided_assessment` | Companion-first solve assistant — classifies the target/finding, returns triage gates, recommends skills, auto-detects tools from all modules/profiles, then guides step-by-step; opt-in `autonomous` starts an auto-solver loop over the full MCP toolchain via run_tool/run_pipeline/run_script, including AI-created scoped helper scripts when tools/pipelines are not enough, under policy; authorization-gated |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
@@ -248,7 +248,7 @@ Once connected via an MCP client:
 - **Check a tool**: `check_installed("nmap")` — detailed install status
 - **Tool details**: `get_tool_info("sqlmap")` — method, module, URL, install/update/remove commands
 - **Full module view**: `get_module_info("web")` — all 51 tools, install status, which profiles include it
-- **Profile contents**: `get_profile_tools("ctf")` — all 278 tools grouped by module
+- **Profile contents**: `get_profile_tools("ctf")` — all 280 tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
 - **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning
 - **Guided assessment**: `guided_assessment("http://10.0.0.1", target_type="web_app")` — default `companion` classifies the target/finding, returns `classification`, `triage_gate`, `recommended_skills`, and `reporting_next_steps`, checks install status, selects tools from all modules/profiles, and recommends the next command; add `mode="autonomous", authorization_confirmed=true` only when you want the opt-in auto-solver loop over the full MCP toolchain, including AI-created scoped helper scripts when normal tools/pipelines are not enough — all under existing MCP policy

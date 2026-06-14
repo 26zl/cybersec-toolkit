@@ -971,7 +971,14 @@ _CURL_OPTS=()
 # command-line -H header to prevent the token from appearing in process listings
 # and bash debug trace (set -x) output written to the log file.
 _GH_NETRC_FILE=""
+# Lazy, idempotent: token discovery + netrc setup run only when an actual
+# GitHub network op is about to fire (first _gh_api_get / install_binary_releases
+# call), NOT at module-source time. This keeps --help/--version/--list-modules
+# and verify/update/remove from probing `gh auth token` or logging a token notice.
+_CURL_OPTS_DONE=false
 _setup_curl_opts() {
+    [[ "$_CURL_OPTS_DONE" == "true" ]] && return 0
+    _CURL_OPTS_DONE=true
     _CURL_OPTS=(-sSL)
     # Auto-detect token from gh CLI if not explicitly set
     if [[ -z "${GITHUB_TOKEN:-}" ]] && command -v gh &>/dev/null; then
@@ -981,13 +988,17 @@ _setup_curl_opts() {
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         _GH_NETRC_FILE=$(mktemp "${TMPDIR:-/tmp}/gh-netrc.XXXXXX")
         chmod 600 "$_GH_NETRC_FILE"
+        # Save/restore xtrace around the token write so `set -x` (-v/--verbose)
+        # never traces the plaintext token into the (chmod 600) log file.
+        local _xt=false; [[ $- == *x* ]] && _xt=true
+        { set +x; } 2>/dev/null
         printf 'machine github.com\nlogin x-access-token\npassword %s\n' "$GITHUB_TOKEN" > "$_GH_NETRC_FILE"
         printf 'machine api.github.com\nlogin x-access-token\npassword %s\n' "$GITHUB_TOKEN" >> "$_GH_NETRC_FILE"
+        [[ "$_xt" == "true" ]] && { set -x; } 2>/dev/null
         _register_cleanup "$_GH_NETRC_FILE"
         _CURL_OPTS+=(--netrc-file "$_GH_NETRC_FILE")
     fi
 }
-_setup_curl_opts
 
 # GitHub API response cache — avoids redundant API calls and rate limit exhaustion.
 # GitHub allows 60 requests/hour unauthenticated, 5000 with a token.
@@ -1012,6 +1023,7 @@ _gh_api_cache_cleanup() {
 # Outputs the response body. Returns 1 on failure.
 _gh_api_get() {
     local url="$1"
+    _setup_curl_opts   # lazy, idempotent: build _CURL_OPTS on first network use
     _gh_api_cache_init
 
     # Cache key: sanitize URL to filename
@@ -1701,6 +1713,9 @@ install_binary_releases() {
     local _batch_start; _batch_start=$(date +%s)
     _report_method_total "Binary" "$total"
 
+    # Build _CURL_OPTS (token netrc) in the parent BEFORE forking so children
+    # inherit it — the checksum curl in download_github_release runs in subshells.
+    _setup_curl_opts
     # Initialize shared API cache before forking — all subshells inherit the same dir
     _gh_api_cache_init
 

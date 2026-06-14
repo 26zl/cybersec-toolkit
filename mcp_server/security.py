@@ -32,7 +32,7 @@ from mcp_server.audit import (  # noqa: E402
     log_script_result,
     log_validation,
 )
-from mcp_server.sanitize import sanitize_output  # noqa: E402
+from mcp_server.sanitize import sanitize_output, truncate_output  # noqa: E402
 from mcp_server.tools_db import PIPX_BIN_NAMES, ToolsDatabase  # noqa: E402
 
 # Methods that are not directly executable as CLI commands.
@@ -171,7 +171,11 @@ SYSTEM_UTILITIES: frozenset[str] = frozenset(
         "du",
         "free",
         "locale",
-        # File operations (safe subset)
+        # File operations. Read-only ones (cat/ls/stat/...) are unconditionally
+        # safe. The write-capable ones (cp/mv/ln/tee/touch/mkdir) are allowed but
+        # check_policy() runs _is_sensitive_write_target() on their destination
+        # so they cannot overwrite/symlink into dotfiles, shell-rc/login files,
+        # cron, or system dirs (/etc, /usr, ...). Writes to /tmp/CWD stay allowed.
         "cat",
         "less",
         "more",
@@ -229,6 +233,22 @@ _NC_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^--lua-exec(?:$|=)"), "nc: --lua-exec script (arbitrary command execution)"),
 ]
 
+# awk/gawk: the inline system()/pipe-to-getline patterns are blocked, but the
+# same RCE is reachable through an uninspected *program file* or extension load.
+# -f/--file run a script file, --source runs inline program text, and
+# --load/-l/@load dlopen an arbitrary gawk extension (.so) = command execution.
+# Block them so the inline-only checks can't be bypassed.
+_AWK_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"system\s*\(", re.IGNORECASE), "awk: system() command execution"),
+    (re.compile(r"\|\s*getline", re.IGNORECASE), "awk: pipe to getline"),
+    (re.compile(r"^-f"), "awk: -f program file (uninspected script execution)"),
+    (re.compile(r"^--file(?:$|=)"), "awk: --file program file (uninspected script execution)"),
+    (re.compile(r"^--source(?:$|=)"), "awk: --source inline program (uninspected script execution)"),
+    (re.compile(r"^--load(?:$|=)"), "awk: --load extension (command execution)"),
+    (re.compile(r"^-l$"), "awk: -l load extension (command execution)"),
+    (re.compile(r"(?:^|[\s;])@load\b"), "awk: @load extension directive (command execution)"),
+]
+
 # radare2/r2 share a command interface with shell-escape (`!`), pipe (`#!`) and
 # source (`. file`) syntax, plus -i/-I to run a script file. Best-effort denylist.
 _R2_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
@@ -263,10 +283,8 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "masscan": [
         (re.compile(r"^--includefile(?:$|=)"), "masscan: target list from file"),
     ],
-    "awk": [
-        (re.compile(r"system\s*\(", re.IGNORECASE), "awk: system() command execution"),
-        (re.compile(r"\|\s*getline", re.IGNORECASE), "awk: pipe to getline"),
-    ],
+    "awk": _AWK_BLOCKED_FLAGS,
+    "gawk": _AWK_BLOCKED_FLAGS,
     "tar": [
         (re.compile(r"^--checkpoint-action"), "tar: checkpoint-action command execution"),
         (re.compile(r"^--to-command"), "tar: to-command command execution"),
@@ -950,6 +968,49 @@ def _has_file_extension(value: str) -> bool:
     return any(lower.endswith(ext) for ext in _FILE_EXTENSIONS)
 
 
+# File extensions that are ALSO real public TLDs. A token like "example.zip"
+# or "http://evil.mobi" ends in one of these "extensions" but is a live
+# external host, so it must NOT be treated as a benign local filename when
+# deciding whether to skip target validation after an unknown flag.
+_EXTENSION_TLDS: frozenset[str] = frozenset(
+    {
+        ".zip",
+        ".mobi",
+        ".sh",
+        ".app",
+        ".dev",
+        ".bar",
+        ".dad",
+        ".day",
+        ".foo",
+        ".mov",
+        ".phd",
+        ".prof",
+    }
+)
+
+
+def _is_local_path(value: str) -> bool:
+    """Return True if *value* is clearly a local filesystem path, not a target.
+
+    A token counts as local when it contains a path separator (``/`` or ``\\``)
+    or ends in a known file extension that is NOT also a real TLD. URLs and
+    tokens that only "look like a file" because their extension doubles as a TLD
+    (``.zip``, ``.mobi``, ``.sh``) are deliberately rejected here so an external
+    host such as ``http://evil.zip`` or ``example.zip`` still gets
+    target-validated.
+    """
+    # A URL is never a local path, even though it contains "/".
+    if re.match(r"^https?://", value, re.IGNORECASE):
+        return False
+    lower = value.lower()
+    if any(lower.endswith(ext) for ext in _EXTENSION_TLDS):
+        return False
+    if "/" in value or "\\" in value:
+        return True
+    return _has_file_extension(value)
+
+
 def _looks_like_target(value: str) -> bool:
     """Heuristic: does this positional arg look like a network target?
 
@@ -1005,6 +1066,155 @@ def _network_target_host(value: str) -> str:
     return clean
 
 
+# ---------------------------------------------------------------------------
+# Write-destination guard
+# ---------------------------------------------------------------------------
+
+# Allowlisted utilities that create/overwrite/symlink a file. A prompt-injected
+# output could steer the AI to point one of these at ~/.bashrc, ~/.ssh/
+# authorized_keys, ~/.config/autostart/*, or a crontab. check_policy() runs
+# _is_sensitive_write_target() on the destination(s) for these.
+_WRITE_CAPABLE_TOOLS: frozenset[str] = frozenset({"cp", "mv", "ln", "tee", "touch", "mkdir"})
+
+# Absolute system directories that must never be written into.
+_SENSITIVE_WRITE_DIRS: tuple[str, ...] = (
+    "/etc",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64",
+    "/boot",
+    "/root",
+    "/var/spool/cron",
+    "/var/spool/at",
+)
+
+# Login/shell-rc and other startup files that are dangerous to overwrite even
+# when they sit directly in $HOME (matched by basename anywhere under $HOME).
+_SENSITIVE_BASENAMES: frozenset[str] = frozenset(
+    {
+        ".bashrc",
+        ".bash_profile",
+        ".bash_login",
+        ".bash_logout",
+        ".profile",
+        ".zshrc",
+        ".zprofile",
+        ".zlogin",
+        ".zshenv",
+        ".kshrc",
+        ".cshrc",
+        ".tcshrc",
+        ".login",
+        ".inputrc",
+        ".netrc",
+        ".gitconfig",
+        ".vimrc",
+        "authorized_keys",
+        "crontab",
+    }
+)
+
+
+def _normalize_write_path(path: str) -> str | None:
+    """Expand ~ and resolve *path* to an absolute path for prefix checks.
+
+    Returns None for values that are not plausible filesystem destinations
+    (URLs, ``-`` stdout sentinel, empty). Does not require the path to exist —
+    a write target usually does not yet.
+    """
+    if not path or path == "-":
+        return None
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path):
+        return None  # URL, not a local path
+    expanded = os.path.expanduser(path)
+    if not os.path.isabs(expanded):
+        expanded = os.path.join(os.getcwd(), expanded)
+    return os.path.normpath(expanded)
+
+
+def _is_sensitive_write_target(path: str) -> bool:
+    """Return True if writing to *path* would hit a sensitive location.
+
+    Blocks: any dotfile under $HOME (``~/.bashrc``, ``~/.ssh/``,
+    ``~/.config/autostart/``, ``~/.config/systemd/``, ...), known shell-rc/login
+    files by basename, cron dirs, and system dirs (/etc, /usr, /bin, ...). Does
+    NOT block /tmp, the CWD, or other ordinary working locations.
+    """
+    norm = _normalize_write_path(path)
+    if norm is None:
+        return False
+
+    # System / cron directories (covers /etc/crontab, /etc/cron.d/*,
+    # /var/spool/cron/*, and the rest of the system tree).
+    for d in _SENSITIVE_WRITE_DIRS:
+        if norm == d or norm.startswith(d + os.sep):
+            return True
+    base = os.path.basename(norm)
+
+    # Shell-rc / login / key files by basename, wherever they live.
+    if base in _SENSITIVE_BASENAMES:
+        return True
+
+    # Dotfiles and dot-directories under $HOME (e.g. ~/.bashrc, ~/.ssh/x,
+    # ~/.config/autostart/x, ~/.config/systemd/user/x). Any path component that
+    # starts with "." under the home directory is treated as a config/startup
+    # location.
+    home = os.path.normpath(os.path.expanduser("~"))
+    if home and home != os.sep and (norm == home or norm.startswith(home + os.sep)):
+        rel = os.path.relpath(norm, home)
+        if any(part.startswith(".") and part not in ("", ".", "..") for part in rel.split(os.sep)):
+            return True
+
+    return False
+
+
+def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) -> None:
+    """Block file-mutating invocations that target a sensitive destination.
+
+    Covers the write-capable system utilities (cp/mv/ln/tee/touch/mkdir) and the
+    curl/wget output flags (``-o``/``--output``, ``-O``/``--output-document``).
+    For ln, both the link path and the symlink target are checked. Positional
+    arguments for the file utilities are all checked, since any of them can be a
+    destination (cp/mv) and there is no benign reason to write into the blocked
+    locations.
+    """
+    name = tool_name if tool_name in _WRITE_CAPABLE_TOOLS or tool_name in ("curl", "wget") else binary
+
+    if name in _WRITE_CAPABLE_TOOLS:
+        for arg in arg_list:
+            if arg.startswith("-") or arg == "--":
+                continue
+            if _is_sensitive_write_target(arg):
+                raise ValueError(
+                    f"Blocked by policy: {name} target '{arg}' resolves into a sensitive "
+                    "location (dotfile/shell-rc/cron/system dir). Write to /tmp or the working dir."
+                )
+        return
+
+    if name in ("curl", "wget"):
+        out_flags = {"-o", "--output"} if name == "curl" else {"-O", "--output-document"}
+        i = 0
+        while i < len(arg_list):
+            arg = arg_list[i]
+            dest = None
+            if arg in out_flags and i + 1 < len(arg_list):
+                dest = arg_list[i + 1]
+                i += 2
+            elif "=" in arg and arg.split("=", 1)[0] in out_flags:
+                dest = arg.split("=", 1)[1]
+                i += 1
+            else:
+                i += 1
+                continue
+            if dest is not None and _is_sensitive_write_target(dest):
+                raise ValueError(
+                    f"Blocked by policy: {name} output '{dest}' resolves into a sensitive "
+                    "location (dotfile/shell-rc/cron/system dir). Write to /tmp or the working dir."
+                )
+
+
 def check_policy(tool_name: str, arg_list: list[str]) -> None:
     """Enforce execution policy on the resolved arguments.
 
@@ -1025,6 +1235,11 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
             for pattern, desc in blocked_list:
                 if pattern.search(arg):
                     raise ValueError(f"Blocked by policy: {desc}")
+
+    # 1c. Block file-mutating utilities (and curl/wget output flags) from writing
+    # into dotfiles/shell-rc/cron/system dirs. This is a local-write concern, so
+    # it runs regardless of the external-network policy below.
+    _check_write_destinations(tool_name, binary, arg_list)
 
     # 2. Network target checks (only for network tools, unless external is allowed)
     if _allow_external():
@@ -1093,7 +1308,18 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
                 # Treat tokens with common file extensions as flag values,
                 # not network targets — prevents false positives from
                 # output files like scan.txt, report.json, capture.pcap.
-                if _looks_like_target(next_token) and not _has_file_extension(next_token):
+                #
+                # BUT some file extensions are also real TLDs (.zip, .mobi,
+                # .sh), so a URL/host like "http://evil.zip" or "example.zip"
+                # ends in a "file extension" yet is a live external target. If
+                # the token still looks like a network target, only skip it as a
+                # benign flag value when it is clearly a LOCAL path (has a path
+                # separator) — otherwise fall through to target validation so
+                # the extension-TLD cannot launder an external host past the
+                # allowlist.
+                if _looks_like_target(next_token) and (
+                    not _has_file_extension(next_token) or not _is_local_path(next_token)
+                ):
                     # Looks like a real target — don't consume, validate next iteration
                     i += 1
                 else:
@@ -1227,13 +1453,22 @@ async def _bounded_communicate(
 def _append_truncation_marker(text: str, max_bytes: int) -> str:
     """Append the standard truncation marker, keeping total UTF-8 size <= max_bytes.
 
-    Mirrors :func:`mcp_server.sanitize.truncate_output` so callers can rely on
-    ``len(result.encode('utf-8')) <= max_bytes`` after marking. Trims ``text``
-    from the tail when it would overflow, keeping the marker intact.
+    Delegates the cut-to-fit + marker to :func:`mcp_server.sanitize.truncate_output`
+    so the two implementations cannot drift (truncate_output is the single source
+    of the marker string and byte budget). This is the production caller of
+    truncate_output. Callers invoke this only when the stream was actually
+    capped, so the marker is forced even in the rare case the captured bytes land
+    just under ``max_bytes`` (e.g. a multibyte boundary).
     """
+    truncated_text, was_truncated = truncate_output(text, max_bytes)
+    if was_truncated:
+        return truncated_text
+    # truncate_output left text intact (it already fit within max_bytes), but the
+    # stream WAS bounded upstream — append the marker using the same format,
+    # trimming from the tail if needed to stay within max_bytes.
     marker = f"\n... [truncated at {max_bytes} bytes]"
-    encoded = text.encode("utf-8")
     marker_bytes = marker.encode("utf-8")
+    encoded = text.encode("utf-8")
     if len(encoded) + len(marker_bytes) <= max_bytes:
         return text + marker
     cut = max(0, max_bytes - len(marker_bytes))

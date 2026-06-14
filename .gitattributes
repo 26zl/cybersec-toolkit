@@ -14,6 +14,13 @@
 *.yaml text eol=lf
 Dockerfile text eol=lf
 
+# Binary assets must never get EOL conversion (would corrupt them on Windows checkout).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+
 # Keep repository quality tooling in Git, but omit it from GitHub source
 # archives intended for end users.
 .github/ export-ignore

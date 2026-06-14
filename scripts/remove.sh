@@ -239,16 +239,27 @@ elif [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]]; then
 fi
 echo ""
 
+# Cargo crate name → binary name mapping (only for crates where they differ).
+# Kept in sync with scripts/verify.sh's _CARGO_BIN_NAMES. Most crates install a
+# binary of the same name; these are the exceptions (e.g. yara-x-cli → yr).
+declare -A _CARGO_BIN_NAMES=(
+    [yara-x-cli]="yr"
+)
+
 # 3) Cargo tools — must run BEFORE system packages (cargo is from rustup, not apt, but be safe)
 if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
     _cargo_home="$(_builder_home)/.cargo/bin"
     log_info "Removing ${#CARGO_TO_REMOVE[@]} Cargo tools..."
     for crate in "${CARGO_TO_REMOVE[@]}"; do
-        if ! command_exists "$crate" && [[ ! -f "$_cargo_home/$crate" ]]; then
+        # Probe the installed BINARY name (which may differ from the crate name)
+        # so the install-status guard doesn't skip e.g. yara-x-cli (binary 'yr').
+        _cargo_bin="${_CARGO_BIN_NAMES[$crate]:-$crate}"
+        if ! command_exists "$_cargo_bin" && [[ ! -f "$_cargo_home/$_cargo_bin" ]]; then
             log_debug "Skipping cargo $crate (not installed)"
             continue
         fi
         if command_exists cargo; then
+            # cargo uninstalls by CRATE name, not binary name.
             if cargo uninstall "$crate" >> "$LOG_FILE" 2>&1; then
                 log_success "Removed cargo: $crate"
             else
@@ -257,8 +268,8 @@ if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
             fi
         fi
         # Clean up binary and symlink regardless of cargo uninstall result
-        [[ -f "$_cargo_home/$crate" ]] && rm -f "$_cargo_home/$crate"
-        [[ -L "$PIPX_BIN_DIR/$crate" ]] && rm -f "$PIPX_BIN_DIR/$crate"
+        [[ -f "$_cargo_home/$_cargo_bin" ]] && rm -f "$_cargo_home/$_cargo_bin"
+        [[ -L "$PIPX_BIN_DIR/$_cargo_bin" ]] && rm -f "$PIPX_BIN_DIR/$_cargo_bin"
     done
 fi
 echo ""

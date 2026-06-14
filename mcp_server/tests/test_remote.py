@@ -178,8 +178,11 @@ class TestRemoteHostConfig:
             hostname="10.0.0.1",
             ssh_key="/nonexistent/key_file",
         )
-        with pytest.raises(ValueError, match="SSH key file not found"):
+        with pytest.raises(ValueError, match="SSH key file not found") as exc_info:
             remote_config.get_ssh_base_args("bad-key")
+        # The configured key path must NOT leak into the error string: it
+        # propagates into the audit log and a key path is treated as sensitive.
+        assert "/nonexistent/key_file" not in str(exc_info.value)
 
     def test_corrupt_json_raises_and_backs_up(self, tmp_path: Path) -> None:
         """Corrupt config must fail loudly and preserve the bad file for recovery.

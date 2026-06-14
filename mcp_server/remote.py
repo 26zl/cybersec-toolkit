@@ -212,7 +212,11 @@ class RemoteHostConfig:
         if ssh_key:
             key_path = os.path.expanduser(ssh_key)
             if not os.path.isfile(key_path):
-                raise ValueError(f"SSH key file not found: {key_path}")
+                # Don't echo the configured key path back into the error: it
+                # propagates into str(e) and the audit log, and a key path is
+                # treated as sensitive. The host name already gives the caller
+                # enough context to find the offending ssh_key entry.
+                raise ValueError("SSH key file not found for this host; verify its configured ssh_key path")
             args += ["-i", key_path]
 
         args.append(f"{host['user']}@{host['hostname']}")

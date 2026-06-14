@@ -10,6 +10,7 @@ from mcp_server.profiles import (
     PROFILES,
     _count_module_tools,
     _count_profile_tools,
+    _match_individual_tools,
     _score_profiles,
     list_profiles,
     recommend_install,
@@ -86,6 +87,46 @@ class TestRecommendInstall:
             result = recommend_install("xyzzy gibberish", tools_db)
         assert result["recommendation"] == "unclear"
         assert "available_profiles" in result
+
+
+# _match_individual_tools (F8: word-boundary matching)
+class TestMatchIndividualTools:
+    def _db(self, tmp_path: Path) -> ToolsDatabase:
+        """ToolsDatabase with a short tool name, an English-word tool, and a normal one."""
+        tools = [
+            {"name": "nmap", "method": "apt", "module": "networking", "url": ""},
+            {"name": "ffuf", "method": "go", "module": "web", "url": ""},
+            {"name": "crunch", "method": "apt", "module": "cracking", "url": ""},
+            {"name": "amass", "method": "go", "module": "recon", "url": ""},
+        ]
+        config = tmp_path / "tools_config.json"
+        config.write_text(json.dumps(tools), encoding="utf-8")
+        with patch("shutil.which", return_value=None):
+            return ToolsDatabase(project_root=tmp_path)
+
+    def test_short_tool_name_matches(self, tmp_path: Path) -> None:
+        # F8: 4-char names (nmap) were excluded by the old len>=5 cutoff.
+        db = self._db(tmp_path)
+        names = {t["name"] for t in _match_individual_tools("I just need nmap and burpsuite", db)}
+        assert "nmap" in names
+
+    def test_short_tool_names_match_in_listing(self, tmp_path: Path) -> None:
+        db = self._db(tmp_path)
+        names = {t["name"] for t in _match_individual_tools("use nmap and ffuf", db)}
+        assert names == {"nmap", "ffuf"}
+
+    def test_prose_does_not_match_english_word_tool(self, tmp_path: Path) -> None:
+        # F8: prose ("crunch the numbers") must NOT be read as the crunch tool;
+        # "amass a lot" must NOT match the amass tool.
+        db = self._db(tmp_path)
+        assert _match_individual_tools("crunch the numbers", db) == []
+        assert _match_individual_tools("amass a lot of evidence", db) == []
+
+    def test_explicit_request_still_matches_english_word_tool(self, tmp_path: Path) -> None:
+        # An install/tool cue lets the ambiguous names match when genuinely meant.
+        db = self._db(tmp_path)
+        names = {t["name"] for t in _match_individual_tools("install crunch for wordlists", db)}
+        assert "crunch" in names
 
 
 # list_profiles

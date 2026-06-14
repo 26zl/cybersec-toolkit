@@ -77,3 +77,26 @@ def test_get_module_info_update_command_whole_system() -> None:
     # C2 tools in misc are flagged
     c2_flagged = [t for t in info["tools"] if t.get("requires_include_c2")]
     assert any(t["name"] == "gophish" for t in c2_flagged)
+
+
+# ---- F9: advisor docstrings stay in sync with the category maps ----
+
+
+def test_suggest_for_ctf_docstring_count_and_llm_listed() -> None:
+    from mcp_server.ctf_advisor import CTF_CATEGORY_MAP
+
+    doc = server.suggest_for_ctf.__doc__
+    assert f"{len(CTF_CATEGORY_MAP)} challenge types" in doc
+    assert len(CTF_CATEGORY_MAP) == 14
+    assert "llm" in doc
+    assert "llm" in CTF_CATEGORY_MAP
+
+
+def test_suggest_for_bounty_docstring_count_and_llm_listed() -> None:
+    from mcp_server.bounty_advisor import BOUNTY_TARGET_MAP
+
+    doc = server.suggest_for_bounty.__doc__
+    assert f"{len(BOUNTY_TARGET_MAP)} target types" in doc
+    assert len(BOUNTY_TARGET_MAP) == 7
+    assert "llm" in doc
+    assert "llm" in BOUNTY_TARGET_MAP

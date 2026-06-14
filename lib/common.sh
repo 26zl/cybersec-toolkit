@@ -144,7 +144,11 @@ _list_sessions() {
         profile=$(sed -n 's/^# Profile: //p' "$f")
         status=$(sed -n 's/^# Status: //p' "$f")
         [[ -z "$status" ]] && status="interrupted"
-        tool_count=$(grep -cv '^#' "$f" 2>/dev/null) || tool_count=0
+        # The manifest is append-only (a tool is logged on every attempt, incl.
+        # retries/failures), so a raw line count over-counts. Report the number
+        # of DISTINCT successfully-installed tools to match the deduped .versions
+        # total. Manifest field layout: tool|method|action|timestamp ($3=action).
+        tool_count=$(awk -F'|' '!/^#/ && $3=="installed"{print $1}' "$f" 2>/dev/null | sort -u | wc -l) || tool_count=0
         printf "  %-26s %-10s %-14s %-8s %s\n" "$sid" "$status" "$profile" "$tool_count" "$started"
     done
     echo ""
@@ -786,7 +790,19 @@ _chown_for_builder() {
 # Returns root's $HOME when not privilege-dropping.
 _builder_home() {
     if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
-        getent passwd "$SUDO_USER" | cut -d: -f6
+        local _bh
+        _bh=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)
+        # getent may be missing or the NSS lookup may fail — an empty result
+        # would yield /-rooted bogus paths (/.cargo/bin). Fall back to a direct
+        # /etc/passwd lookup, then $HOME, requiring a non-empty absolute path.
+        # SUDO_USER is untrusted: it is passed to awk only as a data variable
+        # (never interpreted by a shell), so it cannot inject commands.
+        [[ -z "$_bh" ]] && _bh=$(awk -F: -v u="$SUDO_USER" '$1==u{print $6; exit}' /etc/passwd 2>/dev/null)
+        if [[ -n "$_bh" ]] && [[ "$_bh" == /* ]]; then
+            echo "$_bh"
+        else
+            echo "$HOME"
+        fi
     else
         echo "$HOME"
     fi

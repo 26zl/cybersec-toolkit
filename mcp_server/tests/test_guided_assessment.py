@@ -508,3 +508,62 @@ def test_bare_hostname_not_misclassified_as_file_when_cwd_file_exists(tmp_path, 
     assert result["target"]["kind"] == "host"
     assert result["target"]["network"] is True
     assert result["authorization"]["required_for_execution"] is True
+
+
+@pytest.mark.parametrize(
+    "filename,expected_category",
+    [
+        ("challenge.bin", "pwn"),
+        ("secret.png", "stego"),
+        ("app.apk", "mobile"),
+    ],
+)
+def test_bare_challenge_filename_in_default_auto_mode_is_a_ctf_file(filename, expected_category) -> None:
+    # F7: in default companion mode (workflow=auto, target_type=auto) a bare
+    # filename with no path separator but a known extension must be a CTF file
+    # (local triage: file/strings/xxd), not a host routed to bounty/network.
+    with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
+        result = build_guided_plan(
+            target=filename,
+            target_type="auto",
+            workflow="auto",
+            mode="companion",
+            intensity="low",
+            authorization_confirmed=False,
+            max_steps=4,
+            external_enabled=False,
+            tools_db=server._db,
+        )
+
+    assert "error" not in result
+    assert result["target"]["kind"] == "file"
+    assert result["workflow"] == "ctf"
+    assert result["target_type"] == expected_category
+    assert [s["tool"] for s in result["plan"]["steps"][:3]] == ["file", "strings", "xxd"]
+    assert all(s["tool"] != "dig" for s in result["plan"]["steps"])
+    # File triage needs no network authorization floor.
+    assert result["authorization"]["required_for_execution"] is False
+
+
+def test_url_with_multiple_query_params_is_accepted_and_planned() -> None:
+    # F10: '&' and ';' are legal in URL query strings and the execution path uses
+    # create_subprocess_exec + shlex.quote (no shell), so a multi-param URL must
+    # plan instead of being rejected as containing shell metacharacters.
+    with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
+        result = build_guided_plan(
+            target="http://10.0.0.1/api?id=1&x=2;y=3",
+            target_type="web_app",
+            workflow="bounty",
+            mode="companion",
+            intensity="low",
+            authorization_confirmed=False,
+            max_steps=4,
+            external_enabled=False,
+            tools_db=server._db,
+        )
+
+    assert "error" not in result
+    assert result["target"]["kind"] == "url"
+    assert any(step["tool"] == "curl" for step in result["plan"]["steps"])
+    # The full multi-param URL is preserved (shlex-quoted) in the planned command.
+    assert any("id=1&x=2;y=3" in step["args"] for step in result["plan"]["steps"])

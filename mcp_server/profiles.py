@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -21,7 +22,7 @@ _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
 # dependency at import time — these rarely change and must match the .conf files).
 PROFILES: dict[str, dict] = {
     "full": {
-        "description": "All 580+ tools across all 18 modules — the complete arsenal",
+        "description": "All 580+ tools across all 18 modules — full arsenal incl. offensive C2 (authorized use only)",
         "modules": [
             "misc",
             "networking",
@@ -332,14 +333,33 @@ def _match_modules(task: str) -> list[tuple[str, float]]:
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
+# Registry tool names that are also ordinary English words. A bare word-boundary
+# match on these false-positives on prose ("crunch the numbers" -> crunch, "amass
+# a lot" -> amass), so they only count as a tool mention when the task also carries
+# an install/tool-listing cue (e.g. "install crunch", "I need crunch and amass").
+_COMMON_WORD_TOOLS: frozenset[str] = frozenset(
+    {"crunch", "amass", "set", "tiger", "loki", "notify", "freeze", "ivy", "robin", "meg", "chaos", "tor", "anew"}
+)
+_TOOL_INTENT_RE = re.compile(r"\b(install|tool|tools|need|use|using|run|with|and)\b")
+
+
 def _match_individual_tools(task: str, tools_db: ToolsDatabase) -> list[dict]:
     """Find specific tools mentioned by name in the task description."""
     task_lower = task.lower()
+    has_intent = _TOOL_INTENT_RE.search(task_lower) is not None
     matched = []
     for tool in tools_db.tools_by_name.values():
-        # Match tool name (at least 5 chars to avoid false positives like "cat", "age")
-        if len(tool["name"]) >= 5 and tool["name"].lower() in task_lower:
-            matched.append(tool)
+        name = tool["name"].lower()
+        # Word-boundary match lets short tool names (nmap, ffuf, john, gdb) match,
+        # where the old length cutoff dropped them, and avoids substring collisions
+        # ("mass" inside "amass"). Names that double as English words additionally
+        # require a tool-listing/install cue so prose ("crunch the numbers") is not
+        # mistaken for a tool request.
+        if not re.search(rf"\b{re.escape(name)}\b", task_lower):
+            continue
+        if name in _COMMON_WORD_TOOLS and not has_intent:
+            continue
+        matched.append(tool)
     return matched
 
 

@@ -328,6 +328,13 @@ else
 fi
 echo ""
 
+# Cargo crate name → binary name mapping (only for crates where they differ).
+# Kept in sync with scripts/verify.sh's _CARGO_BIN_NAMES. Most crates install a
+# binary of the same name; these are the exceptions (e.g. yara-x-cli → yr).
+declare -A _CARGO_BIN_NAMES=(
+    [yara-x-cli]="yr"
+)
+
 # 6) Cargo tools
 if [[ "$SKIP_CARGO" == "false" ]]; then
     if command_exists cargo; then
@@ -344,8 +351,12 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
 
             log_info "Updating Cargo tools (${ALL_CARGO[*]})..."
             for crate in "${ALL_CARGO[@]}"; do
+                # Probe the installed BINARY name (which may differ from the crate
+                # name) so the install-status guard doesn't skip e.g. yara-x-cli
+                # (binary 'yr'). cargo install still uses the crate name below.
+                _cargo_bin="${_CARGO_BIN_NAMES[$crate]:-$crate}"
                 # Only update crates that are already installed
-                if ! command_exists "$crate" && [[ ! -f "$_cargo_bin_dir/$crate" ]]; then
+                if ! command_exists "$_cargo_bin" && [[ ! -f "$_cargo_bin_dir/$_cargo_bin" ]]; then
                     log_debug "Skipping cargo $crate (not installed)"
                     CARGO_NOT_INSTALLED=$((CARGO_NOT_INSTALLED + 1))
                     continue
@@ -360,8 +371,8 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                     else
                         log_success "Updated cargo: $crate"
                         CARGO_UPDATED=$((CARGO_UPDATED + 1))
-                        if [[ -f "$_cargo_bin_dir/$crate" ]]; then
-                            ln -sf "$_cargo_bin_dir/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
+                        if [[ -f "$_cargo_bin_dir/$_cargo_bin" ]]; then
+                            ln -sf "$_cargo_bin_dir/$_cargo_bin" "$PIPX_BIN_DIR/$_cargo_bin" 2>/dev/null || true
                         fi
                         track_version "$crate" "cargo" "latest"
                     fi

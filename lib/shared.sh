@@ -164,7 +164,18 @@ if data:
 " < "$_go_json" 2>/dev/null)
     fi
     # Fallback to a known-good version if API fails
-    GO_INSTALL_VERSION="${GO_INSTALL_VERSION:-1.24.0}"
+    local _GO_FALLBACK_VERSION="1.26.4"
+    GO_INSTALL_VERSION="${GO_INSTALL_VERSION:-$_GO_FALLBACK_VERSION}"
+    # Embedded linux SHA256 checksums for the fallback version, so the offline
+    # path (go.dev API unreachable) STILL verifies the tarball. Keyed by the
+    # go.dev arch name (matches _go_arch below). MUST be bumped together with
+    # _GO_FALLBACK_VERSION above — stale hashes would fail an otherwise-good DL.
+    local -A _GO_FALLBACK_SHA256=(
+        [amd64]=1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f
+        [arm64]=ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768
+        [armv6l]=8db458e995f18a9427a745cefe7a3323962fa2548c4715148963311f300d3b1a
+        [386]=5ca0982791791559d11a0eba939617a94c3f37c21aa514a55c415b9167efc658
+    )
 
     # Determine install location
     local install_parent
@@ -210,6 +221,14 @@ for rel in json.load(sys.stdin):
 " < "$_go_json" 2>>"$LOG_FILE")
     fi
     rm -f "$_go_json"
+
+    # Offline fallback: the go.dev API (which carries the hash) was unreachable,
+    # so we're installing the embedded fallback version — verify against the
+    # embedded checksum map instead of skipping verification.
+    if [[ -z "$expected_hash" ]] && [[ "$GO_INSTALL_VERSION" == "$_GO_FALLBACK_VERSION" ]]; then
+        expected_hash="${_GO_FALLBACK_SHA256[$_go_arch]:-}"
+        [[ -n "$expected_hash" ]] && log_info "Using embedded fallback checksum for Go $GO_INSTALL_VERSION ($_go_arch)"
+    fi
 
     if [[ -n "$expected_hash" ]]; then
         local actual_hash

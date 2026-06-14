@@ -213,7 +213,7 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 - `ctf_advisor.py` — CTF category suggestions, `TOOL_ALIASES` mapping, methodology steps
 - `bounty_advisor.py` — Bug bounty target-type suggestions, methodology, common vulns
 - `remote.py` — `RemoteHostConfig` for SSH-based remote tool execution
-- `audit.py` — JSON-line audit logging (5MB rotating) for blocked/executed tools and scripts. `_redact_script_code()` scrubs credential-shaped strings (OpenAI/GitHub/AWS/JWT tokens, `API_KEY=...` assignments, HTTP Authorization headers) from script content before it hits `audit.log`; the original's SHA256 + byte length are logged for forensic correlation.
+- `audit.py` — JSON-line audit logging (5MB rotating) for blocked/executed tools and scripts. `_redact_script_code()` makes a best-effort scrub of credential-shaped strings (OpenAI/GitHub/AWS/JWT tokens, `API_KEY=...` assignments, HTTP Authorization headers, `sshpass`/`hydra` `-p <pass>` flags, and `PGPASSWORD`/`MYSQL_PWD`/`MARIADB_PASSWORD`/`REDISCLI_AUTH` env-var assignments) from script content before it hits `audit.log`; the original's SHA256 + byte length are logged for forensic correlation.
 - `sanitize.py` — Output processing: ANSI stripping, LLM prompt-injection marker stripping. (Size truncation is enforced during subprocess read by `security._bounded_communicate()`, not post-hoc here.)
 
 **Key design decisions:**

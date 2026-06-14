@@ -389,3 +389,91 @@ setup() {
     # fail should not be tracked
     ! grep -q "^tool-c|" "$VERSION_FILE"
 }
+
+# ---------- _builder_home (F14) ---------------------------------------------
+
+@test "_builder_home returns HOME when SUDO_USER unset" {
+    source_libs debian apt
+    unset SUDO_USER
+    HOME="/home/tester"
+    run _builder_home
+    assert_success
+    assert_output "/home/tester"
+}
+
+@test "_builder_home returns HOME when SUDO_USER is root" {
+    source_libs debian apt
+    SUDO_USER="root"
+    HOME="/home/tester"
+    run _builder_home
+    assert_success
+    assert_output "/home/tester"
+}
+
+@test "_builder_home falls back to absolute path for unresolvable SUDO_USER" {
+    source_libs debian apt
+    # A user that getent/NSS cannot resolve must NOT yield an empty or
+    # /-rooted bogus home — it must fall back to a non-empty absolute path.
+    SUDO_USER="nonexistent_user_zzz_$$"
+    HOME="/home/tester"
+    run _builder_home
+    assert_success
+    [[ -n "$output" ]]
+    [[ "$output" == /* ]]
+    # Must not be a bare slash that would produce /.cargo/bin etc.
+    [[ "$output" != "/" ]]
+}
+
+@test "_builder_home never returns empty string" {
+    source_libs debian apt
+    SUDO_USER="nonexistent_user_yyy_$$"
+    HOME="/home/tester"
+    result="$(_builder_home)"
+    [[ -n "$result" ]]
+}
+
+@test "_builder_home does not execute injected SUDO_USER (no eval)" {
+    source_libs debian apt
+    # SUDO_USER is attacker-influenced under sudo; it must only ever be passed
+    # as data to getent/awk, never to a shell. A command-substitution payload
+    # must NOT run when the home is resolved via the getent-miss fallback.
+    local marker="$BATS_TEST_TMPDIR/pwned_$$"
+    rm -f "$marker"
+    SUDO_USER="\$(touch $marker)"
+    HOME="/home/tester"
+    run _builder_home
+    assert_success
+    [[ ! -e "$marker" ]]
+}
+
+# ---------- _list_sessions distinct-installed count (F15) --------------------
+
+@test "_list_sessions counts distinct installed tools, not raw lines" {
+    source_libs debian apt
+    make_test_tmpdir
+
+    local session_dir="$TEST_TMPDIR/.install_sessions"
+    mkdir -p "$session_dir"
+    # Append-only manifest: a tool appears once per attempt (incl. retries and
+    # failures). The TOOLS column must report distinct *installed* tools only.
+    cat > "$session_dir/20260614-100000.manifest" <<'MANIFEST'
+# Started: 2026-06-14 10:00:00
+# Profile: ctf
+# Status: completed
+nmap|apt|installed|2026-06-14 10:01:00
+nmap|apt|installed|2026-06-14 10:01:05
+sqlmap|pipx|failed|2026-06-14 10:02:00
+sqlmap|pipx|installed|2026-06-14 10:02:30
+gobuster|go|failed|2026-06-14 10:03:00
+ffuf|go|installed|2026-06-14 10:04:00
+MANIFEST
+
+    SCRIPT_DIR="$TEST_TMPDIR"
+    run _list_sessions
+    assert_success
+    # Distinct installed = {nmap, sqlmap, ffuf} = 3 (NOT 6 raw non-comment lines)
+    assert_output --partial "20260614-100000"
+    # The TOOLS column for this session must read 3
+    echo "$output" | grep -q "20260614-100000" || false
+    [[ "$(echo "$output" | awk '/20260614-100000/{print $4}')" == "3" ]]
+}

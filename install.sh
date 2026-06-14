@@ -792,8 +792,44 @@ estimate_install_time() {
     echo ""
 }
 
+# _apply_platform_module_filters — apply host-specific module/flag overrides to
+# MODULES_TO_INSTALL and ENABLE_DOCKER. Called from BOTH the dry-run preview and
+# main() so the preview reflects what a real run actually does on Termux/WSL.
+# (The ARM x86-only binary-release filter lives in install_binary_releases,
+# which operates on per-module binary arrays, not on MODULES_TO_INSTALL.)
+_apply_platform_module_filters() {
+    # Termux: Docker and snap are not available
+    if [[ "$PKG_MANAGER" == "pkg" ]] && [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
+        log_warn "Docker is not available on Termux/Android — skipping Docker tools"
+        ENABLE_DOCKER="false"
+    fi
+
+    # WSL: wireless module requires hardware access not available under WSL
+    if [[ "$IS_WSL" == "true" ]]; then
+        local _wsl_filtered=()
+        local _mod
+        for _mod in "${MODULES_TO_INSTALL[@]}"; do
+            if [[ "$_mod" == "wireless" ]]; then
+                log_warn "Skipping wireless module on WSL (no hardware access)"
+            else
+                _wsl_filtered+=("$_mod")
+            fi
+        done
+        # Guard empty-array expansion under set -u (bash 4.3) — matches the ARM
+        # filter in lib/installers.sh. Reachable via `--module wireless` on WSL.
+        if [[ ${#_wsl_filtered[@]} -gt 0 ]]; then
+            MODULES_TO_INSTALL=("${_wsl_filtered[@]}")
+        else
+            MODULES_TO_INSTALL=()
+        fi
+    fi
+}
+
 # Dry run
 if [[ "$DRY_RUN" == "true" ]]; then
+    # Apply the same host filters main() would, so the preview doesn't overstate
+    # what runs on Termux/WSL (e.g. the wireless module under WSL).
+    _apply_platform_module_filters
     echo ""
     _separator_line "$CYAN"
     echo -e "  ${CYAN}${BOLD}DRY RUN${NC}"
@@ -849,30 +885,8 @@ main() {
     _check_pkg_manager
     _setup_verbose
 
-    # Termux: Docker and snap are not available
-    if [[ "$PKG_MANAGER" == "pkg" ]] && [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
-        log_warn "Docker is not available on Termux/Android — skipping Docker tools"
-        ENABLE_DOCKER="false"
-    fi
-
-    # WSL: wireless module requires hardware access not available under WSL
-    if [[ "$IS_WSL" == "true" ]]; then
-        local _wsl_filtered=()
-        for _mod in "${MODULES_TO_INSTALL[@]}"; do
-            if [[ "$_mod" == "wireless" ]]; then
-                log_warn "Skipping wireless module on WSL (no hardware access)"
-            else
-                _wsl_filtered+=("$_mod")
-            fi
-        done
-        # Guard empty-array expansion under set -u (bash 4.3) — matches the ARM
-        # filter in lib/installers.sh. Reachable via `--module wireless` on WSL.
-        if [[ ${#_wsl_filtered[@]} -gt 0 ]]; then
-            MODULES_TO_INSTALL=("${_wsl_filtered[@]}")
-        else
-            MODULES_TO_INSTALL=()
-        fi
-    fi
+    # Termux Docker override + WSL wireless filter (shared with the dry-run path)
+    _apply_platform_module_filters
 
     # Docker is the only prerequisite users must install themselves
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]] && ! command_exists docker; then
@@ -1074,8 +1088,11 @@ install_modules() {
         local _job_pids=()
 
         # Pre-write method totals from the main process so the progress display
-        # has immediate access.  Subshell > /dev/null redirects prevent the batch
-        # functions' _report_method_total writes from reaching PROGRESS_DIR.
+        # has immediate access.  The batch functions later re-write the same
+        # .total files with the same values from inside their subshells — the
+        # `> /dev/null` redirect does NOT suppress those writes (_report_method_total
+        # writes via a direct file redirect to PROGRESS_DIR, not stdout), so it's
+        # a harmless idempotent re-write, not a duplicate.
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]];   then _method_names+=("pipx");   _report_method_total "pipx"   "${#_ALL_PIPX[@]}";   fi
         if [[ ${#_ALL_GO[@]} -gt 0 ]];     then _method_names+=("Go");     _report_method_total "Go"     "${#_ALL_GO[@]}";     fi
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]];  then _method_names+=("Cargo");  _report_method_total "Cargo"  "${#_ALL_CARGO[@]}";  fi

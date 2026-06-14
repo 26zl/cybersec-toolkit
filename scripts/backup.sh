@@ -9,7 +9,25 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-HOME_DIR="$HOME"
+# Resolve the REAL user's home. README/install.sh tell users to run backup under
+# sudo, and `schedule` requires root and writes the root crontab — under sudo (or
+# cron) $HOME is /root, so a bare $HOME would back up /root/.* (empty for a real
+# user) and restore under /root: a silent near-total failure. When privilege-
+# dropping ($SUDO_USER set and not root), resolve $SUDO_USER's home via getent,
+# falling back to a direct /etc/passwd lookup; otherwise use the invoking $HOME.
+# SUDO_USER is untrusted: it is only ever passed to getent/awk as data (never
+# interpreted by a shell), so it cannot inject commands.
+if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
+    HOME_DIR="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+    [[ -z "$HOME_DIR" ]] && HOME_DIR="$(awk -F: -v u="$SUDO_USER" '$1==u{print $6; exit}' /etc/passwd 2>/dev/null)"
+else
+    HOME_DIR="$HOME"
+fi
+# Validate: must be a non-empty absolute path or every backup/restore path is bogus.
+if [[ -z "$HOME_DIR" || "$HOME_DIR" != /* ]]; then
+    log_error "Could not resolve a valid home directory (got: '${HOME_DIR}')"
+    exit 1
+fi
 
 # Configuration
 PBKDF2_ITERATIONS=600000
@@ -17,6 +35,16 @@ BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
 [[ -d "$BACKUP_DIR" ]] || mkdir -p "$BACKUP_DIR"
+
+# Under sudo the dir/files are created by root inside the real user's home; hand
+# ownership back so the user can read/manage their own backups. No-op otherwise.
+_chown_backup_dir() {
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
+        chown -R "$SUDO_USER" "$BACKUP_DIR" 2>/dev/null || true
+    fi
+}
+_chown_backup_dir
+
 _init_log_file "$BACKUP_DIR/backup.log"
 
 # Helpers
@@ -379,6 +407,9 @@ cmd_backup() {
         exit 1
     fi
 
+    # New .enc/.hmac were written as root under sudo — return ownership.
+    _chown_backup_dir
+
     log_success "Backup created: $BACKUP_PATH.tar.gz.enc"
 }
 
@@ -444,10 +475,13 @@ cmd_restore() {
     # Clean up decrypted tar if we created it
     [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
 
-    # Legacy format: check for individually encrypted files inside the archive
+    # Legacy format: check for individually encrypted files inside the archive.
+    # Scan from the backup root, not a fixed encrypted/ subdir — old backups may
+    # store the *.enc files elsewhere, and decrypt_files_legacy must search the
+    # same directory that actually contains them or it silently decrypts nothing.
     if find "$BACKUP_DIR/$backup_name" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
         log_info "Legacy encrypted files found — decrypting..."
-        decrypt_files_legacy "$BACKUP_DIR/$backup_name/encrypted" "$BACKUP_DIR/$backup_name"
+        decrypt_files_legacy "$BACKUP_DIR/$backup_name" "$BACKUP_DIR/$backup_name"
     fi
 
     log_info "Restoring configurations..."
@@ -601,7 +635,13 @@ cmd_schedule() {
         exit 1
     fi
 
-    local cron_cmd=". $env_file && $SCRIPT_DIR/scripts/backup.sh backup"
+    # The job runs from the ROOT crontab, so $SUDO_USER is unset and $HOME=/root
+    # inside it — backup.sh would then back up /root instead of the real user's
+    # home. Export HOME=<real user home> in the cron line so backup.sh resolves
+    # the correct target. HOME_DIR was resolved from $SUDO_USER above (this path
+    # requires root, i.e. sudo). Single-quote-escape it for safe shell embedding.
+    local _home_escaped; _home_escaped="$(_escape_single_quoted "$HOME_DIR")"
+    local cron_cmd="export HOME='$_home_escaped' && . $env_file && $SCRIPT_DIR/scripts/backup.sh backup"
     local new_crontab
     new_crontab="$(crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd")"
 

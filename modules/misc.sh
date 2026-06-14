@@ -6,9 +6,13 @@
 # post-exploitation, mobile, resources
 # =============================================================================
 
+# Intentionally empty placeholders: this module currently ships no apt-installed
+# tools. Both arrays are kept for structural consistency — generic batch counters
+# and verify/update/remove iterate every module's <PREFIX>_PACKAGES/_HEAVY_PACKAGES.
+# Add apt package names here (and a distro_compat.tsv row if names differ).
 MISC_PACKAGES=()
 
-# Heavy tools (skipped with --skip-heavy)
+# Heavy tools (skipped with --skip-heavy) — currently none.
 MISC_HEAVY_PACKAGES=()
 
 MISC_PIPX=(arsenal-cli sploitscan faraday-cli)

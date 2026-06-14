@@ -26,6 +26,15 @@ Bundled with a modular installer for Linux and Termux (Android) covering __580+ 
 
 Two entry points share one tool registry. An __operator__ runs the bash installer to put tools on disk; an __AI agent__ talks to the MCP server to discover, recommend, and safely execute those same tools. `tools_config.json` is the single source of truth the modules define and the MCP advisors read, and CI validators keep the Python and bash sides in sync.
 
+<!-- Rendered to a PNG so it shows everywhere — including the GitHub mobile app,
+     which displays raw Mermaid instead of rendering it. Edit the Mermaid source in
+     the <details> block below, then re-render with:
+     npx @mermaid-js/mermaid-cli -i diagram.mmd -o assets/how-it-works.png -t dark -b "#0d1117" -s 3 -->
+![How it works: an operator runs the bash installer to put tools on disk; an AI agent drives the MCP server to discover, recommend, and safely execute them. The installer and MCP server never call each other — they meet at the tools_config.json registry and the installed tools on disk, with security.py as the single execution gate and CI validators keeping the Python and bash sides in sync.](assets/how-it-works.png)
+
+<details>
+<summary>Diagram source (Mermaid)</summary>
+
 ```mermaid
 flowchart TB
     user(["Operator"]):::actor
@@ -76,6 +85,8 @@ flowchart TB
     classDef skill fill:#2d2238,stroke:#a371f7,color:#e6edf3;
     classDef ci fill:#33291a,stroke:#d29922,color:#e6edf3;
 ```
+
+</details>
 
 __Reading the diagram:__ solid arrows are runtime/install actions, dashed arrows are data relationships. The installer (left) and MCP server (right) never call each other — they meet at the registry and at the tools on disk. `security.py` is the gate every AI-driven execution passes through; nothing reaches the shell without clearing the allowlist, argument sanitization, and network policy. Skills are methodology context the AI loads on demand; they guide _how_ tools get used but sit outside the execution path.
 
@@ -136,6 +147,12 @@ sudo ./install.sh --dry-run --profile ctf              # Preview without install
 ```bash
 docker build -t cybersec-toolkit .
 docker run cybersec-toolkit --profile ctf
+```
+
+Or use the bundled Compose file (builds and runs the `installer` service):
+
+```bash
+docker compose run installer --profile ctf
 ```
 
 __macOS (Apple Silicon):__ Add `--platform linux/amd64` to both commands to run via x86 emulation:
@@ -239,9 +256,9 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | 36 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker + Loki) |
+| `misc` | 37 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker + Loki) |
 | `networking` | 53 | Port scanning, packet capture, tunneling, MITM, protocol tools |
-| `recon` | 74 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
+| `recon` | 73 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | 51 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | 13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
 | `pwn` | 33 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
@@ -304,8 +321,8 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `get_tool_info` | Full details: method, module, URL, install/update/remove commands |
 | `get_module_info` | Deep-dive a module: all tools, install status, which profiles use it |
 | `get_profile_tools` | See every tool a profile installs, grouped by module |
-| `suggest_for_ctf` | Curated tool recommendations for 13 CTF challenge categories |
-| `suggest_for_bounty` | Bug bounty tool recommendations for 6 target types with methodology and common vulns |
+| `suggest_for_ctf` | Curated tool recommendations for 14 CTF challenge categories |
+| `suggest_for_bounty` | Bug bounty tool recommendations for 7 target types with methodology and common vulns |
 | `guided_assessment` | Companion-first solve assistant for an authorized target — classifies the target/finding, returns triage gates, recommends skills, picks tools from all modules/profiles, and guides step-by-step; opt-in `autonomous` starts an auto-solver loop over the full MCP toolchain via `run_tool`/`run_pipeline`/`run_script`, including AI-created scoped helper scripts when tools/pipelines are not enough, under MCP policy |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
