@@ -316,12 +316,10 @@ def log_tool_call(tool_name: str, params: dict[str, Any]) -> str:
     safe_params = {}
     for k, v in params.items():
         if k == "code":
-            # Redact credentials from the script body BEFORE truncating, mirroring
-            # log_script_execution so the same code is never logged in cleartext.
-            # Redact-first matters: truncating first can split a token mid-pattern
-            # and defeat redaction.
-            s = _redact_script_code(str(v))
-            safe_params[k] = s[:200] + "..." if len(s) > 200 else s
+            # The script body is not persisted (it can carry secrets that
+            # best-effort redaction may miss, CWE-312); log_script_execution
+            # records an irreversible SHA256 + length for correlation instead.
+            safe_params[k] = "[OMITTED]"
         elif k in ("args", "command"):
             # Use the full script-code redactor (not the weaker CLI-only one) so
             # assignment-form secrets ("--data client_secret=...", "-e API_KEY=...")
@@ -465,10 +463,12 @@ def log_script_execution(
 ) -> None:
     """Write a single JSON audit line for a script execution (BEFORE running).
 
-    Captures the script's logic for forensic review while keeping credentials
-    off disk: the code is run through :func:`_redact_script_code` first, and a
-    SHA256 of the *original* code plus its byte length are logged alongside
-    for correlation (e.g. matching an incident against an exact script body).
+    The script body is NOT persisted to the log. Free-form script content can
+    carry secrets that best-effort redaction may miss (CWE-312), so instead of
+    the body we record an irreversible SHA256 of the *original* code plus its
+    byte length — enough to correlate an incident against an exact script body
+    (e.g. one saved under ``manual_scripts/`` or the ``script_file``) without
+    keeping any cleartext on disk.
     """
     _log(
         logging.INFO,
@@ -476,7 +476,7 @@ def log_script_execution(
             "ts": _ts(),
             "event": "script",
             "language": language,
-            "code": _redact_script_code(code),
+            "code": "[OMITTED]",
             "code_sha256": hashlib.sha256(code.encode("utf-8", errors="replace")).hexdigest(),
             "code_len": len(code),
             "script_file": script_file,

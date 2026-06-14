@@ -57,10 +57,23 @@ jobs:
       - name: Install prerequisites (openSUSE)
         if: matrix.distro == 'opensuse'
         run: |
+          # openSUSE Tumbleweed's download redirector/CDN intermittently times out
+          # in CI (Curl error 28 on repo metadata). Make libzypp far more patient
+          # before giving up, and propagate generous retry settings to install.sh's
+          # own zypper refresh in the later steps (it honors these env vars).
+          printf '%s\n' \
+            'download.max_silent_tries = 10' \
+            'download.transfer_timeout = 300' \
+            'download.connect_timeout = 60' >> /etc/zypp/zypp.conf
+          {
+            echo "ZYPPER_REFRESH_ATTEMPTS=5"
+            echo "ZYPPER_REFRESH_DELAY=20"
+          } >> "$GITHUB_ENV"
+
           zypper_refresh() {
             attempt=1
             delay=15
-            max_attempts=3
+            max_attempts=5
             while [ "$attempt" -le "$max_attempts" ]; do
               if zypper --non-interactive --gpg-auto-import-keys refresh --force; then
                 return 0

@@ -385,39 +385,44 @@ class TestRedactScriptCode:
         assert secret not in redacted
         assert "[REDACTED]" in redacted
 
-    def test_log_script_execution_redacts_and_hashes(self, tmp_path: Path) -> None:
-        """log_script_execution writes redacted code + SHA256 + len of original."""
+    def test_log_script_execution_omits_body_and_hashes(self, tmp_path: Path) -> None:
+        """log_script_execution must NOT persist the script body — only an
+        irreversible SHA256 + length of the original. A secret in the code can
+        then never reach the log even if best-effort redaction would miss it."""
         import hashlib
 
         secret = self._openai_key("verysecret123456789")
         original = f'API_KEY = "{secret}"\nprint("hello")'
         log_script_execution(language="python", code=original, script_file="/tmp/x.py")
         log_file = tmp_path / "audit.log"
-        entry = json.loads(log_file.read_text().strip().splitlines()[-1])
+        line = log_file.read_text().strip().splitlines()[-1]
+        entry = json.loads(line)
 
         assert entry["event"] == "script"
-        assert secret not in entry["code"]
-        assert "[REDACTED]" in entry["code"]
-        # Integrity: SHA256 matches original (not redacted) so operators can
-        # match a suspected script against an exact incident body.
+        # Body omitted; the secret never appears anywhere in the log line.
+        assert entry["code"] == "[OMITTED]"
+        assert secret not in line
+        # Integrity: SHA256 matches the original so operators can match a
+        # suspected script against an exact incident body.
         assert entry["code_sha256"] == hashlib.sha256(original.encode("utf-8")).hexdigest()
         assert entry["code_len"] == len(original)
 
 
 class TestLogToolCallRedaction:
-    """The tool_call audit event must redact the script body like log_script_execution."""
+    """The tool_call audit event must not persist the script body either."""
 
-    def test_code_param_redacted_in_tool_call(self, tmp_path: Path) -> None:
+    def test_code_param_omitted_in_tool_call(self, tmp_path: Path) -> None:
         secret = TestRedactScriptCode._openai_key("abcdefghijklmnop1234567890")
         log_tool_call(
             "run_script",
             {"language": "python", "code": f'API_KEY = "{secret}"\nimport os'},
         )
         log_file = tmp_path / "audit.log"
-        entry = json.loads(log_file.read_text(encoding="utf-8").strip().splitlines()[-1])
+        line = log_file.read_text(encoding="utf-8").strip().splitlines()[-1]
+        entry = json.loads(line)
         assert entry["event"] == "tool_call"
-        assert secret not in entry["params"]["code"]
-        assert "[REDACTED]" in entry["params"]["code"]
+        assert entry["params"]["code"] == "[OMITTED]"
+        assert secret not in line
 
     def test_args_assignment_secret_redacted_in_tool_call(self, tmp_path: Path) -> None:
         """args/command must use the strong script-code redactor (assignment-form secrets)."""

@@ -103,7 +103,7 @@ Security users should be paranoid — here's exactly what runs and what's gated:
 - __Default-safe MCP.__ Out of the box `CYBERSEC_MCP_ALLOW_EXTERNAL=0` (network tools can only hit private/loopback ranges) and `CYBERSEC_MCP_ALLOW_SCRIPTS=0` (`run_script` disabled). You opt into external scopes / scripting explicitly.
 - __Every AI execution passes one gate__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list/target-injection flags), target/network policy, rate limiting, output caps, and timeouts.
 - __Tool-aware policy is not solver hardcoding.__ The solver chooses tools from the registry/advisors; the policy layer only understands enough CLI grammar to tell a real target from a header, wordlist, output path, config file, or target-list flag. That keeps normal commands usable without letting file-list/config flags bypass scope checks.
-- __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating `audit.log`, with credential-shaped strings redacted from script bodies and arguments.
+- __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating `audit.log`. Script bodies are never persisted — only an irreversible SHA256 + length is logged for correlation — and credential-shaped strings are redacted from tool arguments.
 - __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds and `pip`/`cargo`/`gem` installs; binary releases are SHA256-verified when checksums are published.
 - __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam`/`full` profiles); the MCP layer reflects this and never auto-runs them.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [Supply Chain Model](#supply-chain-model), and the [Disclaimer](#disclaimer).
@@ -148,6 +148,8 @@ sudo ./install.sh --dry-run --profile ctf              # Preview without install
 docker build -t cybersec-toolkit .
 docker run cybersec-toolkit --profile ctf
 ```
+
+> __Podman__ works as a drop-in replacement — swap `docker` for `podman` (or `alias docker=podman`); rootless builds and runs are supported. For the Compose example below, use `podman compose` (needs a compose provider installed).
 
 Or use the bundled Compose file (builds and runs the `installer` service):
 
