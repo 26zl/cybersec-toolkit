@@ -1,6 +1,6 @@
 ---
 name: security-comms
-description: Use to translate a security finding, incident, or program update for a specific audience — board, executives, engineering, customer success, end customers, legal, or procurement. Produces audience-tuned writeups: incident notification, breach disclosure, post-mortem, status update, remediation ask, and customer-facing advisory. Use when the same technical fact needs different framing per stakeholder, when drafting external disclosure, or when an exec/board/customer needs the "so what" without the packet captures. Coordinator skill — findings and incidents route here for the human-readable layer.
+description: Use to translate a security finding, incident, or program update for a specific audience — board, executives, engineering, customer success, end customers, legal, or procurement. Produces audience-tuned writeups: incident notification, breach disclosure, post-mortem, status update, remediation ask, and customer-facing advisory. Use when the same technical fact needs different framing per stakeholder, when drafting external disclosure, or when an exec/board/customer needs the "so what" without the packet captures. Coordinator skill — route findings and incidents here for the human-readable layer.
 ---
 
 # Security communications — one fact, many audiences

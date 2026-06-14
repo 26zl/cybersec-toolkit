@@ -1,5 +1,7 @@
 ---
 name: semgrep
+source: trailofbits/skills
+license: CC-BY-SA-4.0
 description: >-
   Run Semgrep static analysis scan on a codebase using parallel subagents.
   Supports two scan modes — "run all" (full ruleset coverage) and "important

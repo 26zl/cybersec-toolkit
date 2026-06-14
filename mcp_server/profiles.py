@@ -12,7 +12,7 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
+from mcp_server.tools_db import C2_TOOLS, MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 
 # Termux runs without sudo; Linux requires it.
 _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
@@ -343,11 +343,31 @@ def _match_individual_tools(task: str, tools_db: ToolsDatabase) -> list[dict]:
     return matched
 
 
+def _count_module_tools(
+    modules: list[str],
+    tools_db: ToolsDatabase,
+    include_c2: bool = True,
+) -> int:
+    """Count registry tools across the given modules.
+
+    When ``include_c2`` is False, C2 tools (installed only with INCLUDE_C2=true)
+    are excluded so the count matches what the profile actually installs — this
+    keeps list_profiles / recommend_install consistent with get_profile_tools.
+    """
+    count = 0
+    for t in tools_db._tools:
+        if t["module"] not in modules:
+            continue
+        if not include_c2 and t["name"] in C2_TOOLS:
+            continue
+        count += 1
+    return count
+
+
 def _count_profile_tools(profile_name: str, tools_db: ToolsDatabase) -> int:
     """Count how many tools a profile would install."""
     profile = PROFILES[profile_name]
-    modules = profile["modules"]
-    return sum(1 for t in tools_db._tools if t["module"] in modules)
+    return _count_module_tools(profile["modules"], tools_db, include_c2=profile["include_c2"])
 
 
 def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
@@ -454,7 +474,9 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
     # Case C: Module-level match — user needs a few specific modules, not a full profile
     if matched_modules:
         modules_needed = [m for m, _ in matched_modules[:4]]  # Top 4 max
-        tool_count = sum(1 for t in tools_db._tools if t["module"] in modules_needed)
+        # A bare --module install does not pass --include-c2, so C2 tools are not
+        # installed; exclude them so module counts reflect what actually lands.
+        tool_count = _count_module_tools(modules_needed, tools_db, include_c2=False)
 
         result = {
             "recommendation": "modules",
@@ -463,7 +485,7 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
                 {
                     "name": m,
                     "description": MODULE_DESCRIPTIONS.get(m, ""),
-                    "tool_count": sum(1 for t in tools_db._tools if t["module"] == m),
+                    "tool_count": _count_module_tools([m], tools_db, include_c2=False),
                 }
                 for m in modules_needed
             ],

@@ -33,8 +33,8 @@ npm				-
 #debian	dnf	pacman	zypper	pkg
 netcat-openbsd	nmap-ncat	gnu-netcat		nmap
 dnsutils	bind-utils	bind	bind-utils	
-proxychains4	proxychains-ng	proxychains-ng		proxychains-ng
-wireshark-common	wireshark-cli	wireshark-cli		-
+proxychains4	proxychains-ng	proxychains-ng	proxychains-ng	proxychains-ng
+wireshark-common	wireshark-cli	wireshark-cli	wireshark	-
 snmp	net-snmp-utils	net-snmp	net-snmp	net-snmp
 smbclient	samba-client		samba-client	
 tshark	-	-	-	

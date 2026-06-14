@@ -132,6 +132,40 @@ class TestCheckInstalled:
         assert result["installed"] is True
         assert result["method"] == "pipx_binary"
 
+    def test_special_binary_fallback(self, tmp_tools_config: Path) -> None:
+        """special-method tools (metasploit->msfconsole) found via binary fallback."""
+        # Add a special-method tool to the sample registry on disk.
+        import json
+
+        config = tmp_tools_config / "tools_config.json"
+        tools = json.loads(config.read_text(encoding="utf-8"))
+        tools.append({"name": "metasploit", "method": "special", "module": "pwn", "url": ""})
+        config.write_text(json.dumps(tools), encoding="utf-8")
+        db = ToolsDatabase(project_root=tmp_tools_config)
+
+        def mock_which(name: str):
+            # The registry name (metasploit) is NOT on PATH; only its binary is.
+            return "/usr/bin/msfconsole" if name == "msfconsole" else None
+
+        with patch("shutil.which", side_effect=mock_which):
+            result = db.check_installed("metasploit")
+        assert result["installed"] is True
+        assert result["method"] == "special_binary"
+        assert "msfconsole" in result["details"]
+
+    def test_special_binary_fallback_not_installed(self, tmp_tools_config: Path) -> None:
+        """special-method tool reports not installed when its binary is absent."""
+        import json
+
+        config = tmp_tools_config / "tools_config.json"
+        tools = json.loads(config.read_text(encoding="utf-8"))
+        tools.append({"name": "foundry", "method": "special", "module": "blockchain", "url": ""})
+        config.write_text(json.dumps(tools), encoding="utf-8")
+        db = ToolsDatabase(project_root=tmp_tools_config)
+        with patch("shutil.which", return_value=None):
+            result = db.check_installed("foundry")
+        assert result["installed"] is False
+
     def test_not_installed(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):
             result = tools_db.check_installed("nmap")
@@ -167,6 +201,17 @@ class TestReloadVersions:
         with patch("builtins.open", side_effect=PermissionError("Permission denied")):
             vers = db.reload_versions()
         assert vers == {}
+
+    def test_corrupt_non_utf8_versions_file(self, tmp_tools_config: Path) -> None:
+        """A non-UTF-8/torn .versions file must degrade gracefully, not crash."""
+        versions = tmp_tools_config / ".versions"
+        versions.write_bytes(b"\xff\xfe\x00bad\n")
+        db = ToolsDatabase(project_root=tmp_tools_config)
+        # reload_versions tolerates the garbage and returns a dict, and
+        # check_installed (which calls it) must not raise.
+        assert isinstance(db.reload_versions(), dict)
+        result = db.check_installed("nmap")
+        assert "installed" in result
 
     def test_ttl_caching(self, tmp_tools_config: Path) -> None:
         versions = tmp_tools_config / ".versions"

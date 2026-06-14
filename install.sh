@@ -49,6 +49,7 @@ _CLI_SET_ENABLE_DOCKER=false
 _CLI_SET_INCLUDE_C2=false
 FAST_MODE="${FAST_MODE:-false}"
 ROLLBACK_TARGET=""
+FORCE_YES="${FORCE_YES:-false}"
 
 usage() {
     # Build profile and module lists dynamically from filesystem / registry
@@ -81,8 +82,8 @@ Options:
                          (apt upgrade / dnf upgrade / pacman -Syu)
   --skip-heavy         Skip large/slow packages defined in HEAVY_PACKAGES arrays
   --skip-pipx          Skip all pipx (Python) tool installs
-  --skip-go            Skip all Go tool installs
-  --skip-cargo         Skip all Cargo (Rust) tool installs
+  --skip-go            Skip all Go tool installs (and the Go SDK bootstrap)
+  --skip-cargo         Skip all Cargo (Rust) tool installs (and the rustup bootstrap)
   --skip-gems          Skip all Ruby gem installs
   --skip-git           Skip all git clone installs
   --skip-binary        Skip all binary release downloads
@@ -91,7 +92,8 @@ Options:
                          (mutually exclusive with --require-checksums)
   --require-checksums  Fail if a binary release has no checksum file
   --enable-docker      Pull Docker images (C2 frameworks, IR platforms, MobSF, etc.)
-  --include-c2         Enable C2 frameworks (requires --enable-docker)
+  --include-c2         Install C2 + phishing frameworks (Sliver, Caldera, Loki-C2,
+                         gophish, evilginx, SET, …; Empire also needs --enable-docker)
   --dry-run            Show what would be installed without installing
   -j, --parallel <N>   Number of parallel install jobs (default: 4, 1=sequential)
   -v, --verbose        Enable debug logging and system environment dump
@@ -99,6 +101,8 @@ Options:
   --list-modules       List available modules and exit
   --list-sessions      List install sessions and exit
   --rollback <id|last> Rollback tools installed in a session
+  -y, --yes, --force   Assume "yes" for destructive prompts (e.g. --rollback);
+                         required to run --rollback non-interactively
   --version            Show installer version and exit
   -h, --help           Show this help and exit
 
@@ -204,6 +208,7 @@ while [[ $# -gt 0 ]]; do
         --list-sessions)   _list_sessions; exit 0 ;;
         --rollback)        [[ $# -lt 2 ]] && { log_error "--rollback requires a session ID or 'last'"; exit 1; }
                            ROLLBACK_TARGET="$2"; shift 2 ;;
+        -y|--yes|--force)  FORCE_YES=true; shift ;;
         --version)         echo "cybersec-toolkit ${INSTALLER_VERSION:-unknown}"; exit 0 ;;
         *)                 log_error "Unknown option: $1"; usage ;;
     esac
@@ -477,13 +482,20 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
     done
     echo ""
 
-    # Confirm
+    # Confirm — rollback is destructive (pipx/cargo/gem uninstall + rm -rf of
+    # cloned repo dirs). Require an interactive confirmation, or an explicit
+    # --yes/--force when running non-interactively (pipe/CI/cron). Never proceed
+    # unconfirmed. Mirrors the safe-by-default posture of scripts/remove.sh.
     if [[ -t 0 ]]; then
         read -rp "$(echo -e "${YELLOW}[!]${NC} Proceed with rollback? [y/N] ")" _rb_answer
         case "$_rb_answer" in
             [yY]|[yY][eE][sS]) ;;
             *) log_info "Rollback cancelled."; exit 0 ;;
         esac
+    elif [[ "$FORCE_YES" != "true" ]]; then
+        log_error "Refusing to run destructive rollback non-interactively without confirmation."
+        log_error "Re-run with --yes (or --force) to proceed unattended."
+        exit 1
     fi
 
     # Remove in reverse dependency order: gems → cargo → go → pipx → git → binary
@@ -681,12 +693,22 @@ estimate_install_time() {
         # Build "|"-separated module pattern for awk
         local _mod_list
         _mod_list=$(IFS='|'; echo "${MODULES_TO_INSTALL[*]}")
-        # tools_config.json has consistent field order: name, method, module, url
+        # tools_config.json is compact (one JSON object per line), so method and
+        # module live on the same record. Extract both with match() per line.
         read -r snap_count special_count docker_count < <(awk -v mods="$_mod_list" '
-            /"method"/ { gsub(/[",]/, ""); method=$2 }
-            /"module"/ {
-                gsub(/[",]/, ""); mod=$2
-                if (mod ~ "^(" mods ")$") {
+            {
+                method = ""; mod = ""
+                if (match($0, /"method"[[:space:]]*:[[:space:]]*"[^"]*"/)) {
+                    method = substr($0, RSTART, RLENGTH)
+                    sub(/.*"method"[[:space:]]*:[[:space:]]*"/, "", method)
+                    sub(/".*/, "", method)
+                }
+                if (match($0, /"module"[[:space:]]*:[[:space:]]*"[^"]*"/)) {
+                    mod = substr($0, RSTART, RLENGTH)
+                    sub(/.*"module"[[:space:]]*:[[:space:]]*"/, "", mod)
+                    sub(/".*/, "", mod)
+                }
+                if (mod != "" && mod ~ "^(" mods ")$") {
                     if (method == "snap")    snap++
                     if (method == "special") special++
                     if (method == "docker")  docker++
@@ -843,7 +865,13 @@ main() {
                 _wsl_filtered+=("$_mod")
             fi
         done
-        MODULES_TO_INSTALL=("${_wsl_filtered[@]}")
+        # Guard empty-array expansion under set -u (bash 4.3) — matches the ARM
+        # filter in lib/installers.sh. Reachable via `--module wireless` on WSL.
+        if [[ ${#_wsl_filtered[@]} -gt 0 ]]; then
+            MODULES_TO_INSTALL=("${_wsl_filtered[@]}")
+        else
+            MODULES_TO_INSTALL=()
+        fi
     fi
 
     # Docker is the only prerequisite users must install themselves
@@ -996,6 +1024,16 @@ install_modules() {
 
         # Binary releases (BINARY_RELEASES_<MODULE_UPPER> in installers.sh)
         _append_module_array _ALL_BINARY "BINARY_RELEASES_${_mod_upper}"
+
+        # C2 / phishing frameworks — only with --include-c2. Append the per-module
+        # C2 git repos and binary releases so they flow through the same batch
+        # installers as the non-C2 arrays (the module-level C2 calls no-op here
+        # because _SKIP_BATCH_REINSTALL is set). _append_module_array tolerates
+        # undefined arrays, so this is harmless for modules without C2 arrays.
+        if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+            _append_module_array _ALL_GIT    "${_pfx}_C2_GIT"
+            _append_module_array _ALL_BINARY "BINARY_RELEASES_${_mod_upper}_C2"
+        fi
     done
 
     log_info "  APT: ${#_ALL_APT[@]}, pipx: ${#_ALL_PIPX[@]}, Go: ${#_ALL_GO[@]}, Cargo: ${#_ALL_CARGO[@]}, Gems: ${#_ALL_GEMS[@]}, Git: ${#_ALL_GIT[@]}, Binary: ${#_ALL_BINARY[@]}"

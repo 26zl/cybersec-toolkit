@@ -216,6 +216,19 @@ BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^--exploit$"), "active exploitation flag --exploit"),
 ]
 
+# nc/ncat/netcat -e/--exec/--sh-exec/--lua-exec (and -c on traditional nc) spawn
+# an arbitrary program connected to the socket — the exact bind/reverse-shell
+# primitive socat/bash/sh/python are deliberately excluded for. Best-effort
+# denylist: anchored short-flag forms cover both separated (-e /bin/sh) and the
+# command-bearing long flags (--exec=...). A benign "nc -zv host 80" still passes.
+_NC_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"^-e$"), "nc: -e exec program (arbitrary command execution)"),
+    (re.compile(r"^-c$"), "nc: -c shell command (arbitrary command execution)"),
+    (re.compile(r"^--exec(?:$|=)"), "nc: --exec program (arbitrary command execution)"),
+    (re.compile(r"^--sh-exec(?:$|=)"), "nc: --sh-exec shell command (arbitrary command execution)"),
+    (re.compile(r"^--lua-exec(?:$|=)"), "nc: --lua-exec script (arbitrary command execution)"),
+]
+
 # radare2/r2 share a command interface with shell-escape (`!`), pipe (`#!`) and
 # source (`. file`) syntax, plus -i/-I to run a script file. Best-effort denylist.
 _R2_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
@@ -242,13 +255,13 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^--in-place"), "sed: in-place file modification"),
     ],
     "nmap": [
-        (re.compile(r"^-iL$"), "nmap: target list from file (bypasses target validation)"),
-        (re.compile(r"^-iR$"), "nmap: random target generation (bypasses target validation)"),
+        (re.compile(r"^-iL"), "nmap: target list from file (bypasses target validation)"),
+        (re.compile(r"^-iR"), "nmap: random target generation (bypasses target validation)"),
         # --script / --script-args load arbitrary NSE (Lua with os.execute) = RCE.
         (re.compile(r"^--script"), "nmap: NSE script execution (--script*)"),
     ],
     "masscan": [
-        (re.compile(r"^--includefile$"), "masscan: target list from file"),
+        (re.compile(r"^--includefile(?:$|=)"), "masscan: target list from file"),
     ],
     "awk": [
         (re.compile(r"system\s*\(", re.IGNORECASE), "awk: system() command execution"),
@@ -296,13 +309,50 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"EXEC[12]?\s*:", re.IGNORECASE), "socat: EXEC address (arbitrary command execution)"),
         (re.compile(r"SYSTEM\s*:", re.IGNORECASE), "socat: SYSTEM address (arbitrary command execution)"),
     ],
+    "nc": _NC_BLOCKED_FLAGS,
+    "ncat": _NC_BLOCKED_FLAGS,
+    "netcat": _NC_BLOCKED_FLAGS,
+    # curl/wget use getopt-style short flags, so the file argument can be attached
+    # (-Kcfg.txt), separated (-K cfg.txt) or =-joined (-K=cfg.txt). Match the flag as
+    # a prefix so all three single-token forms are blocked (these are single-letter
+    # short flags with no same-prefix siblings, so prefix matching is safe).
     "curl": [
-        (re.compile(r"^-K$"), "curl: config file flag bypasses target validation"),
+        (re.compile(r"^-K"), "curl: config file flag bypasses target validation"),
         (re.compile(r"^--config(?:$|=)"), "curl: config file flag bypasses target validation"),
     ],
     "wget": [
-        (re.compile(r"^-i$"), "wget: URL list from file bypasses target validation"),
+        (re.compile(r"^-i"), "wget: URL list from file bypasses target validation"),
         (re.compile(r"^--input-file(?:$|=)"), "wget: URL list from file bypasses target validation"),
+    ],
+    # ProjectDiscovery and similar recon/scan tools read targets from a file via
+    # list flags, which would defeat the private/loopback target allowlist the
+    # same way nmap -iL / wget -i do. Block the file-list flags defensively,
+    # including attached short-flag forms; exact CLI parsing differs by version,
+    # and the policy layer must fail closed.
+    "nuclei": [
+        (re.compile(r"^-l"), "nuclei: target list from file bypasses target validation"),
+        (re.compile(r"^-list(?:$|=)"), "nuclei: target list from file bypasses target validation"),
+    ],
+    "httpx": [
+        (re.compile(r"^-l(?!ocation(?:$|=))"), "httpx: target list from file bypasses target validation"),
+        (re.compile(r"^-list(?:$|=)"), "httpx: target list from file bypasses target validation"),
+    ],
+    "subfinder": [
+        (re.compile(r"^-dL"), "subfinder: domain list from file bypasses target validation"),
+        (re.compile(r"^-list(?:$|=)"), "subfinder: domain list from file bypasses target validation"),
+    ],
+    "amass": [
+        (re.compile(r"^-df"), "amass: domain list from file bypasses target validation"),
+    ],
+    # arjun (argparse) and whatweb (Ruby OptionParser) accept attached short-flag
+    # values (-iurls.txt) as well, so prefix-match the single-letter -i flag.
+    "arjun": [
+        (re.compile(r"^-i"), "arjun: URL list from file bypasses target validation"),
+        (re.compile(r"^--input(?:$|=)"), "arjun: URL list from file bypasses target validation"),
+    ],
+    "whatweb": [
+        (re.compile(r"^-i"), "whatweb: target list from file bypasses target validation"),
+        (re.compile(r"^--input-file(?:$|=)"), "whatweb: target list from file bypasses target validation"),
     ],
 }
 
@@ -310,9 +360,153 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
 # actually something else for specific tools (e.g. curl's ``-u user:pass``
 # is HTTP Basic auth, not a target). When one of these is present for its
 # owning tool, the flag+value pair is skipped during target validation.
+#
+# Keep this list to flags whose values are *not* connection destinations
+# (headers, credentials, methods, wordlists, output files, template paths).
+# Do not add proxy/resolver/connect-to flags here: those can redirect real
+# network traffic and must still pass target validation.
 _TARGET_FLAG_EXEMPTIONS: dict[str, set[str]] = {
-    "curl": {"-u", "--user"},
+    "curl": {
+        "-u",
+        "--user",
+        "-H",
+        "--header",
+        "-A",
+        "--user-agent",
+        "-b",
+        "--cookie",
+        "-d",
+        "--data",
+        "--data-raw",
+        "--data-binary",
+        "--data-urlencode",
+        "-X",
+        "--request",
+        "-o",
+        "--output",
+        "-w",
+        "--write-out",
+    },
+    "wget": {
+        "--header",
+        "--user-agent",
+        "--post-data",
+        "--post-file",
+        "-O",
+        "--output-document",
+        "-P",
+        "--directory-prefix",
+    },
+    "ffuf": {"-w", "-H", "-X", "-d", "-b", "-o", "-of", "-e"},
+    "feroxbuster": {"-w", "-H", "-A", "-b", "-x", "-o", "--output"},
+    "gobuster": {"-w", "-H", "-U", "-P", "-x", "-o", "--output"},
+    "hydra": {"-l", "-L", "-p", "-P", "-s", "-t", "-o"},
+    "patator": {"-x", "-l", "-p", "-L", "-P", "-o", "--output"},
+    "httpx": {"-H", "-header", "-headers", "-path", "-body", "-method", "-o", "-json"},
+    "nuclei": {"-H", "-header", "-t", "-templates", "-tags", "-severity", "-o", "-json-export", "-markdown-export"},
+    "sqlmap": {"-p", "--headers", "--cookie", "--data", "--user-agent", "--method", "--risk", "--level", "-o"},
+    "nmap": {"-oA", "-oN", "-oX", "-oG", "--top-ports", "--max-retries", "-p", "-T"},
+    "masscan": {"-p", "-oL", "-oJ", "-oX", "-oG", "--rate", "--max-rate"},
 }
+
+# Exempt flag values that may still trigger outbound fetches when they are URLs.
+# They are not the scan target, but default-safe MCP mode also promises no
+# unexpected external network access. Validate URL values for these flags before
+# skipping normal target parsing.
+_REMOTE_RESOURCE_FLAGS: dict[str, set[str]] = {
+    "ffuf": {"-w"},
+    "feroxbuster": {"-w"},
+    "gobuster": {"-w"},
+    "nuclei": {"-t", "-templates"},
+}
+
+# Positional words that are command modes/protocol names, not host targets. Keep
+# this narrow: arbitrary single-label hostnames must still be validated/blocked
+# in default-safe mode.
+_NON_TARGET_POSITIONALS: dict[str, set[str]] = {
+    "gobuster": {"dir", "dns", "vhost", "s3", "gcs", "fuzz", "tftp"},
+    "hydra": {
+        "ftp",
+        "ftps",
+        "ssh",
+        "ssh2",
+        "telnet",
+        "smtp",
+        "smtps",
+        "pop3",
+        "pop3s",
+        "imap",
+        "imaps",
+        "ldap2",
+        "ldap3",
+        "smb",
+        "rdp",
+        "vnc",
+        "mysql",
+        "postgres",
+        "mssql",
+        "redis",
+        "mongodb",
+        "http-get",
+        "http-post",
+        "http-head",
+        "http-get-form",
+        "http-post-form",
+    },
+}
+
+
+def _exempt_flag_value(
+    tool_name: str,
+    binary: str,
+    arg: str,
+    next_arg: str | None,
+) -> tuple[bool, int, str | None, str | None]:
+    """Return exemption match details for a flag and optional value.
+
+    The integer is how many argv tokens to consume. The value is populated for
+    separated (``-w words.txt``), equals-joined (``--templates=http://...``), and
+    attached short forms (``-whttp://...``).
+    """
+    exempt = _TARGET_FLAG_EXEMPTIONS.get(tool_name, set()) | _TARGET_FLAG_EXEMPTIONS.get(binary, set())
+    if arg in exempt:
+        if next_arg is not None and not next_arg.startswith("-"):
+            return True, 2, arg, next_arg
+        return True, 1, arg, None
+    if "=" in arg:
+        flag, value = arg.split("=", 1)
+        if flag in exempt:
+            return True, 1, flag, value
+    for flag in sorted(exempt, key=len, reverse=True):
+        if flag.startswith("--") or len(flag) != 2:
+            continue
+        if arg.startswith(flag) and len(arg) > len(flag):
+            value = arg[len(flag) :]
+            if value.startswith("="):
+                value = value[1:]
+            return True, 1, flag, value
+    return False, 0, None, None
+
+
+def _validate_exempt_remote_resource(tool_name: str, binary: str, flag: str | None, value: str | None) -> None:
+    """Validate URL-like values for exempt flags that may fetch remote resources."""
+    if not flag or not value:
+        return
+    remote_flags = _REMOTE_RESOURCE_FLAGS.get(tool_name, set()) | _REMOTE_RESOURCE_FLAGS.get(binary, set())
+    if flag not in remote_flags:
+        return
+    if re.match(r"^https?://", value, re.IGNORECASE) and not _is_safe_target(_network_target_host(value)):
+        raise ValueError(
+            f"Blocked by policy: remote resource '{value}' for {tool_name} {flag} is not in a private/local range. "
+            "Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 for authorized external resource URLs."
+        )
+
+
+def _is_non_target_positional(tool_name: str, binary: str, arg: str) -> bool:
+    """Return True for known positional mode/protocol tokens."""
+    lowered = arg.lower()
+    return lowered in (_NON_TARGET_POSITIONALS.get(tool_name, set()) | _NON_TARGET_POSITIONALS.get(binary, set()))
+
 
 # Tools that perform network operations and need target validation.
 _NETWORK_TOOLS: set[str] = {
@@ -526,7 +720,14 @@ def _is_safe_target(value: str) -> bool:
         safe_hosts = {"localhost", "localhost.localdomain"}
         if value.lower() in safe_hosts:
             return True
-        # Try to resolve and check
+        # Try to resolve and check.
+        # NOTE (residual risk): for hostname targets this validation and the
+        # tool's own connect-time resolution are independent. A short-TTL or
+        # multi-answer attacker-controlled record can resolve to a private/
+        # loopback IP here (passing the check) and to a public IP at connect
+        # time (classic DNS rebinding / TOCTOU), defeating the default-safe
+        # restriction. IP-literal, CIDR, encoded-integer and IPv6 inputs are
+        # checked directly above and are unaffected.
         try:
             info = _resolve_with_timeout(value)
             if not info:
@@ -790,6 +991,20 @@ def _looks_like_target(value: str) -> bool:
     return False
 
 
+def _network_target_host(value: str) -> str:
+    """Normalize a URL/host argument to the host value used for allowlist checks."""
+    clean = re.sub(r"^https?://", "", value)
+    if clean.startswith("["):
+        bracket_end = clean.find("]")
+        if bracket_end != -1:
+            return clean[1:bracket_end]
+        return clean
+    clean = clean.split("/")[0]
+    if clean.count(":") == 1:
+        return clean.split(":")[0]
+    return clean
+
+
 def check_policy(tool_name: str, arg_list: list[str]) -> None:
     """Enforce execution policy on the resolved arguments.
 
@@ -825,7 +1040,6 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
     # Targets passed via short flags are still caught by the positional-arg
     # heuristic below.
     target_flags = {"--target", "-u", "--url", "--host", "--ip"}
-    exempt = _TARGET_FLAG_EXEMPTIONS.get(tool_name, set()) | _TARGET_FLAG_EXEMPTIONS.get(binary, set())
     i = 0
     while i < len(arg_list):
         arg = arg_list[i]
@@ -833,14 +1047,15 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
 
         # Tool-specific exemption: flag+value pair that must not be validated
         # as a target (e.g. curl's "-u user:pass" is HTTP auth, not a URL).
-        if arg in exempt:
-            if i + 1 < len(arg_list) and not arg_list[i + 1].startswith("-"):
-                i += 2
-            else:
-                i += 1
-            continue
-        if "=" in arg and arg.split("=", 1)[0] in exempt:
-            i += 1
+        matched, consumed, flag, exempt_value = _exempt_flag_value(
+            tool_name,
+            binary,
+            arg,
+            arg_list[i + 1] if i + 1 < len(arg_list) else None,
+        )
+        if matched:
+            _validate_exempt_remote_resource(tool_name, binary, flag, exempt_value)
+            i += consumed
             continue
 
         if arg in target_flags and i + 1 < len(arg_list):
@@ -849,30 +1064,36 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
         elif "=" in arg and arg.split("=", 1)[0] in target_flags:
             value = arg.split("=", 1)[1]
             i += 1
+        elif arg.startswith("@") and len(arg) > 1:
+            # dig/host/nslookup "@server" selects an explicit resolver — a
+            # network target that must be validated against the allowlist
+            # (e.g. "dig @8.8.8.8 localhost" otherwise reaches a public
+            # resolver). Strip the leading '@' and classify the remainder.
+            server = arg[1:]
+            if _looks_like_target(server):
+                value = server
+            i += 1
         elif not arg.startswith("-") and not arg.startswith("/"):
             # Positional arg — only validate if it looks like a network target.
             # Skip bare numbers (port/timeout values for flags like -p 80, -T 4)
             # and plain words (flag values like -l admin, --script vuln).
-            if _looks_like_target(arg):
+            if _looks_like_target(arg) and not _is_non_target_positional(tool_name, binary, arg):
                 value = arg
             i += 1
         else:
             # Unrecognized flag. After --long-flags, the next non-flag token
             # may be a flag value (--script vuln) or a real target after a
-            # boolean flag (--open evil.com). We distinguish by checking for
-            # strong target indicators (dots, colons, slashes, http prefix).
-            # Plain single-label words (vuln, default, normal) are consumed
-            # as flag values. Tokens with target indicators are left for
-            # validation in the next iteration.
+            # boolean flag (--open evil.com). Use the same _looks_like_target
+            # heuristic as positional args so encoded-integer IPs and bare
+            # single-label hostnames (which lack dots/colons/slashes) are still
+            # validated — a leading-flag form must not be more lenient than the
+            # positional one. Plain non-target words are consumed as flag values.
             if arg.startswith("-") and i + 1 < len(arg_list) and not arg_list[i + 1].startswith("-"):
                 next_token = arg_list[i + 1]
-                has_target_indicators = (
-                    "." in next_token or ":" in next_token or "/" in next_token or next_token.lower().startswith("http")
-                )
                 # Treat tokens with common file extensions as flag values,
                 # not network targets — prevents false positives from
                 # output files like scan.txt, report.json, capture.pcap.
-                if has_target_indicators and not _has_file_extension(next_token):
+                if _looks_like_target(next_token) and not _has_file_extension(next_token):
                     # Looks like a real target — don't consume, validate next iteration
                     i += 1
                 else:
@@ -883,21 +1104,7 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
             continue
 
         if value:
-            # Strip protocol prefix for URL-like values
-            clean = re.sub(r"^https?://", "", value)
-            # Strip bracket notation for IPv6 URLs: [::1] → ::1
-            if clean.startswith("["):
-                bracket_end = clean.find("]")
-                if bracket_end != -1:
-                    clean = clean[1:bracket_end]
-            else:
-                # For non-bracketed values, split off path first, then
-                # handle IPv4 port (host:port) vs IPv6 (contains multiple colons).
-                clean = clean.split("/")[0]
-                if clean.count(":") == 1:
-                    # IPv4 with port — take host part
-                    clean = clean.split(":")[0]
-                # else: bare IPv6 or no port — pass through to _is_safe_target
+            clean = _network_target_host(value)
             if not _is_safe_target(clean):
                 raise ValueError(
                     f"Blocked by policy: target '{value}' is not in a private/local "

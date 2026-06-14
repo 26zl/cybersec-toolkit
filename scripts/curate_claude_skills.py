@@ -23,11 +23,13 @@ PROJECT_SKILLS = {
     "writeup-template",
     "security-wordlists",
     "security-payloads",
+    "guided-assessment",
     "skill-dependency-audit",
     "skill-curation-router",
     "finding-triage",
     "security-comms",
     "authorization-gate",
+    "evidence-hygiene",
 }
 
 PROJECT_DOMAINS = {
@@ -38,11 +40,13 @@ PROJECT_DOMAINS = {
     "writeup-template": "project_tooling",
     "security-wordlists": "project_tooling",
     "security-payloads": "project_tooling",
+    "guided-assessment": "project_tooling",
     "skill-dependency-audit": "project_tooling",
     "skill-curation-router": "project_tooling",
     "finding-triage": "security_coordination",
     "security-comms": "security_coordination",
     "authorization-gate": "security_coordination",
+    "evidence-hygiene": "security_coordination",
 }
 
 COVERAGE_ANCHORS = {
@@ -512,6 +516,18 @@ def load_skills() -> list[Skill]:
         name = fields.get("name", skill_dir.name)
         description = fields.get("description", "")
         source = source_for(name)
+        # Guardrail: "anthropic"/Apache-2.0 is the name-derived catch-all default.
+        # If a skill falls through to it but its frontmatter declares a different
+        # license, that's a misclassification — fail loudly so a newly vendored skill
+        # gets added to the correct *_SKILLS set in source_for() and to
+        # THIRD_PARTY_NOTICES.md rather than being silently mislabeled Apache-2.0.
+        fm_license = fields.get("license", "")
+        if source == "anthropic" and fm_license and fm_license != "Apache-2.0":
+            raise SystemExit(
+                f"curate: '{name}' falls through to 'anthropic'/Apache-2.0 but its "
+                f"SKILL.md declares license={fm_license!r}. Add it to the correct "
+                f"*_SKILLS set in source_for() and update THIRD_PARTY_NOTICES.md."
+            )
         domain = domain_for(name, description)
         priority, reasons = score_skill(name, description, source)
         skills.append(

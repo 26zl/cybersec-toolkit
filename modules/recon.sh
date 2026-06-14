@@ -70,6 +70,13 @@ RECON_GIT=(
 RECON_GO_BINS=(subfinder amass waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor subzy mosint hakrevdns smap)
 RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username Gato pwndb EyeWitness osmedeus recon-ng vulscan theHarvester)
 RECON_BUILD_NAMES=(massdns)
+# Source of truth for build-from-source url + command (install + update).
+declare -A RECON_BUILD_URLS=(
+    [massdns]="https://github.com/blechschmidt/massdns.git"
+)
+declare -A RECON_BUILD_CMDS=(
+    [massdns]="make"
+)
 
 install_module_recon() {
     install_apt_batch "Recon / OSINT - Packages" "${RECON_PACKAGES[@]}"
@@ -104,9 +111,9 @@ THWRAP
         fi
     fi
 
-    # Build from source: massdns
+    # Build from source: massdns (url + command from RECON_BUILD_URLS / RECON_BUILD_CMDS)
     log_info "Building massdns from source..."
-    build_from_source "massdns" "https://github.com/blechschmidt/massdns.git" "make" || true
+    build_module_from_source RECON
 
     # Binary releases
     install_binary_releases "${BINARY_RELEASES_RECON[@]}"

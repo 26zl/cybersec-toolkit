@@ -24,19 +24,29 @@ RE_GIT=(
 
 RE_GIT_NAMES=(pwndbg GEF peda decomp2dbg Qiling Krakatau pyinstxtractor)
 RE_BUILD_NAMES=(ELFkickers rappel)
+# Source of truth for build-from-source url + command (install + update). rappel is
+# x86-only, so install gates it on !IS_ARM; update skips it on ARM (never cloned).
+declare -A RE_BUILD_URLS=(
+    [ELFkickers]="https://github.com/BR903/ELFkickers.git"
+    [rappel]="https://github.com/yrp604/rappel.git"
+)
+declare -A RE_BUILD_CMDS=(
+    [ELFkickers]="make"
+    [rappel]="make"
+)
 
 install_module_reversing() {
     install_apt_batch "Reversing - Packages" "${RE_PACKAGES[@]}"
     install_pipx_batch "Reversing - Python" "${RE_PIPX[@]}"
     install_git_batch "Reversing - Git" "${RE_GIT[@]}"
 
-    # Build from source
+    # Build from source (url + command from RE_BUILD_URLS / RE_BUILD_CMDS)
     log_info "Building RE tools from source..."
-    build_from_source "ELFkickers" "https://github.com/BR903/ELFkickers.git" "make" || true
+    build_from_source "ELFkickers" "${RE_BUILD_URLS[ELFkickers]}" "${RE_BUILD_CMDS[ELFkickers]}" || true
     if [[ "$IS_ARM" == "true" ]]; then
-        log_warn "Skipping x86-only build-from-source tools on ARM: rappel, xrop"
+        log_warn "Skipping x86-only build-from-source tool on ARM: rappel"
     else
-        build_from_source "rappel" "https://github.com/yrp604/rappel.git" "make" || true
+        build_from_source "rappel" "${RE_BUILD_URLS[rappel]}" "${RE_BUILD_CMDS[rappel]}" || true
     fi
 
     # Binary releases

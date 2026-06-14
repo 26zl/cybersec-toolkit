@@ -21,36 +21,9 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Run ShellCheck on all shell scripts
-        run: |
-          shopt -s globstar
-          shellcheck --severity=warning \
-            install.sh \
-            lib/common.sh \
-            lib/installers.sh \
-            lib/shared.sh \
-            modules/blockchain.sh \
-            modules/blueteam.sh \
-            modules/cloud.sh \
-            modules/containers.sh \
-            modules/crypto.sh \
-            modules/enterprise.sh \
-            modules/forensics.sh \
-            modules/misc.sh \
-            modules/mobile.sh \
-            modules/networking.sh \
-            modules/cracking.sh \
-            modules/pwn.sh \
-            modules/recon.sh \
-            modules/reversing.sh \
-            modules/stego.sh \
-            modules/web.sh \
-            modules/wireless.sh \
-            modules/llm.sh \
-            scripts/verify.sh \
-            scripts/update.sh \
-            scripts/remove.sh \
-            scripts/backup.sh \
-            scripts/sync-wsl.sh
+        # Glob matches the documented local command (CLAUDE.md / AGENTS.md) and the
+        # sibling syntax-check job, so coverage stays in sync as scripts are added.
+        run: shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
 
   syntax-check:
     name: Bash Syntax Check

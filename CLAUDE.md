@@ -38,8 +38,8 @@ python3 scripts/curate_claude_skills.py --write
 # Populate missing URLs in tools_config.json from module source
 python3 scripts/validate_tools_config.py --sync
 
-# Lint challenge writeups (workflows/ is gitignored, so CI won't check these)
-npx markdownlint-cli2 "workflows/**/*.md"
+# Lint local writeups (writeups/ is gitignored, so CI won't check these)
+npx markdownlint-cli2 "writeups/**/*.md"
 ```
 
 ### Testing
@@ -125,7 +125,7 @@ docker build -t cybersec-toolkit .
 docker run cybersec-toolkit --profile ctf              # Run installer
 # Run MCP server
 docker run -i --rm --entrypoint bash cybersec-toolkit \
-  -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner'
+  -c 'cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner'
 ```
 
 ## CI Pipeline
@@ -184,29 +184,31 @@ All scripts source the chain in this order. `common.sh` auto-detects distro/pkg 
 
 ### Skill Library (`.claude/skills/`)
 
-870 on-demand Claude Code skills (vendored sources + project-authored). Three files describe the set and must stay consistent or `validate_claude_skills.py` fails:
+872 on-demand Claude Code skills (vendored sources + project-authored). Three files describe the set and must stay consistent or `validate_claude_skills.py` fails:
 
 - `SKILLS.md` — human index. Hand-maintained: the declared total ("contains N skills") and the per-section counts (`## Name (N)`) must both sum to the actual skill-dir count.
 - `curation.json` + `CURATION.md` — tier/domain ranking, **generated** by `scripts/curate_claude_skills.py --write`. Never hand-edit. Classification is rule-based in that script, with hardcoded sets for project/coverage-anchor/coordinator/source-specific skills — add a new project-authored skill's name there to control its tier/domain.
 
 Each skill is `<name>/SKILL.md` with YAML frontmatter where `name` **must equal the directory name** plus a `description`. After adding/removing/renaming a skill dir: update `SKILLS.md` counts, run `curate_claude_skills.py --write`, then `validate_claude_skills.py`.
 
-**Cross-skill coordinators** (project-authored, other skills route through them): `finding-triage` (normalize a finding → disposition), `security-comms` (translate for an audience), `authorization-gate` (pre-flight authorization check for offensive/simulation work).
+**Cross-skill coordinators** (project-authored; route offensive/audit/detection work through these): `finding-triage` (normalize a finding → disposition), `security-comms` (translate for an audience), `authorization-gate` (pre-flight authorization check for offensive/simulation work), `evidence-hygiene` (sanitize report/writeup evidence before sharing).
 
 The repo is also a **Claude Code plugin marketplace** (`.claude-plugin/plugin.json` + `marketplace.json`). `plugin.json`'s `skills` field points at `.claude/skills/`, so the library installs via `/plugin marketplace add 26zl/cybersec-toolkit`. `scripts/sync-skills.sh` separately mirrors the skills to git-ignored `.agents/skills/` for non-Claude agents.
 
 ### MCP Server (`mcp_server/`)
 
-**CRITICAL: MCP tools must ALWAYS be used first.** Priority order: `run_tool` → `run_pipeline` → `run_script`. Use `run_tool("curl", ...)` for HTTP, `run_tool("nmap", ...)` for scanning, etc. Only fall back to `run_script` when you need actual programming logic (loops, exploit code, complex parsing). If `run_tool` is blocked by policy (e.g. `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), tell the user to fix config and restart — do NOT silently bypass with `run_script`.
+**CRITICAL: MCP tools must ALWAYS be used first.** For an unclear or high-level security task, start with `guided_assessment` (or `suggest_for_ctf` / `suggest_for_bounty`) so MCP can infer the workflow/problem type and choose the right tools. Execution priority after that is `run_tool` → `run_pipeline` → `run_script`. Use `run_tool("curl", ...)` for HTTP, `run_tool("nmap", ...)` for scanning, etc. Only fall back to `run_script` when you need actual programming logic (loops, exploit code, complex parsing). In opt-in `guided_assessment(mode="autonomous")`, if appropriate tools/pipelines do not make progress after real output is reviewed and programming logic is the smallest reliable path, the AI/client agent should create, save, and run scoped helper scripts via `run_script`; persist reusable scripts under `manual_scripts/`. Simple recon/HTTP commands such as `curl` remain normal `run_tool` calls. If `run_tool` is blocked by policy (e.g. `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), tell the user to fix config and restart — do NOT silently bypass with `run_script`.
 
-Separate Python package (FastMCP). 14 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`, `get_module_info`, `get_profile_tools`, `suggest_for_ctf`, `suggest_for_bounty`, `get_cve_info`, `recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`, `run_script`, `manage_remote_hosts`.
+Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`, `get_module_info`, `get_profile_tools`, `suggest_for_ctf`, `suggest_for_bounty`, `guided_assessment`, `get_cve_info`, `recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`, `run_script`, `manage_remote_hosts`.
 
 **Module layout:**
 
-- `server.py` — FastMCP tool registrations (14 tools)
+- `server.py` — FastMCP tool registrations (15 tools)
 - `cve_advisor.py` — CVE → curated skills/tools/modules mapping + live NVD/KEV/EPSS lookup commands (local-first, no network calls of its own)
+- `guided_assessment.py` — companion-first target/finding classification, triage/report routing, tool-selection, and opt-in autonomous MCP toolchain solver (modes: `companion`/`autonomous`): default auto-detects the workflow/problem type, returns `classification`/`triage_gate`/`recommended_skills`/`reporting_next_steps`, selects from all modules/profiles, recommends the next command, and guides step-by-step; autonomous starts the user-approved solver loop via run_tool/run_pipeline/run_script, creates/saves/runs scoped helper scripts for the user when tools/pipelines are not enough, stays authorization-gated, and never bypasses MCP policy
 - `security.py` — Execution engine: `execute_tool()`, `execute_pipeline()`, `execute_script()`, `execute_tool_remote()`, policy enforcement, argument sanitization
 - `tools_db.py` — Tool registry loader, install checks, version tracking
+- `advisor_utils.py` — shared `TOOL_ALIASES` map + `check_tool_installed()` install-status helper used by `ctf_advisor.py`, `bounty_advisor.py`, and `cve_advisor.py`
 - `profiles.py` — Profile data (synced from `profiles/*.conf`)
 - `ctf_advisor.py` — CTF category suggestions, `TOOL_ALIASES` mapping, methodology steps
 - `bounty_advisor.py` — Bug bounty target-type suggestions, methodology, common vulns
@@ -305,11 +307,11 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 
 **If the image is reconstructed, converted, or extracted from a challenge:** assume it may be corrupt until proven otherwise. Always validate first.
 
-## Challenge Writeups (MANDATORY)
+## Writeups (MANDATORY)
 
-After solving ANY challenge (CTF, bug bounty, lab, practice box), **always** write a detailed workflow writeup in `workflows/`. This is non-negotiable.
+After completing any substantive security workflow with this project, **always** write a clear technical writeup in `writeups/`. This is non-negotiable. It applies to everything the project helps solve: CTF challenges, bug bounty findings, CVE reproduction or validation, vulnerability research, guided MCP assessments, pentest/recon workflows, malware/forensics/DFIR cases, cloud/API/mobile/network/web security reviews, and tool-assisted investigations or troubleshooting.
 
-**Format:** `workflows/<competition>/` folder per competition, one file per challenge (e.g., `workflows/ehax2026/chusembly.md`, `workflows/htb/pilgrimage.md`). Writeups MUST pass markdownlint (run `npx markdownlint-cli2 "workflows/**/*.md"` to check).
+**Format:** use a descriptive filename that makes the subject obvious. Recommended layout: `writeups/<category>/<descriptive-case-name>.md` (e.g., `writeups/ctf/htb-pilgrimage.md`, `writeups/bug-bounty/example-idor.md`, `writeups/cve/CVE-2024-xxxx-reproduction.md`, `writeups/dfir/suspicious-powershell-investigation.md`, `writeups/guided-assessment/example-web-recon.md`). Writeups MUST pass markdownlint (run `npx markdownlint-cli2 "writeups/**/*.md"` to check).
 
 **Writing style:**
 
@@ -324,28 +326,34 @@ After solving ANY challenge (CTF, bug bounty, lab, practice box), **always** wri
 
 ```markdown
 # <Challenge Name>
-**Platform:** HTB / TryHackMe / CTF Name / Bug Bounty Program
-**Category:** Web / Pwn / Crypto / Forensics / etc.
-**Difficulty:** Easy / Medium / Hard
+**Platform/Program:** HTB / TryHackMe / CTF Name / Bug Bounty Program / Lab / Internal Scope
+**Category:** Web / Pwn / Crypto / Forensics / CVE / DFIR / Cloud / etc.
+**Difficulty/Severity:** Easy / Medium / Hard / Low / Medium / High / Critical
 **Date:** YYYY-MM-DD
 
-## Recon
-[What we discovered during initial enumeration]
+## Context / Scope
+[What was being investigated and what was authorized]
 
-## Exploitation
-[Step-by-step attack path with commands and output]
+## Recon / Analysis
+[What we discovered during initial enumeration or analysis]
+
+## Exploitation / Validation
+[Step-by-step attack path, validation path, commands, and output]
 
 ## Dead Ends
 [Approaches that didn't work and why]
 
-## Flag / Finding
-[The flag or vulnerability confirmed]
+## Finding / Result
+[The flag, vulnerability, conclusion, or operational result]
 
 ## Tools Used
 [List of tools that were key to the solve]
 
 ## Lessons Learned
 [What to remember for next time]
+
+## Cleanup / Safety Notes
+[Cleanup performed, sensitive data handling, or safety notes where relevant]
 ```
 
 ## Tool-First Approach (MANDATORY)
@@ -354,11 +362,12 @@ After solving ANY challenge (CTF, bug bounty, lab, practice box), **always** wri
 
 **Before starting any challenge or task:**
 
-1. Check `workflows/` for previous writeups with similar techniques — reuse patterns, avoid repeated dead ends
+1. Check `writeups/` for previous writeups with similar techniques — reuse patterns, avoid repeated dead ends
 2. Run `suggest_for_ctf` or `suggest_for_bounty` to get the recommended tool stack
 3. Check which recommended tools are installed with `check_installed`
 4. Use `list_tools` with the relevant module to see what's available
 5. **Use every applicable tool** from our 580+ tool registry before resorting to manual scripting
+6. When tools and pipelines genuinely stop making progress, use `run_script` for the missing logic. The AI/client agent should create these scripts for the user and put reusable multi-step helpers in `manual_scripts/`
 
 **Do NOT:**
 

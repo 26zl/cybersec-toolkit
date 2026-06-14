@@ -1,5 +1,7 @@
 ---
 name: sarif-parsing
+source: trailofbits/skills
+license: CC-BY-SA-4.0
 description: >-
   Parses and processes SARIF files from static analysis tools like CodeQL, Semgrep, or other
   scanners. Triggers on "parse sarif", "read scan results", "aggregate findings", "deduplicate

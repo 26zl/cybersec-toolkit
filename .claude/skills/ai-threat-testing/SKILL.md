@@ -1,5 +1,7 @@
 ---
 name: ai-threat-testing
+source: transilienceai/communitytools
+license: MIT
 description: Offensive AI security testing and exploitation framework. Systematically tests LLM applications for OWASP Top 10 vulnerabilities including prompt injection, model extraction, data poisoning, and supply chain attacks. Integrates with pentest workflows to discover and exploit AI-specific threats.
 ---
 

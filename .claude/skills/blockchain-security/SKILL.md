@@ -1,5 +1,7 @@
 ---
 name: blockchain-security
+source: transilienceai/communitytools
+license: MIT
 description: Smart contract security testing and blockchain CTF exploitation. Covers Solidity vulnerability analysis, EVM storage manipulation, delegatecall attacks, CREATE/CREATE2 address prediction, and common DeFi exploit patterns. Use when analyzing Solidity contracts, solving blockchain challenges, or testing smart contract security.
 ---
 

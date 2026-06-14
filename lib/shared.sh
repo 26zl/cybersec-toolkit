@@ -120,6 +120,14 @@ _validate_curl_pipe() {
 GO_MIN_VERSION="${GO_MIN_VERSION:-1.21}"
 
 ensure_go() {
+    # Honor --skip-go: don't bootstrap the Go SDK if Go tool installs are skipped.
+    # Gated on SKIP_GO (not SKIP_SOURCE) — the Go SDK is a checksum-verified binary
+    # tarball, not a build-from-source/curl-pipe install. install_single_tool does
+    # NOT set SKIP_GO, so single Go-tool installs still bootstrap correctly.
+    if [[ "${SKIP_GO:-false}" == "true" ]]; then
+        log_warn "Skipping Go SDK bootstrap (--skip-go)"
+        return 1
+    fi
     if command_exists go; then
         local current
         current=$(go version 2>/dev/null | awk '{print $3}' | sed 's/^go//')
@@ -132,6 +140,15 @@ ensure_go() {
         fi
     else
         log_warn "Go not found after shared deps — installing latest from go.dev..."
+    fi
+
+    # Termux/Android: go.dev publishes only glibc/Linux tarballs (linux-amd64/arm64/
+    # armv6l) which cannot run on Android's bionic libc. Rely on the Termux `golang`
+    # package instead (installed via shared deps), mirroring the build-from-source /
+    # binary-release Termux guards.
+    if [[ "$PKG_MANAGER" == "pkg" ]]; then
+        log_warn "Skipping go.dev download on Termux (glibc binaries are not bionic-compatible) — install Go via: pkg install golang"
+        return 1
     fi
 
     # Fetch latest stable Go version from go.dev API
@@ -157,7 +174,15 @@ if data:
         install_parent="/usr/local"           # → /usr/local/go (standard)
     fi
 
-    local tarball="go${GO_INSTALL_VERSION}.linux-${SYS_ARCH}.tar.gz"
+    # go.dev publishes 32-bit ARM tarballs as "armv6l" (not "armv7"), so map
+    # SYS_ARCH armv7/armv7l → armv6l before composing the tarball name. The same
+    # mapped name must be used for the checksum lookup below.
+    local _go_arch="$SYS_ARCH"
+    case "$_go_arch" in
+        armv7|armv7l) _go_arch="armv6l" ;;
+    esac
+
+    local tarball="go${GO_INSTALL_VERSION}.linux-${_go_arch}.tar.gz"
     local url="https://go.dev/dl/${tarball}"
 
     log_info "Downloading Go $GO_INSTALL_VERSION (latest stable) from go.dev..."
@@ -253,9 +278,13 @@ ensure_cargo() {
         log_warn "Failed to configure rustup default — reinstalling via rustup.rs"
     fi
 
-    # rustup is a curl-pipe install — respect --skip-source
-    if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
-        log_warn "Skipping Rust toolchain install (--skip-source) — Cargo tools will not be available"
+    # rustup is a curl-pipe install — respect --skip-source and --skip-cargo.
+    # The already-working-cargo fast path runs before this guard, so an existing
+    # toolchain is left untouched; this only suppresses a fresh toolchain install.
+    if [[ "${SKIP_SOURCE:-false}" == "true" || "${SKIP_CARGO:-false}" == "true" ]]; then
+        local _why="--skip-source"
+        [[ "${SKIP_CARGO:-false}" == "true" ]] && _why="--skip-cargo"
+        log_warn "Skipping Rust toolchain install (${_why}) — Cargo tools will not be available"
         return 1
     fi
 

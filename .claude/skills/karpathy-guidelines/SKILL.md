@@ -3,7 +3,7 @@ name: karpathy-guidelines
 description: Behavioral coding-agent guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code to avoid overcomplication, make surgical changes, surface assumptions, and define verifiable success criteria.
 license: MIT
 source: https://github.com/multica-ai/andrej-karpathy-skills
-source_commit: 2c606141936f1eeef17fa3043a72095b4765b9c2
+upstream_commit: 2c606141936f1eeef17fa3043a72095b4765b9c2
 ---
 
 # Karpathy Guidelines

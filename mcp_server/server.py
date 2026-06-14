@@ -1,4 +1,4 @@
-"""Main FastMCP server — 14 MCP tool registrations + entry point."""
+"""Main FastMCP server — 15 MCP tool registrations + entry point."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ if _parent not in sys.path:
 from mcp_server.bounty_advisor import suggest_for_bounty as _suggest_for_bounty  # noqa: E402, I001
 from mcp_server.ctf_advisor import suggest_for_ctf as _suggest_for_ctf  # noqa: E402
 from mcp_server.cve_advisor import get_cve_info as _get_cve_info  # noqa: E402
+from mcp_server.guided_assessment import build_guided_plan  # noqa: E402
 from mcp_server.profiles import PROFILES  # noqa: E402
 from mcp_server.profiles import list_profiles as _list_profiles  # noqa: E402
 from mcp_server.profiles import recommend_install as _recommend_install  # noqa: E402
@@ -34,7 +35,7 @@ from mcp_server.audit import (  # noqa: E402
     log_tool_call,
     log_tool_result,
 )
-from mcp_server.tools_db import MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
+from mcp_server.tools_db import C2_TOOLS, MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 
 mcp = FastMCP(
     "Cybersec Toolkit",
@@ -60,6 +61,14 @@ fix the env config and restart — do NOT silently fall back to run_script to by
 - **run_script**: Write and run Python/Bash scripts (pwntools, z3, requests, crypto, struct, etc.)
 - **suggest_for_ctf**: Get tool recommendations + methodology + quick wins per CTF category
 - **suggest_for_bounty**: Get tool recommendations + methodology + common vulns per bug bounty target type
+- **guided_assessment**: Classify an authorized target/finding, return triage gates, recommended skills, \
+reporting next steps, and the right tools/methodology. Default auto-detects the workflow + toolset and \
+acts as an interactive companion (no automatic execution inside the initial call); \
+`mode="autonomous"` (opt-in) starts the auto-solver contract for the full MCP toolchain: bootstrap, then \
+continue via run_tool/run_pipeline/run_script under MCP policy. If normal tools stop making progress and \
+programming logic is required, autonomous may create+save+run scoped helpers for the user and persist \
+reusable scripts under manual_scripts/. Simple recon/HTTP commands such as curl remain run_tool calls. \
+Requires authorization (network) + external opt-in for public targets
 - **get_cve_info**: Map a CVE id or nickname (e.g. "log4shell") to curated skills, registry tools, modules, \
 and ready-to-run NVD/KEV/EPSS lookup commands
 
@@ -169,7 +178,7 @@ custom payload generation, race conditions
 2. **Recon**: amass, subfinder, httpx, waybackurls for asset discovery
 3. **Scanning**: nuclei, nikto, nmap for vulnerability scanning
 4. **Manual testing**: run_script for custom payload generation, race conditions, business logic flaws
-5. **Reporting**: Document findings with reproducible steps
+5. **Reporting**: Run triage-validation, evidence-hygiene, then report-writing with reproducible steps
 6. Use `suggest_for_bounty` for target-specific tools, methodology, and common vulns \
 (supports: web_app, api, mobile_app, cloud, network, iot)
 
@@ -184,8 +193,8 @@ write it to `manual_scripts/`
 - Don't stop after the first finding — escalate, pivot, combine findings
 - Use output from one tool as input to the next (pipeline thinking)
 - Document each step for reproducibility
-- **Check previous writeups**: Before starting a new challenge, scan `workflows/` for \
-past solves with similar techniques — reuse patterns, avoid repeated dead ends
+- **Check previous writeups**: Before starting a new security task, scan `writeups/` for \
+past cases with similar techniques — reuse patterns, avoid repeated dead ends
 
 ## Use your tools
 - **Use run_tool for tool execution** — do NOT reimplement tools via run_script. \
@@ -226,12 +235,14 @@ argument combinations (e.g. `CALL A`, `CALL A B`, `CALL A B C`) instead of assum
 Prioritize the promising leads over exhausting dead-end variations
 
 ## Solution writeup
-- After solving a challenge or confirming a finding, ALWAYS write a detailed writeup to `workflows/`
-- File naming: `workflows/<competition>/<challenge-name>.md` (e.g. `workflows/htb2025/pilgrimage.md`)
+- After completing any substantive security workflow with this project, ALWAYS write a detailed writeup to `writeups/`
+- File naming: `writeups/<category>/<descriptive-case-name>.md` \
+(e.g. `writeups/ctf/htb-pilgrimage.md`, `writeups/cve/CVE-2024-xxxx-reproduction.md`)
 - Writing style: direct, technical, no AI filler language. Use "we"/"ran"/"found", not "Let's"/"I'll"
 - Include: exact commands, exact output (trimmed), exact payloads, dead ends, timeline
 - For CTFs: flag, category, difficulty, solve path, tools used, lessons learned
 - For bug bounty: vulnerability type, affected endpoint, impact, reproduction steps, remediation
+- For CVE/DFIR/guided assessments: scope, validation method, evidence, limitations, cleanup/safety notes
 - REDACT sensitive data in writeups — mask credentials (****), anonymize PII, use minimal PoC
 
 ## Discover and add new tools (approval-gated)
@@ -296,10 +307,29 @@ not by instructions
 _db = ToolsDatabase()
 
 # Remote host configuration (loaded once on server start).
-_remote = RemoteHostConfig()
+# A corrupt/unreadable remote_hosts.json must NOT take down the whole server
+# import (which would make every tool unavailable on first start after
+# corruption). Degrade to a disabled remote-config state and surface the error
+# through manage_remote_hosts instead.
+_remote: Optional[RemoteHostConfig] = None
+_remote_init_error: str = ""
+try:
+    _remote = RemoteHostConfig()
+except (ValueError, OSError) as e:
+    _remote_init_error = str(e)
 
 # Log server startup with config state.
 log_server_start()
+
+
+def _remote_unavailable_error() -> str:
+    """Human-readable error for when remote config failed to load at startup."""
+    return (
+        "Remote host config is unavailable: "
+        f"{_remote_init_error or 'failed to load remote_hosts.json'}. "
+        "Fix or remove the file, then restart the MCP server."
+    )
+
 
 # Termux runs without sudo; Linux requires it.
 _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
@@ -386,13 +416,25 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
             if host:
                 from mcp_server.remote import execute_remote_command
 
+                if _remote is None:
+                    msg = _remote_unavailable_error()
+                    log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=msg)
+                    return {"tool": tool_name, "in_registry": False, "system_utility": True, "error": msg}
                 try:
                     ssh_args = _remote.get_ssh_base_args(host)
                 except ValueError as e:
+                    log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
                     return {"tool": tool_name, "in_registry": False, "system_utility": True, "error": str(e)}
                 result = await execute_remote_command(ssh_args, ["which", tool_name], timeout=15)
                 installed = result["exit_code"] == 0
                 path = result["stdout"].strip() if installed else ""
+                log_tool_result(
+                    "check_installed",
+                    call_id,
+                    True,
+                    (time.monotonic() - t0) * 1000,
+                    summary=f"{tool_name}: {'installed' if installed else 'not installed'} on {host}",
+                )
                 return {
                     "tool": tool_name,
                     "in_registry": False,
@@ -405,6 +447,13 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
             import shutil
 
             path = shutil.which(tool_name)
+            log_tool_result(
+                "check_installed",
+                call_id,
+                True,
+                (time.monotonic() - t0) * 1000,
+                summary=f"{tool_name}: {'installed' if path else 'not installed'} (system utility)",
+            )
             return {
                 "tool": tool_name,
                 "in_registry": False,
@@ -414,6 +463,13 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
             }
 
         # Not in registry and not a system utility
+        log_tool_result(
+            "check_installed",
+            call_id,
+            False,
+            (time.monotonic() - t0) * 1000,
+            error="not in registry / not a recognized system utility",
+        )
         return {
             "tool": tool_name,
             "in_registry": False,
@@ -425,15 +481,27 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
         from mcp_server.remote import execute_remote_command
         from mcp_server.tools_db import PIPX_BIN_NAMES
 
+        if _remote is None:
+            msg = _remote_unavailable_error()
+            log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=msg)
+            return {"tool": tool_name, "in_registry": True, "error": msg}
         try:
             ssh_args = _remote.get_ssh_base_args(host)
         except ValueError as e:
+            log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"tool": tool_name, "in_registry": True, "error": str(e)}
 
         binary = PIPX_BIN_NAMES.get(tool_name, tool_name)
         result = await execute_remote_command(ssh_args, ["which", binary], timeout=15)
         installed = result["exit_code"] == 0
         path = result["stdout"].strip() if installed else ""
+        log_tool_result(
+            "check_installed",
+            call_id,
+            True,
+            (time.monotonic() - t0) * 1000,
+            summary=f"{tool_name}: {'installed' if installed else 'not installed'} on {host}",
+        )
         return {
             "tool": tool_name,
             "in_registry": True,
@@ -491,8 +559,16 @@ def get_tool_info(tool_name: str) -> dict:
     module = tool["module"]
     module_desc = MODULE_DESCRIPTIONS.get(module, "")
 
-    log_tool_result("get_tool_info", call_id, True, (time.monotonic() - t0) * 1000, summary=tool_name)
-    return {
+    # C2/phishing frameworks install only with INCLUDE_C2 (redteam/full profiles or
+    # --include-c2); empire additionally needs Docker. Reflect that in the install cmd.
+    is_c2 = tool["name"] in C2_TOOLS
+    install_args = f"--module {module}"
+    if is_c2:
+        install_args += " --include-c2"
+        if tool["method"] == "docker":
+            install_args += " --enable-docker"
+
+    result = {
         "name": tool["name"],
         "method": tool["method"],
         "module": module,
@@ -500,13 +576,21 @@ def get_tool_info(tool_name: str) -> dict:
         "url": tool.get("url", ""),
         "installed": status["installed"],
         "install_details": status["details"],
+        "requires_include_c2": is_c2,
         "commands": {
-            "install": _cmd("./install.sh", f"--module {module}"),
-            "update": _cmd("./scripts/update.sh", f"--module {module}"),
+            # update.sh is whole-system (no per-module flag); update everything.
+            "install": _cmd("./install.sh", install_args),
+            "update": _cmd("./scripts/update.sh"),
             "remove": _cmd("./scripts/remove.sh", f"--module {module}"),
             "verify": _cmd("./scripts/verify.sh", f"--module {module}"),
         },
     }
+    if is_c2:
+        result["note"] = (
+            "C2/phishing framework — installed only with INCLUDE_C2 (--include-c2, or the redteam/full profile)."
+        )
+    log_tool_result("get_tool_info", call_id, True, (time.monotonic() - t0) * 1000, summary=tool_name)
+    return result
 
 
 @mcp.tool
@@ -627,7 +711,7 @@ def list_profiles() -> dict:
 
     Each profile is a curated set of modules targeting a specific use case.
     Shows module count, tool count, and install command for each profile.
-    Profiles range from 'osint' (2 modules, ~80 tools) to 'full' (18 modules, 580+ tools).
+    Profiles range from 'osint' (2 modules) to 'full' (18 modules, 580+ tools).
 
     Returns:
         All profiles with descriptions, module lists, tool counts, and install commands.
@@ -657,12 +741,16 @@ def get_profile_tools(profile: str) -> dict:
     t0 = time.monotonic()
     profile_lower = profile.lower().strip()
     if profile_lower not in PROFILES:
+        log_tool_result(
+            "get_profile_tools", call_id, False, (time.monotonic() - t0) * 1000, error=f"unknown profile: {profile}"
+        )
         return {
             "error": f"Unknown profile '{profile}'. Available: {', '.join(sorted(PROFILES))}",
         }
 
     profile_data = PROFILES[profile_lower]
     modules = profile_data["modules"]
+    profile_c2 = bool(profile_data.get("include_c2", False))
 
     by_module: list[dict] = []
     total = 0
@@ -672,6 +760,9 @@ def get_profile_tools(profile: str) -> dict:
         mod_tools = [t for t in _db._tools if t["module"] == mod]
         tool_entries = []
         for t in mod_tools:
+            # C2/phishing tools install only when the profile sets INCLUDE_C2.
+            if t["name"] in C2_TOOLS and not profile_c2:
+                continue
             status = _db.check_installed(t["name"])
             tool_entries.append(
                 {
@@ -721,6 +812,9 @@ def get_module_info(module: str) -> dict:
     t0 = time.monotonic()
     module_lower = module.lower().strip()
     if module_lower not in MODULE_DESCRIPTIONS:
+        log_tool_result(
+            "get_module_info", call_id, False, (time.monotonic() - t0) * 1000, error=f"unknown module: {module}"
+        )
         return {
             "error": f"Unknown module '{module}'. Available: {', '.join(sorted(MODULE_DESCRIPTIONS))}",
         }
@@ -731,15 +825,16 @@ def get_module_info(module: str) -> dict:
 
     for t in mod_tools:
         status = _db.check_installed(t["name"])
-        tool_entries.append(
-            {
-                "name": t["name"],
-                "method": t["method"],
-                "url": t.get("url", ""),
-                "installed": status["installed"],
-                "details": status["details"],
-            }
-        )
+        entry = {
+            "name": t["name"],
+            "method": t["method"],
+            "url": t.get("url", ""),
+            "installed": status["installed"],
+            "details": status["details"],
+        }
+        if t["name"] in C2_TOOLS:
+            entry["requires_include_c2"] = True
+        tool_entries.append(entry)
         if status["installed"]:
             installed_count += 1
 
@@ -768,11 +863,153 @@ def get_module_info(module: str) -> dict:
         "in_profiles": in_profiles,
         "commands": {
             "install": _cmd("./install.sh", f"--module {module_lower}"),
-            "update": _cmd("./scripts/update.sh", f"--module {module_lower}"),
+            # update.sh is whole-system (no per-module flag); update everything.
+            "update": _cmd("./scripts/update.sh"),
             "remove": _cmd("./scripts/remove.sh", f"--module {module_lower}"),
             "verify": _cmd("./scripts/verify.sh", f"--module {module_lower}"),
         },
     }
+
+
+@mcp.tool
+async def guided_assessment(
+    target: str,
+    finding: str = "",
+    target_type: str = "auto",
+    workflow: str = "auto",
+    mode: str = "companion",
+    authorization_confirmed: bool = False,
+    intensity: str = "low",
+    max_steps: int = 4,
+) -> dict:
+    """Plan, guide, or autonomously solve a security task over the MCP toolchain.
+
+    An orchestrator on top of the registry, advisors, install checks, audit logging,
+    and execution policy. It never bypasses run_tool policy: every executed command
+    goes through the same execute_tool() path, so target scope, external-network,
+    shell-injection, and blocked-flag checks still apply.
+
+    By DEFAULT it auto-detects the right workflow + tools for the problem (workflow/
+    target_type="auto") and acts as a companion: it returns classification, triage gates,
+    recommended skills, reporting next steps, a plan, tool install status, next actions,
+    and the full MCP toolchain surface WITHOUT auto-running commands in this initial call.
+    The agent can then run tools step by step as the user approves.
+    The heaviest mode (autonomous) starts the auto-solver contract: it bootstraps
+    triage, then the client agent continues with the full MCP toolchain
+    (registry/advisors/install checks/run_tool/run_pipeline/run_script) under MCP policy.
+    When registry tools and pipelines are not enough, autonomous mode may create,
+    save, and run scoped helper scripts for the user, persisting reusable ones under
+    manual_scripts/. Simple recon/HTTP commands such as curl remain run_tool calls.
+
+    Modes:
+        companion (default): Auto-select the right workflow/tools from the full
+            registry/modules/profiles, return methodology + tool status + commands,
+            and continue as an interactive step-by-step helper; no automatic execution
+            inside this initial MCP call.
+        autonomous (opt-in): Start the auto-solver loop. Auto-run the selected
+            bootstrap steps, then return the MCP toolchain contract + model-driven
+            steps for the client agent to continue under the user's explicit
+            autonomous approval. Choose this explicitly.
+
+    Authorization floor (kept in every mode): network targets require
+    authorization_confirmed=true; external targets require CYBERSEC_MCP_ALLOW_EXTERNAL=1.
+    Use only on authorized scope (CTF/lab/owned/written-permission).
+
+    Args:
+        target: URL, hostname/IP, or local file path to assess.
+        finding: Optional short finding summary to classify for triage/report routing.
+                 Raw finding text is used locally but not echoed in the result.
+        target_type: "auto" (default — inferred from the target) or an explicit type:
+            bounty type (web_app/api/cloud/network/iot/mobile_app) or CTF category.
+        workflow: "auto" (default — inferred), "bounty", "ctf", or "generic".
+        mode: "companion" (default) or "autonomous" (opt-in).
+        authorization_confirmed: Required before any network step executes.
+        intensity: "low" (default) or "medium". Medium may include low-volume nmap.
+        max_steps: Maximum number of bootstrap steps autonomous mode auto-executes.
+
+    Returns:
+        A plan with auto-detected workflow/type, classification, triage/report gates,
+        recommended skills, advisor output, full toolchain scope, tool install status,
+        selected commands, optional execution results, companion guidance, an autonomous
+        solver contract (only in autonomous mode), and next actions.
+    """
+    call_id = log_tool_call(
+        "guided_assessment",
+        {
+            "target": target,
+            "finding_provided": bool(finding.strip()),
+            "finding_length": len(finding),
+            "target_type": target_type,
+            "workflow": workflow,
+            "mode": mode,
+            "authorization_confirmed": authorization_confirmed,
+            "intensity": intensity,
+            "max_steps": max_steps,
+        },
+    )
+    t0 = time.monotonic()
+
+    result = build_guided_plan(
+        target=target,
+        finding=finding,
+        target_type=target_type,
+        workflow=workflow,
+        mode=mode,
+        intensity=intensity,
+        authorization_confirmed=authorization_confirmed,
+        max_steps=max(0, min(max_steps, 10)),
+        external_enabled=_allow_external(),
+        tools_db=_db,
+    )
+    if "error" in result:
+        log_tool_result("guided_assessment", call_id, False, (time.monotonic() - t0) * 1000, error=result["error"])
+        return result
+
+    if result["mode"] == "autonomous" and result["execution"]["reason"] == "ready":
+        execution_candidates = result["plan"]["execution_candidates"]
+        if not execution_candidates:
+            result["execution"] = {
+                "status": "not_started",
+                "results": [],
+                "reason": "ready but no installed execution candidates selected",
+            }
+            log_tool_result(
+                "guided_assessment",
+                call_id,
+                True,
+                (time.monotonic() - t0) * 1000,
+                summary=f"{result['workflow']}:{result['target_type']} {result['mode']} no_candidates",
+            )
+            return result
+
+        execution_results = []
+        for step in execution_candidates:
+            tool_result = await _execute_tool(step["tool"], step["args"], _db, timeout=60)
+            execution_results.append(
+                {
+                    "step_id": step["id"],
+                    "tool": step["tool"],
+                    "command": step["command"],
+                    "exit_code": tool_result.get("exit_code", -1),
+                    "stdout": tool_result.get("stdout", ""),
+                    "stderr": tool_result.get("stderr", ""),
+                    "truncated": tool_result.get("truncated", False),
+                }
+            )
+        result["execution"] = {
+            "status": "completed",
+            "results": execution_results,
+            "reason": "bootstrap done — continue the user-approved auto-solver loop through the MCP toolchain",
+        }
+
+    log_tool_result(
+        "guided_assessment",
+        call_id,
+        True,
+        (time.monotonic() - t0) * 1000,
+        summary=f"{result['workflow']}:{result['target_type']} {result['mode']}",
+    )
+    return result
 
 
 @mcp.tool
@@ -809,6 +1046,10 @@ async def run_tool(
     call_id = log_tool_call("run_tool", {"tool_name": tool_name, "args": args, "timeout": timeout, "host": host})
     t0 = time.monotonic()
     if host:
+        if _remote is None:
+            msg = _remote_unavailable_error()
+            log_tool_result("run_tool", call_id, False, (time.monotonic() - t0) * 1000, error=msg)
+            return {"error": msg, "tool": tool_name, "exit_code": -1}
         result = await _execute_tool_remote(tool_name, args, _db, _remote, host, timeout=timeout)
     else:
         result = await _execute_tool(tool_name, args, _db, timeout=timeout)
@@ -979,6 +1220,13 @@ async def manage_remote_hosts(
     call_id = log_tool_call("manage_remote_hosts", {"action": action, "name": name, "hostname": hostname})
     t0 = time.monotonic()
 
+    # Remote config failed to load at startup (e.g. corrupt remote_hosts.json).
+    # The rest of the server still works; surface the load error here only.
+    if _remote is None:
+        msg = _remote_unavailable_error()
+        log_tool_result("manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=msg)
+        return {"error": msg}
+
     if action == "list":
         hosts = _remote.list_hosts()
         log_tool_result(
@@ -988,10 +1236,24 @@ async def manage_remote_hosts(
         return {"action": "list", "hosts": hosts, "count": len(hosts)}
 
     if not name:
+        log_tool_result(
+            "manage_remote_hosts",
+            call_id,
+            False,
+            (time.monotonic() - t0) * 1000,
+            error=f"action '{action}' requires a name parameter",
+        )
         return {"error": f"Action '{action}' requires a 'name' parameter."}
 
     if action == "add":
         if not hostname:
+            log_tool_result(
+                "manage_remote_hosts",
+                call_id,
+                False,
+                (time.monotonic() - t0) * 1000,
+                error="action 'add' requires a hostname parameter",
+            )
             return {"error": "Action 'add' requires a 'hostname' parameter."}
         parsed_allowlist: list[str] | None = None
         if tool_allowlist is not None:

@@ -46,7 +46,6 @@ def _is_valid_cell(value: str) -> bool:
 def validate():
     """Validate distro_compat.tsv. Return exit code."""
     errors = 0
-    warnings = 0
 
     if not TSV_PATH.exists():
         print(f"ERROR: {TSV_PATH} not found")
@@ -101,7 +100,7 @@ def validate():
 
     # Summary
     print(f"\ndistro_compat.tsv: {line_count} entries")
-    print(f"Errors: {errors}  Warnings: {warnings}")
+    print(f"Errors: {errors}")
 
     return 1 if errors > 0 else 0
 

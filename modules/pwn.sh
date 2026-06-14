@@ -39,6 +39,20 @@ PWN_CARGO=(pwninit)
 PWN_GO_BINS=(interactsh-client)
 PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow Freeze nanodump eviltree Hoaxshell QueenSono DNSExfiltrator Egress-Assess Ivy Villain)
 PWN_BUILD_NAMES=(AFLplusplus honggfuzz radamsa)
+# Source of truth for build-from-source url + command (install + update).
+# AFLplusplus: 'make source-only' builds the core afl-fuzz binary without optional
+# QEMU/FRIDA/unicorn sub-modules that need extra deps and often fail on VMs
+# ('make distrib' would build everything but many optional targets fail).
+declare -A PWN_BUILD_URLS=(
+    [AFLplusplus]="https://github.com/AFLplusplus/AFLplusplus.git"
+    [honggfuzz]="https://github.com/google/honggfuzz.git"
+    [radamsa]="https://gitlab.com/akihe/radamsa.git"
+)
+declare -A PWN_BUILD_CMDS=(
+    [AFLplusplus]="make source-only"
+    [honggfuzz]="make"
+    [radamsa]="make"
+)
 
 install_module_pwn() {
     install_apt_batch "Pwn - Packages" "${PWN_PACKAGES[@]}"
@@ -50,14 +64,9 @@ install_module_pwn() {
     # Rust tools
     install_cargo_batch "Pwn - Rust" "${PWN_CARGO[@]}" || true
 
-    # Build from source
+    # Build from source (url + command from PWN_BUILD_URLS / PWN_BUILD_CMDS)
     log_info "Building pwn tools from source..."
-    # 'make source-only' builds the core afl-fuzz binary without optional QEMU/FRIDA/
-    # unicorn sub-modules that require extra dependencies and often fail on VMs.
-    # 'make distrib' would build everything but many optional targets fail.
-    build_from_source "AFLplusplus" "https://github.com/AFLplusplus/AFLplusplus.git" "make source-only" || true
-    build_from_source "honggfuzz" "https://github.com/google/honggfuzz.git" "make" || true
-    build_from_source "radamsa" "https://gitlab.com/akihe/radamsa.git" "make" || true
+    build_module_from_source PWN
 
     # Searchsploit symlink
     install_searchsploit_symlink

@@ -16,6 +16,34 @@ SKILLS_DIR = ROOT / ".claude" / "skills"
 INDEX = SKILLS_DIR / "SKILLS.md"
 CURATION_MD = SKILLS_DIR / "CURATION.md"
 CURATION_JSON = SKILLS_DIR / "curation.json"
+NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
+# Plugin marketplace manifests whose descriptions hardcode the skill count ("N on-demand
+# security skills") — reconciled against the real dir count so they can't drift.
+PLUGIN_MANIFESTS = (ROOT / ".claude-plugin" / "plugin.json", ROOT / ".claude-plugin" / "marketplace.json")
+
+# THIRD_PARTY_NOTICES.md table rows -> a stable substring of the Source cell, and the
+# curate source_for() bucket each represents. The single "remaining N" line aggregates
+# the project-authored MIT buckets.
+_NOTICES_ROWS = {
+    "anthropic": "Anthropic-Cybersecurity-Skills",
+    "claude-red": "SnailSploit/Claude-Red",
+    "trail-of-bits": "trailofbits/skills",
+    "bughunter": "shuvonsec/claude-bug-bounty",
+    "transilience": "transilienceai/communitytools",
+    "karpathy": "andrej-karpathy-skills",
+}
+_NOTICES_REMAINING_BUCKETS = {"project", "coverage-anchor", "ctf", "bug-bounty"}
+
+
+def _import_curate():
+    """Import scripts/curate_claude_skills.py without running it (main() is guarded)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import curate_claude_skills  # noqa: PLC0415 — lazy import to keep validator standalone
+
+        return curate_claude_skills
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _frontmatter(text: str) -> dict[str, str] | None:
@@ -149,6 +177,100 @@ def _validate_curation(skill_dirs: list[Path], errors: list[str]) -> None:
         if extra:
             errors.append(f"{CURATION_JSON.relative_to(ROOT)}: extra skill(s): {', '.join(extra[:10])}")
 
+    # Freshness: regenerate the curation outputs from the same rules curate_claude_skills.py
+    # uses and compare against the committed files, so stale/hand-edited content fails CI
+    # (the docs promise this validator checks "curation freshness").
+    curate = _import_curate()
+    if curate is None:
+        errors.append("scripts/curate_claude_skills.py: could not import to verify curation freshness")
+        return
+    try:
+        skills = curate.load_skills()
+        expected_json = curate.build_json(skills)
+        expected_md = curate.render_md(skills)
+    except Exception as exc:  # noqa: BLE001 — surface any curation failure as a validation error
+        errors.append(f"scripts/curate_claude_skills.py: failed to regenerate curation ({exc})")
+        return
+    if data != expected_json:
+        errors.append(
+            f"{CURATION_JSON.relative_to(ROOT)} is stale; run python3 scripts/curate_claude_skills.py --write"
+        )
+    if CURATION_MD.is_file() and CURATION_MD.read_text(encoding="utf-8") != expected_md:
+        errors.append(
+            f"{CURATION_MD.relative_to(ROOT)} is stale; run python3 scripts/curate_claude_skills.py --write"
+        )
+
+
+def _validate_third_party_notices(skill_dirs: list[Path], errors: list[str]) -> None:
+    """Reconcile THIRD_PARTY_NOTICES.md per-source counts against the live inventory.
+
+    The counts drive license attribution, so a drift after a skill add/remove/rename is
+    a licensing-accuracy issue. source_for() is name-based and authoritative here.
+    """
+    if not NOTICES.is_file():
+        errors.append(f"{NOTICES.relative_to(ROOT)}: missing third-party notices")
+        return
+    curate = _import_curate()
+    if curate is None:
+        errors.append("scripts/curate_claude_skills.py: could not import to verify notices counts")
+        return
+
+    from collections import Counter
+
+    live = Counter(curate.source_for(p.name) for p in skill_dirs)
+    text = NOTICES.read_text(encoding="utf-8", errors="replace")
+
+    for bucket, marker in _NOTICES_ROWS.items():
+        match = re.search(rf"\|[^|\n]*{re.escape(marker)}[^|\n]*\|\s*(\d+)\s*\|", text)
+        if not match:
+            errors.append(f"{NOTICES.relative_to(ROOT)}: could not find table row for {bucket}")
+            continue
+        declared = int(match.group(1))
+        actual = live.get(bucket, 0)
+        if declared != actual:
+            errors.append(
+                f"{NOTICES.relative_to(ROOT)}: {bucket} count={declared}, computed {actual} from source_for()"
+            )
+
+    rem = re.search(r"remaining\s+(\d+)\s+skills", text, re.IGNORECASE)
+    if not rem:
+        errors.append(f"{NOTICES.relative_to(ROOT)}: missing 'remaining N skills' line")
+    else:
+        declared_rem = int(rem.group(1))
+        actual_rem = sum(live.get(b, 0) for b in _NOTICES_REMAINING_BUCKETS)
+        if declared_rem != actual_rem:
+            errors.append(
+                f"{NOTICES.relative_to(ROOT)}: remaining={declared_rem}, computed {actual_rem} "
+                f"(project+coverage-anchor+ctf+bug-bounty)"
+            )
+
+    accounted = set(_NOTICES_ROWS) | _NOTICES_REMAINING_BUCKETS
+    for bucket in live:
+        if bucket not in accounted:
+            errors.append(f"{NOTICES.relative_to(ROOT)}: source bucket {bucket!r} has no license attribution row")
+
+
+def _validate_plugin_manifests(skill_dirs: list[Path], errors: list[str]) -> None:
+    """Reconcile the hardcoded skill count in the plugin marketplace manifests.
+
+    plugin.json / marketplace.json descriptions advertise "<N> on-demand security
+    skills"; keep that in sync with the real dir count so the marketplace listing
+    can't drift (validate_claude_skills already guards SKILLS.md/curation/notices).
+    """
+    expected = len(skill_dirs)
+    pattern = re.compile(r"(\d+)\s+on-demand security skills")
+    for manifest in PLUGIN_MANIFESTS:
+        if not manifest.is_file():
+            errors.append(f"{manifest.relative_to(ROOT)}: missing plugin manifest")
+            continue
+        counts = pattern.findall(manifest.read_text(encoding="utf-8", errors="replace"))
+        if not counts:
+            errors.append(f"{manifest.relative_to(ROOT)}: no '<N> on-demand security skills' count found")
+            continue
+        for count in counts:
+            if int(count) != expected:
+                errors.append(f"{manifest.relative_to(ROOT)}: advertises {count} skills, found {expected}")
+
 
 def main() -> int:
     errors: list[str] = []
@@ -180,6 +302,8 @@ def main() -> int:
     python_script_count = _validate_python_scripts(skill_dirs, errors)
     powershell_script_count, powershell_skipped = _validate_powershell_scripts(skill_dirs, errors)
     _validate_curation(skill_dirs, errors)
+    _validate_third_party_notices(skill_dirs, errors)
+    _validate_plugin_manifests(skill_dirs, errors)
 
     if not INDEX.is_file():
         errors.append(f"{INDEX.relative_to(ROOT)}: missing index")

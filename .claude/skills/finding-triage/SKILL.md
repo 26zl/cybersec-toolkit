@@ -1,6 +1,6 @@
 ---
 name: finding-triage
-description: Use to triage a single security finding — from a scanner (SAST/DAST/SCA), an audit, a pentest report, a bug bounty submission, a CVE advisory, or a threat hunt — into a defensible disposition with the required evidence. Produces a ticket-ready writeup: Fixed, Deferred, Accepted Risk, or False Positive. Use when normalizing findings across different sources, deciding whether something is real and reachable, assigning contextual severity, or building an audit trail that survives review six months later. Coordinator skill — most audit/offensive/detection skills route their findings here.
+description: Use to triage a single security finding — from a scanner (SAST/DAST/SCA), an audit, a pentest report, a bug bounty submission, a CVE advisory, or a threat hunt — into a defensible disposition with the required evidence. Produces a ticket-ready writeup: Fixed, Deferred, Accepted Risk, or False Positive. Use when normalizing findings across different sources, deciding whether something is real and reachable, assigning contextual severity, or building an audit trail that survives review six months later. Coordinator skill — route findings from audit, offensive, and detection work here for disposition.
 ---
 
 # Finding triage — single finding to defensible disposition

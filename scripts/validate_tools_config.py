@@ -34,7 +34,8 @@ MODULE_PREFIX = {
 }
 
 APT_SUFFIXES = {"PACKAGES", "BASE_PACKAGES", "HEAVY_PACKAGES"}
-GIT_SUFFIXES = {"GIT"}
+# C2_GIT: the INCLUDE_C2-gated git array in modules/misc.sh (same git semantics).
+GIT_SUFFIXES = {"GIT", "C2_GIT"}
 
 VALID_METHODS = {
     "apt", "pipx", "go", "cargo", "gem", "git",
@@ -43,7 +44,6 @@ VALID_METHODS = {
 
 # Names that differ between code and JSON (code_name → json_name)
 NAME_ALIASES = {
-    "metasploit-framework": "metasploit",
     "d2j-dex2jar": "dex2jar",
     "heimdall": "heimdall-rs",
 }
@@ -57,20 +57,86 @@ def strip_comments(text):
     )
 
 
+def _find_array_body(text, open_idx):
+    """Return (body, end_idx) for an array opened at text[open_idx] == '('.
+
+    Scans paren-balanced so a ')' inside a quoted cell can't truncate the array
+    early. Quotes (both ' and ") and parens inside them are ignored when balancing.
+    Returns (None, open_idx) if the array is never closed.
+    """
+    depth = 0
+    quote = None
+    i = open_idx
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if quote is not None:
+            if ch == quote:
+                quote = None
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx + 1:i], i
+        i += 1
+    return None, open_idx
+
+
 def parse_arrays(text):
-    """Parse bash arrays: NAME=( ... ) → {NAME: [entries]}."""
+    """Parse bash arrays: NAME=( ... ) → {NAME: [entries]}.
+
+    Paren-balanced and quote-aware so a ')' inside a quoted cell does not close
+    the array prematurely (which would silently drop trailing entries).
+    """
     text = strip_comments(text)
     result = {}
-    for m in re.finditer(r'(\w+)\s*=\s*\((.*?)\)', text, re.DOTALL):
+    for m in re.finditer(r'(\w+)\s*=\s*\(', text):
         name = m.group(1)
-        body = m.group(2)
+        body, _ = _find_array_body(text, m.end() - 1)
+        if body is None:
+            continue
         entries = []
+        quoted_lines = 0
+        for raw_line in body.split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            # A line that is purely one-or-more quoted cells counts toward the
+            # quoted-line tally used to detect silent truncation.
+            if re.fullmatch(r'(?:"[^"]*"\s*)+', line):
+                quoted_lines += len(re.findall(r'"[^"]*"', line))
         for item in re.finditer(r'"([^"]*)"|(\S+)', body):
             val = item.group(1) if item.group(1) is not None else item.group(2)
             if val:
                 entries.append(val)
+        # Sanity: when the array is written one quoted cell per line, the number
+        # of parsed quoted entries must match — a mismatch means a ')' or stray
+        # token truncated the body (the bug this guard exists to catch).
+        quoted_entries = sum(1 for it in re.finditer(r'"[^"]*"', body))
+        if quoted_lines and quoted_entries != quoted_lines:
+            print(
+                f"WARNING: array '{name}' parsed {quoted_entries} quoted cells "
+                f"but found {quoted_lines} quoted-cell lines (possible truncation)"
+            )
         result[name] = entries
     return result
+
+
+def parse_assoc_array(text, name):
+    """Parse a bash associative array: declare -A NAME=( [k]="v" ... ) → {k: v}.
+
+    Used for the build-from-source url/cmd maps in modules (single source of truth).
+    """
+    m = re.search(rf"{re.escape(name)}\s*=\s*\(", text)
+    if not m:
+        return {}
+    body, _ = _find_array_body(text, m.end() - 1)
+    if body is None:
+        return {}
+    return dict(re.findall(r'\[([^\]]+)\]\s*=\s*"([^"]*)"', body))
 
 
 def go_github_url(import_path):
@@ -84,8 +150,9 @@ def go_github_url(import_path):
 
 
 # Map BINARY_RELEASES_* suffix → module name
+# MISC_C2: the INCLUDE_C2-gated binary array in lib/installers.sh (belongs to misc).
 BINARY_RELEASE_MODULE = {
-    "MISC": "misc", "NETWORKING": "networking", "RECON": "recon",
+    "MISC": "misc", "MISC_C2": "misc", "NETWORKING": "networking", "RECON": "recon",
     "WEB": "web", "REVERSING": "reversing", "FORENSICS": "forensics",
     "ENTERPRISE": "enterprise", "BLUETEAM": "blueteam",
     "CONTAINERS": "containers", "MOBILE": "mobile", "STEGO": "stego",
@@ -171,13 +238,9 @@ def extract_module_tools(module_name):
                     url = re.sub(r"\.git$", "", url)
                     tools.append({"name": name, "method": "git", "url": url})
 
-        elif suffix == "DOCKER":
-            for e in entries:
-                if ":" in e:
-                    _, dname = e.split(":", 1)
-                    tools.append({"name": dname.lower(), "method": "docker", "url": ""})
-
-        # Skip GO, GO_BINS, GIT_NAMES — handled separately
+        # Skip GO, GO_BINS, GIT_NAMES — handled separately.
+        # No <PREFIX>_DOCKER arrays exist; docker tools come from docker_pull
+        # calls (parsed below) and ALL_DOCKER_IMAGES in lib/installers.sh.
 
     # Go tools (from GO_BINS with URLs from GO)
     go_bins_key = f"{prefix}_GO_BINS"
@@ -217,12 +280,11 @@ def extract_module_tools(module_name):
         url = f"https://github.com/{owner_repo}"
         tools.append({"name": name, "method": "binary", "url": url})
 
-    # build_from_source "name" "url" "cmd"
-    for m in re.finditer(
-        r'build_from_source\s+"([^"]+)"\s+"([^"]+)"', clean
-    ):
-        name = m.group(1)
-        url = re.sub(r"\.git$", "", m.group(2))
+    # Build-from-source tools: <PREFIX>_BUILD_NAMES + <PREFIX>_BUILD_URLS maps
+    # (single source of truth, consumed by install + scripts/update.sh).
+    build_urls = parse_assoc_array(clean, f"{prefix}_BUILD_URLS")
+    for name in arrays.get(f"{prefix}_BUILD_NAMES", []):
+        url = re.sub(r"\.git$", "", build_urls.get(name, ""))
         tools.append({"name": name, "method": "source", "url": url})
 
     # docker_pull "image" "name" — skip bash variable refs like "$image" "$name"
@@ -312,6 +374,19 @@ def validate():
         print(f"ERROR: Invalid JSON: {e}")
         return 1
 
+    # -- Module-set check --
+    # ALL_MODULES is hand-maintained; enumerate modules/*.sh so a new module
+    # file (or a deleted one) can't silently escape cross-validation. "shared"
+    # is a pseudo-module (lib/shared.sh), so it is excluded from the disk set.
+    disk_modules = {p.stem for p in MODULES_DIR.glob("*.sh")}
+    declared_modules = set(ALL_MODULES) - {"shared"}
+    for name in sorted(disk_modules - declared_modules):
+        print(f"ERROR: modules/{name}.sh exists but is not listed in ALL_MODULES")
+        errors += 1
+    for name in sorted(declared_modules - disk_modules):
+        print(f"ERROR: '{name}' in ALL_MODULES but modules/{name}.sh not found")
+        errors += 1
+
     # -- Structural checks --
     for i, entry in enumerate(config):
         for field in ("name", "method", "module"):
@@ -356,11 +431,24 @@ def validate():
     # Tools in modules but missing from JSON → ERROR
     for (name, method), mod in sorted(module_tools.items()):
         if (name, method) not in config_tools:
+            # A docker tool installed alongside a same-named git clone is stored
+            # in JSON with a "-docker" suffix to avoid a duplicate name (e.g.
+            # pentagi git + pentagi-docker). That is the documented convention,
+            # not method drift — mirror the JSON-side check below.
+            if method == "docker" and (f"{name}-docker", "docker") in config_tools:
+                continue
             # Check if name exists with a different method
             alt = [m for (n, m) in config_tools if n == name]
             if alt:
-                # Same tool, different method — just a warning
-                pass
+                # Same tool name, different method — install-method drift.
+                # Name it explicitly so a pipx-vs-git style mismatch (e.g.
+                # theHarvester) can't slip past the validator as a bare 'pass'.
+                print(
+                    f"WARNING: '{name}' method mismatch: installer array in "
+                    f"modules/{mod}.sh uses '{method}' but tools_config.json "
+                    f"declares '{', '.join(sorted(set(alt)))}'"
+                )
+                warnings += 1
             else:
                 print(f"ERROR: '{name}' ({method}) in modules/{mod}.sh but MISSING from tools_config.json")
                 errors += 1
@@ -378,6 +466,17 @@ def validate():
             if not alt:
                 print(f"WARNING: '{name}' ({method}) in tools_config.json but not found in modules/{mod}.sh arrays")
                 warnings += 1
+
+    # Module-field drift: tool present on both sides but claiming different modules.
+    # Membership-in-ALL_MODULES alone (above) cannot catch a wrong-but-valid module.
+    for (name, method), mod in sorted(module_tools.items()):
+        if (name, method) in config_tools and config_tools[(name, method)] != mod:
+            print(
+                f"ERROR: '{name}' ({method}) module mismatch: "
+                f"tools_config.json says '{config_tools[(name, method)]}' "
+                f"but installer array is in modules/{mod}.sh"
+            )
+            errors += 1
 
     # Summary
     print(f"\ntools_config.json: {len(config)} tools")

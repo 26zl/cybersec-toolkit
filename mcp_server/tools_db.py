@@ -29,9 +29,17 @@ def _discover_project_root() -> Path:
     """Locate the installer root that contains tools_config.json.
 
     Resolution order:
+    0. CYBERSEC_INSTALLER_ROOT env var (explicit override)
     1. Current working directory and its parents
     2. The source tree relative to this file
     """
+    override = os.environ.get("CYBERSEC_INSTALLER_ROOT")
+    if override:
+        # Honor the override unconditionally so a misconfigured path fails loudly
+        # at registry load (FileNotFoundError) instead of silently resolving a
+        # different repo's tools_config.json via cwd discovery.
+        return Path(override).expanduser()
+
     module_path = Path(__file__).resolve()
     search_roots = [Path.cwd().resolve(), module_path.parent, module_path.parent.parent]
     seen: set[Path] = set()
@@ -80,6 +88,53 @@ PIPX_BIN_NAMES: dict[str, str] = {
     "vcdvcd": "vcdcat",
     "lascar": "lascarctl",
 }
+
+# apt package name -> primary executable name, for packages whose binary differs
+# from the Debian package name. Used by check_installed's binary fallback so an
+# apt tool already on PATH is not reported missing when .versions is absent.
+# NOT sync-pinned (unlike PIPX_BIN_NAMES, which validate_mcp_sync.py mirrors to
+# scripts/verify.sh) — keep this list local to the MCP layer.
+APT_BIN_NAMES: dict[str, str] = {
+    "libimage-exiftool-perl": "exiftool",
+    "netcat-openbsd": "nc",
+    "wireshark-common": "tshark",
+    "upx-ucl": "upx",
+    "dnsutils": "dig",
+}
+
+# "special"-method tool name -> primary executable name, for tools installed via
+# bespoke installers whose binary differs from the registry name. Lets
+# check_installed find system/Kali/manual installs that have no .versions row
+# (e.g. metasploit shipping msfconsole). steampipe's binary == its name, so it is
+# already covered by the plain PATH check and intentionally omitted here.
+SPECIAL_BIN_NAMES: dict[str, str] = {
+    "metasploit": "msfconsole",
+    "foundry": "forge",
+}
+
+# Registry tools installed ONLY when INCLUDE_C2=true (the redteam/full profiles, or
+# --include-c2). The installer gates these in modules/misc.sh; mirror that here so MCP
+# tool/profile output reflects the gating. Synced from bash by validate_mcp_sync.py:
+#   git    -> modules/misc.sh MISC_C2_GIT_NAMES
+#   binary -> lib/installers.sh BINARY_RELEASES_MISC_C2 (2nd |-field)
+#   docker -> empire (bcsecurity/empire), gated in install_module_misc
+C2_TOOLS: frozenset[str] = frozenset(
+    {
+        "SET",
+        "Zphisher",
+        "EvilGoPhish",
+        "SquarePhish",
+        "CredMaster",
+        "Modlishka",
+        "Caldera",
+        "Loki-C2",
+        "gophish",
+        "sliver-server",
+        "sliver-client",
+        "evilginx",
+        "empire",
+    }
+)
 
 # Module descriptions (from lib/common.sh:1212-1231).
 MODULE_DESCRIPTIONS: dict[str, str] = {
@@ -152,7 +207,7 @@ class ToolsDatabase:
             self._versions_ts = now
             return self._versions
         try:
-            with open(versions_path, "r", encoding="utf-8") as f:
+            with open(versions_path, "r", encoding="utf-8", errors="replace") as f:
                 for line in f:
                     line = line.strip()
                     if not line or line.startswith("#"):
@@ -164,8 +219,11 @@ class ToolsDatabase:
                             "version": parts[2],
                             "timestamp": parts[3],
                         }
-        except PermissionError:
-            pass  # Degrade gracefully — fall through to PATH/pipx/docker checks
+        except (OSError, ValueError):
+            # Degrade gracefully on unreadable/corrupt/non-UTF-8 .versions
+            # (PermissionError is an OSError; a torn/garbage read can raise
+            # ValueError) — reset and fall through to PATH/pipx/docker checks.
+            self._versions = {}
         self._versions_ts = now
         return self._versions
 
@@ -200,15 +258,20 @@ class ToolsDatabase:
                 "details": f"Found in PATH: {shutil.which(tool_name)}",
             }
 
-        # 3. Pipx binary name fallback
+        # 3. Binary name fallback (package name != executable name)
+        bin_name = None
         if tool["method"] == "pipx" and tool_name in PIPX_BIN_NAMES:
             bin_name = PIPX_BIN_NAMES[tool_name]
-            if shutil.which(bin_name):
-                return {
-                    "installed": True,
-                    "method": "pipx_binary",
-                    "details": f"Pipx binary '{bin_name}' found in PATH",
-                }
+        elif tool["method"] == "apt" and tool_name in APT_BIN_NAMES:
+            bin_name = APT_BIN_NAMES[tool_name]
+        elif tool["method"] == "special" and tool_name in SPECIAL_BIN_NAMES:
+            bin_name = SPECIAL_BIN_NAMES[tool_name]
+        if bin_name and shutil.which(bin_name):
+            return {
+                "installed": True,
+                "method": f"{tool['method']}_binary",
+                "details": f"Binary '{bin_name}' found in PATH",
+            }
 
         # 4. Git clone directory check (Termux: ~/tools, Linux: /opt)
         if tool["method"] == "git":

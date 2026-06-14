@@ -13,6 +13,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `get_profile_tools` | List every tool a profile installs, grouped by module with install status |
 | `suggest_for_ctf` | Tool suggestions for 13 CTF challenge categories with descriptions |
 | `suggest_for_bounty` | Tool suggestions for 6 bug bounty target types with methodology and common vulns |
+| `guided_assessment` | Companion-first solve assistant — classifies the target/finding, returns triage gates, recommends skills, auto-detects tools from all modules/profiles, then guides step-by-step; opt-in `autonomous` starts an auto-solver loop over the full MCP toolchain via run_tool/run_pipeline/run_script, including AI-created scoped helper scripts when tools/pipelines are not enough, under policy; authorization-gated |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
 | `list_profiles` | List all 14 installation profiles with tool counts and details |
@@ -110,7 +111,7 @@ docker build -t cybersec-toolkit .
 
 # Run MCP server inside container (stdio transport)
 docker run -i --rm --entrypoint bash cybersec-toolkit \
-  -c 'export PATH="$HOME/.local/bin:$PATH" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner'
+  -c 'cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner'
 ```
 
 Then point your `.mcp.json` or `claude_desktop_config.json` at the Docker command:
@@ -123,7 +124,7 @@ Then point your `.mcp.json` or `claude_desktop_config.json` at the Docker comman
       "args": [
         "run", "-i", "--rm", "--entrypoint", "bash", "cybersec-toolkit",
         "-c",
-        "export PATH=\"$HOME/.local/bin:$PATH\" && cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner"
+        "cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner"
       ]
     }
   }
@@ -250,6 +251,7 @@ Once connected via an MCP client:
 - **Profile contents**: `get_profile_tools("ctf")` — all 278 tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
 - **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning
+- **Guided assessment**: `guided_assessment("http://10.0.0.1", target_type="web_app")` — default `companion` classifies the target/finding, returns `classification`, `triage_gate`, `recommended_skills`, and `reporting_next_steps`, checks install status, selects tools from all modules/profiles, and recommends the next command; add `mode="autonomous", authorization_confirmed=true` only when you want the opt-in auto-solver loop over the full MCP toolchain, including AI-created scoped helper scripts when normal tools/pipelines are not enough — all under existing MCP policy
 - **CVE lookup**: `get_cve_info("log4shell")` — curated skills/tools/modules + live NVD/KEV/EPSS lookup commands (also accepts ids like `CVE-2021-44228`)
 - **What to install**: `recommend_install("I want to do CTF competitions")` — recommends ctf profile
 - **Just a few tools**: `recommend_install("I need nmap and sqlmap")` — recommends individual modules
@@ -265,9 +267,10 @@ Once connected via an MCP client:
 ```text
 mcp_server/
   __init__.py          # Package marker
-  server.py            # FastMCP server — 14 tool registrations + entry point
+  server.py            # FastMCP server — 15 tool registrations + entry point
   tools_db.py          # ToolsDatabase — loads tools_config.json, checks installs (TTL-cached)
   advisor_utils.py     # Shared alias/install-status helpers for advisor modules
+  guided_assessment.py # Companion-first tool-selection + autonomous MCP toolchain solver
   ctf_advisor.py       # CTF challenge-type → tool mapping with suggestions
   bounty_advisor.py    # Bug bounty target-type → tool mapping with methodology and common vulns
   cve_advisor.py       # CVE → curated skills/tools/modules + live NVD/KEV/EPSS lookup commands
@@ -282,6 +285,11 @@ mcp_server/
 manual_scripts/        # Persistent scripts — exploits, solvers, reusable tools
 ```
 
+`manual_scripts/` is for scripts the AI/client agent creates for the user when existing
+tools and pipelines are not enough. Companion mode proposes them before writing/running;
+autonomous mode may create, save, and run them as part of the explicit solver contract.
+Simple recon/HTTP commands such as `curl` should remain `run_tool` calls.
+
 ## Security
 
 The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safety measures:
@@ -291,6 +299,7 @@ The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safe
 - **Argument sanitization**: Shell injection patterns (`;`, `&`, `|`, `` ` ``, `$(`, `${`) are blocked. `$`, `>`, `<` alone are allowed — no shell is used, and tools need them for regex/awk/XML
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
 - **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `--includefile`, sed `-i` (in-place modification)
+- **Tool-aware parsing, not solver hardcoding**: The auto-solver chooses tools from the registry/advisors. The policy layer only knows enough CLI grammar to distinguish targets from headers, wordlists, output files, config files, and target-list flags, so legitimate commands stay usable without letting scope checks be bypassed
 - **Network policy**: Network tools can only target private/loopback IPs by default (including single-label hostnames like `google`). Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
 - **Script execution gate**: `run_script` is disabled by default. Set `CYBERSEC_MCP_ALLOW_SCRIPTS=1` to enable
 - **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing

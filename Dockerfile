@@ -23,9 +23,9 @@ RUN chmod +x install.sh scripts/*.sh
 
 # MCP server: install uv + resolve dependencies so `uv run` works offline.
 # uv is pulled from the official Astral image, pinned by SHA256 digest
-# (corresponds to uv v0.11.18). Replaces a curl-pipe install to satisfy
+# (corresponds to uv v0.11.21). Replaces a curl-pipe install to satisfy
 # Scorecard's PinnedDependencies check.
-COPY --from=ghcr.io/astral-sh/uv:0.11.18@sha256:78bc42400d77b0678ba95765305c826652ed5431f399257271dda681d0318f03 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.21@sha256:ff07b86af50d4d9391d9daf4ff89ce427bc544f9aae87057e69a1cc0aa369946 /uv /uvx /usr/local/bin/
 RUN cd mcp_server && uv sync
 
 # Give toolkit user ownership of the working directory.

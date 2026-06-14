@@ -249,6 +249,55 @@ check_build() {
 }
 check_builds() { for n in "$@"; do check_build "$n" || true; done; }
 
+# Cargo crate name → binary name mapping (only for crates where they differ).
+# Most cargo crates install a binary of the same name — these are the exceptions.
+declare -A _CARGO_BIN_NAMES=(
+    [yara-x-cli]="yr"
+)
+
+# check_cargo — verify a cargo crate by its installed binary name (handles the
+# crate-name ≠ binary-name exceptions above). Counts toward the totals like
+# check_cmd, but logs using the crate name so output stays recognizable.
+check_cargo() {
+    local crate="$1"
+    local _bin="${_CARGO_BIN_NAMES[$crate]:-$crate}"
+    _is_tracked "$crate" || return 0
+    TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+    if command_exists "$_bin"; then
+        TOTAL_FOUND=$((TOTAL_FOUND + 1))
+        if [[ "$SUMMARY_ONLY" == "false" ]]; then
+            if [[ "$_bin" != "$crate" ]]; then
+                log_success "$crate — installed ($_bin)"
+            else
+                log_success "$crate — installed"
+            fi
+        fi
+        return 0
+    else
+        TOTAL_MISSING=$((TOTAL_MISSING + 1))
+        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$crate — NOT installed"
+        return 1
+    fi
+}
+
+# check_module_cargo — verify every crate in a module's <PREFIX>_CARGO array.
+# Derives the array name dynamically so a module's cargo tools can never be
+# forgotten here (which is how BLOCKCHAIN_CARGO/aderyn previously went unchecked).
+# No-op if the module defines no cargo array.
+check_module_cargo() {
+    local _mod="$1"
+    local _arr_name
+    _arr_name="$(_module_prefix "$_mod")_CARGO"
+    declare -p "$_arr_name" &>/dev/null || return 0
+    local -n _cmc_arr="$_arr_name"
+    [[ ${#_cmc_arr[@]} -gt 0 ]] || return 0
+    log_info "$(_module_prefix "$_mod") (Cargo):"
+    local _crate
+    for _crate in "${_cmc_arr[@]}"; do
+        check_cargo "$_crate" || true
+    done
+}
+
 # Batch check helpers
 check_cmds()      { for t in "$@"; do check_cmd "$t" || true; done; }
 check_pipx_arr()  { for t in "$@"; do check_pipx "$t" || true; done; }
@@ -314,12 +363,19 @@ if should_verify "misc"; then
     check_git_repos "${MISC_GIT_NAMES[@]}"
     log_info "Misc (Special):"
     check_cmd "pspy" || true
-    check_cmd "gophish" || true
     check_cmd "trufflehog" || true
     check_cmd "gitleaks" || true
-    check_cmd "sliver-server" || true
-    check_cmd "sliver-client" || true
-    check_cmd "evilginx" || true
+    # C2 + phishing frameworks install only with INCLUDE_C2 (redteam/full profiles).
+    # Check them only when INCLUDE_C2=true to avoid false "missing" elsewhere; run
+    # `INCLUDE_C2=true scripts/verify.sh` to verify a red-team install.
+    if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+        log_info "Misc (C2/Phishing — INCLUDE_C2):"
+        check_git_repos "${MISC_C2_GIT_NAMES[@]}"
+        check_cmd "gophish" || true
+        check_cmd "sliver-server" || true
+        check_cmd "sliver-client" || true
+        check_cmd "evilginx" || true
+    fi
 fi
 
 if should_verify "networking"; then
@@ -336,8 +392,7 @@ if should_verify "networking"; then
     check_cmds "${NET_GO_BINS[@]}"
     log_info "Networking (Git):"
     check_git_repos "${NET_GIT_NAMES[@]}"
-    log_info "Networking (Cargo):"
-    check_cmds "${NET_CARGO[@]}"
+    check_module_cargo "networking"
     log_info "Networking (Binary):"
     check_cmd "ligolo-proxy" || true
     check_cmd "ligolo-agent" || true
@@ -372,8 +427,7 @@ if should_verify "web"; then
     check_pipx_arr "${WEB_PIPX[@]}"
     log_info "Web (Go):"
     check_cmds "${WEB_GO_BINS[@]}"
-    log_info "Web (Cargo):"
-    check_cmds "${WEB_CARGO[@]}"
+    check_module_cargo "web"
     log_info "Web (Gems):"
     check_cmds "${WEB_GEMS[@]}"
     log_info "Web (Git):"
@@ -407,8 +461,7 @@ if should_verify "pwn"; then
     check_cmds "${PWN_GO_BINS[@]}"
     log_info "Pwn (Gems):"
     check_cmds "${PWN_GEMS[@]}"
-    log_info "Pwn (Cargo):"
-    check_cmds "${PWN_CARGO[@]}"
+    check_module_cargo "pwn"
     log_info "Pwn (Git):"
     check_git_repos "${PWN_GIT_NAMES[@]}"
     log_info "Pwn (Build from source):"
@@ -504,6 +557,9 @@ if should_verify "cracking"; then
     check_git_repos "${CRACKING_GIT_NAMES[@]}"
     log_info "Cracking (Build from source):"
     check_builds "${CRACKING_BUILD_NAMES[@]}"
+    # patator is installed via a custom pipx block outside CRACKING_PIPX (modules/cracking.sh)
+    log_info "Cracking (Special):"
+    check_cmd "patator" || true
 fi
 
 if should_verify "stego"; then
@@ -570,9 +626,8 @@ if should_verify "blueteam"; then
     fi
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"
-    log_info "Blue Team (Cargo):"
-    # yara-x-cli installs binary as 'yr'
-    check_cmd "yr" || true
+    # BLUETEAM_CARGO (yara-x-cli installs binary as 'yr') — see _CARGO_BIN_NAMES
+    check_module_cargo "blueteam"
     log_info "Blue Team (Git):"
     check_git_repos "${BLUETEAM_GIT_NAMES[@]}"
     log_info "Blue Team (Binary):"
@@ -590,6 +645,7 @@ if should_verify "blockchain"; then
     check_pipx_arr "${BLOCKCHAIN_PIPX[@]}"
     log_info "Blockchain (Git):"
     check_git_repos "${BLOCKCHAIN_GIT_NAMES[@]}"
+    check_module_cargo "blockchain"
     log_info "Blockchain (Special):"
     check_cmd "foundryup" || true
     check_cmd "forge" || true
@@ -605,6 +661,10 @@ if should_verify "blockchain"; then
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
         [[ "$SUMMARY_ONLY" == "false" ]] && log_error "chisel (foundry) — NOT found at $HOME/.foundry/bin/chisel"
     fi
+    log_info "Blockchain (Binary):"
+    check_cmd "crytic-medusa" || true
+    check_cmd "heimdall" || true
+    check_cmd "ityfuzz" || true
 fi
 
 if should_verify "llm"; then

@@ -34,40 +34,43 @@ MISC_GIT=(
     "mimipenguin=https://github.com/huntergregal/mimipenguin.git"
     "PyExfil=https://github.com/ytisf/PyExfil.git"
     "usbkill=https://github.com/hephaest0s/usbkill.git"
-    # Social engineering
+    # General
+    "CyberChef=https://github.com/gchq/CyberChef.git"
+    "RedEye=https://github.com/cisagov/RedEye.git"
+)
+
+# C2 + credential-phishing/social-engineering frameworks — gated behind INCLUDE_C2.
+# Only the redteam/full profiles set INCLUDE_C2=true; every other profile leaves it
+# false, so these offensive deployment frameworks are NOT cloned unless explicitly
+# opted in. Loki-C2 note: teamserver-less (Azure Blob channel), CLONED AS A RESOURCE
+# ONLY (setup_git_repo installs requirements.txt for Python repos but does not build
+# Node projects); manual setup per upstream README. BSL-1.1 (non-commercial; →
+# Apache-2.0 in 2030). Authorized red-team use only.
+MISC_C2_GIT=(
+    # Social engineering / phishing
     "SET=https://github.com/trustedsec/social-engineer-toolkit.git"
     "Zphisher=https://github.com/htr-tech/zphisher.git"
     "EvilGoPhish=https://github.com/fin3ss3g0d/evilgophish.git"
     "SquarePhish=https://github.com/secureworks/squarephish.git"
     "CredMaster=https://github.com/knavesec/CredMaster.git"
     "Modlishka=https://github.com/drk1wi/Modlishka.git"
-    # General
-    "CyberChef=https://github.com/gchq/CyberChef.git"
+    # C2 / adversary emulation
     "Caldera=https://github.com/mitre/caldera.git"
-    "RedEye=https://github.com/cisagov/RedEye.git"
-    # C2 — teamserver-less (Azure Blob channel). CLONED AS A RESOURCE ONLY: setup_git_repo
-    # auto-installs requirements.txt for Python repos but does NOT build Node projects, so
-    # Loki is not runnable post-clone. Manual setup per upstream README: install Node.js +
-    # javascript-obfuscator, run `node create_agent_payload.js`, and configure an Azure
-    # Storage account for the C2 channel. BSL-1.1 (non-commercial; → Apache-2.0 in 2030).
-    # Authorized red-team use only.
     "Loki-C2=https://github.com/boku7/Loki.git"
 )
 
-# C2 Frameworks (Docker ONLY — these require complex multi-service setup)
-# C2 frameworks are not runnable from a simple git clone; they need databases,
-# listeners, agents, and service orchestration.  Docker is the only supported
-# install method to ensure they work out-of-the-box.
-
-# All git repo names for verify/remove
+# Git repo names for verify/remove (general). remove.sh removes both sets; verify.sh
+# checks MISC_C2_GIT_NAMES only when INCLUDE_C2=true.
 MISC_GIT_NAMES=(
     SecLists PayloadsAllTheThings InternalAllTheThings
     PEASS-ng linux-smart-enumeration SUDO_KILLER
     LaZagne mimipenguin
     PyExfil usbkill
-    SET Zphisher EvilGoPhish SquarePhish CredMaster
-    Modlishka
-    CyberChef Caldera RedEye Loki-C2
+    CyberChef RedEye
+)
+MISC_C2_GIT_NAMES=(
+    SET Zphisher EvilGoPhish SquarePhish CredMaster Modlishka
+    Caldera Loki-C2
 )
 MISC_GO_BINS=(gf anew qsreplace notify pdtm)
 
@@ -85,14 +88,22 @@ install_module_misc() {
     # Go tools
     install_go_batch "Misc - Go" "${MISC_GO[@]}"
 
-    # Git repos (resources, post-exploitation, social engineering, CTF)
+    # Git repos (resources, post-exploitation, CTF)
     install_git_batch "Misc - Git" "${MISC_GIT[@]}"
 
     # Binary releases (skipped on Termux — Linux/glibc binaries)
     install_binary_releases "${BINARY_RELEASES_MISC[@]}"
 
-    # Docker: C2 frameworks and OSINT (only if enabled — no git clone fallback)
-    # C2 frameworks require Docker for full functionality (databases, listeners, etc.)
+    # C2 + credential-phishing/social-engineering frameworks — only with INCLUDE_C2.
+    if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+        log_info "Installing C2 / phishing frameworks (INCLUDE_C2 enabled)..."
+        [[ ${#MISC_C2_GIT[@]} -gt 0 ]] && install_git_batch "Misc - C2/Phishing (Git)" "${MISC_C2_GIT[@]}"
+        [[ ${#BINARY_RELEASES_MISC_C2[@]} -gt 0 ]] && install_binary_releases "${BINARY_RELEASES_MISC_C2[@]}"
+    else
+        log_info "Skipping C2 / phishing frameworks (INCLUDE_C2 disabled — use --include-c2 or the redteam/full profile)"
+    fi
+
+    # Docker: OSINT + C2 frameworks that need multi-service orchestration.
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
         docker_pull "spiderfoot/spiderfoot" "SpiderFoot" || true
         if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
@@ -101,7 +112,7 @@ install_module_misc() {
         fi
     else
         if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
-            log_warn "C2 frameworks require --enable-docker. Skipping."
+            log_warn "Docker-based C2 frameworks (Empire) require --enable-docker. Skipping."
         fi
     fi
 }

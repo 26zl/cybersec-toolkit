@@ -1,5 +1,7 @@
 ---
 name: fp-check
+source: trailofbits/skills
+license: CC-BY-SA-4.0
 description: "Systematically verifies suspected security bugs to eliminate false positives. Produces TRUE POSITIVE or FALSE POSITIVE verdicts with documented evidence for each bug."
 allowed-tools: Read Grep Glob LSP Bash Task Write Edit AskUserQuestion TaskCreate TaskUpdate TaskList TaskGet
 ---

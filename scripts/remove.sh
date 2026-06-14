@@ -153,6 +153,7 @@ for _mod in "${REMOVE_MODULES[@]}"; do
     _append_module_array PIPX_TO_REMOVE      "${_pfx}_PIPX"
     _append_module_array GO_BINS_TO_REMOVE   "${_pfx}_GO_BINS"
     _append_module_array GIT_NAMES_TO_REMOVE "${_pfx}_GIT_NAMES"
+    _append_module_array GIT_NAMES_TO_REMOVE "${_pfx}_C2_GIT_NAMES"
     _append_module_array GIT_NAMES_TO_REMOVE "${_pfx}_BUILD_NAMES"
     _append_module_array GEMS_TO_REMOVE      "${_pfx}_GEMS"
     _append_module_array CARGO_TO_REMOVE     "${_pfx}_CARGO"
@@ -332,18 +333,10 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
     log_info "Git repos: $git_removed removed, $git_skipped already removed"
 fi
 
-# 6b) Build-from-source binaries — installed to /usr/local/bin via make install
-for _bmod in "${REMOVE_MODULES[@]}"; do
-    _bpfx=$(_module_prefix "$_bmod")
-    _bnames_var="${_bpfx}_BUILD_NAMES"
-    declare -p "$_bnames_var" &>/dev/null || continue
-    declare -n _bnames="$_bnames_var"
-    for _bname in "${_bnames[@]}"; do
-        [[ -f "/usr/local/bin/$_bname" ]] && rm -f "/usr/local/bin/$_bname" && \
-            log_success "Removed build-from-source binary: /usr/local/bin/$_bname"
-    done
-done
-echo ""
+# 6b) Build-from-source tools (*_BUILD_NAMES) are NOT installed to /usr/local/bin —
+# build_from_source() builds in place under $GITHUB_TOOL_DIR/<name> and leaves the
+# binary there. Their directories are removed above via GIT_NAMES_TO_REMOVE, which
+# has *_BUILD_NAMES appended to it (see lines 155-156). No extra cleanup needed here.
 
 # 7) Binary releases
 log_info "Removing binary releases from $PIPX_BIN_DIR..."
@@ -358,9 +351,10 @@ _extract_binary_names() {
 }
 BINARY_TOOLS=()
 for _br_mod in "${REMOVE_MODULES[@]}"; do
-    _br_arr="BINARY_RELEASES_${_br_mod^^}"
-    declare -p "$_br_arr" &>/dev/null || continue
-    _extract_binary_names "$_br_arr"
+    for _br_arr in "BINARY_RELEASES_${_br_mod^^}" "BINARY_RELEASES_${_br_mod^^}_C2"; do
+        declare -p "$_br_arr" &>/dev/null || continue
+        _extract_binary_names "$_br_arr"
+    done
 done
 bin_removed=0
 bin_skipped=0
@@ -381,15 +375,16 @@ for jar_bin in ysoserial jd-gui; do
 done
 # Clean up custom destination directories from BINARY_RELEASES_* entries
 for _br_mod in "${REMOVE_MODULES[@]}"; do
-    _br_arr="BINARY_RELEASES_${_br_mod^^}"
-    declare -p "$_br_arr" &>/dev/null || continue
-    declare -n _br_ref="$_br_arr"
-    for _br_entry in "${_br_ref[@]}"; do
-        IFS='|' read -r _br_repo _br_binary _br_pattern _br_dest <<< "$_br_entry"
-        if [[ -n "${_br_dest:-}" ]] && [[ "$_br_dest" != "$PIPX_BIN_DIR" ]] && [[ -d "$_br_dest" ]]; then
-            rm -rf "$_br_dest" 2>/dev/null
-            log_success "Removed: $_br_dest"
-        fi
+    for _br_arr in "BINARY_RELEASES_${_br_mod^^}" "BINARY_RELEASES_${_br_mod^^}_C2"; do
+        declare -p "$_br_arr" &>/dev/null || continue
+        declare -n _br_ref="$_br_arr"
+        for _br_entry in "${_br_ref[@]}"; do
+            IFS='|' read -r _br_repo _br_binary _br_pattern _br_dest <<< "$_br_entry"
+            if [[ -n "${_br_dest:-}" ]] && [[ "$_br_dest" != "$PIPX_BIN_DIR" ]] && [[ -d "$_br_dest" ]]; then
+                rm -rf "$_br_dest" 2>/dev/null
+                log_success "Removed: $_br_dest"
+            fi
+        done
     done
 done
 echo ""
@@ -440,16 +435,54 @@ if should_remove "cloud" && command_exists steampipe; then
     log_success "Steampipe removed"
 fi
 
+# NetExec (pipx from git — installed outside ENTERPRISE_PIPX, modules/enterprise.sh)
+if should_remove "enterprise" && command_exists pipx; then
+    if pipx list --short 2>/dev/null | grep -qi '^netexec '; then
+        log_info "Removing NetExec (pipx)..."
+        if pipx_remove netexec >> "$LOG_FILE" 2>&1; then
+            log_success "Removed pipx: netexec"
+        else
+            log_warn "Failed to remove pipx: netexec"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
+    fi
+fi
+
+# patator (pipx --no-deps — installed outside CRACKING_PIPX, modules/cracking.sh)
+if should_remove "cracking" && command_exists pipx; then
+    if pipx list --short 2>/dev/null | grep -qi '^patator '; then
+        log_info "Removing patator (pipx)..."
+        if pipx_remove patator >> "$LOG_FILE" 2>&1; then
+            log_success "Removed pipx: patator"
+        else
+            log_warn "Failed to remove pipx: patator"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
+    fi
+fi
+
 # uv + theHarvester wrapper (installed by recon module)
 if should_remove "recon"; then
     # theHarvester wrapper script (not cleaned by git repo removal)
     [[ -f "$PIPX_BIN_DIR/theHarvester" ]] && rm -f "$PIPX_BIN_DIR/theHarvester" 2>/dev/null && \
         log_success "Removed theHarvester wrapper"
-    # uv (Python package manager — installed for theHarvester)
-    if command_exists uv; then
-        rm -f "$HOME/.local/bin/uv" "$HOME/.local/bin/uvx" 2>/dev/null
-        [[ -d "$HOME/.local/share/uv" ]] && rm -rf "$HOME/.local/share/uv"
-        log_success "Removed uv"
+    # uv (Python package manager — installed for theHarvester). uv is also the
+    # shared runtime for the MCP server (.mcp.json launches `uv run`), so only
+    # remove it with --remove-deps to avoid silently breaking the MCP companion.
+    # Use _builder_home() (not bare $HOME, which is /root under sudo) so the real
+    # user's uv install is the one removed.
+    if [[ "$REMOVE_DEPS" == "true" ]]; then
+        _uv_home="$(_builder_home)"
+        _uv_removed=false
+        for _uv_bin in "$_uv_home/.local/bin/uv" "$_uv_home/.local/bin/uvx"; do
+            if [[ -e "$_uv_bin" || -L "$_uv_bin" ]] && rm -f "$_uv_bin" 2>/dev/null; then
+                _uv_removed=true
+            fi
+        done
+        if [[ -d "$_uv_home/.local/share/uv" ]] && rm -rf "$_uv_home/.local/share/uv" 2>/dev/null; then
+            _uv_removed=true
+        fi
+        [[ "$_uv_removed" == "true" ]] && log_success "Removed uv"
     fi
 fi
 

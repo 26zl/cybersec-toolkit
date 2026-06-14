@@ -166,6 +166,15 @@ _FALLBACK_SKILLS = [
     "exploiting-vulnerabilities-with-metasploit-framework",
 ]
 
+# Chain "partner" CVE ids -> the primary curated id they are documented under, so
+# querying a well-known partner CVE of a chain returns the curated mapping rather
+# than the generic fallback.
+ID_ALIASES: dict[str, str] = {
+    "CVE-2021-42287": "CVE-2021-42278",  # noPac chain
+    "CVE-2021-34523": "CVE-2021-34473",  # ProxyShell chain
+    "CVE-2021-31207": "CVE-2021-34473",  # ProxyShell chain
+}
+
 
 def resolve_cve(query: str) -> str | None:
     """Resolve a query to a canonical CVE id, or None if it isn't a CVE."""
@@ -174,7 +183,8 @@ def resolve_cve(query: str) -> str | None:
     if alias:
         return alias
     if CVE_ID_RE.match(normalized):
-        return normalized.upper()
+        canonical = normalized.upper()
+        return ID_ALIASES.get(canonical, canonical)
     return None
 
 

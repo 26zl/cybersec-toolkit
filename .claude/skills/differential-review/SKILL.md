@@ -1,5 +1,7 @@
 ---
 name: differential-review
+source: trailofbits/skills
+license: CC-BY-SA-4.0
 description: >
   Performs security-focused differential review of code changes (PRs, commits, diffs).
   Adapts analysis depth to codebase size, uses git history for context, calculates

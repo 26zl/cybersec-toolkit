@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 from mcp_server.profiles import (
     PROFILES,
+    _count_module_tools,
+    _count_profile_tools,
     _score_profiles,
     list_profiles,
     recommend_install,
 )
-from mcp_server.tools_db import ToolsDatabase
+from mcp_server.tools_db import C2_TOOLS, ToolsDatabase
 
 
 # _score_profiles
@@ -111,3 +115,36 @@ class TestListProfiles:
         for profile in result["profiles"]:
             # All profiles include "misc" module which has tools in our sample
             assert profile["tool_count"] >= 0
+
+
+# C2 gating in tool counts (D7)
+class TestC2ToolCounting:
+    def _db_with_c2(self, tmp_path: Path) -> ToolsDatabase:
+        """Build a ToolsDatabase whose misc module contains one C2 tool + one normal tool."""
+        c2_name = next(iter(C2_TOOLS))
+        tools = [
+            {"name": c2_name, "method": "git", "module": "misc", "url": ""},
+            {"name": "some-misc-tool", "method": "apt", "module": "misc", "url": ""},
+        ]
+        config = tmp_path / "tools_config.json"
+        config.write_text(json.dumps(tools), encoding="utf-8")
+        with patch("shutil.which", return_value=None):
+            return ToolsDatabase(project_root=tmp_path)
+
+    def test_count_excludes_c2_when_disabled(self, tmp_path: Path) -> None:
+        db = self._db_with_c2(tmp_path)
+        # include_c2=True counts both; include_c2=False drops the C2 tool.
+        assert _count_module_tools(["misc"], db, include_c2=True) == 2
+        assert _count_module_tools(["misc"], db, include_c2=False) == 1
+
+    def test_profile_count_respects_include_c2_flag(self, tmp_path: Path) -> None:
+        db = self._db_with_c2(tmp_path)
+        # "ctf" profile has include_c2=False and includes the misc module, so the
+        # C2 tool must not be counted; "full" has include_c2=True so it is.
+        assert PROFILES["ctf"]["include_c2"] is False
+        assert PROFILES["full"]["include_c2"] is True
+        ctf_count = _count_profile_tools("ctf", db)
+        full_count = _count_profile_tools("full", db)
+        # The single C2 tool is excluded from ctf but present in full's misc count.
+        assert ctf_count == 1
+        assert full_count == 2

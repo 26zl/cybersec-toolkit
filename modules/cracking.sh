@@ -26,6 +26,13 @@ CRACKING_GIT=(
 
 CRACKING_GIT_NAMES=(DefaultCreds-cheat-sheet pipal Hob0Rules Pantagrule OneRuleToRuleThemStill username-anarchy gpp-decrypt)
 CRACKING_BUILD_NAMES=(duplicut)
+# Source of truth for build-from-source url + command (install + update).
+declare -A CRACKING_BUILD_URLS=(
+    [duplicut]="https://github.com/nil0x42/duplicut.git"
+)
+declare -A CRACKING_BUILD_CMDS=(
+    [duplicut]="make"
+)
 
 install_module_cracking() {
     install_apt_batch "Cracking - Packages" "${CRACKING_PACKAGES[@]}"
@@ -43,6 +50,7 @@ install_module_cracking() {
             # Optional deps that may fail without system headers — don't count as errors
             pipx inject patator mysqlclient >> "$LOG_FILE" 2>&1 || log_debug "patator: mysqlclient skipped (needs libmysqlclient-dev)"
             log_success "patator installed"
+            track_version "patator" "pipx" "latest"
         else
             log_error "Failed pipx: patator"
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
@@ -51,6 +59,6 @@ install_module_cracking() {
 
     install_git_batch "Cracking - Git" "${CRACKING_GIT[@]}"
 
-    # Build from source
-    build_from_source "duplicut" "https://github.com/nil0x42/duplicut.git" "make" || true
+    # Build from source (url + command from CRACKING_BUILD_URLS / CRACKING_BUILD_CMDS)
+    build_module_from_source CRACKING
 }

@@ -1,6 +1,6 @@
 ---
 name: validate-all
-description: Run the full local validation suite for this installer before pushing or opening a PR. Runs shellcheck, bash syntax checks, tools_config validators, MCP sync validator, distro-compat validator, bats tests, ruff lint, and pytest. Triggers on phrases like "validate", "check before push", "run all checks", "make sure everything passes", "pre-commit check".
+description: Run the full local validation suite for this installer before pushing or opening a PR. Runs shellcheck, bash syntax checks, tools_config validators, MCP sync validator, distro-compat validator, Claude skills validator, bats tests, ruff lint, and pytest. Triggers on phrases like "validate", "check before push", "run all checks", "make sure everything passes", "pre-commit check".
 ---
 
 # Run the full validation suite
@@ -37,9 +37,19 @@ python3 scripts/validate_mcp_sync.py
 
 # 6. Distro compatibility TSV
 python3 scripts/validate_distro_compat.py
+
+# 7. Claude Code skill metadata + index consistency (SKILLS.md counts, curation freshness)
+python3 scripts/validate_claude_skills.py
 ```
 
-All three must report **0 errors** (validate_tools_config.py also requires 0 warnings).
+All four must report **0 errors** (validate_tools_config.py also requires 0 warnings).
+
+> If you added, removed, or renamed a skill dir under `.claude/skills/`, first update
+> the `SKILLS.md` counts and regenerate the curation index, otherwise step 7 fails:
+>
+> ```bash
+> python3 scripts/curate_claude_skills.py --write
+> ```
 
 ## Python (MCP server) side
 
@@ -59,7 +69,7 @@ npx markdownlint-cli2 "**/*.md" "#node_modules" "#tests/bats"
 If only working on writeups:
 
 ```bash
-npx markdownlint-cli2 "workflows/**/*.md"
+npx markdownlint-cli2 "writeups/**/*.md"
 ```
 
 ## Profiles

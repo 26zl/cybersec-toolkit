@@ -1,5 +1,7 @@
 ---
 name: codeql
+source: trailofbits/skills
+license: CC-BY-SA-4.0
 description: >-
   Scans a codebase for security vulnerabilities using CodeQL's interprocedural data flow and
   taint tracking analysis. Triggers on "run codeql", "codeql scan", "codeql analysis", "build

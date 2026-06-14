@@ -29,7 +29,22 @@ UNSUPPORTED_HOST_OS="${UNSUPPORTED_HOST_OS:-}"
 INSTALLER_VERSION=""
 if [[ -f "${SCRIPT_DIR:-.}/VERSION" ]]; then
     INSTALLER_VERSION=$(< "${SCRIPT_DIR:-.}/VERSION")
-    INSTALLER_VERSION="${INSTALLER_VERSION%%[[:space:]]}"  # strip trailing whitespace/newline
+    # Strip ALL trailing whitespace/newlines (extglob +(...) for multi-char match).
+    # %%[[:space:]] alone removes at most one char; restore prior extglob state
+    # without eval (the security workflow forbids eval entirely).
+    if shopt -q extglob; then
+        _ev_extglob_was_on=true
+    else
+        _ev_extglob_was_on=false
+    fi
+    shopt -s extglob
+    INSTALLER_VERSION="${INSTALLER_VERSION%%+([[:space:]])}"
+    if [[ "$_ev_extglob_was_on" == "true" ]]; then
+        shopt -s extglob
+    else
+        shopt -u extglob
+    fi
+    unset _ev_extglob_was_on
 fi
 # Validate PARALLEL_JOBS: must be a positive integer, clamped to 1-16
 if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
@@ -606,9 +621,13 @@ pkg_install() {
     case "$PKG_MANAGER" in
         apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
         dnf)
-            # Handle @group entries separately, then install remaining packages
+            # Handle @group entries separately, then install remaining packages.
+            # OR each sub-install's exit code into a running rc so a failed group
+            # is not masked by a later successful plain-package install (the case
+            # branch would otherwise return only the last command's status).
             local -a _dnf_groups=() _dnf_pkgs=()
             local _arg
+            local _dnf_rc=0
             for _arg in "$@"; do
                 if [[ "$_arg" == @* ]]; then
                     _dnf_groups+=("${_arg#@}")
@@ -618,12 +637,13 @@ pkg_install() {
             done
             if [[ ${#_dnf_groups[@]} -gt 0 ]]; then
                 for _arg in "${_dnf_groups[@]}"; do
-                    maybe_sudo dnf group install --setopt=max_parallel_downloads=10 -y -q "$_arg"
+                    maybe_sudo dnf group install --setopt=max_parallel_downloads=10 -y -q "$_arg" || _dnf_rc=$?
                 done
             fi
             if [[ ${#_dnf_pkgs[@]} -gt 0 ]]; then
-                maybe_sudo dnf install --setopt=max_parallel_downloads=10 -y -q "${_dnf_pkgs[@]}"
+                maybe_sudo dnf install --setopt=max_parallel_downloads=10 -y -q "${_dnf_pkgs[@]}" || _dnf_rc=$?
             fi
+            return $_dnf_rc
             ;;
         pacman)  maybe_sudo pacman -S --noconfirm --needed "$@" ;;
         zypper)  maybe_sudo zypper --non-interactive install "$@" ;;

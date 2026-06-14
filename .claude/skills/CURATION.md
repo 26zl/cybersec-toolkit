@@ -14,7 +14,7 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 
 | Tier | Skills |
 | --- | ---: |
-| T0-router-and-project | 12 |
+| T0-router-and-project | 14 |
 | T1-core | 83 |
 | T1-coverage-anchor | 7 |
 | T2-operational | 34 |
@@ -40,9 +40,9 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | mobile_security | 13 |
 | network_wireless | 47 |
 | ot_ics_security | 15 |
-| project_tooling | 9 |
+| project_tooling | 10 |
 | redteam_pentest | 90 |
-| security_coordination | 3 |
+| security_coordination | 4 |
 | supply_chain_prodsec | 20 |
 | telecom_mainframe_sap | 3 |
 
@@ -53,9 +53,11 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | 100 | `ai-llm-security-review` | ai_llm_security | T1-coverage-anchor |
 | 100 | `grc-compliance-privacy-program` | grc_privacy | T1-coverage-anchor |
 | 100 | `iot-embedded-hardware-security-assessment` | iot_embedded_hardware | T1-coverage-anchor |
+| 100 | `guided-assessment` | project_tooling | T0-router-and-project |
 | 100 | `skill-dependency-audit` | project_tooling | T0-router-and-project |
 | 100 | `writeup-template` | project_tooling | T0-router-and-project |
 | 100 | `authorization-gate` | security_coordination | T0-router-and-project |
+| 100 | `evidence-hygiene` | security_coordination | T0-router-and-project |
 | 100 | `finding-triage` | security_coordination | T0-router-and-project |
 | 100 | `security-comms` | security_coordination | T0-router-and-project |
 | 100 | `supply-chain-prodsec-hardening` | supply_chain_prodsec | T1-coverage-anchor |
@@ -78,8 +80,6 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | 97 | `karpathy-guidelines` | agent_workflow | T1-core |
 | 96 | `differential-review` | code_audit | T1-core |
 | 96 | `zeroize-audit` | code_audit | T1-core |
-| 96 | `validate-all` | project_tooling | T0-router-and-project |
-| 93 | `offensive-ai-security` | ai_llm_security | T1-core |
 
 ## Domain Anchors
 
@@ -325,6 +325,7 @@ Top skills per domain. Use these as the first candidates before searching the lo
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
+| 100 | `guided-assessment` | T0-router-and-project | sensitive-offensive |
 | 100 | `skill-dependency-audit` | T0-router-and-project | normal |
 | 100 | `writeup-template` | T0-router-and-project | normal |
 | 99 | `add-tool` | T0-router-and-project | normal |
@@ -355,6 +356,7 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 100 | `authorization-gate` | T0-router-and-project | sensitive-offensive |
+| 100 | `evidence-hygiene` | T0-router-and-project | sensitive-offensive |
 | 100 | `finding-triage` | T0-router-and-project | normal |
 | 100 | `security-comms` | T0-router-and-project | advisory-verify-current-sources |
 

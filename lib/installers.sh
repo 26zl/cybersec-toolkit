@@ -669,19 +669,28 @@ setup_git_repo() {
     [[ -f "$PIPX_BIN_DIR/$name_lower" ]] && return 0
 
     # --- 1. Python project with requirements.txt ---
-    # NOTE: Only requirements.txt is installed — setup.py is NOT executed.
-    # This avoids running arbitrary code from cloned repos as root.
+    # The venv and ALL pip operations run as $SUDO_USER via _as_builder (not root).
+    # setup.py is not invoked directly, but `pip install -r requirements.txt` can still
+    # build sdists (running their setup.py/PEP-517 backend) — running as the unprivileged
+    # builder limits the blast radius of a malicious/compromised cloned-repo dependency,
+    # and keeps the venv owned by $SUDO_USER (so later privilege-dropped git pulls work).
+    # The final symlink into $PIPX_BIN_DIR stays as root (system path), matching how
+    # go/cargo/gem stage user-built binaries then symlink as root.
     if [[ -f "$dest/requirements.txt" ]]; then
+        local _dest_esc; _dest_esc="$(_escape_single_quoted "$dest")"
         if [[ ! -d "$dest/venv" ]]; then
-            python3 -m venv "$dest/venv" 2>>"$LOG_FILE" || return 0
+            _as_builder "python3 -m venv '$_dest_esc/venv'" 2>>"$LOG_FILE" || return 0
         fi
-        "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
-        # Replace abandoned pycrypto with drop-in pycryptodome (Python 3.12+ compat)
-        if grep -qi 'pycrypto' "$dest/requirements.txt" 2>/dev/null; then
-            sed 's/^pycrypto.*/pycryptodome/i' "$dest/requirements.txt" > "$dest/requirements.txt.tmp" \
-                && mv "$dest/requirements.txt.tmp" "$dest/requirements.txt"
+        _as_builder "'$_dest_esc/venv/bin/pip' install -q --upgrade pip" >> "$LOG_FILE" 2>&1 || true
+        # Replace abandoned pycrypto with drop-in pycryptodome (Python 3.12+ compat).
+        # Anchor the match to the bare 'pycrypto' package only — it must be followed
+        # by a version specifier ([<>=!~ ]) or end-of-line, so 'pycryptodome' and
+        # 'pycryptodomex' (where 'pycrypto' is followed by 'd') are left untouched.
+        if grep -qiE '^pycrypto([<>=!~ ]|$)' "$dest/requirements.txt" 2>/dev/null; then
+            _as_builder "sed -E 's/^pycrypto([<>=!~ ].*|$)/pycryptodome/I' '$_dest_esc/requirements.txt' > '$_dest_esc/requirements.txt.tmp' \
+                && mv '$_dest_esc/requirements.txt.tmp' '$_dest_esc/requirements.txt'" || true
         fi
-        if ! "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1; then
+        if ! _as_builder "'$_dest_esc/venv/bin/pip' install -q -r '$_dest_esc/requirements.txt'" >> "$LOG_FILE" 2>&1; then
             # Some packages fail to build against the latest Python (e.g. lxml on 3.13).
             # Try an older Python if available on the system.
             local _fallback_ok=false
@@ -689,9 +698,9 @@ setup_git_repo() {
                 command -v "$_pyver" &>/dev/null || continue
                 log_info "Retrying $name with $_pyver (build failed on $(python3 --version 2>&1))..."
                 rm -rf "$dest/venv"
-                if "$_pyver" -m venv "$dest/venv" 2>>"$LOG_FILE"; then
-                    "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
-                    if "$dest/venv/bin/pip" install -q -r "$dest/requirements.txt" >> "$LOG_FILE" 2>&1; then
+                if _as_builder "$_pyver -m venv '$_dest_esc/venv'" 2>>"$LOG_FILE"; then
+                    _as_builder "'$_dest_esc/venv/bin/pip' install -q --upgrade pip" >> "$LOG_FILE" 2>&1 || true
+                    if _as_builder "'$_dest_esc/venv/bin/pip' install -q -r '$_dest_esc/requirements.txt'" >> "$LOG_FILE" 2>&1; then
                         _fallback_ok=true
                     fi
                 fi
@@ -702,10 +711,10 @@ setup_git_repo() {
             if [[ "$_fallback_ok" != "true" ]] && grep -qE '^[^#].*==' "$dest/requirements.txt" 2>/dev/null; then
                 log_info "Retrying $name with relaxed version pins (== → >=)..."
                 rm -rf "$dest/venv"
-                if python3 -m venv "$dest/venv" 2>>"$LOG_FILE"; then
-                    "$dest/venv/bin/pip" install -q --upgrade pip >> "$LOG_FILE" 2>&1 || true
-                    sed 's/==/>=/' "$dest/requirements.txt" > "$dest/requirements.relaxed.txt"
-                    if "$dest/venv/bin/pip" install -q -r "$dest/requirements.relaxed.txt" >> "$LOG_FILE" 2>&1; then
+                if _as_builder "python3 -m venv '$_dest_esc/venv'" 2>>"$LOG_FILE"; then
+                    _as_builder "'$_dest_esc/venv/bin/pip' install -q --upgrade pip" >> "$LOG_FILE" 2>&1 || true
+                    _as_builder "sed 's/==/>=/' '$_dest_esc/requirements.txt' > '$_dest_esc/requirements.relaxed.txt'" || true
+                    if _as_builder "'$_dest_esc/venv/bin/pip' install -q -r '$_dest_esc/requirements.relaxed.txt'" >> "$LOG_FILE" 2>&1; then
                         _fallback_ok=true
                         log_debug "Relaxed-pins install succeeded for $name"
                     fi
@@ -718,7 +727,7 @@ setup_git_repo() {
             fi
         fi
 
-        # Symlink venv entry points to PATH
+        # Symlink venv entry points to PATH (system bin — runs as root, the correct boundary)
         if [[ -d "$dest/venv/bin" ]]; then
             for candidate in "$dest/venv/bin/$name" "$dest/venv/bin/$name_lower" "$dest/venv/bin/$name_under"; do
                 if [[ -f "$candidate" ]] && [[ -x "$candidate" ]]; then
@@ -1521,9 +1530,11 @@ build_from_source() {
         return 1
     fi
     # Run build in a subshell to avoid changing the caller's working directory.
-    # Uses _as_builder for privilege dropping (build as user, not root).
-    local _build_cmd_escaped; _build_cmd_escaped="$(_escape_single_quoted "$build_cmd")"
-    if (cd "$dest" && _as_builder "$_build_cmd_escaped") >> "$LOG_FILE" 2>&1; then
+    # Uses _as_builder for privilege dropping (build as user, not root). build_cmd is
+    # a trusted shell command (from the module *_BUILD_CMDS maps) passed verbatim to
+    # `bash -c` — do NOT single-quote-escape it, that would corrupt its own quotes
+    # (e.g. the yafu/pemcrack `sed '...'` patches).
+    if (cd "$dest" && _as_builder "$build_cmd") >> "$LOG_FILE" 2>&1; then
         _stop_spinner
         log_success "Built: $name"
         track_version "$name" "source" "HEAD"
@@ -1537,14 +1548,34 @@ build_from_source() {
     fi
 }
 
-# Binary release registry (single source of truth) 
+# Build every tool in <PREFIX>_BUILD_NAMES from the single-source-of-truth maps
+# <PREFIX>_BUILD_URLS (name->git url) and <PREFIX>_BUILD_CMDS (name->build command).
+# Used by install_module_* so the same url+command also drives scripts/update.sh
+# rebuilds (no divergence). Iterates BUILD_NAMES to preserve a deterministic order.
+build_module_from_source() {
+    local prefix="$1"
+    local names_var="${prefix}_BUILD_NAMES"
+    declare -p "$names_var" &>/dev/null || return 0
+    declare -n _bms_names="$names_var"
+    declare -n _bms_urls="${prefix}_BUILD_URLS"
+    declare -n _bms_cmds="${prefix}_BUILD_CMDS"
+    local _bms_n
+    for _bms_n in "${_bms_names[@]}"; do
+        build_from_source "$_bms_n" "${_bms_urls[$_bms_n]:-}" "${_bms_cmds[$_bms_n]:-}" || true
+    done
+}
+
+# Binary release registry (single source of truth)
 # Format: "repo|binary|pattern|dest_dir" (dest_dir optional, defaults to $PIPX_BIN_DIR)
 # Used by modules for install and scripts/update.sh for updates.
 BINARY_RELEASES_MISC=(
     "DominicBreuker/pspy|pspy|pspy64$"
-    "gophish/gophish|gophish|linux-64bit"
     "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz"
     "gitleaks/gitleaks|gitleaks|linux_x64\\.tar\\.gz"
+)
+# C2 + phishing binary releases — installed only when INCLUDE_C2=true (see modules/misc.sh).
+BINARY_RELEASES_MISC_C2=(
+    "gophish/gophish|gophish|linux-64bit"
     "BishopFox/sliver|sliver-server|sliver-server_linux-amd64$"
     "BishopFox/sliver|sliver-client|sliver-client_linux-amd64$"
     "kgretzky/evilginx2|evilginx|linux-64bit\\.zip"

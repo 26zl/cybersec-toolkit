@@ -1,5 +1,7 @@
 ---
 name: supply-chain-risk-auditor
+source: trailofbits/skills
+license: CC-BY-SA-4.0
 description: "Identifies dependencies at heightened risk of exploitation or takeover. Use when assessing supply chain attack surface, evaluating dependency health, or scoping security engagements."
 allowed-tools: Read Write Bash Glob Grep
 ---

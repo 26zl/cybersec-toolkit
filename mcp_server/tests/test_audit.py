@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import logging.handlers
+import os
+import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,7 +17,9 @@ from mcp_server.audit import (
     get_audit_logger,
     log_blocked,
     log_execution,
+    log_pipeline_start,
     log_script_execution,
+    log_tool_call,
 )
 
 
@@ -220,6 +225,51 @@ class TestRedactScriptCode:
         assert "-p80" in redacted
         assert "-p3306" in redacted
 
+    def test_nmap_port_range_preserved(self) -> None:
+        """nmap port specs ('-p80,443', '-p-', '-pU:53,T:80') must NOT be mangled."""
+        redacted = _redact_script_code("nmap -p80,443 -p- -pU:53,T:80 10.0.0.1")
+        assert "-p80,443" in redacted
+        assert "-p-" in redacted
+        assert "-pU:53,T:80" in redacted
+        assert "[REDACTED]" not in redacted
+
+    def test_double_dash_password_flag_not_mangled_by_short_p_rule(self) -> None:
+        """The short '-p' DB rule must not fire inside '--password'."""
+        redacted = _redact_script_code("--password hunter2")
+        # The flag name stays intact; only the value is redacted.
+        assert "--password" in redacted
+        assert "hunter2" not in redacted
+
+    def test_prose_token_word_not_eaten(self) -> None:
+        """A bare 'token'/'password' word in prose (no separator) must survive."""
+        assert _redact_script_code("the token is rotated") == "the token is rotated"
+        assert _redact_script_code("the password was changed") == "the password was changed"
+
+    def test_no_stray_bracket_and_idempotent(self) -> None:
+        """Re-running the redactor must not leave a stray ']' or double-redact."""
+        for code in (
+            'API_KEY = "sk-abc123def456ghi789jkl"',
+            '{"token": "ghp_1234567890abcdefghij"}',
+            'curl -H "Authorization: Bearer xyz123abcdef"',
+            "mysql -pS3cr3tPass",
+        ):
+            once = _redact_script_code(code)
+            twice = _redact_script_code(once)
+            assert once == twice, f"not idempotent: {code!r} -> {once!r} -> {twice!r}"
+            assert "[REDACTED]]" not in once
+
+    def test_aws_access_key_id_redacted(self) -> None:
+        """Standalone AWS access key IDs (AKIA.../ASIA...) must be redacted."""
+        for code in (
+            "aws_key = AKIAIOSFODNN7EXAMPLE",
+            "export AWS_ID=ASIAYYYYYYYYYYYYYYYY",
+            "role AROAEXAMPLE123456EXX printed",  # AROA + 16 chars = valid ID shape
+        ):
+            redacted = _redact_script_code(code)
+            assert "[REDACTED]" in redacted, code
+        # The 20-char IDs must not survive verbatim.
+        assert "AKIAIOSFODNN7EXAMPLE" not in _redact_script_code("AKIAIOSFODNN7EXAMPLE")
+
     def test_url_query_apikey_redacted(self) -> None:
         redacted = _redact_script_code("http://t/?api_key=sk-abc123def4567890")
         assert "sk-abc123def4567890" not in redacted
@@ -241,3 +291,76 @@ class TestRedactScriptCode:
         # match a suspected script against an exact incident body.
         assert entry["code_sha256"] == hashlib.sha256(original.encode("utf-8")).hexdigest()
         assert entry["code_len"] == len(original)
+
+
+class TestLogToolCallRedaction:
+    """The tool_call audit event must redact the script body like log_script_execution."""
+
+    def test_code_param_redacted_in_tool_call(self, tmp_path: Path) -> None:
+        log_tool_call(
+            "run_script",
+            {"language": "python", "code": 'API_KEY = "sk-abcdefghijklmnop1234567890"\nimport os'},
+        )
+        log_file = tmp_path / "audit.log"
+        entry = json.loads(log_file.read_text(encoding="utf-8").strip().splitlines()[-1])
+        assert entry["event"] == "tool_call"
+        assert "sk-abcdefghijklmnop1234567890" not in entry["params"]["code"]
+        assert "[REDACTED]" in entry["params"]["code"]
+
+    def test_args_assignment_secret_redacted_in_tool_call(self, tmp_path: Path) -> None:
+        """args/command must use the strong script-code redactor (assignment-form secrets)."""
+        log_tool_call(
+            "run_tool",
+            {"tool_name": "curl", "args": "--data client_secret=topsecretvalue123"},
+        )
+        log_file = tmp_path / "audit.log"
+        entry = json.loads(log_file.read_text(encoding="utf-8").strip().splitlines()[-1])
+        assert "topsecretvalue123" not in entry["params"]["args"]
+        assert "[REDACTED]" in entry["params"]["args"]
+
+    def test_steps_args_redacted_in_tool_call(self, tmp_path: Path) -> None:
+        """Nested pipeline step args carry creds the code/args/command branches miss."""
+        log_tool_call(
+            "run_pipeline",
+            {"steps": [{"tool": "curl", "args": '-H "Authorization: Bearer leakytoken9999"'}]},
+        )
+        log_file = tmp_path / "audit.log"
+        entry = json.loads(log_file.read_text(encoding="utf-8").strip().splitlines()[-1])
+        serialized = json.dumps(entry)
+        assert "leakytoken9999" not in serialized
+        assert "[REDACTED]" in entry["params"]["steps"][0]["args"]
+        # tool name preserved for correlation
+        assert entry["params"]["steps"][0]["tool"] == "curl"
+
+
+class TestLogPipelineStartRedaction:
+    """log_pipeline_start runs before sanitization and must redact each step's args."""
+
+    def test_pipeline_step_args_redacted(self, tmp_path: Path) -> None:
+        log_pipeline_start(
+            [
+                {"tool": "curl", "args": "-u admin:s3cretpw http://10.0.0.1"},
+                {"tool": "grep", "args": "flag"},
+            ],
+            timeout=30,
+        )
+        log_file = tmp_path / "audit.log"
+        entry = json.loads(log_file.read_text(encoding="utf-8").strip().splitlines()[-1])
+        assert entry["event"] == "pipeline_start"
+        joined = " ".join(entry["steps"])
+        assert "s3cretpw" not in joined
+        assert "[REDACTED]" in joined
+        # Non-secret args still readable
+        assert "grep(flag)" in joined
+
+
+class TestAuditLogPermissions:
+    """The audit log must be created owner-only (0600) — it holds sensitive runtime data."""
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes not applicable on Windows")
+    def test_audit_log_is_owner_only(self, tmp_path: Path) -> None:
+        log_execution(tool_name="nmap", args="-sV 10.0.0.1", exit_code=0, command="nmap -sV 10.0.0.1")
+        log_file = tmp_path / "audit.log"
+        assert log_file.exists()
+        mode = stat.S_IMODE(os.stat(log_file).st_mode)
+        assert mode == 0o600, f"audit.log mode is {oct(mode)}, expected 0o600"

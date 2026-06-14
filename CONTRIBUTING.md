@@ -107,14 +107,14 @@ Hardcoded data in the MCP server must stay in sync with the bash source:
 - Keep PRs focused. Adding one tool: one PR. Refactoring: separate PR.
 - Include a brief description. For a tool addition, mention the module and install method.
 - The project `.mcp.json` is tracked intentionally. Do not add personal tokens, hostnames, or local-only MCP settings to it.
-- Don't commit `.versions`, generated install logs, local caches, local editor/Claude settings, or anything under `workflows/` (all gitignored).
+- Don't commit `.versions`, generated install logs, local caches, local editor/Claude settings, or anything under `writeups/` (all gitignored).
 - Use clear commit subjects ("add subfinder to recon module", not "update"). Reference issue numbers when relevant.
 
 ## Code style
 
 - **Bash:** `shellcheck --severity=warning` clean. Use `set -uo pipefail` at the top of new scripts. Guard empty arrays with `[[ ${#arr[@]} -gt 0 ]]` before expansion (bash `set -u` safety).
 - **Python (MCP server):** `ruff check` and `ruff format` clean. Absolute imports only.
-- **Markdown:** `markdownlint-cli2` clean for any `.md` you add outside `workflows/`.
+- **Markdown:** `markdownlint-cli2` clean for any `.md` you add outside `writeups/`.
 
 ## Reporting security issues
 

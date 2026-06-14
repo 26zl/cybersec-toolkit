@@ -9,6 +9,7 @@ import pytest
 
 from mcp_server.cve_advisor import (
     _FALLBACK_SKILLS,
+    ID_ALIASES,
     KNOWN_CVES,
     NAME_ALIASES,
     get_cve_info,
@@ -44,6 +45,12 @@ class TestResolveCve:
         assert resolve_cve("") is None
         assert resolve_cve("CVE-21-1") is None  # too few digits
 
+    @pytest.mark.parametrize("partner,primary", list(ID_ALIASES.items()))
+    def test_chain_partner_ids_resolve_to_primary(self, partner: str, primary: str) -> None:
+        """Partner CVE ids of a curated chain resolve to the primary curated id."""
+        assert resolve_cve(partner) == primary
+        assert primary in KNOWN_CVES
+
 
 # get_cve_info
 class TestGetCveInfo:
@@ -72,6 +79,13 @@ class TestGetCveInfo:
         assert result["known"] is False
         assert result["recommended_skills"] == _FALLBACK_SKILLS
         assert result["tools"] == []
+
+    def test_chain_partner_id_returns_curated_mapping(self, tools_db: ToolsDatabase) -> None:
+        """Querying a chain's partner CVE returns the primary curated entry, not the fallback."""
+        with patch("shutil.which", return_value=None):
+            result = get_cve_info("CVE-2021-42287", tools_db)
+        assert result["cve"] == "CVE-2021-42278"
+        assert result["known"] is True
 
     def test_invalid_input_returns_error(self, tools_db: ToolsDatabase) -> None:
         result = get_cve_info("definitely-not-a-cve", tools_db)

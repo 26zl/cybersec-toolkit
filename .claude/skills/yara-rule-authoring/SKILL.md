@@ -1,5 +1,7 @@
 ---
 name: yara-rule-authoring
+source: trailofbits/skills
+license: CC-BY-SA-4.0
 description: >
   Guides authoring of high-quality YARA-X detection rules for malware identification.
   Use when writing, reviewing, or optimizing YARA rules. Covers naming conventions,

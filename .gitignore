@@ -80,5 +80,9 @@ remote_hosts.json
 audit.log
 audit.log.*
 
-# Challenge writeups & scripts (local only)
-/workflows/
+# Persisted MCP scripts written by run_script (keep the dir, ignore its contents)
+manual_scripts/*
+!manual_scripts/.gitkeep
+
+# Security workflow writeups & scripts (local only)
+/writeups/

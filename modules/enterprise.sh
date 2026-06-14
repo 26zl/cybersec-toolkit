@@ -81,6 +81,9 @@ install_module_enterprise() {
         log_info "Installing NetExec from GitHub..."
         if pipx install "git+https://github.com/Pennyw0rth/NetExec" >> "$LOG_FILE" 2>&1; then
             log_success "NetExec installed"
+            # Track under 'nxc' (the binary verify.sh checks) so it is visible to
+            # verify.sh --installed-only and version tracking.
+            track_version "nxc" "pipx" "git"
         else
             log_error "Failed pipx: NetExec"
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))

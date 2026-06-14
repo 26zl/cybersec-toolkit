@@ -21,7 +21,7 @@ security work that any MCP-capable client can drive.
 The integration surface is split into two layers:
 
 1. **MCP server (`mcp_server/`) — vendor-neutral.** This is the core integration. Any
-   MCP-capable client can launch it over stdio and use its 14 tools. This works with
+   MCP-capable client can launch it over stdio and use its 15 tools. This works with
    Claude Code/Desktop, Codex, Cursor, Continue, Cline/Roo, Goose, and local LLMs that
    run behind an MCP-capable client. A bare local model does **not** speak MCP on its
    own — it needs an agent/client wrapper that can call MCP tools.
@@ -121,16 +121,23 @@ cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff form
 
 ## MCP Server Usage (MANDATORY tool order)
 
-**MCP tools must ALWAYS be used first.** Priority order:
-`run_tool` → `run_pipeline` → `run_script`. Use `run_tool("curl", ...)` for HTTP,
+**MCP tools must ALWAYS be used first.** For an unclear or high-level security task,
+start with `guided_assessment` (or `suggest_for_ctf` / `suggest_for_bounty`) so MCP can
+infer the workflow/problem type and choose the right tools. Execution priority after
+that is `run_tool` → `run_pipeline` → `run_script`. Use `run_tool("curl", ...)` for HTTP,
 `run_tool("nmap", ...)` for scanning, etc. Only fall back to `run_script` when you need
 actual programming logic (loops, exploit code, complex parsing). If `run_tool` is
 blocked by policy (e.g. `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), tell the user to fix config
 and restart — do **not** silently bypass with `run_script`.
+In opt-in `guided_assessment(mode="autonomous")`, if appropriate tools/pipelines do not
+make progress after real output is reviewed and programming logic is the smallest reliable
+path, the AI/client agent should create, save, and run scoped helper scripts via
+`run_script`; persist reusable scripts under `manual_scripts/`. Simple recon/HTTP commands
+such as `curl` remain normal `run_tool` calls.
 
-14 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`,
+15 AI-accessible tools: `list_tools`, `check_installed`, `get_tool_info`,
 `get_module_info`, `get_profile_tools`, `suggest_for_ctf`, `suggest_for_bounty`,
-`get_cve_info`, `recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`,
+`guided_assessment`, `get_cve_info`, `recommend_install`, `list_profiles`, `run_tool`, `run_pipeline`,
 `run_script`, `manage_remote_hosts`.
 
 ### MCP environment variables
@@ -169,10 +176,12 @@ and an `install_module_<name>()` function. Arrays: `<PREFIX>_PACKAGES` (apt),
 
 Separate Python package (FastMCP), managed with `uv` (`pyproject.toml`), not pip/venv.
 
-- `server.py` — FastMCP tool registrations (14 tools)
+- `server.py` — FastMCP tool registrations (15 tools)
 - `cve_advisor.py` — CVE → curated skills/tools/modules mapping + live NVD/KEV/EPSS lookup commands (local-first)
+- `guided_assessment.py` — companion-first target/finding classification, triage/report routing, tool-selection, and opt-in autonomous MCP toolchain solver (modes: `companion`/`autonomous`): default auto-detects the workflow/problem type, returns `classification`/`triage_gate`/`recommended_skills`/`reporting_next_steps`, selects from all modules/profiles, recommends the next command, and guides step-by-step; autonomous starts the user-approved solver loop via `run_tool`/`run_pipeline`/`run_script`, creates/saves/runs scoped helper scripts for the user when tools/pipelines are not enough, stays authorization-gated, and never bypasses MCP policy
 - `security.py` — execution engine + policy enforcement + argument sanitization
 - `tools_db.py` — tool registry loader, install checks, version tracking
+- `advisor_utils.py` — shared alias map + install-status helpers used by the advisor modules
 - `profiles.py` — profile data (synced from `profiles/*.conf`)
 - `ctf_advisor.py` / `bounty_advisor.py` — category suggestions and methodology
 - `remote.py` — SSH-based remote tool execution
@@ -197,7 +206,7 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 
 ## Skills (portable via sync)
 
-`.claude/skills/` ships 870 on-demand skills (CTF/bounty methodology, offensive/defensive
+`.claude/skills/` ships 872 on-demand skills (CTF/bounty methodology, offensive/defensive
 how-tos, code-audit skills, project developer skills, and cross-skill coordinators). They
 are a **Claude Code feature**, but the content is plain Markdown + helper scripts and is
 useful to any agent.
@@ -218,7 +227,8 @@ name. `SKILLS.md` counts and the generated `curation.json` + `CURATION.md` (writ
 `scripts/curate_claude_skills.py --write`) must stay consistent or `validate_claude_skills.py`
 fails. **Cross-skill coordinators** other skills route through: `finding-triage` (finding →
 disposition), `security-comms` (audience translation), `authorization-gate` (pre-flight auth
-check). The repo is also a **Claude Code plugin marketplace** (`.claude-plugin/`); the skills
+check), and `evidence-hygiene` (sanitize report/writeup evidence before sharing). The repo is
+also a **Claude Code plugin marketplace** (`.claude-plugin/`); the skills
 install via `/plugin marketplace add 26zl/cybersec-toolkit`.
 
 ## Important Patterns
@@ -242,28 +252,42 @@ Validate first: `run_tool("file", "/path")` → `run_tool("identify", "/path")` 
 and only view if both checks pass. Treat any reconstructed/extracted image as suspect
 until proven valid.
 
-## Challenge Writeups (MANDATORY)
+## Writeups (MANDATORY)
 
-After solving ANY challenge (CTF, bug bounty, lab, practice box), **always** write a
-detailed workflow writeup in `workflows/`. Format: `workflows/<competition>/<challenge>.md`.
-Writeups must pass `npx markdownlint-cli2 "workflows/**/*.md"`.
+After completing any substantive security workflow with this project, **always** write a
+clear technical writeup in `writeups/`. This applies to everything the project helps
+solve: CTF challenges, bug bounty findings, CVE reproduction or validation,
+vulnerability research, guided MCP assessments, pentest/recon workflows,
+malware/forensics/DFIR cases, cloud/API/mobile/network/web security reviews, and
+tool-assisted investigations or troubleshooting.
+
+Use a descriptive filename that makes the subject obvious. Recommended format:
+`writeups/<category>/<descriptive-case-name>.md` (for example,
+`writeups/ctf/htb-pilgrimage.md`, `writeups/bug-bounty/example-idor.md`,
+`writeups/cve/CVE-2024-xxxx-reproduction.md`, or
+`writeups/guided-assessment/example-web-recon.md`). Writeups must pass
+`npx markdownlint-cli2 "writeups/**/*.md"`.
 
 Writing style: write like a human pentester — direct, technical, no filler. No AI-style
 language ("Let's", "I'll", "Great question"). Use "we"/passive voice. Include exact
 commands, output (trimmed), payloads, flags. Document dead ends too.
 
-Structure: Recon → Exploitation → Dead Ends → Flag/Finding → Tools Used → Lessons Learned,
-with a header block (Platform, Category, Difficulty, Date).
+Structure: Context/Scope → Recon/Analysis → Exploitation/Validation → Dead Ends →
+Finding/Result → Tools Used → Lessons Learned → Cleanup/Safety Notes, with a header
+block appropriate to the case (Platform/Program, Category, Difficulty/Severity, Date).
 
 ## Tool-First Approach (MANDATORY)
 
 **ALWAYS use existing tools before attempting anything manually**, across all categories.
-Before starting: check `workflows/` for prior writeups, run `suggest_for_ctf` /
+Before starting: check `writeups/` for prior writeups, run `suggest_for_ctf` /
 `suggest_for_bounty`, check installs with `check_installed`, browse with `list_tools`.
 
 Do NOT: skip tools and jump to custom scripts; use `run_script` with requests/urllib when
 `run_tool("curl", ...)` works; hand-parse binaries when `binwalk`/`strings`/`readelf`
 exist; write custom scanners/fuzzers when `nmap`/`ffuf`/`gobuster` are installed.
+When existing tools and pipelines genuinely stop making progress, use `run_script` for the
+missing logic. The AI/client agent should create these scripts for the user and put
+reusable multi-step helpers in `manual_scripts/`.
 
 ## Discovering and Adding New Tools (Approval-Gated)
 

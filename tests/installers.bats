@@ -371,3 +371,75 @@ setup() {
     source_libs debian apt
     [[ "$(_go_bin_name "github.com/OJ/gobuster/v3@latest")" == "gobuster" ]]
 }
+
+# ---------- Stage-1 C2 aggregation (install.sh install_modules loop) ---------
+#
+# Replicates the per-module aggregation loop from install_modules() in
+# install.sh: it appends each module's <PREFIX>_GIT / BINARY_RELEASES_<MOD>
+# arrays, and — only when INCLUDE_C2=true — the <PREFIX>_C2_GIT /
+# BINARY_RELEASES_<MOD>_C2 arrays. Regression guard for the bug where C2 tools
+# never installed under the main flow despite --include-c2.
+
+# Source common.sh + installers.sh (BINARY_RELEASES_MISC_C2) + misc module
+# (MISC_C2_GIT), then run the aggregation loop for the given modules.
+_aggregate_c2_test_setup() {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/misc.sh"
+}
+
+# Mirror of the install_modules() Stage-1 loop. Populates _ALL_GIT/_ALL_BINARY.
+_run_c2_aggregation() {
+    local -a _modules=("$@")
+    _ALL_GIT=()
+    _ALL_BINARY=()
+    local _mod _pfx _mod_upper
+    for _mod in "${_modules[@]}"; do
+        _pfx=$(_module_prefix "$_mod")
+        _mod_upper="${_mod^^}"
+        _append_module_array _ALL_GIT   "${_pfx}_GIT"
+        _append_module_array _ALL_BINARY "BINARY_RELEASES_${_mod_upper}"
+        if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+            _append_module_array _ALL_GIT    "${_pfx}_C2_GIT"
+            _append_module_array _ALL_BINARY "BINARY_RELEASES_${_mod_upper}_C2"
+        fi
+    done
+}
+
+@test "C2 aggregation: INCLUDE_C2=true includes misc C2 git repos" {
+    _aggregate_c2_test_setup
+    export INCLUDE_C2=true
+    declare -a _ALL_GIT _ALL_BINARY
+    _run_c2_aggregation misc
+    [[ "${_ALL_GIT[*]}" == *"SET=https://github.com/trustedsec/social-engineer-toolkit.git"* ]]
+    [[ "${_ALL_GIT[*]}" == *"Loki-C2=https://github.com/boku7/Loki.git"* ]]
+    [[ "${_ALL_GIT[*]}" == *"Caldera=https://github.com/mitre/caldera.git"* ]]
+}
+
+@test "C2 aggregation: INCLUDE_C2=true includes misc C2 binary releases" {
+    _aggregate_c2_test_setup
+    export INCLUDE_C2=true
+    declare -a _ALL_GIT _ALL_BINARY
+    _run_c2_aggregation misc
+    [[ "${_ALL_BINARY[*]}" == *"gophish/gophish|gophish|linux-64bit"* ]]
+    [[ "${_ALL_BINARY[*]}" == *"BishopFox/sliver|sliver-server|"* ]]
+    [[ "${_ALL_BINARY[*]}" == *"BishopFox/sliver|sliver-client|"* ]]
+    [[ "${_ALL_BINARY[*]}" == *"kgretzky/evilginx2|evilginx|"* ]]
+}
+
+@test "C2 aggregation: INCLUDE_C2=false excludes misc C2 git repos" {
+    _aggregate_c2_test_setup
+    export INCLUDE_C2=false
+    declare -a _ALL_GIT _ALL_BINARY
+    _run_c2_aggregation misc
+    [[ "${_ALL_GIT[*]}" != *"SET=https://github.com/trustedsec/social-engineer-toolkit.git"* ]]
+    [[ "${_ALL_GIT[*]}" != *"Loki-C2=https://github.com/boku7/Loki.git"* ]]
+}
+
+@test "C2 aggregation: INCLUDE_C2=false excludes misc C2 binary releases" {
+    _aggregate_c2_test_setup
+    export INCLUDE_C2=false
+    declare -a _ALL_GIT _ALL_BINARY
+    _run_c2_aggregation misc
+    [[ "${_ALL_BINARY[*]}" != *"gophish/gophish|gophish|linux-64bit"* ]]
+    [[ "${_ALL_BINARY[*]}" != *"sliver-server"* ]]
+}

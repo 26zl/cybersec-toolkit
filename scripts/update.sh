@@ -300,14 +300,18 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
                 done
                 if _as_builder "$(command -v gem) update $_gem_update_args --no-document" >> "$LOG_FILE" 2>&1; then
                     log_success "Ruby gems updated"
-                    # Refresh symlinks (new version may have new binary paths)
-                    _gem_bin_dir="$(_builder_home)/.local/share/gem/ruby/*/bin" 2>/dev/null
-                    for _gem in "${GEMS_TO_UPDATE[@]}"; do
-                        # shellcheck disable=SC2086  # glob expansion intentional
-                        for _gbin in $_gem_bin_dir/$_gem; do
-                            [[ -f "$_gbin" ]] && ln -sf "$_gbin" "$PIPX_BIN_DIR/$(basename "$_gbin")" 2>/dev/null || true
-                        done
+                    # Refresh symlinks (new version may have new binary paths).
+                    # Mirror the install path (lib/installers.sh): pick the first
+                    # existing ruby-version bin dir and re-link from it.
+                    _gem_bin_dir=""
+                    for _gdir in "$(_builder_home)/.local/share/gem/ruby"/*/bin; do
+                        [[ -d "$_gdir" ]] && _gem_bin_dir="$_gdir" && break
                     done
+                    if [[ -n "$_gem_bin_dir" ]]; then
+                        for _gem in "${GEMS_TO_UPDATE[@]}"; do
+                            [[ -f "$_gem_bin_dir/$_gem" ]] && ln -sf "$_gem_bin_dir/$_gem" "$PIPX_BIN_DIR/$_gem" 2>/dev/null || true
+                        done
+                    fi
                 else
                     log_warn "Ruby gem update failed"
                     UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
@@ -456,10 +460,12 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         fi
     }
 
-    # Iterate all BINARY_RELEASES_* registry arrays (defined in lib/installers.sh)
+    # Iterate all BINARY_RELEASES_* registry arrays (defined in lib/installers.sh),
+    # including the INCLUDE_C2-gated _C2 variants so installed C2 binaries still update.
     _ALL_BIN_RELEASES=()
     for _br_mod in "${ALL_MODULES[@]}"; do
         _append_module_array _ALL_BIN_RELEASES "BINARY_RELEASES_${_br_mod^^}"
+        _append_module_array _ALL_BIN_RELEASES "BINARY_RELEASES_${_br_mod^^}_C2"
     done
     for _entry in "${_ALL_BIN_RELEASES[@]}"; do
         IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
@@ -579,6 +585,13 @@ for _bmod in "${ALL_MODULES[@]}"; do
     _bnames_var="${_bpfx}_BUILD_NAMES"
     declare -p "$_bnames_var" &>/dev/null || continue
     declare -n _bnames="$_bnames_var"
+    # Tool-specific build commands (single source of truth shared with install).
+    if declare -p "${_bpfx}_BUILD_CMDS" &>/dev/null; then
+        declare -n _bcmds="${_bpfx}_BUILD_CMDS"
+    else
+        declare -gA _UPDATE_NO_BCMDS=()
+        declare -n _bcmds=_UPDATE_NO_BCMDS
+    fi
     for _bname in "${_bnames[@]}"; do
         _bdir="$GITHUB_TOOL_DIR/$_bname"
         [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_SKIPPED=$((BUILD_SKIPPED + 1)); continue; }
@@ -590,22 +603,46 @@ for _bmod in "${ALL_MODULES[@]}"; do
                 BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
             else
                 log_success "Updated source: $_bname — attempting rebuild..."
-                # Try common build patterns (use _as_builder for consistent ownership)
-                if [[ -f "$_bdir/Makefile" ]]; then
+                # Try common build patterns (use _as_builder for consistent ownership).
+                # Only count an update and write .versions on a SUCCESSFUL rebuild,
+                # so a stale/broken binary is never reported as updated (and a failed
+                # or skipped rebuild counts as a failure → non-zero exit).
+                _rebuilt=0
+                _attempted=0
+                _bcmd="${_bcmds[$_bname]:-}"
+                if [[ -n "$_bcmd" ]]; then
+                    # Re-run the exact install-time command (re-applies patches,
+                    # honors custom targets like 'make source-only'/'make -f Makefile.gcc').
+                    # Patches are idempotent, so re-running on an already-patched tree is safe.
+                    # Pass verbatim to bash -c (do NOT single-quote-escape — would corrupt
+                    # the command's own quotes, e.g. the yafu/pemcrack sed patches).
+                    _attempted=1
+                    if (cd "$_bdir" && _as_builder "$_bcmd") >> "$LOG_FILE" 2>&1; then
+                        _rebuilt=1
+                    fi
+                elif [[ -f "$_bdir/Makefile" ]]; then
+                    _attempted=1
                     if _as_builder "make -C '$_bdir_escaped' -j$(nproc 2>/dev/null || echo 2)" >> "$LOG_FILE" 2>&1; then
-                        log_success "Rebuilt: $_bname"
-                    else
-                        log_warn "Rebuild failed for $_bname (make failed) — source updated"
+                        _rebuilt=1
                     fi
                 elif [[ -f "$_bdir/Cargo.toml" ]]; then
+                    _attempted=1
                     if _as_builder "cd '$_bdir_escaped' && $(command -v cargo) build --release" >> "$LOG_FILE" 2>&1; then
-                        log_success "Rebuilt: $_bname"
-                    else
-                        log_warn "Rebuild failed for $_bname (cargo build failed) — source updated"
+                        _rebuilt=1
                     fi
                 fi
-                BUILD_UPDATED=$((BUILD_UPDATED + 1))
-                track_version "$_bname" "source" "HEAD"
+                if [[ "$_rebuilt" == 1 ]]; then
+                    log_success "Rebuilt: $_bname"
+                    BUILD_UPDATED=$((BUILD_UPDATED + 1))
+                    track_version "$_bname" "source" "HEAD"
+                else
+                    if [[ "$_attempted" == 1 ]]; then
+                        log_warn "Rebuild failed for $_bname — source updated but binary may be stale"
+                    else
+                        log_warn "No rebuild recipe matched for $_bname (no Makefile/Cargo.toml) — binary not rebuilt"
+                    fi
+                    BUILD_FAILED=$((BUILD_FAILED + 1))
+                fi
             fi
         else
             log_warn "Failed to update: $_bname"

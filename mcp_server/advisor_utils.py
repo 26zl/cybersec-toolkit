@@ -24,7 +24,6 @@ TOOL_ALIASES: dict[str, str] = {
     "wireshark": "wireshark-common",
     "netcat": "netcat-openbsd",
     "wifite": "wifite2",
-    "hashid": "hashid",
     "snow": "stegsnow",
     # Sub-components (display name -> parent tool in registry)
     "photorec": "testdisk",

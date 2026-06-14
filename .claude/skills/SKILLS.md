@@ -1,8 +1,8 @@
 # Claude Code Skills
 
-This directory contains 870 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
+This directory contains 872 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
-## Project-specific developer skills (9)
+## Project-specific developer skills (10)
 
 Maintained in this repo. Cover the install-side workflow.
 
@@ -12,9 +12,10 @@ Maintained in this repo. Cover the install-side workflow.
 | `module-scaffold` | Creating a brand-new `modules/<name>.sh` |
 | `validate-all` | Running the full validation suite before push |
 | `mcp-sync-check` | Verifying Python ↔ Bash data parity |
-| `writeup-template` | Generating workflows/<comp>/<chal>.md after a solve |
+| `writeup-template` | Generating writeups/<category>/<case>.md after a security workflow |
 | `security-wordlists` | Pointing to SecLists / PayloadsAllTheThings paths |
 | `security-payloads` | Quick-reference exploit payloads |
+| `guided-assessment` | Companion and autonomous assessment orchestration through the MCP guided_assessment tool |
 | `skill-dependency-audit` | Auditing optional Python imports used by vendored skill helper scripts |
 | `skill-curation-router` | Choosing/ranking skills for broad tasks and reducing duplicate skill noise |
 
@@ -38,7 +39,7 @@ Maintained in this repo to cover domains that are intentionally thinner in the v
 | --- | --- |
 | `karpathy-guidelines` | Keeps coding agents simple, surgical, assumption-aware, and verification-driven |
 
-## Cross-skill coordinators (3)
+## Cross-skill coordinators (4)
 
 Maintained in this repo. Other skills route their output through these for normalization, communication, and pre-flight authorization.
 
@@ -47,6 +48,7 @@ Maintained in this repo. Other skills route their output through these for norma
 | `finding-triage` | Normalizes a single finding (scanner/audit/pentest/CVE) into a defensible disposition: Fixed, Deferred, Accepted Risk, or False Positive |
 | `security-comms` | Translates a finding/incident/update for a specific audience — board, exec, engineering, customer, legal, procurement |
 | `authorization-gate` | Shared pre-flight authorization check for offensive/simulation work; defines scope confirmation and hard refusals |
+| `evidence-hygiene` | Sanitizes report/writeup evidence by redacting cookies, tokens, PII, HAR secrets, screenshots, and logs |
 
 ## CTF methodology (6)
 
@@ -132,7 +134,7 @@ CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailof
 | `dimensional-analysis` | Detect unit/formula bugs |
 | `variant-analysis` | Find similar bugs across codebases |
 
-## Anthropic Cybersecurity Skills — operational how-tos (754)
+## mukul975/Anthropic-Cybersecurity-Skills (community project) — operational how-tos (754)
 
 Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/Anthropic-Cybersecurity-Skills>. The full upstream skill set is mirrored here as local Claude Code skills. Each skill maps to MITRE ATT&CK / D3FEND / NIST CSF.
 
@@ -229,7 +231,7 @@ This project is MIT-licensed. The vendored skills retain their original licenses
 (centralized index: [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md)):
 
 - Trail of Bits skills: CC-BY-SA 4.0 (`LICENSE-CC-BY-SA-4.0`)
-- Anthropic Cybersecurity Skills: Apache 2.0 (`LICENSE-Apache-2.0`)
+- mukul975/Anthropic-Cybersecurity-Skills (community project): Apache 2.0 (`LICENSE-Apache-2.0`)
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
 - Karpathy guidelines skill: MIT, source <https://github.com/multica-ai/andrej-karpathy-skills>
 - SnailSploit Claude-Red skills: MIT (`LICENSE-Claude-Red-MIT`)

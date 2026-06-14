@@ -16,9 +16,9 @@
     "mobile_security": 13,
     "network_wireless": 47,
     "ot_ics_security": 15,
-    "project_tooling": 9,
+    "project_tooling": 10,
     "redteam_pentest": 90,
-    "security_coordination": 3,
+    "security_coordination": 4,
     "supply_chain_prodsec": 20,
     "telecom_mainframe_sap": 3
   },
@@ -66,6 +66,19 @@
     },
     {
       "domain": "project_tooling",
+      "name": "guided-assessment",
+      "priority": 100,
+      "reasons": [
+        "source:project",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "project",
+      "tier": "T0-router-and-project"
+    },
+    {
+      "domain": "project_tooling",
       "name": "skill-dependency-audit",
       "priority": 100,
       "reasons": [
@@ -94,6 +107,19 @@
     {
       "domain": "security_coordination",
       "name": "authorization-gate",
+      "priority": 100,
+      "reasons": [
+        "source:project",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "project",
+      "tier": "T0-router-and-project"
+    },
+    {
+      "domain": "security_coordination",
+      "name": "evidence-hygiene",
       "priority": 100,
       "reasons": [
         "source:project",
@@ -10923,11 +10949,11 @@
     }
   ],
   "tier_counts": {
-    "T0-router-and-project": 12,
+    "T0-router-and-project": 14,
     "T1-core": 83,
     "T1-coverage-anchor": 7,
     "T2-operational": 34,
     "T3-specialist": 734
   },
-  "total_skills": 870
+  "total_skills": 872
 }

@@ -18,6 +18,8 @@ __Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model 
 
 Bundled with a modular installer for Linux and Termux (Android) covering __580+ tools__, __18 modules__, __14 profiles__, and __12 install methods__.
 
+> __What makes it different:__ most toolkits stop at _installing_ tools. Here an AI can also _drive_ them — infer the problem type, pick the right tools from all modules/profiles, and work with you as an interactive companion. When you explicitly authorize it, the same MCP toolchain can enter an autonomous solver loop. __Companion by default; autonomous only when you ask.__
+
 ---
 
 ## How it works
@@ -40,7 +42,7 @@ flowchart TB
 
     subgraph MCP["MCP server (Python / FastMCP)"]
         direction TB
-        srv["server.py<br/>14 AI tools"]:::core
+        srv["server.py<br/>15 AI tools"]:::core
         adv["tools_db · profiles<br/>ctf_advisor · bounty_advisor"]:::core
         sec["security.py — policy engine<br/>allowlist · arg sanitize<br/>net policy · rate limit · audit"]:::sec
         rem["remote.py<br/>SSH hosts"]:::core
@@ -51,7 +53,7 @@ flowchart TB
     reg[("tools_config.json<br/>tool registry — 580+")]:::data
     disk["Installed tools<br/>/usr/local/bin + .versions"]:::data
     post["verify · update · remove · backup"]:::core
-    skills["870 Claude skills + coordinators<br/>finding-triage · security-comms · authorization-gate"]:::skill
+    skills["872 Claude skills + coordinators<br/>finding-triage · evidence-hygiene · authorization-gate"]:::skill
     ci["CI validators<br/>shellcheck · bats · ruff · pytest<br/>validate_tools_config · validate_mcp_sync"]:::ci
 
     user -->|"sudo ./install.sh"| sh
@@ -76,6 +78,24 @@ flowchart TB
 ```
 
 __Reading the diagram:__ solid arrows are runtime/install actions, dashed arrows are data relationships. The installer (left) and MCP server (right) never call each other — they meet at the registry and at the tools on disk. `security.py` is the gate every AI-driven execution passes through; nothing reaches the shell without clearing the allowlist, argument sanitization, and network policy. Skills are methodology context the AI loads on demand; they guide _how_ tools get used but sit outside the execution path.
+
+---
+
+## Why not just Kali (or another installer)?
+
+Kali/Parrot/BlackArch ship the tools; this is __complementary, not a replacement__. It runs on the box you already have (incl. Termux) and adds what a distro doesn't: an __AI control plane__ that can discover, recommend, chain, and safely _execute_ those tools under one policy. Want all the tools? A distro is fine. Want an AI that can _use_ them safely? That's the gap.
+
+## Trust & safety
+
+Security users should be paranoid — here's exactly what runs and what's gated:
+
+- __Default-safe MCP.__ Out of the box `CYBERSEC_MCP_ALLOW_EXTERNAL=0` (network tools can only hit private/loopback ranges) and `CYBERSEC_MCP_ALLOW_SCRIPTS=0` (`run_script` disabled). You opt into external scopes / scripting explicitly.
+- __Every AI execution passes one gate__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list/target-injection flags), target/network policy, rate limiting, output caps, and timeouts.
+- __Tool-aware policy is not solver hardcoding.__ The solver chooses tools from the registry/advisors; the policy layer only understands enough CLI grammar to tell a real target from a header, wordlist, output path, config file, or target-list flag. That keeps normal commands usable without letting file-list/config flags bypass scope checks.
+- __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating `audit.log`, with credential-shaped strings redacted from script bodies and arguments.
+- __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds and `pip`/`cargo`/`gem` installs; binary releases are SHA256-verified when checksums are published.
+- __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam`/`full` profiles); the MCP layer reflects this and never auto-runs them.
+- __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [Supply Chain Model](#supply-chain-model), and the [Disclaimer](#disclaimer).
 
 ---
 
@@ -173,15 +193,17 @@ Dry-run time estimates count install entries across methods, so the estimate can
 
 The installer orchestrates 580+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
 
-| What takes time | Why | Typical time |
-| --- | --- | --- |
-| System packages (apt/dnf) | Downloading and unpacking ~150 `.deb`/`.rpm` files, resolving dependencies | ~40% |
-| Cargo (Rust) crates | Compiling from source — Rust has no pre-built registry binaries | ~25% |
-| Go tools | Downloading modules and compiling ~30 binaries | ~15% |
-| pipx (Python) | Creating ~40 isolated venvs, downloading wheels | ~10% |
-| Git clones | Cloning ~30 repositories | ~5% |
-| Binary releases | Downloading ~30 pre-built binaries from GitHub | ~4% |
-| Bash overhead | Array iteration, logging, progress bars | <0.1% |
+| What takes time | Why |
+| --- | --- |
+| System packages (apt/dnf) | Downloading and unpacking the `.deb`/`.rpm` packages and resolving dependencies |
+| Go tools | Downloading modules and compiling each binary |
+| pipx (Python) | Creating one isolated venv per tool and downloading wheels |
+| Cargo (Rust) crates | Compiling from source — Rust has no pre-built registry binaries |
+| Git clones | Cloning each repository |
+| Binary releases | Downloading pre-built binaries from GitHub |
+| Bash overhead | Array iteration, logging, progress bars (negligible) |
+
+For the current per-method tool counts, run `./install.sh --dry-run` — it prints the live breakdown so the numbers can't go stale here. The slowest stages are the ones that compile or unpack the most (apt/dnf and Go), not raw tool count: Cargo compiles from source but only covers a handful of tools.
 
 The installer already parallelizes where possible (`-j 4` by default). Methods with shared locks (apt, pipx, cargo) must run sequentially. To reduce install time:
 
@@ -284,6 +306,7 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `get_profile_tools` | See every tool a profile installs, grouped by module |
 | `suggest_for_ctf` | Curated tool recommendations for 13 CTF challenge categories |
 | `suggest_for_bounty` | Bug bounty tool recommendations for 6 target types with methodology and common vulns |
+| `guided_assessment` | Companion-first solve assistant for an authorized target — classifies the target/finding, returns triage gates, recommends skills, picks tools from all modules/profiles, and guides step-by-step; opt-in `autonomous` starts an auto-solver loop over the full MCP toolchain via `run_tool`/`run_pipeline`/`run_script`, including AI-created scoped helper scripts when tools/pipelines are not enough, under MCP policy |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
 | `list_profiles` | All 14 profiles with tool counts and install commands |
@@ -374,7 +397,7 @@ Requires [uv](https://docs.astral.sh/uv/). Claude Code can use the tracked proje
 }
 ```
 
-Restart Claude Code. The 14 tools appear in `/mcp`.
+Restart Claude Code. The 15 tools appear in `/mcp`.
 
 ### Other MCP clients (Codex, Cursor, local LLMs)
 
@@ -489,7 +512,7 @@ The AI then uses `run_script("from pwn import *; ...", venv="pwntools")` automat
 
 ### Manual Scripts
 
-The `manual_scripts/` directory stores persistent scripts — complex exploits, multi-step solvers, and reusable tools that shouldn't disappear after execution. The AI writes scripts here when they're worth keeping.
+The `manual_scripts/` directory stores persistent scripts that the AI creates for the user — complex exploits, multi-step solvers, parsers, protocol helpers, and reusable tools that should not disappear after one execution. In companion mode the AI proposes the script, then writes and runs it only after approval or a clear "continue". In opt-in `autonomous` mode, if normal tools and pipelines stop making progress and programming logic is the smallest reliable path, the AI can write, save, and run scoped helpers via `run_script`. Simple recon/HTTP commands such as `curl` stay as `run_tool` calls; scripts are for logic that tools cannot express cleanly.
 
 ### Test the Server
 
@@ -500,6 +523,18 @@ cd mcp_server && uv run fastmcp dev server.py
 This opens a web-based MCP Inspector for interactively testing each tool.
 
 See [`mcp_server/README.md`](mcp_server/README.md) for Claude Desktop setup and full documentation.
+
+## Help wanted
+
+This project is large by design, and community help is very welcome.
+
+Useful contributions include testing installs on different distros, adding missing
+tools, fixing package mappings, improving MCP workflows, writing example use cases,
+tightening documentation, and reporting rough edges from real CTF, lab, bug bounty,
+pentest, DFIR, or defensive workflows.
+
+Open an issue for bigger changes, or send a focused PR for small fixes. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the validation checklist.
 
 ## Development
 
@@ -534,9 +569,9 @@ Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendor
 
 ## Claude Code Skills
 
-This repo ships 870 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context.
+This repo ships 872 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context. Of these, __31 are project-authored__ and __841 are curated from open-source projects__ — each attributed below and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-- 9 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `skill-dependency-audit`, `skill-curation-router`)
+- 10 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `guided-assessment`, `skill-dependency-audit`, `skill-curation-router`)
 - 3 cross-skill coordinators (`finding-triage`, `security-comms`, `authorization-gate`) that other skills route findings, communication, and authorization checks through
 - 7 coverage gap anchor skills (GRC/privacy, AI/LLM security, IoT/embedded/hardware, mainframe, telecom/5G, SAP/ERP, supply-chain/product security)
 - 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
@@ -545,7 +580,7 @@ This repo ships 870 [Claude Code skills](https://docs.claude.com/en/docs/claude-
 - 10 bug bounty workflow skills from [BugHunter (claude-bug-bounty)](https://github.com/shuvonsec/claude-bug-bounty) (MIT)
 - 58 offensive methodology skills from [SnailSploit Claude-Red](https://github.com/SnailSploit/Claude-Red) (MIT)
 - 14 code audit skills from [Trail of Bits](https://github.com/trailofbits/skills) (CC-BY-SA 4.0)
-- 754 operational how-tos from [Anthropic Cybersecurity Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) (Apache 2.0)
+- 754 operational how-tos from the community project [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) (Apache 2.0)
 - 4 high-level workflows from [Transilience](https://github.com/transilienceai/communitytools) (MIT)
 
 Source and category index in [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
@@ -571,7 +606,7 @@ scripts/sync-skills.sh            # mirror .claude/skills/ -> .agents/skills/
 scripts/sync-skills.sh --check    # report drift without writing (exit 1 if out of date)
 ```
 
-`scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Audit those extras with:
+`scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Audit those extras with the manual maintenance/inventory tool below (not run in CI — helper-script syntax is already gated by `validate_claude_skills.py`):
 
 ```bash
 python3 scripts/audit_skill_dependencies.py
@@ -646,7 +681,7 @@ Checksum verification is best-effort by default. Some upstream releases do not p
 
 ### Windows Defender false positives
 
-If you clone this repo onto a Windows-mounted path (e.g. `C:\Users\<you>\...` or any folder visible from Windows while you work in WSL), Microsoft Defender and other AV products may quarantine individual files. Defensive content -- IOC reference tables, sample obfuscated PowerShell, malware analysis snippets, exploit PoC strings inside `.claude/skills/`, `workflows/`, and parts of `mcp_server/` -- contains the same byte-strings real attackers use, so signature- and ML-based engines can flag them. Common detections include `Trojan:Script/Wacatac.B!ml`, `HackTool:*`, and generic `Heur.*` verdicts.
+If you clone this repo onto a Windows-mounted path (e.g. `C:\Users\<you>\...` or any folder visible from Windows while you work in WSL), Microsoft Defender and other AV products may quarantine individual files. Defensive content -- IOC reference tables, sample obfuscated PowerShell, malware analysis snippets, exploit PoC strings inside `.claude/skills/`, `writeups/`, and parts of `mcp_server/` -- contains the same byte-strings real attackers use, so signature- and ML-based engines can flag them. Common detections include `Trojan:Script/Wacatac.B!ml`, `HackTool:*`, and generic `Heur.*` verdicts.
 
 These are false positives in the context of a security toolkit. To work with the repo on Windows you have three options:
 

@@ -85,41 +85,110 @@ encrypt_archive() {
     printf '%s' "$_PASSPHRASE" > "$pass_file"
     unset _PASSPHRASE
 
+    # The MAC key uses a SALTED, expensive KDF (PBKDF2 @ same iter count as the
+    # ciphertext) via `openssl kdf`. Guard for builds that lack it.
+    if ! _backup_kdf_available; then
+        rm -f "$pass_file"
+        log_error "This openssl build lacks 'openssl kdf' (PBKDF2) — required for salted integrity tags"
+        log_error "Upgrade to OpenSSL 3.0+ or use a build that includes the kdf command"
+        return 1
+    fi
+
     # Encrypt-then-MAC. ChaCha20 is an unauthenticated stream cipher, so the
     # ciphertext is malleable and corruption/tampering would silently decrypt
     # into garbage. We authenticate the ciphertext with HMAC-SHA256 (key
-    # derived from the passphrase) and store the tag alongside; decryption
-    # verifies it first and fails closed on any mismatch.
-    local mac_key
-    mac_key=$(_backup_mac_key "$pass_file")
-    if openssl enc -chacha20 -salt -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
-        -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null \
-        && openssl dgst -sha256 -mac HMAC -macopt "hexkey:$mac_key" "${archive_path}.enc" 2>/dev/null \
-            | awk '{print $NF}' > "${archive_path}.enc.hmac" \
-        && [[ -s "${archive_path}.enc.hmac" ]]; then
+    # derived from the passphrase via salted PBKDF2) and store the tag alongside;
+    # decryption verifies it first and fails closed on any mismatch.
+    #
+    # A per-backup random salt makes the .hmac sidecar useless as a cheap
+    # offline brute-force oracle: without an expensive salted KDF the tag would
+    # be ~PBKDF2_ITERATIONS× cheaper to attack than the ciphertext.
+    local mac_salt mac_key
+    mac_salt=$(openssl rand -hex 16)
+    if [[ -z "$mac_salt" ]]; then
+        rm -f "$pass_file"
+        log_error "Failed to generate MAC salt"
+        return 1
+    fi
+    mac_key=$(_backup_mac_key "$pass_file" "$mac_salt")
+    if [[ -z "$mac_key" ]]; then
         unset mac_key
+        rm -f "$pass_file"
+        log_error "Failed to derive MAC key"
+        return 1
+    fi
+
+    local mac_tag=""
+    if openssl enc -chacha20 -salt -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
+        -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null; then
+        mac_tag=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$mac_key" "${archive_path}.enc" 2>/dev/null | awk '{print $NF}')
+    fi
+    unset mac_key
+
+    # Sidecar format (v2): two prefixed lines — "salt:<hexsalt>" then "mac:<hexmac>".
+    # The legacy v1 format was a single bare hex line (no prefix); see _backup_mac_key.
+    if [[ -n "$mac_tag" ]] \
+        && { printf 'salt:%s\n' "$mac_salt"; printf 'mac:%s\n' "$mac_tag"; } > "${archive_path}.enc.hmac" \
+        && [[ -s "${archive_path}.enc.hmac" ]]; then
         rm -f "$pass_file" "$archive_path"
         chmod 600 "${archive_path}.enc" "${archive_path}.enc.hmac" 2>/dev/null || true
         log_success "Archive encrypted: ${archive_path}.enc (+ HMAC integrity tag)"
         log_info "Remember your passphrase (it is NOT stored)"
         return 0
     else
-        unset mac_key
         rm -f "$pass_file" "${archive_path}.enc" "${archive_path}.enc.hmac"
         log_error "Encryption failed"
         return 1
     fi
 }
 
-# _backup_mac_key — derive a hex HMAC key from the passphrase file.
-# Uses the passphrase content (not the raw arg) so the secret is not placed
-# on a command line; the resulting hex digest is what openssl dgst consumes.
+# _backup_kdf_available — true if this openssl build provides the `kdf` command
+# (needed for the salted PBKDF2 MAC-key derivation). Older/minimal builds omit it.
+_backup_kdf_available() {
+    openssl kdf -help &>/dev/null
+}
+
+# _backup_mac_key — derive a hex HMAC key from the passphrase file using SALTED
+# PBKDF2 (digest SHA256, PBKDF2_ITERATIONS). Args: <pass_file> <hexsalt>.
+# The passphrase content is read from the file and hex-encoded before being
+# handed to `openssl kdf` (so the literal passphrase never appears on argv); the
+# resulting flat-hex key is what `openssl dgst -macopt hexkey:` consumes.
+# This makes the .hmac sidecar as expensive to attack as the ciphertext itself.
 _backup_mac_key() {
     local pass_file="$1"
-    # sha256 of "hmac:" + passphrase — a domain-separated key distinct from the
-    # PBKDF2-derived ChaCha20 key, reproducible from the passphrase alone.
+    local hexsalt="$2"
+    local hexpass
+    hexpass=$(od -An -v -tx1 < "$pass_file" 2>/dev/null | tr -d ' \n')
+    [[ -n "$hexpass" ]] || return 1
+    # `openssl kdf` prints colon-delimited uppercase hex; flatten to lowercase.
+    openssl kdf -keylen 32 -kdfopt digest:SHA256 \
+        -kdfopt "hexpass:$hexpass" \
+        -kdfopt "iter:$PBKDF2_ITERATIONS" \
+        -kdfopt "hexsalt:$hexsalt" PBKDF2 2>/dev/null \
+        | tr -d ':' | tr 'A-F' 'a-f'
+}
+
+# _backup_mac_key_legacy — the original weak derivation (unsalted, single-round
+# SHA256 of "cybersec-backup-hmac:" + passphrase). Retained ONLY so backups
+# written before the salted-KDF change still verify on restore.
+_backup_mac_key_legacy() {
+    local pass_file="$1"
     { printf 'cybersec-backup-hmac:'; cat "$pass_file"; } \
         | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}'
+}
+
+# _ct_equal — constant-time hex-string equality. Compares SHA256(nonce||a) vs
+# SHA256(nonce||b) with a fresh random nonce so wall-clock comparison time does
+# not leak how many leading bytes matched (avoids timing oracles on the tag).
+# Returns 0 if equal, 1 otherwise.
+_ct_equal() {
+    local a="$1" b="$2"
+    local nonce ha hb
+    nonce=$(openssl rand -hex 32)
+    [[ -n "$nonce" ]] || return 1
+    ha=$(printf '%s' "$nonce$a" | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}')
+    hb=$(printf '%s' "$nonce$b" | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}')
+    [[ -n "$ha" && "$ha" == "$hb" ]]
 }
 
 decrypt_archive() {
@@ -133,12 +202,29 @@ decrypt_archive() {
     # old archives still restore, but flag that integrity can't be guaranteed.
     local hmac_file="${encrypted_path}.hmac"
     if [[ -f "$hmac_file" ]]; then
-        local mac_key expected actual
-        mac_key=$(_backup_mac_key "$_PASS_FILE")
-        expected=$(tr -d '[:space:]' < "$hmac_file")
+        local mac_key expected actual mac_salt
+        # Detect sidecar format. v2 = prefixed lines ("salt:<hex>" / "mac:<hex>")
+        # using salted PBKDF2; v1 (legacy) = single bare hex line, weak unsalted
+        # derivation. Parse v2 first; fall back to v1 for old backups.
+        mac_salt=$(awk -F: '/^salt:/{print $2; exit}' "$hmac_file" 2>/dev/null | tr -d '[:space:]')
+        expected=$(awk -F: '/^mac:/{print $2; exit}' "$hmac_file" 2>/dev/null | tr -d '[:space:]')
+        if [[ -n "$mac_salt" && -n "$expected" ]]; then
+            # v2: salted PBKDF2 MAC key
+            if ! _backup_kdf_available; then
+                rm -f "$_PASS_FILE"
+                log_error "This openssl build lacks 'openssl kdf' (PBKDF2) — cannot verify salted integrity tag"
+                return 1
+            fi
+            mac_key=$(_backup_mac_key "$_PASS_FILE" "$mac_salt")
+        else
+            # v1 legacy: single bare hex line, weak unsalted derivation
+            log_warn "Legacy (unsalted) integrity tag detected — weak integrity, re-create this backup to upgrade"
+            expected=$(tr -d '[:space:]' < "$hmac_file")
+            mac_key=$(_backup_mac_key_legacy "$_PASS_FILE")
+        fi
         actual=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$mac_key" "$encrypted_path" 2>/dev/null | awk '{print $NF}')
         unset mac_key
-        if [[ -z "$actual" || "$expected" != "$actual" ]]; then
+        if [[ -z "$actual" ]] || ! _ct_equal "$expected" "$actual"; then
             rm -f "$_PASS_FILE"
             log_error "Integrity check FAILED — archive is corrupt, tampered, or passphrase is wrong. Refusing to decrypt."
             return 1
@@ -332,6 +418,18 @@ cmd_restore() {
     # Reject archives containing path traversal or absolute paths
     if tar -tzf "$tar_file" | grep -qE '(^/|\.\.)'; then
         log_error "Archive contains unsafe paths (absolute or ../) — aborting"
+        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
+        exit 1
+    fi
+
+    # Reject anything except regular files and directories. The names-only check
+    # above cannot see symlink targets, so a cleanly-named member pointing at /etc
+    # could otherwise be restored verbatim by restore_configs' `cp -r` outside
+    # $HOME. cmd_backup only archives regular config dirs/files, so rejecting
+    # links, devices, FIFOs, sockets, and other special members has no legitimate
+    # false-positive cost. `-tvzf` emits the type char in column 1.
+    if tar -tvzf "$tar_file" 2>/dev/null | grep -qEv '^[-d]'; then
+        log_error "Archive contains links or special members — refusing to restore (untrusted or malformed backup)"
         [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
         exit 1
     fi

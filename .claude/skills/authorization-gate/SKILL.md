@@ -1,6 +1,6 @@
 ---
 name: authorization-gate
-description: Use as the pre-flight authorization check before any offensive, intrusive, or simulation activity — pentest, red team, exploitation, phishing simulation, wireless attacks, social engineering, C2, scanning a target you don't own. Confirms written authorization, scope boundaries, lawful basis, and target ownership before a single packet is sent, and defines the hard refusals (mass targeting, supply-chain compromise, malicious evasion). Offensive skills reference this gate at the top of their workflow.
+description: Use as the pre-flight authorization check before any offensive, intrusive, or simulation activity — pentest, red team, exploitation, phishing simulation, wireless attacks, social engineering, C2, scanning a target you don't own. Confirms written authorization, scope boundaries, lawful basis, and target ownership before a single packet is sent, and defines the hard refusals (mass targeting, supply-chain compromise, malicious evasion). Run this gate at the top of any offensive or simulation workflow before acting.
 ---
 
 # Authorization gate — clear before you act

@@ -1,5 +1,7 @@
 ---
 name: dfir
+source: transilienceai/communitytools
+license: MIT
 description: Digital forensics and incident response - Windows event log analysis, PCAP forensics, filesystem artifact analysis, AD attack detection, and timeline correlation. Use when investigating security incidents, analyzing Sherlocks, or performing threat hunting on provided evidence files.
 ---
 
