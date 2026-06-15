@@ -377,7 +377,7 @@ install_go_batch() {
     # owns, then move completed binaries to the real GOBIN as root.
     local _gobin_stage=""
     if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
-        _gobin_stage=$(mktemp -d "/tmp/cybersec-gobin.XXXXXX")
+        _gobin_stage=$(mktemp -d "${TMPDIR:-/tmp}/cybersec-gobin.XXXXXX")
         _register_cleanup "$_gobin_stage"
         _chown_for_builder "$_gobin_stage"
         mkdir -p "$GOPATH" 2>/dev/null || true
@@ -478,6 +478,14 @@ install_go_batch() {
     return 0
 }
 
+# Cargo crate name → installed binary name, for the crates where they differ.
+# Most cargo crates install a binary of the same name; these are the exceptions
+# (e.g. yara-x-cli → yr). Shared by verify.sh, update.sh and remove.sh so the
+# crate↔binary mapping lives in one place.
+declare -A _CARGO_BIN_NAMES=(
+    [yara-x-cli]="yr"
+)
+
 # Batch cargo install
 install_cargo_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
@@ -527,7 +535,11 @@ install_cargo_batch() {
         current=$((current + 1))
         show_progress "$current" "$total" "$crate"
         _report_tool_start "Cargo" "$crate"
-        if command_exists "$crate"; then
+        # Some crates install a binary whose name differs from the crate
+        # (e.g. yara-x-cli -> yr); resolve it so the skip-check and symlink
+        # below key off the real executable name. See _CARGO_BIN_NAMES.
+        local _cbin="${_CARGO_BIN_NAMES[$crate]:-$crate}"
+        if command_exists "$_cbin"; then
             skipped=$((skipped + 1))
             track_version "$crate" "cargo" "existing"
             _report_tool_done "Cargo" "$crate" "skip"
@@ -555,8 +567,8 @@ install_cargo_batch() {
             fi
         fi
         local _cargo_bin_dir; _cargo_bin_dir="$(_builder_home)/.cargo/bin"
-        if [[ -f "$_cargo_bin_dir/$crate" ]]; then
-            ln -sf "$_cargo_bin_dir/$crate" "$PIPX_BIN_DIR/$crate" 2>/dev/null || true
+        if [[ -f "$_cargo_bin_dir/$_cbin" ]]; then
+            ln -sf "$_cargo_bin_dir/$_cbin" "$PIPX_BIN_DIR/$_cbin" 2>/dev/null || true
         fi
         track_version "$crate" "cargo" "latest"
         _report_tool_done "Cargo" "$crate" "ok"
@@ -1279,20 +1291,30 @@ for asset in data.get('assets', []):
         fi
     fi
 
-    # Handle archive types — with path traversal protection
+    # Handle archive types — with path traversal protection. Reject any entry
+    # that escapes the extract dir via "../", an absolute path, or a Windows
+    # drive prefix. Names are matched one-per-line (not column-split) so a
+    # filename containing spaces cannot hide the traversal segment.
+    local _traversal_re='(^|/)\.\.(/|$)|^/|^[A-Za-z]:'
     case "$download_url" in
         *.tar.gz|*.tgz)
-            # List tar contents first and reject any paths that escape the directory
-            if tar tzf "$tmp_dir/$asset_name" 2>/dev/null | grep -qE '(^|/)\.\.(/|$)'; then
-                log_error "Tar path traversal detected in $asset_name — aborting"
+            if tar tzf "$tmp_dir/$asset_name" 2>/dev/null | grep -qE "$_traversal_re"; then
+                log_error "Tar path traversal/absolute path detected in $asset_name — aborting"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            # Reject symlink entries whose target is absolute or escapes via "../".
+            if tar tvzf "$tmp_dir/$asset_name" 2>/dev/null | grep -qE '^l.*-> (/|.*\.\.(/|$))'; then
+                log_error "Tar symlink escape detected in $asset_name — aborting"
                 rm -rf "$tmp_dir"
                 return 1
             fi
             tar xzf "$tmp_dir/$asset_name" -C "$tmp_dir" 2>>"$LOG_FILE" ;;
         *.zip)
-            # List zip contents first and reject any paths that escape the directory
-            if unzip -l "$tmp_dir/$asset_name" 2>/dev/null | awk 'NR>3{print $4}' | grep -qE '(^|/)\.\.(/|$)'; then
-                log_error "Zip path traversal detected in $asset_name — aborting"
+            # zipinfo -1 / unzip -Z1 prints one full name per line (no column
+            # splitting), so a spaced filename can't smuggle a "../" past the check.
+            if unzip -Z1 "$tmp_dir/$asset_name" 2>/dev/null | grep -qE "$_traversal_re"; then
+                log_error "Zip path traversal/absolute path detected in $asset_name — aborting"
                 rm -rf "$tmp_dir"
                 return 1
             fi

@@ -11,6 +11,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bash_arrays import balanced_array_body  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 MODULES_DIR = ROOT / "modules"
 INSTALLERS_PATH = ROOT / "lib" / "installers.sh"
@@ -57,34 +60,6 @@ def strip_comments(text):
     )
 
 
-def _find_array_body(text, open_idx):
-    """Return (body, end_idx) for an array opened at text[open_idx] == '('.
-
-    Scans paren-balanced so a ')' inside a quoted cell can't truncate the array
-    early. Quotes (both ' and ") and parens inside them are ignored when balancing.
-    Returns (None, open_idx) if the array is never closed.
-    """
-    depth = 0
-    quote = None
-    i = open_idx
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if quote is not None:
-            if ch == quote:
-                quote = None
-        elif ch in ("'", '"'):
-            quote = ch
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth == 0:
-                return text[open_idx + 1:i], i
-        i += 1
-    return None, open_idx
-
-
 def parse_arrays(text):
     """Parse bash arrays: NAME=( ... ) → {NAME: [entries]}.
 
@@ -95,7 +70,7 @@ def parse_arrays(text):
     result = {}
     for m in re.finditer(r'(\w+)\s*=\s*\(', text):
         name = m.group(1)
-        body, _ = _find_array_body(text, m.end() - 1)
+        body = balanced_array_body(text, m.end() - 1)
         if body is None:
             continue
         entries = []
@@ -133,7 +108,7 @@ def parse_assoc_array(text, name):
     m = re.search(rf"{re.escape(name)}\s*=\s*\(", text)
     if not m:
         return {}
-    body, _ = _find_array_body(text, m.end() - 1)
+    body = balanced_array_body(text, m.end() - 1)
     if body is None:
         return {}
     return dict(re.findall(r'\[([^\]]+)\]\s*=\s*"([^"]*)"', body))

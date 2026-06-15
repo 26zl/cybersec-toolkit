@@ -11,6 +11,9 @@ import sys
 import warnings
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _skill_frontmatter import frontmatter as _frontmatter  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / ".claude" / "skills"
 INDEX = SKILLS_DIR / "SKILLS.md"
@@ -44,42 +47,6 @@ def _import_curate():
         return curate_claude_skills
     except Exception:  # noqa: BLE001
         return None
-
-
-def _frontmatter(text: str) -> dict[str, str] | None:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    if not match:
-        return None
-
-    fields: dict[str, str] = {}
-    lines = match.group(1).splitlines()
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        if ":" not in line:
-            index += 1
-            continue
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-        if value in {">", ">-", "|", "|-"}:
-            block: list[str] = []
-            index += 1
-            while index < len(lines):
-                block_line = lines[index]
-                if block_line.startswith((" ", "\t")) or not block_line.strip():
-                    block.append(block_line.strip())
-                    index += 1
-                    continue
-                break
-            if value.startswith(">"):
-                fields[key] = " ".join(part for part in block if part)
-            else:
-                fields[key] = "\n".join(block).strip()
-            continue
-        fields[key] = value.strip('"').strip("'")
-        index += 1
-    return fields
 
 
 def _declared_total(index_text: str) -> int | None:

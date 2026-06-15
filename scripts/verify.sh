@@ -82,6 +82,11 @@ _is_tracked() {
     echo "$_INSTALLED_TOOLS" | grep -qx "$1" 2>/dev/null
 }
 
+# Per-tool log lines are suppressed under --summary; the wrappers keep that
+# check in one place instead of guarding every call site.
+vlog_success() { [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$@"; return 0; }
+vlog_error()   { [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$@"; return 0; }
+
 _init_log_file "$SCRIPT_DIR/tool_verification.log"
 
 TOTAL_CHECKED=0
@@ -109,7 +114,7 @@ check_cmd() {
         return 0
     else
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$tool — NOT installed"
+        vlog_error "$tool — NOT installed"
         return 1
     fi
 }
@@ -122,11 +127,11 @@ check_dir() {
 
     if [[ -d "$path" ]]; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$name — $path"
+        vlog_success "$name — $path"
         return 0
     else
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$name — NOT found at $path"
+        vlog_error "$name — NOT found at $path"
         return 1
     fi
 }
@@ -171,7 +176,7 @@ check_pipx() {
     # 1. Check if package name is a valid command
     if command_exists "$tool"; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed (pipx/PATH)"
+        vlog_success "$tool — installed (pipx/PATH)"
         return 0
     fi
 
@@ -179,7 +184,7 @@ check_pipx() {
     local _bin="${_PIPX_BIN_NAMES[$tool]:-}"
     if [[ -n "$_bin" ]] && command_exists "$_bin"; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed ($_bin)"
+        vlog_success "$tool — installed ($_bin)"
         return 0
     fi
 
@@ -189,13 +194,13 @@ check_pipx() {
         local _norm="${tool//-/_}"
         if pipx list --short 2>/dev/null | sed 's/-/_/g' | grep -qi "^${_norm} "; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
-            [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$tool — installed (pipx)"
+            vlog_success "$tool — installed (pipx)"
             return 0
         fi
     fi
 
     TOTAL_MISSING=$((TOTAL_MISSING + 1))
-    [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$tool — NOT installed"
+    vlog_error "$tool — NOT installed"
     return 1
 }
 
@@ -207,12 +212,12 @@ check_cmd_any() {
     for candidate in "$@"; do
         if command_exists "$candidate"; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
-            [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$label — installed ($candidate)"
+            vlog_success "$label — installed ($candidate)"
             return 0
         fi
     done
     TOTAL_MISSING=$((TOTAL_MISSING + 1))
-    [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$label — NOT installed (tried: $*)"
+    vlog_error "$label — NOT installed (tried: $*)"
     return 1
 }
 
@@ -226,7 +231,7 @@ check_build() {
     if command_exists "$name"; then
         # Binary is in PATH (e.g. symlinked or installed to /usr/local/bin)
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$name — built & in PATH"
+        vlog_success "$name — built & in PATH"
         return 0
     elif [[ -d "$dir" ]]; then
         # Directory exists — check for build artifacts (case-insensitive name, .so libs, or any ELF binary in bin/)
@@ -234,26 +239,22 @@ check_build() {
         if find "$dir" -maxdepth 3 -type f \( -iname "$name" -o -name "*.so" -o -name "afl-fuzz" \) -executable 2>/dev/null | grep -q . \
            || find "$dir/bin" -maxdepth 1 -type f -executable 2>/dev/null | grep -q .; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
-            [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$name — built at $dir"
+            vlog_success "$name — built at $dir"
             return 0
         else
             TOTAL_MISSING=$((TOTAL_MISSING + 1))
-            [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$name — cloned at $dir but build artifacts NOT found"
+            vlog_error "$name — cloned at $dir but build artifacts NOT found"
             return 1
         fi
     else
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$name — NOT found at $dir"
+        vlog_error "$name — NOT found at $dir"
         return 1
     fi
 }
 check_builds() { for n in "$@"; do check_build "$n" || true; done; }
 
-# Cargo crate name → binary name mapping (only for crates where they differ).
-# Most cargo crates install a binary of the same name — these are the exceptions.
-declare -A _CARGO_BIN_NAMES=(
-    [yara-x-cli]="yr"
-)
+# _CARGO_BIN_NAMES (crate→binary exceptions) is defined in lib/installers.sh.
 
 # check_cargo — verify a cargo crate by its installed binary name (handles the
 # crate-name ≠ binary-name exceptions above). Counts toward the totals like
@@ -275,7 +276,7 @@ check_cargo() {
         return 0
     else
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$crate — NOT installed"
+        vlog_error "$crate — NOT installed"
         return 1
     fi
 }
@@ -654,10 +655,10 @@ if should_verify "blockchain"; then
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
     if [[ -x "$HOME/.foundry/bin/chisel" ]]; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_success "chisel (foundry) — $HOME/.foundry/bin/chisel"
+        vlog_success "chisel (foundry) — $HOME/.foundry/bin/chisel"
     else
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        [[ "$SUMMARY_ONLY" == "false" ]] && log_error "chisel (foundry) — NOT found at $HOME/.foundry/bin/chisel"
+        vlog_error "chisel (foundry) — NOT found at $HOME/.foundry/bin/chisel"
     fi
     log_info "Blockchain (Binary):"
     check_cmd "crytic-medusa" || true
@@ -685,10 +686,10 @@ if command_exists docker; then
         TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
         if docker images "${_docker_img%%:*}" -q 2>/dev/null | grep -q .; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
-            [[ "$SUMMARY_ONLY" == "false" ]] && log_success "$_docker_label ($_docker_img) — Docker image present"
+            vlog_success "$_docker_label ($_docker_img) — Docker image present"
         else
             TOTAL_MISSING=$((TOTAL_MISSING + 1))
-            [[ "$SUMMARY_ONLY" == "false" ]] && log_error "$_docker_label ($_docker_img) — Docker image NOT found"
+            vlog_error "$_docker_label ($_docker_img) — Docker image NOT found"
         fi
     done
 fi

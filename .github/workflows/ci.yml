@@ -57,6 +57,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - uses: DavidAnson/markdownlint-cli2-action@ded1f9488f68a970bc66ea5619e13e9b52e601cd # v23.2.0
+        # The .agents/skills/ exclusion below is inert in CI (that tree is the
+        # git-ignored mirror of .claude/skills/, never generated on the runner);
+        # it only matters for a local `markdownlint-cli2 "**/*.md"` over a
+        # populated working tree.
         with:
           globs: |
             **/*.md
@@ -65,6 +69,7 @@ jobs:
             !tests/test_helper/**/*.md
             !mcp_server/.venv/**/*.md
             !.claude/skills/**/*.md
+            !.agents/skills/**/*.md
 
   tests:
     name: Tests (bats-core)
@@ -120,6 +125,9 @@ jobs:
       - name: Validate Claude Code skill metadata
         run: python3 scripts/validate_claude_skills.py
 
+      - name: Validate Claude Code skill optional dependencies
+        run: python3 scripts/audit_skill_dependencies.py --check-declared
+
   python-lint:
     name: Python Lint (ruff)
     runs-on: ubuntu-latest
@@ -137,6 +145,8 @@ jobs:
           cd mcp_server && uv sync --group dev --quiet
           uv run ruff check .
           uv run ruff format --check .
+          # Also lint the repo-root helper scripts (own ruff.toml at repo root).
+          uv run ruff check ../scripts/
 
   python-tests:
     name: Python Tests (pytest)

@@ -11,36 +11,11 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bash_arrays import balanced_array_body  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 errors: list[str] = []
-
-
-def _balanced_array_body(text: str, open_idx: int) -> str | None:
-    """Return the body of an array opened at text[open_idx] == '('.
-
-    Scans paren-balanced and quote-aware so a ')' inside a quoted cell or a
-    comment can't close the array early (which would silently drop later
-    entries). Returns None if the array is never closed.
-    """
-    depth = 0
-    quote: str | None = None
-    i = open_idx
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if quote is not None:
-            if ch == quote:
-                quote = None
-        elif ch in ("'", '"'):
-            quote = ch
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth == 0:
-                return text[open_idx + 1 : i]
-        i += 1
-    return None
 
 
 def parse_bash_assoc_array(text: str, var_name: str) -> dict[str, str]:
@@ -48,7 +23,7 @@ def parse_bash_assoc_array(text: str, var_name: str) -> dict[str, str]:
     m = re.search(rf"declare\s+-A\s+{var_name}=\(", text)
     if not m:
         return {}
-    block = _balanced_array_body(text, m.end() - 1)
+    block = balanced_array_body(text, m.end() - 1)
     if block is None:
         return {}
     entries = re.findall(r'\[([^\]]+)\]="([^"]*)"', block)
@@ -58,14 +33,14 @@ def parse_bash_assoc_array(text: str, var_name: str) -> dict[str, str]:
 def parse_bash_indexed_array(text: str, var_name: str) -> list[str]:
     """Parse a bash indexed array: VAR=( "entry" ... ).
 
-    Paren-balanced (see _balanced_array_body) so a ')' inside a quoted cell or
+    Paren-balanced (see balanced_array_body) so a ')' inside a quoted cell or
     comment does not truncate the array. Asserts the parsed entry count matches
     the number of quoted-cell lines to catch any silent truncation.
     """
     m = re.search(rf"{var_name}=\(", text)
     if not m:
         return []
-    block = _balanced_array_body(text, m.end() - 1)
+    block = balanced_array_body(text, m.end() - 1)
     if block is None:
         return []
     entries = re.findall(r'"([^"]+)"', block)

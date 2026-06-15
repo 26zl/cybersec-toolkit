@@ -1,0 +1,15 @@
+# Ruff config for the repo-root helper scripts in scripts/.
+# The mcp_server/ package is linted separately via its own pyproject.toml; this
+# file lets CI also lint scripts/*.py for real issues (undefined names, unused
+# imports, import order) that previously went unchecked.
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I"]
+
+[lint.per-file-ignores]
+# These helpers carry wide keyword/data tables and long literal strings that are
+# clearer on one line than reflowed; the long rows predate CI linting of scripts/.
+"scripts/curate_claude_skills.py" = ["E501"]
+"scripts/validate_claude_skills.py" = ["E501"]
+"scripts/audit_skill_dependencies.py" = ["E501"]

@@ -112,6 +112,24 @@ SPECIAL_BIN_NAMES: dict[str, str] = {
     "foundry": "forge",
 }
 
+
+def resolve_binary_name(method: str, tool_name: str) -> str:
+    """Map a registry tool name to its installed executable name, by install method.
+
+    Single source of truth for the package-name != executable-name mapping so the
+    local PATH check and the remote SSH ``which`` check resolve the same binary
+    (otherwise apt-renamed/special-method tools always report "not installed" on
+    remote hosts). Returns *tool_name* unchanged when no mapping applies.
+    """
+    if method == "pipx":
+        return PIPX_BIN_NAMES.get(tool_name, tool_name)
+    if method == "apt":
+        return APT_BIN_NAMES.get(tool_name, tool_name)
+    if method == "special":
+        return SPECIAL_BIN_NAMES.get(tool_name, tool_name)
+    return tool_name
+
+
 # Registry tools installed ONLY when INCLUDE_C2=true (the redteam/full profiles, or
 # --include-c2). The installer gates these in modules/misc.sh; mirror that here so MCP
 # tool/profile output reflects the gating. Synced from bash by validate_mcp_sync.py:
@@ -259,13 +277,8 @@ class ToolsDatabase:
             }
 
         # 3. Binary name fallback (package name != executable name)
-        bin_name = None
-        if tool["method"] == "pipx" and tool_name in PIPX_BIN_NAMES:
-            bin_name = PIPX_BIN_NAMES[tool_name]
-        elif tool["method"] == "apt" and tool_name in APT_BIN_NAMES:
-            bin_name = APT_BIN_NAMES[tool_name]
-        elif tool["method"] == "special" and tool_name in SPECIAL_BIN_NAMES:
-            bin_name = SPECIAL_BIN_NAMES[tool_name]
+        resolved = resolve_binary_name(tool["method"], tool_name)
+        bin_name = resolved if resolved != tool_name else None
         if bin_name and shutil.which(bin_name):
             return {
                 "installed": True,

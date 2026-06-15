@@ -10,7 +10,7 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from mcp_server.advisor_utils import TOOL_ALIASES, check_tool_installed  # noqa: E402
+from mcp_server.advisor_utils import build_tool_status_list  # noqa: E402
 from mcp_server.tools_db import ToolsDatabase  # noqa: E402
 
 # Maps target type -> description, relevant modules, top tools, methodology,
@@ -436,22 +436,7 @@ def suggest_for_bounty(target_type: str, tools_db: ToolsDatabase) -> dict:
         }
 
     target_info = BOUNTY_TARGET_MAP[resolved]
-    tools_with_status = []
-    for tool_name, description in target_info["tools"]:
-        installed, in_registry = check_tool_installed(tool_name, tools_db)
-        entry = {
-            "name": tool_name,
-            "description": description,
-            "installed": installed,
-            "in_registry": in_registry,
-        }
-        # Add registry name if different from display name
-        registry_name = TOOL_ALIASES.get(tool_name)
-        if registry_name:
-            entry["registry_name"] = registry_name
-        tools_with_status.append(entry)
-
-    installed_count = sum(1 for t in tools_with_status if t["installed"])
+    tools_with_status, installed_count = build_tool_status_list(target_info["tools"], tools_db)
 
     result = {
         "target_type": resolved,

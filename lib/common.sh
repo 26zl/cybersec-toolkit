@@ -28,23 +28,9 @@ UNSUPPORTED_HOST_OS="${UNSUPPORTED_HOST_OS:-}"
 # Installer version (read from VERSION file at repo root)
 INSTALLER_VERSION=""
 if [[ -f "${SCRIPT_DIR:-.}/VERSION" ]]; then
-    INSTALLER_VERSION=$(< "${SCRIPT_DIR:-.}/VERSION")
-    # Strip ALL trailing whitespace/newlines (extglob +(...) for multi-char match).
-    # %%[[:space:]] alone removes at most one char; restore prior extglob state
-    # without eval (the security workflow forbids eval entirely).
-    if shopt -q extglob; then
-        _ev_extglob_was_on=true
-    else
-        _ev_extglob_was_on=false
-    fi
-    shopt -s extglob
-    INSTALLER_VERSION="${INSTALLER_VERSION%%+([[:space:]])}"
-    if [[ "$_ev_extglob_was_on" == "true" ]]; then
-        shopt -s extglob
-    else
-        shopt -u extglob
-    fi
-    unset _ev_extglob_was_on
+    # read -r trims leading/trailing IFS whitespace and stops at the first
+    # newline, so the version comes out clean without an extglob trim dance.
+    read -r INSTALLER_VERSION < "${SCRIPT_DIR:-.}/VERSION" || true
 fi
 # Validate PARALLEL_JOBS: must be a positive integer, clamped to 1-16
 if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then

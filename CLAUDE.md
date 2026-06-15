@@ -31,6 +31,9 @@ python3 scripts/validate_distro_compat.py
 # Validate Claude Code skill metadata and SKILLS.md counts
 python3 scripts/validate_claude_skills.py
 
+# Validate optional Python deps used by skill helper scripts are declared
+python3 scripts/audit_skill_dependencies.py --check-declared
+
 # Regenerate skill curation index after adding/removing/renaming a skill dir
 # (validate_claude_skills.py checks curation freshness; this writes curation.json + CURATION.md)
 python3 scripts/curate_claude_skills.py --write
@@ -138,8 +141,8 @@ Eleven parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 4. **bats-tests** — `bats tests/*.bats` (unit tests)
 5. **validate-tools-config** — `python3 scripts/validate_tools_config.py` (0 errors, 0 warnings)
 6. **distro-compat-validate** — `python3 scripts/validate_distro_compat.py` (distro package mappings)
-7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py` (skill frontmatter + index counts + helper script syntax)
-8. **python-lint** — `ruff check` + `ruff format --check` on MCP server
+7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py` and `python3 scripts/audit_skill_dependencies.py --check-declared` (skill frontmatter + index counts + helper script syntax + optional helper deps)
+8. **python-lint** — `ruff check` + `ruff format --check` on the MCP server, plus `ruff check ../scripts/` on the repo-root helper scripts (own root `ruff.toml`)
 9. **python-tests** — `pytest` on MCP server tests
 10. **mcp-server-check** — `uv sync`, import test, `validate_mcp_sync.py`
 11. **validate-profiles** — checks every `profiles/*.conf` module name against `ALL_MODULES`
@@ -184,12 +187,15 @@ All scripts source the chain in this order. `common.sh` auto-detects distro/pkg 
 
 ### Skill Library (`.claude/skills/`)
 
-872 on-demand Claude Code skills (vendored sources + project-authored). Three files describe the set and must stay consistent or `validate_claude_skills.py` fails:
+872 on-demand Claude Code skills (vendored sources + project-authored). Four files describe the set and must stay consistent or validation fails:
 
 - `SKILLS.md` — human index. Hand-maintained: the declared total ("contains N skills") and the per-section counts (`## Name (N)`) must both sum to the actual skill-dir count.
 - `curation.json` + `CURATION.md` — tier/domain ranking, **generated** by `scripts/curate_claude_skills.py --write`. Never hand-edit. Classification is rule-based in that script, with hardcoded sets for project/coverage-anchor/coordinator/source-specific skills — add a new project-authored skill's name there to control its tier/domain.
+- `requirements.txt` — optional Python packages used by skill helper scripts, **generated** by `scripts/audit_skill_dependencies.py --write-requirements`. Never hand-edit package names; update `IMPORT_TO_REQUIREMENTS` in that script if a new import maps to a different PyPI package.
 
-Each skill is `<name>/SKILL.md` with YAML frontmatter where `name` **must equal the directory name** plus a `description`. After adding/removing/renaming a skill dir: update `SKILLS.md` counts, run `curate_claude_skills.py --write`, then `validate_claude_skills.py`.
+Each skill is `<name>/SKILL.md` with YAML frontmatter where `name` **must equal the directory name** plus a `description`. After adding/removing/renaming a skill dir: update `SKILLS.md` counts, run `curate_claude_skills.py --write`, then `validate_claude_skills.py`. After changing skill helper-script imports: run `audit_skill_dependencies.py --write-requirements`, then `audit_skill_dependencies.py --check-declared`.
+
+`validate_claude_skills.py` and `curate_claude_skills.py` share the YAML frontmatter parser in `scripts/_skill_frontmatter.py`; the two config validators (`validate_tools_config.py`, `validate_mcp_sync.py`) share the paren-balanced bash-array scanner in `scripts/_bash_arrays.py`. Edit those shared helpers rather than re-duplicating the parsing logic.
 
 **Cross-skill coordinators** (project-authored; route offensive/audit/detection work through these): `finding-triage` (normalize a finding → disposition), `security-comms` (translate for an audience), `authorization-gate` (pre-flight authorization check for offensive/simulation work), `evidence-hygiene` (sanitize report/writeup evidence before sharing).
 
@@ -210,7 +216,7 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 - `tools_db.py` — Tool registry loader, install checks, version tracking
 - `advisor_utils.py` — shared `TOOL_ALIASES` map + `check_tool_installed()` install-status helper used by `ctf_advisor.py`, `bounty_advisor.py`, and `cve_advisor.py`
 - `profiles.py` — Profile data (synced from `profiles/*.conf`)
-- `ctf_advisor.py` — CTF category suggestions, `TOOL_ALIASES` mapping, methodology steps
+- `ctf_advisor.py` — CTF category suggestions and methodology steps (tool-status entries via `advisor_utils.build_tool_status_list`)
 - `bounty_advisor.py` — Bug bounty target-type suggestions, methodology, common vulns
 - `remote.py` — `RemoteHostConfig` for SSH-based remote tool execution
 - `audit.py` — JSON-line audit logging (5MB rotating) for blocked/executed tools and scripts. Script bodies are NOT persisted (CWE-312 clear-text-logging): `log_script_execution`/`log_tool_call` log `"[OMITTED]"` for the body plus an irreversible SHA256 + byte length of the original code for forensic correlation. `_redact_script_code()` still best-effort scrubs credential-shaped strings (OpenAI/GitHub/AWS/JWT tokens, `API_KEY=...` assignments, HTTP Authorization headers, `sshpass`/`hydra` `-p <pass>` flags, `PGPASSWORD`/`MYSQL_PWD`/`MARIADB_PASSWORD`/`REDISCLI_AUTH` env-vars) from the tool arguments/commands and `log_tool_result` error/summary text it does log.
@@ -220,7 +226,7 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 
 - Uses `uv` for dependency management (`pyproject.toml`), not pip/venv
 - All imports use absolute paths with `sys.path` fixup (no relative imports) — required for compatibility with both `python -m mcp_server.server` and `fastmcp dev inspector server.py`
-- `TOOL_ALIASES` in `ctf_advisor.py` maps user-friendly names to registry names (e.g., `wireshark` → `wireshark-common`)
+- `TOOL_ALIASES` in `advisor_utils.py` maps user-friendly names to registry names (e.g., `wireshark` → `wireshark-common`)
 - Termux-aware: command suggestions omit `sudo` when `TERMUX_VERSION` is set
 - TTL-cached `.versions` reads (2s) to avoid per-tool file reads during batch operations
 
@@ -240,11 +246,11 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 | `tools_db.py` → `MODULE_DESCRIPTIONS` | `lib/common.sh` `MODULE_DESCRIPTIONS` |
 | `tools_db.py` → `DOCKER_IMAGES` | `lib/installers.sh` `ALL_DOCKER_IMAGES` |
 | `profiles.py` → `PROFILES` (modules **and** `skip_heavy`/`enable_docker`/`include_c2` flags) | `profiles/*.conf` files |
-| `ctf_advisor.py` → `TOOL_ALIASES` (targets must exist) | `tools_config.json` tool names |
+| `advisor_utils.py` → `TOOL_ALIASES` (targets must exist) | `tools_config.json` tool names |
 
 **Execution security** (`security.py`):
 
-- Registry allowlist + install check + argument sanitization (blocks `; & | \`` `$( ${`)
+- Registry allowlist + install check + argument sanitization (blocks `| \`` `$( ${`)
 - Universal blocked flags: `--delete`, `-rf`, `--force-delete`, `--remove-all`, `--exploit`
 - Tool-specific blocked flags: sqlmap (`--os-shell`, `--os-cmd`, `--os-pwn`, `--priv-esc`, `--file-read`, `--file-write`, `--file-dest`), nmap (`-iL`, `-iR`), masscan (`--includefile`), sed (`-i`), awk (`system()`, `pipe|getline`), tar (`--checkpoint-action`, `--to-command`)
 - `socat` excluded from SYSTEM_UTILITIES (EXEC:/SYSTEM: allow arbitrary command execution)
@@ -254,7 +260,7 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 - Rate limiter checked BEFORE semaphore in all three execution paths (`execute_tool`, `execute_pipeline`, `execute_tool_remote`)
 - Pipeline intermediate steps with non-zero exit (e.g., grep returning 1) pass output forward; only the last step's exit code matters
 - Thread-safe DNS resolution via daemon thread (no process-global `socket.setdefaulttimeout`)
-- `$`, `>`, `<` are NOT blocked — no shell is used (`create_subprocess_exec`), and tools need them for regex/awk/XML
+- `;`, `&`, `$`, `>`, `<` are NOT blocked — no shell is used (`create_subprocess_exec`), so they are literals; tools need them for URL query strings (`?a=1&b=2`), regex/awk (`$`), and XML/comparisons (`>`/`<`). Only `|` (pipe → use `run_pipeline`), backtick, and `$(`/`${` (command substitution) are blocked
 - Tool-specific blocked flags use `pattern.search()` not `pattern.match()` (must match anywhere in arg, not just position 0)
 - IPv6-aware target parsing. No `shell=True`. Timeout 1-300s. Output capped at 200KB per stream
 - Subprocess stdout/stderr drained via `_bounded_communicate()` — caps in-memory buffer at `max_output` per stream while continuing to drain the pipe so the child can exit. Replaces `process.communicate()` in all four execution paths (`execute_tool`, `execute_pipeline`, `execute_script` in `security.py`, `execute_remote_command` / `check_ssh_connection` in `remote.py` via `_security._bounded_communicate`). Any new subprocess code must use this pattern, not `communicate()`

@@ -9,6 +9,12 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
+# common.sh registers _global_cleanup on EXIT, but Ctrl-C during the multi-second
+# PBKDF2 encryption would otherwise leave the plaintext-passphrase temp file in
+# place. Mirror install.sh: also clean up (and exit) on INT/TERM. The passphrase
+# temp files are registered via _register_cleanup at their mktemp sites below.
+trap '_global_cleanup; exit 130' INT TERM
+
 # Resolve the REAL user's home. README/install.sh tell users to run backup under
 # sudo, and `schedule` requires root and writes the root crontab — under sudo (or
 # cron) $HOME is /root, so a bare $HOME would back up /root/.* (empty for a real
@@ -98,6 +104,7 @@ _read_passphrase_to_file() {
     echo ""
     _PASS_FILE=$(mktemp)
     chmod 600 "$_PASS_FILE"
+    _register_cleanup "$_PASS_FILE"
     printf '%s' "$passphrase" > "$_PASS_FILE"
     unset passphrase
 }
@@ -110,6 +117,7 @@ encrypt_archive() {
     local pass_file
     pass_file=$(mktemp)
     chmod 600 "$pass_file"
+    _register_cleanup "$pass_file"
     printf '%s' "$_PASSPHRASE" > "$pass_file"
     unset _PASSPHRASE
 

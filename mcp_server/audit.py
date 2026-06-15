@@ -97,6 +97,13 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1=" + _REDACTED,
     ),
+    # HTTP Cookie / Set-Cookie header values carry session tokens. Redact the
+    # whole header value (up to a quote or end of line) — re-run safe because the
+    # value matcher stops before [REDACTED] would be re-consumed.
+    (
+        re.compile(r"((?:Set-)?Cookie\s*:\s*)(?!\[REDACTED\])[^\r\n\"']+", re.IGNORECASE),
+        r"\1" + _REDACTED,
+    ),
 ]
 
 # Tools that take a password as a *separated* "-p <value>" argument. The
@@ -107,6 +114,12 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 _CREDENTIAL_TOOLS = re.compile(r"\b(?:sshpass|hydra|medusa|ncrack)\b", re.IGNORECASE)
 _SEPARATED_PASSWORD_FLAG = re.compile(r"(\B-p[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
 
+# redis-cli passes its auth via "-a <pass>" / "-a<pass>". "-a" is too ambiguous
+# to redact unconditionally (other tools use it differently), so gate on the
+# presence of redis-cli — same approach as the separated "-p" rule above.
+_REDIS_TOOL = re.compile(r"\bredis-cli\b", re.IGNORECASE)
+_REDIS_AUTH_FLAG = re.compile(r"(\B-a[\s=]?)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
+
 
 def _redact_sensitive(value: str) -> str:
     """Replace likely credentials in a string with [REDACTED]."""
@@ -116,6 +129,9 @@ def _redact_sensitive(value: str) -> str:
     # "-p 80" stays readable (no credential tool to gate on).
     if _CREDENTIAL_TOOLS.search(value):
         value = _SEPARATED_PASSWORD_FLAG.sub(r"\1" + _REDACTED, value)
+    # redis-cli "-a <pass>" only when redis-cli is in the command.
+    if _REDIS_TOOL.search(value):
+        value = _REDIS_AUTH_FLAG.sub(r"\1" + _REDACTED, value)
     return value
 
 

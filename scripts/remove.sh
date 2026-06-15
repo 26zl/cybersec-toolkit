@@ -239,12 +239,7 @@ elif [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]]; then
 fi
 echo ""
 
-# Cargo crate name → binary name mapping (only for crates where they differ).
-# Kept in sync with scripts/verify.sh's _CARGO_BIN_NAMES. Most crates install a
-# binary of the same name; these are the exceptions (e.g. yara-x-cli → yr).
-declare -A _CARGO_BIN_NAMES=(
-    [yara-x-cli]="yr"
-)
+# _CARGO_BIN_NAMES (crate→binary exceptions) is defined in lib/installers.sh.
 
 # 3) Cargo tools — must run BEFORE system packages (cargo is from rustup, not apt, but be safe)
 if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then

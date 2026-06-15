@@ -79,6 +79,7 @@ def test_recommended_next_command_escapes_display_call_arguments() -> None:
         ]
     )
 
+    assert result is not None
     assert result["run_tool_call"] == 'run_tool("file", "./weird \\"name\\".bin")'
 
 

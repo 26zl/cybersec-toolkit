@@ -47,7 +47,7 @@ For context when evaluating a report:
 - **Go SDK** — SHA256-verified against `go.dev/dl/?mode=json` when reachable
 - **MCP Python dependencies** — resolved by `uv` with a 3-day `exclude-newer` release-age window for project runtime dependencies
 - **GitHub Actions** — all SHA-pinned with version comments; `step-security/harden-runner` enforces egress audit in every job
-- **MCP execution engine** — tool allowlisting, argument sanitization (blocks `;`, `&`, `|`, backtick, `$(`, `${`), per-tool blocked flags, network target allowlisting (private/loopback only by default — `CYBERSEC_MCP_ALLOW_EXTERNAL=1` opts in), rate limiting, and audit logging
+- **MCP execution engine** — tool allowlisting, argument sanitization (blocks `|`, backtick, `$(`, `${`; `;` and `&` pass through as literals since no shell is used), per-tool blocked flags, network target allowlisting (private/loopback only by default — `CYBERSEC_MCP_ALLOW_EXTERNAL=1` opts in), rate limiting, and audit logging
 - **MCP script execution** — off by default; requires `CYBERSEC_MCP_ALLOW_SCRIPTS=1`
 
 ## Automated security checks

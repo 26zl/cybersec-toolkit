@@ -78,10 +78,18 @@ bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
 # Bats unit tests
 ./tests/bats/bin/bats tests/*.bats
 
-# MCP server
+# Python validators (gate CI)
+python3 scripts/validate_tools_config.py
+python3 scripts/validate_mcp_sync.py
+python3 scripts/validate_distro_compat.py
+python3 scripts/validate_claude_skills.py
+python3 scripts/audit_skill_dependencies.py --check-declared
+
+# MCP server + repo-root helper scripts
 cd mcp_server
 uv run --group dev ruff check .
 uv run --group dev ruff format --check .
+uv run --group dev ruff check ../scripts/        # repo-root helpers (root ruff.toml)
 uv run --group dev pytest tests/ -q
 ```
 

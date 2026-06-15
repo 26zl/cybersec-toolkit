@@ -76,6 +76,9 @@ python3 scripts/validate_distro_compat.py
 # validator runs anywhere)
 python3 scripts/validate_claude_skills.py
 
+# Validate optional Python deps used by skill helper scripts are declared
+python3 scripts/audit_skill_dependencies.py --check-declared
+
 # Regenerate skill curation index after adding/removing/renaming a skill dir
 # (validate_claude_skills.py checks curation freshness)
 python3 scripts/curate_claude_skills.py --write
@@ -189,7 +192,7 @@ Separate Python package (FastMCP), managed with `uv` (`pyproject.toml`), not pip
 - `sanitize.py` — output processing (ANSI stripping, injection-marker stripping)
 
 Key design decisions: absolute imports with `sys.path` fixup (no relative imports);
-`TOOL_ALIASES` in `ctf_advisor.py` maps friendly names to registry names; Termux-aware
+`TOOL_ALIASES` in `advisor_utils.py` maps friendly names to registry names; Termux-aware
 (omits `sudo` when `TERMUX_VERSION` is set); all subprocess code uses
 `create_subprocess_exec` (no `shell=True`) and `_bounded_communicate()` (not
 `communicate()`).
@@ -198,7 +201,7 @@ Key design decisions: absolute imports with `sys.path` fixup (no relative import
 `scripts/validate_mcp_sync.py`): `tools_db.py` `PIPX_BIN_NAMES` ↔ `scripts/verify.sh`;
 `tools_db.py` `MODULE_DESCRIPTIONS` ↔ `lib/common.sh`; `tools_db.py` `DOCKER_IMAGES` ↔
 `lib/installers.sh` `ALL_DOCKER_IMAGES`; `profiles.py` `PROFILES` ↔ `profiles/*.conf`;
-`ctf_advisor.py` `TOOL_ALIASES` targets ↔ `tools_config.json` tool names.
+`advisor_utils.py` `TOOL_ALIASES` targets ↔ `tools_config.json` tool names.
 
 ### Install Method Hierarchy
 
@@ -223,13 +226,16 @@ mirror and is git-ignored. Re-run the sync after editing skills. Source/category
 [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
 
 Each skill is `<name>/SKILL.md` with frontmatter where `name` must equal the directory
-name. `SKILLS.md` counts and the generated `curation.json` + `CURATION.md` (written by
-`scripts/curate_claude_skills.py --write`) must stay consistent or `validate_claude_skills.py`
-fails. **Cross-skill coordinators** other skills route through: `finding-triage` (finding →
-disposition), `security-comms` (audience translation), `authorization-gate` (pre-flight auth
-check), and `evidence-hygiene` (sanitize report/writeup evidence before sharing). The repo is
-also a **Claude Code plugin marketplace** (`.claude-plugin/`); the skills
-install via `/plugin marketplace add 26zl/cybersec-toolkit`.
+name. `SKILLS.md` counts, generated `curation.json` + `CURATION.md` (written by
+`scripts/curate_claude_skills.py --write`), and `.claude/skills/requirements.txt`
+(written by `scripts/audit_skill_dependencies.py --write-requirements`) must stay
+consistent; validate with `validate_claude_skills.py` and
+`audit_skill_dependencies.py --check-declared`. **Cross-skill coordinators** other
+skills route through: `finding-triage` (finding → disposition), `security-comms`
+(audience translation), `authorization-gate` (pre-flight auth check), and
+`evidence-hygiene` (sanitize report/writeup evidence before sharing). The repo is also a
+**Claude Code plugin marketplace** (`.claude-plugin/`); the skills install via
+`/plugin marketplace add 26zl/cybersec-toolkit`.
 
 ## Important Patterns
 

@@ -49,6 +49,8 @@ _SHELL_META_RE = re.compile(r"[;&|`$<>]")
 # is no shell on the execution path (create_subprocess_exec + shlex.quote), so a
 # URL only needs the genuinely dangerous shell metacharacters blocked; '&' and ';'
 # are allowed for URLs. Non-URL targets keep the stricter _SHELL_META_RE.
+# The executor's sanitize_args also allows '&'/';' (they are literals without a
+# shell) and blocks only | ` $( ${, so a planned multi-param URL runs as-is.
 _URL_META_RE = re.compile(r"[|`$<>]")
 
 _FINDING_TYPE_RULES = [
@@ -169,12 +171,19 @@ def _infer_workflow_type(target: str, kind: str, workflow: str | None = None) ->
         return "ctf", category
     if kind == "url":
         parsed = urlparse(target)
-        host = (parsed.hostname or "").lower()
-        path = (parsed.path or "").lower()
-        is_api = host.startswith("api.") or "/api/" in path or "graphql" in path
+        scheme = (parsed.scheme or "").lower()
+        if scheme in ("http", "https"):
+            host = (parsed.hostname or "").lower()
+            path = (parsed.path or "").lower()
+            is_api = host.startswith("api.") or "/api/" in path or "graphql" in path
+            if explicit == "ctf":
+                return "ctf", "web"
+            return "bounty", "api" if is_api else "web_app"
+        # Non-web scheme (ftp://, file://, gopher://, ...) — a web toolset is
+        # meaningless; classify on the hostname like any other network target.
         if explicit == "ctf":
-            return "ctf", "web"
-        return "bounty", "api" if is_api else "web_app"
+            return "ctf", "networking"
+        return "bounty", "network"
     # host
     if explicit == "ctf":
         return "ctf", "networking"
@@ -283,6 +292,11 @@ def _resolve_workflow(workflow: str, target_type: str) -> tuple[str, str | None,
 
 
 def _tool_status(tool_name: str, tools_db: ToolsDatabase) -> dict:
+    # Shares the TOOL_ALIASES source with advisor_utils.check_tool_installed but
+    # intentionally does NOT reuse it: this returns a richer dict (registry_name,
+    # details, requires_include_c2) and, for in-registry tools, trusts
+    # tools_db.check_installed without the extra shutil.which(tool_name) fallback
+    # that check_tool_installed applies. Keep the two in lockstep on aliasing only.
     registry_name = TOOL_ALIASES.get(tool_name, tool_name)
     in_registry = registry_name in tools_db.tools_by_name
     if in_registry:

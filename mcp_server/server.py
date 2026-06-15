@@ -479,7 +479,7 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
     if host:
         # Remote installation check via SSH 'which'
         from mcp_server.remote import execute_remote_command
-        from mcp_server.tools_db import PIPX_BIN_NAMES
+        from mcp_server.tools_db import resolve_binary_name
 
         if _remote is None:
             msg = _remote_unavailable_error()
@@ -491,7 +491,7 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
             log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"tool": tool_name, "in_registry": True, "error": str(e)}
 
-        binary = PIPX_BIN_NAMES.get(tool_name, tool_name)
+        binary = resolve_binary_name(tool["method"], tool_name)
         result = await execute_remote_command(ssh_args, ["which", binary], timeout=15)
         installed = result["exit_code"] == 0
         path = result["stdout"].strip() if installed else ""
@@ -1076,9 +1076,10 @@ async def run_pipeline(
     no-shell alternative. Each step is validated individually (allowlist,
     argument sanitization, policy checks) before any process starts.
 
-    Only intermediate output is NOT truncated — this allows large intermediate
-    results (e.g. strings output) to be filtered down by later steps (e.g. grep).
-    The final output is truncated at 200KB.
+    Each step's stdout and stderr are bounded to 200KB as they are read, and an
+    intermediate step's bounded stdout is what gets piped into the next step. If
+    any step hits that cap, the returned ``truncated`` flag is set and the final
+    stdout carries a truncation marker.
 
     Examples:
         run_pipeline([{"tool": "strings", "args": "./binary"}, {"tool": "grep", "args": "flag"}])

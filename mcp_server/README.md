@@ -294,9 +294,9 @@ Simple recon/HTTP commands such as `curl` should remain `run_tool` calls.
 
 The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safety measures:
 
-- **Registry check**: Only tools listed in `tools_config.json` (plus ~120 system utilities) can be executed
+- **Registry check**: Only tools listed in `tools_config.json` (plus 128 system utilities) can be executed
 - **Install check**: Tool must be installed and in PATH
-- **Argument sanitization**: Shell injection patterns (`;`, `&`, `|`, `` ` ``, `$(`, `${`) are blocked. `$`, `>`, `<` alone are allowed — no shell is used, and tools need them for regex/awk/XML
+- **Argument sanitization**: Shell injection patterns (`|`, `` ` ``, `$(`, `${`) are blocked. `;`, `&`, `$`, `>`, `<` are allowed — no shell is used (`create_subprocess_exec`, never `shell=True`), so they are literals and tools need them (`;`/`&` in URL query strings, `$` for regex/awk, `>`/`<` for XML/comparisons)
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
 - **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `--includefile`, sed `-i` (in-place modification)
 - **Tool-aware parsing, not solver hardcoding**: The auto-solver chooses tools from the registry/advisors. The policy layer only knows enough CLI grammar to distinguish targets from headers, wordlists, output files, config files, and target-list flags, so legitimate commands stay usable without letting scope checks be bypassed
@@ -306,7 +306,7 @@ The `run_tool`, `run_pipeline`, and `run_script` endpoints enforce multiple safe
 - **Pipeline validation**: `run_pipeline` validates all steps (allowlist, args, policy) before executing any. Max 10 steps per pipeline
 - **Rate limiting**: Max 10 concurrent executions and 60 per minute (sliding window)
 - **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion
-- **Audit logging**: All executions (tools, scripts, blocked attempts) are logged to `audit.log` (JSON lines, 5 MB rotation). Script content is logged before execution. Crash-safe — logging failures never interrupt execution
+- **Audit logging**: All executions (tools, scripts, blocked attempts) are logged to `audit.log` (JSON lines, 5 MB rotation). Script bodies are NOT persisted (CWE-312) — only an irreversible SHA256 + byte length are logged for forensic correlation, plus best-effort credential redaction of logged args/error text. Crash-safe — logging failures never interrupt execution
 - **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)
 - **Async DNS**: Network target validation runs in a thread pool to avoid blocking the event loop

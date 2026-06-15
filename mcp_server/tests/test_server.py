@@ -86,6 +86,7 @@ def test_suggest_for_ctf_docstring_count_and_llm_listed() -> None:
     from mcp_server.ctf_advisor import CTF_CATEGORY_MAP
 
     doc = server.suggest_for_ctf.__doc__
+    assert doc is not None
     assert f"{len(CTF_CATEGORY_MAP)} challenge types" in doc
     assert len(CTF_CATEGORY_MAP) == 14
     assert "llm" in doc
@@ -96,6 +97,7 @@ def test_suggest_for_bounty_docstring_count_and_llm_listed() -> None:
     from mcp_server.bounty_advisor import BOUNTY_TARGET_MAP
 
     doc = server.suggest_for_bounty.__doc__
+    assert doc is not None
     assert f"{len(BOUNTY_TARGET_MAP)} target types" in doc
     assert len(BOUNTY_TARGET_MAP) == 7
     assert "llm" in doc

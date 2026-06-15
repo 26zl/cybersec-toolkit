@@ -1,5 +1,4 @@
 # Known vulnerabilities to ignore in pip-audit.
 # Each line is a CVE/PYSEC ID. Remove entries once a fixed version is available.
 #
-# pygments 2.19.2 — no fix released yet (checked 2026-03-25)
-CVE-2026-4539
+# (none currently — pygments CVE-2026-4539 cleared by the 2.20.0 bump, 2026-06-15)

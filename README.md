@@ -62,7 +62,7 @@ flowchart TB
     reg[("tools_config.json<br/>tool registry — 580+")]:::data
     disk["Installed tools<br/>/usr/local/bin + .versions"]:::data
     post["verify · update · remove · backup"]:::core
-    skills["872 Claude skills + coordinators<br/>finding-triage · evidence-hygiene · authorization-gate"]:::skill
+    skills["872 Claude skills + 4 coordinators<br/>finding-triage · security-comms<br/>authorization-gate · evidence-hygiene"]:::skill
     ci["CI validators<br/>shellcheck · bats · ruff · pytest<br/>validate_tools_config · validate_mcp_sync"]:::ci
 
     user -->|"sudo ./install.sh"| sh
@@ -567,6 +567,7 @@ python3 scripts/validate_tools_config.py
 python3 scripts/validate_mcp_sync.py
 python3 scripts/validate_distro_compat.py
 python3 scripts/validate_claude_skills.py
+python3 scripts/audit_skill_dependencies.py --check-declared
 ./tests/bats/bin/bats tests/*.bats
 cd mcp_server && uv sync --group dev && uv run ruff check . && uv run ruff format --check . && uv run pytest tests/ -q
 ```
@@ -591,7 +592,7 @@ Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendor
 This repo ships 872 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context. Of these, __31 are project-authored__ and __841 are curated from open-source projects__ — each attributed below and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 - 10 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `guided-assessment`, `skill-dependency-audit`, `skill-curation-router`)
-- 3 cross-skill coordinators (`finding-triage`, `security-comms`, `authorization-gate`) that other skills route findings, communication, and authorization checks through
+- 4 cross-skill coordinators (`finding-triage`, `security-comms`, `authorization-gate`, `evidence-hygiene`) that other skills route findings, communication, authorization checks, and evidence sanitization through
 - 7 coverage gap anchor skills (GRC/privacy, AI/LLM security, IoT/embedded/hardware, mainframe, telecom/5G, SAP/ERP, supply-chain/product security)
 - 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
 - 6 CTF methodology skills (`ctf-crypto`, `ctf-pwn`, `ctf-web`, `ctf-rev`, `ctf-forensics`, `ctf-stego`)
@@ -625,10 +626,12 @@ scripts/sync-skills.sh            # mirror .claude/skills/ -> .agents/skills/
 scripts/sync-skills.sh --check    # report drift without writing (exit 1 if out of date)
 ```
 
-`scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Audit those extras with the manual maintenance/inventory tool below (not run in CI — helper-script syntax is already gated by `validate_claude_skills.py`):
+`scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Those imports are declared in [`.claude/skills/requirements.txt`](.claude/skills/requirements.txt), generated from the helper-script import inventory:
 
 ```bash
-python3 scripts/audit_skill_dependencies.py
+python3 scripts/audit_skill_dependencies.py --check-declared
+python3 scripts/audit_skill_dependencies.py --write-requirements
+python3 -m pip install -r .claude/skills/requirements.txt
 ```
 
 Skill ranking/curation lives in `.claude/skills/CURATION.md` and `.claude/skills/curation.json`.

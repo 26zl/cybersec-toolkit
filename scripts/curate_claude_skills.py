@@ -6,9 +6,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _skill_frontmatter import frontmatter  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / ".claude" / "skills"
@@ -344,42 +348,6 @@ class Skill:
     reasons: list[str] = field(default_factory=list)
 
 
-def frontmatter(text: str) -> dict[str, str]:
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    if not match:
-        return {}
-
-    fields: dict[str, str] = {}
-    lines = match.group(1).splitlines()
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        if ":" not in line:
-            index += 1
-            continue
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-        if value in {">", ">-", "|", "|-"}:
-            block: list[str] = []
-            index += 1
-            while index < len(lines):
-                block_line = lines[index]
-                if block_line.startswith((" ", "\t")) or not block_line.strip():
-                    block.append(block_line.strip())
-                    index += 1
-                    continue
-                break
-            if value.startswith(">"):
-                fields[key] = " ".join(part for part in block if part)
-            else:
-                fields[key] = "\n".join(block).strip()
-            continue
-        fields[key] = value.strip('"').strip("'")
-        index += 1
-    return fields
-
-
 def source_for(name: str) -> str:
     if name in PROJECT_SKILLS:
         return "project"
@@ -512,7 +480,7 @@ def load_skills() -> list[Skill]:
         skill_file = skill_dir / "SKILL.md"
         if not skill_file.is_file():
             continue
-        fields = frontmatter(skill_file.read_text(encoding="utf-8", errors="replace"))
+        fields = frontmatter(skill_file.read_text(encoding="utf-8", errors="replace")) or {}
         name = fields.get("name", skill_dir.name)
         description = fields.get("description", "")
         source = source_for(name)
