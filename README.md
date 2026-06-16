@@ -1,7 +1,9 @@
 [![CI](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml)
 [![Integration](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml)
 [![Security](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/26zl/cybersec-toolkit/badge)](https://securityscorecards.dev/viewer/?uri=github.com/26zl/cybersec-toolkit)
 [![uv update](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Status: Under Active Development](https://img.shields.io/badge/status-under%20active%20development-blue)
 
 ```text
@@ -281,8 +283,8 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
-| Git clone | ~176 | GitHub repos with auto-setup, resources, wordlists |
-| System packages (apt/dnf/pacman/zypper) | ~164 | nmap, wireshark, john, hashcat |
+| Git clone | ~182 | GitHub repos with auto-setup, resources, wordlists |
+| System packages (apt/dnf/pacman/zypper) | ~161 | nmap, wireshark, john, hashcat |
 | pipx | ~116 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | ~53 | nuclei, subfinder, ffuf, httpx |
 | Binary release | ~35 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
@@ -616,15 +618,24 @@ The repo doubles as a [plugin marketplace](https://docs.claude.com/en/docs/claud
 
 The plugin exposes the skills under `.claude/skills/` (declared via the `skills` field in `.claude-plugin/plugin.json`). The MCP server is configured separately via `.mcp.json` — see [MCP Server](#mcp-server-ai-integration).
 
-Skills are a Claude Code feature, but the content is plain Markdown plus helper scripts.
-To use them with Codex or other agents that read `.agents/skills/`, mirror them (the
-`.agents/skills/` copy is generated and git-ignored — `.claude/skills/` stays the source
-of truth):
+### Use these skills outside Claude Code (Codex, Cursor, local LLMs)
+
+On-demand activation — the Skill tool that loads a skill only when a task needs it — is
+specific to Claude Code. The skills themselves are just Markdown plus helper scripts, so
+any agent can use them as reference. `scripts/sync-skills.sh` mirrors `.claude/skills/`
+into `.agents/skills/`, the vendor-neutral path Codex and other `AGENTS.md`-aware tools
+look for:
 
 ```bash
 scripts/sync-skills.sh            # mirror .claude/skills/ -> .agents/skills/
 scripts/sync-skills.sh --check    # report drift without writing (exit 1 if out of date)
 ```
+
+`.claude/skills/` stays the single source of truth; `.agents/skills/` is generated and
+git-ignored, so re-run the sync after editing a skill. Codex reads [`AGENTS.md`](AGENTS.md)
+natively, which points it at `.agents/skills/`. Without Claude Code's auto-activation, name
+the skill you want the agent to follow (or let it search the mirrored directory) — the
+content works the same, it's just loaded manually instead of on demand.
 
 `scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Those imports are declared in [`.claude/skills/requirements.txt`](.claude/skills/requirements.txt), generated from the helper-script import inventory:
 
@@ -717,6 +728,12 @@ These are false positives in the context of a security toolkit. To work with the
 3. __Keep the repo inside the WSL filesystem__ (e.g. `~/cybersec-toolkit` in your distro). Defender does not scan WSL2's vhdx by default, so detections do not occur. `scripts/sync-wsl.sh` already does this for the MCP server subdirectory.
 
 Files removed by Defender will appear as `D` in `git status`. The content is preserved in git history; restore with `git checkout -- <path>` once an exclusion is in place.
+
+## Star History
+
+If this toolkit is useful to you, a star helps others find it.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=26zl/cybersec-toolkit&type=Date)](https://star-history.com/#26zl/cybersec-toolkit&Date)
 
 ## License
 
