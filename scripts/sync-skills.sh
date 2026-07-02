@@ -35,13 +35,7 @@ if [[ "$CHECK" -eq 1 ]]; then
         echo "out of date: $DST does not exist (run: scripts/sync-skills.sh)" >&2
         exit 1
     fi
-    if command -v rsync >/dev/null 2>&1; then
-        # Dry-run; any itemized line means the mirror differs from the source.
-        if rsync -a --delete --dry-run --itemize-changes "$SRC/" "$DST/" | grep -q .; then
-            echo "out of date: .agents/skills/ differs from .claude/skills/ (run: scripts/sync-skills.sh)" >&2
-            exit 1
-        fi
-    elif ! diff -r -q "$SRC" "$DST" >/dev/null 2>&1; then
+    if ! diff -r -q "$SRC" "$DST" >/dev/null 2>&1; then
         echo "out of date: .agents/skills/ differs from .claude/skills/ (run: scripts/sync-skills.sh)" >&2
         exit 1
     fi

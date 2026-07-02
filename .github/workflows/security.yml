@@ -10,10 +10,15 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gitleaks:
     name: Secret Detection (Gitleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -29,11 +34,28 @@ jobs:
 
   custom-security-scan:
     name: Custom Security Scanner
+    needs:
+      - gitleaks
+      - pip-audit
+      - pin-check
+    if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
+
+      - name: Enforce security prerequisites
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"' <<<"$NEEDS_JSON")
+          if [[ -n "$failed" ]]; then
+            echo "::error::Required security jobs did not succeed:"
+            echo "$failed"
+            exit 1
+          fi
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -145,6 +167,7 @@ jobs:
   pip-audit:
     name: Python Dependency Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -172,6 +195,7 @@ jobs:
   pin-check:
     name: Enforce SHA-pinned Actions
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -213,9 +237,7 @@ jobs:
   scorecard:
     name: OSSF Scorecard
     runs-on: ubuntu-latest
-    # Scorecard requires public repo access for GraphQL queries.
-    # Skips on PRs and private repos — runs automatically once the repo is public.
-    # Uses .private (boolean, always present) instead of .visibility (string, not always populated).
+    timeout-minutes: 20
     if: >-
       github.event_name != 'pull_request' &&
       github.event.repository.private == false
@@ -231,9 +253,6 @@ jobs:
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # checkout v6 intermittently fails to inject the default token before
-          # fetch ("could not read Username for github.com"). Pass it explicitly
-          # for deterministic auth. See github/community discussion #183817.
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: false
 
@@ -243,6 +262,6 @@ jobs:
           results_format: sarif
           publish_results: true
 
-      - uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+      - uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
         with:
           sarif_file: results.sarif

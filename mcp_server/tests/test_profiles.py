@@ -89,7 +89,7 @@ class TestRecommendInstall:
         assert "available_profiles" in result
 
 
-# _match_individual_tools (F8: word-boundary matching)
+# _match_individual_tools word-boundary matching
 class TestMatchIndividualTools:
     def _db(self, tmp_path: Path) -> ToolsDatabase:
         """ToolsDatabase with a short tool name, an English-word tool, and a normal one."""
@@ -105,7 +105,7 @@ class TestMatchIndividualTools:
             return ToolsDatabase(project_root=tmp_path)
 
     def test_short_tool_name_matches(self, tmp_path: Path) -> None:
-        # F8: 4-char names (nmap) were excluded by the old len>=5 cutoff.
+        # Short tool names must match.
         db = self._db(tmp_path)
         names = {t["name"] for t in _match_individual_tools("I just need nmap and burpsuite", db)}
         assert "nmap" in names
@@ -116,8 +116,7 @@ class TestMatchIndividualTools:
         assert names == {"nmap", "ffuf"}
 
     def test_prose_does_not_match_english_word_tool(self, tmp_path: Path) -> None:
-        # F8: prose ("crunch the numbers") must NOT be read as the crunch tool;
-        # "amass a lot" must NOT match the amass tool.
+        # English words in prose must not be interpreted as tool names.
         db = self._db(tmp_path)
         assert _match_individual_tools("crunch the numbers", db) == []
         assert _match_individual_tools("amass a lot of evidence", db) == []
@@ -158,7 +157,7 @@ class TestListProfiles:
             assert profile["tool_count"] >= 0
 
 
-# C2 gating in tool counts (D7)
+# C2 gating in tool counts
 class TestC2ToolCounting:
     def _db_with_c2(self, tmp_path: Path) -> ToolsDatabase:
         """Build a ToolsDatabase whose misc module contains one C2 tool + one normal tool."""

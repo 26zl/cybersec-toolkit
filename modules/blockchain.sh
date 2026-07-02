@@ -38,7 +38,7 @@ install_module_blockchain() {
     elif command_exists foundryup; then
         log_success "Foundry already installed"
     else
-        log_warn "Installing Foundry via curl | bash (review: https://foundry.paradigm.xyz)"
+        log_warn "Installing Foundry from https://foundry.paradigm.xyz (downloaded, size/keyword-validated, run as the invoking user — review upstream)"
         local _foundry_tmp _foundry_home
         _foundry_home="$(_builder_home)"
         _foundry_tmp=$(mktemp); _register_cleanup "$_foundry_tmp"

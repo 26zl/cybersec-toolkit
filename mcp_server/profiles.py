@@ -22,7 +22,7 @@ _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
 # dependency at import time — these rarely change and must match the .conf files).
 PROFILES: dict[str, dict] = {
     "full": {
-        "description": "All 580+ tools across all 18 modules — full arsenal incl. offensive C2 (authorized use only)",
+        "description": "All 18 modules plus offensive C2; Docker images remain opt-in (authorized use only)",
         "modules": [
             "misc",
             "networking",
@@ -350,11 +350,8 @@ def _match_individual_tools(task: str, tools_db: ToolsDatabase) -> list[dict]:
     matched = []
     for tool in tools_db.tools_by_name.values():
         name = tool["name"].lower()
-        # Word-boundary match lets short tool names (nmap, ffuf, john, gdb) match,
-        # where the old length cutoff dropped them, and avoids substring collisions
-        # ("mass" inside "amass"). Names that double as English words additionally
-        # require a tool-listing/install cue so prose ("crunch the numbers") is not
-        # mistaken for a tool request.
+        # Match exact tool names, including short names, without substring collisions.
+        # Ambiguous English words also require a tool-listing or install cue.
         if not re.search(rf"\b{re.escape(name)}\b", task_lower):
             continue
         if name in _COMMON_WORD_TOOLS and not has_intent:

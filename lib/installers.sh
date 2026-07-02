@@ -34,9 +34,7 @@ _load_distro_compat() {
         return 0
     fi
 
-    # NOTE: We cannot use IFS=$'\t' read -r ... because tab is IFS-whitespace
-    # in POSIX, so consecutive tabs (empty fields) get collapsed. Instead we
-    # read each line raw and split manually on the first 4 tabs.
+    # Read each line raw and split manually on the first 4 tabs, since IFS=$'\t' would collapse consecutive tabs (empty fields).
     local _line _rest debian dnf pacman zypper pkg
     while IFS='' read -r _line; do
         # Skip comments and blank lines
@@ -251,7 +249,7 @@ install_pipx_batch() {
 
         for tool in "${tools[@]}"; do
             # Skip-check in main process
-            if echo "$installed_pipx" | grep -qi "^${tool} "; then
+            if echo "$installed_pipx" | awk -v t="$tool" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
                 printf 'skip\nexisting\n' > "$_results_dir/$tool"
                 _report_tool_done "pipx" "$tool" "skip"
                 continue
@@ -284,7 +282,7 @@ install_pipx_batch() {
             current=$((current + 1))
             show_progress "$current" "$total" "$tool"
             _report_tool_start "pipx" "$tool"
-            if echo "$installed_pipx" | grep -qi "^${tool} "; then
+            if echo "$installed_pipx" | awk -v t="$tool" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
                 skipped=$((skipped + 1))
                 track_version "$tool" "pipx" "existing"
                 _report_tool_done "pipx" "$tool" "skip"
@@ -302,9 +300,6 @@ install_pipx_batch() {
         done
     fi
 
-    # Safety net: older pipx versions (e.g. 1.0.0 on Ubuntu 22.04) may ignore
-    # PIPX_BIN_DIR and place binaries in ~/.local/bin instead of /usr/local/bin.
-    # Symlink any that are missing from PIPX_BIN_DIR.
     local _fallback_dir="$HOME/.local/bin"
     if [[ -d "$_fallback_dir" ]] && [[ "$_fallback_dir" != "$PIPX_BIN_DIR" ]]; then
         local _symlinked=0
@@ -319,9 +314,6 @@ install_pipx_batch() {
         [[ "$_symlinked" -gt 0 ]] && log_info "Symlinked $_symlinked pipx binaries from $_fallback_dir → $PIPX_BIN_DIR"
     fi
 
-    # Python 3.12+ removed setuptools from venvs by default, but many tools
-    # still use 'import pkg_resources' at runtime.  Inject setuptools into all
-    # pipx venvs so they don't crash with ModuleNotFoundError.
     local _py_major _py_minor
     _py_major=$(python3 -c 'import sys; print(sys.version_info.major)' 2>/dev/null || echo 3)
     _py_minor=$(python3 -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo 0)
@@ -381,7 +373,6 @@ install_go_batch() {
         _register_cleanup "$_gobin_stage"
         _chown_for_builder "$_gobin_stage"
         mkdir -p "$GOPATH" 2>/dev/null || true
-        # Recursive: previous runs may have left root-owned subdirs in the module cache
         chown -R "$SUDO_USER" "$GOPATH" 2>/dev/null || true
     fi
     local _effective_gobin="${_gobin_stage:-$GOBIN}"
@@ -417,10 +408,9 @@ install_go_batch() {
             (
                 trap '_release_job_slot' EXIT
                 _report_tool_start "Go" "$name"
-                if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1; then
-                    # Move binary from staging dir to system GOBIN (runs as root)
-                    [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$name" ]] \
-                        && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"
+                # Mark ok only if go install succeeded and (when staged) the binary moved into GOBIN.
+                if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
+                    && { [[ -z "$_gobin_stage" ]] || { [[ -f "$_gobin_stage/$name" ]] && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"; }; }; then
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
                     _report_tool_done "Go" "$name" "ok"
                 else
@@ -436,7 +426,6 @@ install_go_batch() {
         # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
         local failed=$_par_failed skipped=$_par_skipped
     else
-        # --- Sequential mode (original) ---
         local current=0 failed=0 skipped=0
         for tool in "${tools[@]}"; do
             current=$((current + 1))
@@ -454,17 +443,15 @@ install_go_batch() {
             _go_gopath_escaped="$(_escape_single_quoted "$GOPATH")"
             _go_gobin_escaped="$(_escape_single_quoted "$_effective_gobin")"
             _go_tool_escaped="$(_escape_single_quoted "$tool")"
-            if ! _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
+                && { [[ -z "$_gobin_stage" ]] || { [[ -f "$_gobin_stage/$name" ]] && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"; }; }; then
+                track_version "$name" "go" "latest"
+                _report_tool_done "Go" "$name" "ok"
+            else
                 log_error "Failed go: $name$(_disk_hint)"
                 failed=$((failed + 1))
                 track_session "$name" "go" "failed" 2>/dev/null || true
                 _report_tool_done "Go" "$name" "fail"
-            else
-                # Move binary from staging dir to system GOBIN (runs as root)
-                [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$name" ]] \
-                    && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"
-                track_version "$name" "go" "latest"
-                _report_tool_done "Go" "$name" "ok"
             fi
         done
     fi
@@ -619,7 +606,7 @@ install_gem_batch() {
         current=$((current + 1))
         show_progress "$current" "$total" "$gem_name"
         _report_tool_start "Gems" "$gem_name"
-        if echo "$installed_gems" | grep -q "^${gem_name} "; then
+        if echo "$installed_gems" | awk -v t="$gem_name" '$1==t{f=1} END{exit !f}'; then
             skipped=$((skipped + 1))
             track_version "$gem_name" "gem" "existing"
             _report_tool_done "Gems" "$gem_name" "skip"
@@ -935,7 +922,6 @@ install_git_batch() {
         # shellcheck disable=SC2154  # _par_failed/_par_skipped/_par_dep_warns set by _collect_parallel_results
         local failed=$_par_failed skipped=$_par_skipped dep_warns=$_par_dep_warns
     else
-        # Sequential mode (original)
         local current=0 failed=0 skipped=0 dep_warns=0
         for entry in "${repos[@]}"; do
             current=$((current + 1))
@@ -1201,9 +1187,63 @@ for asset in data.get('assets', []):
     fi
 }
 
+# Validate a release archive before extracting it as root. Only regular files
+# and directories are accepted; links and special members are rejected to
+# prevent traversal and link-pivot writes outside the staging directory.
+_validate_release_archive() {
+    local archive="$1"
+    local archive_type="$2"
+
+    python3 - "$archive" "$archive_type" <<'PY'
+import re
+import stat
+import sys
+import tarfile
+import zipfile
+from pathlib import PurePosixPath
+
+archive, archive_type = sys.argv[1:3]
+
+
+def reject(message):
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def validate_name(name):
+    normalized = name.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if path.is_absolute() or ".." in path.parts or re.match(r"^[A-Za-z]:", normalized):
+        reject(f"unsafe archive member path: {name}")
+
+
+try:
+    if archive_type == "tar":
+        with tarfile.open(archive, "r:*") as items:
+            for member in items:
+                validate_name(member.name)
+                if not (member.isfile() or member.isdir()):
+                    reject(f"unsupported archive member type: {member.name}")
+    elif archive_type == "zip":
+        with zipfile.ZipFile(archive) as items:
+            for member in items.infolist():
+                validate_name(member.filename)
+                mode = member.external_attr >> 16
+                file_type = stat.S_IFMT(mode)
+                if stat.S_ISLNK(mode):
+                    reject(f"symlink archive member rejected: {member.filename}")
+                if file_type not in (0, stat.S_IFREG, stat.S_IFDIR):
+                    reject(f"unsupported archive member type: {member.filename}")
+    else:
+        reject(f"unsupported archive type: {archive_type}")
+except (OSError, tarfile.TarError, zipfile.BadZipFile) as exc:
+    reject(f"invalid {archive_type} archive: {exc}")
+PY
+}
+
 # Internal implementation for downloading GitHub release binaries.
 # Used by both download_github_release() and download_github_release_update().
-# Args: repo binary pattern dest_dir mode
+# Args: repo binary pattern dest_dir mode [archive_binary]
 #   mode=install: skip if already installed, track version, log success/failure
 #   mode=update:  force re-download, set _RELEASE_TAG, no version tracking (caller does it)
 _download_github_release_impl() {
@@ -1212,6 +1252,7 @@ _download_github_release_impl() {
     local pattern="$3"
     local dest_dir="${4:-$PIPX_BIN_DIR}"
     local mode="${5:-install}"  # "install" or "update"
+    local archive_binary="${6:-$binary}"
 
     # Ensure unzip is available for .zip archives
     if ! command_exists unzip; then
@@ -1289,36 +1330,44 @@ for asset in data.get('assets', []):
             rm -rf "$tmp_dir"
             return 1
         fi
+        # Unverified .deb runs maintainer scripts as root; --production/--require-checksums enforces.
+        if [[ "$download_url" == *.deb ]]; then
+            log_warn "SECURITY: installing $binary (.deb) WITHOUT checksum verification — maintainer scripts run as root; use --production to require a checksum"
+        fi
     fi
 
-    # Handle archive types — with path traversal protection. Reject any entry
-    # that escapes the extract dir via "../", an absolute path, or a Windows
-    # drive prefix. Names are matched one-per-line (not column-split) so a
-    # filename containing spaces cannot hide the traversal segment.
-    local _traversal_re='(^|/)\.\.(/|$)|^/|^[A-Za-z]:'
+    local content_root="$tmp_dir"
+    local is_archive=false
     case "$download_url" in
         *.tar.gz|*.tgz)
-            if tar tzf "$tmp_dir/$asset_name" 2>/dev/null | grep -qE "$_traversal_re"; then
-                log_error "Tar path traversal/absolute path detected in $asset_name — aborting"
+            is_archive=true
+            content_root="$tmp_dir/extracted"
+            mkdir -p "$content_root"
+            if ! _validate_release_archive "$tmp_dir/$asset_name" tar >>"$LOG_FILE" 2>&1; then
+                log_error "Unsafe or invalid tar archive: $asset_name — aborting"
                 rm -rf "$tmp_dir"
                 return 1
             fi
-            # Reject symlink entries whose target is absolute or escapes via "../".
-            if tar tvzf "$tmp_dir/$asset_name" 2>/dev/null | grep -qE '^l.*-> (/|.*\.\.(/|$))'; then
-                log_error "Tar symlink escape detected in $asset_name — aborting"
+            if ! tar xzf "$tmp_dir/$asset_name" -C "$content_root" 2>>"$LOG_FILE"; then
+                log_error "Failed to extract tar archive: $asset_name"
                 rm -rf "$tmp_dir"
                 return 1
             fi
-            tar xzf "$tmp_dir/$asset_name" -C "$tmp_dir" 2>>"$LOG_FILE" ;;
+            ;;
         *.zip)
-            # zipinfo -1 / unzip -Z1 prints one full name per line (no column
-            # splitting), so a spaced filename can't smuggle a "../" past the check.
-            if unzip -Z1 "$tmp_dir/$asset_name" 2>/dev/null | grep -qE "$_traversal_re"; then
-                log_error "Zip path traversal/absolute path detected in $asset_name — aborting"
+            is_archive=true
+            content_root="$tmp_dir/extracted"
+            mkdir -p "$content_root"
+            if ! _validate_release_archive "$tmp_dir/$asset_name" zip >>"$LOG_FILE" 2>&1; then
+                log_error "Unsafe or invalid zip archive: $asset_name — aborting"
                 rm -rf "$tmp_dir"
                 return 1
             fi
-            unzip -qo "$tmp_dir/$asset_name" -d "$tmp_dir" 2>>"$LOG_FILE"
+            if ! unzip -qo "$tmp_dir/$asset_name" -d "$content_root" 2>>"$LOG_FILE"; then
+                log_error "Failed to extract zip archive: $asset_name"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
             ;;
         *.deb)
             if [[ "$PKG_MANAGER" != "apt" && "$PKG_MANAGER" != "pkg" ]]; then
@@ -1345,13 +1394,26 @@ for asset in data.get('assets', []):
             fi
             return 0 ;;
         *.jar)
-            mkdir -p "$dest_dir" 2>/dev/null || true
-            cp "$tmp_dir/$asset_name" "$dest_dir/$binary.jar"
-            cat > "$PIPX_BIN_DIR/$binary" << WRAPPER
+            if ! mkdir -p "$dest_dir" "$PIPX_BIN_DIR" \
+                || ! cp "$tmp_dir/$asset_name" "$dest_dir/$binary.jar"; then
+                log_error "Failed to stage $binary (.jar)"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            if ! cat > "$PIPX_BIN_DIR/$binary" << WRAPPER
 #!/bin/bash
 exec java -jar "$dest_dir/$binary.jar" "\$@"
 WRAPPER
-            chmod +x "$PIPX_BIN_DIR/$binary"
+            then
+                log_error "Failed to create launcher for $binary"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            if ! chmod +x "$PIPX_BIN_DIR/$binary"; then
+                log_error "Failed to make launcher executable for $binary"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
             rm -rf "$tmp_dir"
             if [[ "$mode" == "install" ]]; then
                 log_success "Installed: $binary (.jar)"
@@ -1359,42 +1421,69 @@ WRAPPER
             fi
             return 0 ;;
         *)
-            chmod +x "$tmp_dir/$asset_name" ;;
+            if [[ ! -f "$tmp_dir/$asset_name" || -L "$tmp_dir/$asset_name" ]] \
+                || ! chmod +x "$tmp_dir/$asset_name"; then
+                log_error "Downloaded asset for $binary is not a regular executable file"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            ;;
     esac
 
-    # Find the binary in extracted files
+    # Archive assets must contain the declared binary.
     local found
-    found=$(find "$tmp_dir" -name "$binary" -type f 2>/dev/null | head -1)
-    if [[ -z "$found" ]]; then
-        found=$(find "$tmp_dir" -type f -executable 2>/dev/null | head -1)
-    fi
-    if [[ -z "$found" ]]; then
+    found=$(find "$content_root" \( -name "$archive_binary" -o -name "${archive_binary}.sh" \) -type f 2>/dev/null | head -1)
+    if [[ -z "$found" && "$is_archive" == "true" ]]; then
+        log_error "Archive $asset_name does not contain expected binary: $archive_binary"
+        rm -rf "$tmp_dir"
+        return 1
+    elif [[ -z "$found" ]]; then
         found="$tmp_dir/$asset_name"
+    fi
+    if [[ ! -f "$found" || -L "$found" ]]; then
+        log_error "Refusing non-regular or symlinked binary candidate for $binary"
+        rm -rf "$tmp_dir"
+        return 1
     fi
 
     if [[ "$dest_dir" != "$PIPX_BIN_DIR" ]]; then
-        mkdir -p "$dest_dir" 2>/dev/null || true
-        cp -a "$tmp_dir"/* "$dest_dir/" 2>/dev/null || true
+        if ! mkdir -p "$dest_dir" "$PIPX_BIN_DIR" \
+            || ! cp -a "$content_root"/. "$dest_dir/" >>"$LOG_FILE" 2>&1; then
+            log_error "Failed to copy $binary release files to $dest_dir"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
         local dest_bin=""
         for candidate in \
             "$dest_dir/bin/$binary" \
             "$dest_dir/bin/${binary}.sh" \
+            "$dest_dir/bin/$archive_binary" \
+            "$dest_dir/bin/${archive_binary}.sh" \
             "$dest_dir/$binary" \
-            "$dest_dir/${binary}.sh"; do
-            if [[ -f "$candidate" ]]; then
+            "$dest_dir/${binary}.sh" \
+            "$dest_dir/$archive_binary" \
+            "$dest_dir/${archive_binary}.sh"; do
+            if [[ -f "$candidate" && ! -L "$candidate" ]]; then
                 dest_bin="$candidate"
                 break
             fi
         done
         if [[ -z "$dest_bin" ]]; then
-            dest_bin=$(find "$dest_dir" \( -name "$binary" -o -name "${binary}.sh" \) -type f 2>/dev/null | head -1)
+            dest_bin=$(find "$dest_dir" \( -name "$archive_binary" -o -name "${archive_binary}.sh" \) -type f 2>/dev/null | head -1)
         fi
-        if [[ -n "$dest_bin" ]]; then
-            chmod +x "$dest_bin" 2>/dev/null || true
-            ln -sf "$dest_bin" "$PIPX_BIN_DIR/$binary" 2>/dev/null || true
+        if [[ -z "$dest_bin" || -L "$dest_bin" ]] \
+            || ! chmod +x "$dest_bin" \
+            || ! ln -sf "$dest_bin" "$PIPX_BIN_DIR/$binary"; then
+            log_error "Failed to expose expected binary $binary from $dest_dir"
+            rm -rf "$tmp_dir"
+            return 1
         fi
     else
-        install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"
+        if ! mkdir -p "$dest_dir" || ! install -m 755 "$found" "$dest_dir/$binary" 2>>"$LOG_FILE"; then
+            log_error "Failed to install $binary into $dest_dir"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
     fi
     rm -rf "$tmp_dir"
 
@@ -1413,12 +1502,13 @@ WRAPPER
 }
 
 # Download GitHub release binary (install mode — skips if already installed)
-# Usage: download_github_release "owner/repo" "binary_name" "filename_pattern" [dest_dir]
+# Usage: download_github_release "owner/repo" "binary_name" "filename_pattern" [dest_dir] [archive_binary]
 download_github_release() {
     local repo="$1"
     local binary="$2"
     local pattern="$3"
     local dest_dir="${4:-$PIPX_BIN_DIR}"
+    local archive_binary="${5:-$binary}"
 
     if [[ "${SKIP_BINARY:-false}" == "true" ]]; then
         log_warn "Skipping binary release: $binary (--skip-binary)"
@@ -1431,13 +1521,15 @@ download_github_release() {
         [[ "${_PARALLEL_CHILD:-false}" != "true" ]] && track_version "$binary" "binary" "existing"
         return 0
     fi
-    _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "install"
+    _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "install" "$archive_binary"
     local _rc=$?
     # Consume vtag sidecar for version tracking (written by _download_github_release_impl).
-    # The file is intentionally NOT deleted here — parallel callers read it separately.
+    # Parallel children (_PARALLEL_CHILD=true) skip this — their vtag is consumed and removed
+    # by _collect_parallel_results; the non-parallel path consumes and removes it here.
     local _vtag_file="${dest_dir}/.${binary}.vtag"
     if [[ -f "$_vtag_file" ]] && [[ "${_PARALLEL_CHILD:-false}" != "true" ]]; then
         track_version "$binary" "binary" "$(< "$_vtag_file")"
+        rm -f "$_vtag_file"
     fi
     return $_rc
 }
@@ -1451,8 +1543,9 @@ download_github_release_update() {
     local binary="$2"
     local pattern="$3"
     local dest_dir="${4:-$PIPX_BIN_DIR}"
+    local archive_binary="${5:-$binary}"
     _RELEASE_TAG=""
-    _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "update"
+    _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "update" "$archive_binary"
 }
 
 # Docker image pull
@@ -1513,10 +1606,9 @@ track_version() {
     else
         # mkdir is atomic on all POSIX systems — use as spinlock fallback
         local _lockdir="${version_file}.lockdir" _tries=0
-        # Clean up stale lock (older than 30 seconds — likely from a crashed process).
-        # `stat -c %Y` is GNU, `stat -f %m` is BSD/macOS. If both fail we fall back
-        # to the current time (lock treated as fresh, not stale) — safer than the
-        # old fallback which treated a failed stat as epoch 0 and nuked every lock.
+        # Clean up stale locks older than 30 seconds.
+        # `stat -c %Y` is GNU; `stat -f %m` is BSD/macOS. A failed stat keeps the
+        # lock fresh.
         if [[ -d "$_lockdir" ]]; then
             local _lock_mtime _now _lock_age=0
             _now=$(date +%s)
@@ -1563,11 +1655,7 @@ build_from_source() {
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         return 1
     fi
-    # Run build in a subshell to avoid changing the caller's working directory.
-    # Uses _as_builder for privilege dropping (build as user, not root). build_cmd is
-    # a trusted shell command (from the module *_BUILD_CMDS maps) passed verbatim to
-    # `bash -c` — do NOT single-quote-escape it, that would corrupt its own quotes
-    # (e.g. the yafu/pemcrack `sed '...'` patches).
+    # Build in a subshell (preserves caller's CWD) via _as_builder (build as user, not root); build_cmd is a trusted *_BUILD_CMDS string passed verbatim to `bash -c` — do NOT quote-escape it, that corrupts its own quotes (e.g. yafu/pemcrack `sed '...'` patches).
     if (cd "$dest" && _as_builder "$build_cmd") >> "$LOG_FILE" 2>&1; then
         _stop_spinner
         log_success "Built: $name"
@@ -1600,8 +1688,9 @@ build_module_from_source() {
 }
 
 # Binary release registry (single source of truth)
-# Format: "repo|binary|pattern|dest_dir" (dest_dir optional, defaults to $PIPX_BIN_DIR)
+# Format: "repo|binary|pattern|dest_dir|archive_binary" (last two optional)
 # Used by modules for install and scripts/update.sh for updates.
+# These arrays use uppercased module names, not short module prefixes.
 BINARY_RELEASES_MISC=(
     "DominicBreuker/pspy|pspy|pspy64$"
     "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz"
@@ -1660,7 +1749,7 @@ BINARY_RELEASES_STEGO=(
     "RickdeJager/stegseek|stegseek|\\.deb"
 )
 BINARY_RELEASES_BLOCKCHAIN=(
-    "crytic/medusa|crytic-medusa|medusa-linux-x64\\.tar\\.gz$"
+    "crytic/medusa|crytic-medusa|medusa-linux-x64\\.tar\\.gz$||medusa"
     "Jon-Becker/heimdall-rs|heimdall|heimdall-linux-amd64$"
     "fuzzland/ityfuzz|ityfuzz|ityfuzz_nightly_linux_amd64\\.tar\\.gz$"
 )
@@ -1708,7 +1797,7 @@ install_binary_releases() {
         local -a _arm_filtered=()
         local -a _arm_skip_bins=(pspy rp-lin chainsaw velociraptor laurel)
         for _entry in "${entries[@]}"; do
-            IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+            IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
             local _skip=false
             for _sb in "${_arm_skip_bins[@]}"; do
                 if [[ "$_binary" == "$_sb" ]]; then
@@ -1746,7 +1835,7 @@ install_binary_releases() {
         local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for _entry in "${entries[@]}"; do
-            IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+            IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
             _dest="${_dest:-$PIPX_BIN_DIR}"
 
             # Skip-check in main process (avoid spawning a job for already-installed tools)
@@ -1763,7 +1852,7 @@ install_binary_releases() {
                 trap '_release_job_slot' EXIT
                 local _PARALLEL_CHILD=true
                 _report_tool_start "Binary" "$_binary"
-                if download_github_release "$_repo" "$_binary" "$_pattern" "$_dest" >> "$LOG_FILE" 2>&1; then
+                if download_github_release "$_repo" "$_binary" "$_pattern" "$_dest" "${_archive_binary:-$_binary}" >> "$LOG_FILE" 2>&1; then
                     # Read version from vtag sidecar (written by _download_github_release_impl)
                     local _stored_ver=""
                     local _vtag_file="${_dest}/.${_binary}.vtag"
@@ -1785,12 +1874,12 @@ install_binary_releases() {
         [[ "$failed" -gt 0 ]] && TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed))
         log_success "Binary releases: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
     else
-        # --- Sequential mode (original) ---
+        # --- Sequential mode ---
         local failed=0
         for _entry in "${entries[@]}"; do
-            IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
+            IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
             _report_tool_start "Binary" "$_binary"
-            if ! download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}"; then
+            if ! download_github_release "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}" "${_archive_binary:-$_binary}"; then
                 failed=$((failed + 1))
                 _report_tool_done "Binary" "$_binary" "fail"
             else
@@ -1851,12 +1940,7 @@ install_metasploit() {
         fi
     fi
 
-    # 3) apt.metasploit.com repo with GPG-verified keyring (modern signed-by).
-    # We previously had a fallback that ran Rapid7's msfupdate.erb via
-    # curl-pipe, guarded only by a keyword grep on the downloaded script. A
-    # poisoned host could have satisfied that check, so the curl-pipe path
-    # was removed entirely. apt-based installs use this repo; non-apt users
-    # get a clear pointer to manual install below.
+    # 3) apt.metasploit.com with a verified keyring. No curl-pipe fallback.
     if [[ "$PKG_MANAGER" == "apt" ]]; then
         log_info "Trying apt.metasploit.com repo setup (GPG-verified)..."
         local _keyring="/usr/share/keyrings/metasploit-framework.gpg"

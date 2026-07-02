@@ -390,7 +390,7 @@ setup() {
     ! grep -q "^tool-c|" "$VERSION_FILE"
 }
 
-# ---------- _builder_home (F14) ---------------------------------------------
+# ---------- _builder_home ---------------------------------------------------
 
 @test "_builder_home returns HOME when SUDO_USER unset" {
     source_libs debian apt
@@ -446,7 +446,7 @@ setup() {
     [[ ! -e "$marker" ]]
 }
 
-# ---------- _list_sessions distinct-installed count (F15) --------------------
+# ---------- _list_sessions distinct-installed count --------------------------
 
 @test "_list_sessions counts distinct installed tools, not raw lines" {
     source_libs debian apt

@@ -8,6 +8,61 @@ setup() {
     load 'test_helper'
 }
 
+# ---------- release archive validation --------------------------------------
+
+@test "release archive validator accepts regular tar contents" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    mkdir -p "$TEST_TMPDIR/src"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/src/tool"
+    tar -czf "$TEST_TMPDIR/release.tar.gz" -C "$TEST_TMPDIR/src" tool
+
+    run _validate_release_archive "$TEST_TMPDIR/release.tar.gz" tar
+    assert_success
+}
+
+@test "release archive validator rejects tar symlinks" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    mkdir -p "$TEST_TMPDIR/src"
+    ln -s /etc/passwd "$TEST_TMPDIR/src/tool"
+    tar -czf "$TEST_TMPDIR/release.tar.gz" -C "$TEST_TMPDIR/src" tool
+
+    run _validate_release_archive "$TEST_TMPDIR/release.tar.gz" tar
+    assert_failure
+    assert_output --partial "unsupported archive member type"
+}
+
+@test "release archive validator rejects zip symlinks" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    python3 - "$TEST_TMPDIR/release.zip" <<'PY'
+import stat
+import sys
+import zipfile
+
+entry = zipfile.ZipInfo("tool")
+entry.create_system = 3
+entry.external_attr = (stat.S_IFLNK | 0o777) << 16
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    archive.writestr(entry, "/etc/passwd")
+PY
+
+    run _validate_release_archive "$TEST_TMPDIR/release.zip" zip
+    assert_failure
+    assert_output --partial "symlink archive member rejected"
+}
+
+@test "release archive validator rejects corrupt archives" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    printf 'not an archive\n' > "$TEST_TMPDIR/release.zip"
+
+    run _validate_release_archive "$TEST_TMPDIR/release.zip" zip
+    assert_failure
+    assert_output --partial "invalid zip archive"
+}
+
 # ---------- fixup_package_names — apt (no-op) --------------------------------
 
 @test "fixup_package_names is a no-op for apt" {
@@ -377,8 +432,7 @@ setup() {
 # Replicates the per-module aggregation loop from install_modules() in
 # install.sh: it appends each module's <PREFIX>_GIT / BINARY_RELEASES_<MOD>
 # arrays, and — only when INCLUDE_C2=true — the <PREFIX>_C2_GIT /
-# BINARY_RELEASES_<MOD>_C2 arrays. Regression guard for the bug where C2 tools
-# never installed under the main flow despite --include-c2.
+# BINARY_RELEASES_<MOD>_C2 arrays.
 
 # Source common.sh + installers.sh (BINARY_RELEASES_MISC_C2) + misc module
 # (MISC_C2_GIT), then run the aggregation loop for the given modules.

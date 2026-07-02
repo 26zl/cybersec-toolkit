@@ -404,9 +404,7 @@ def test_ctf_file_plan_uses_local_triage_tools_without_network_auth() -> None:
 
 
 def test_explicit_ctf_workflow_with_auto_type_stays_in_ctf_taxonomy() -> None:
-    # C4: explicit workflow='ctf' + target_type='auto' on a .bin file must infer a
-    # CTF category (pwn), resolve successfully, and yield a non-empty tool list —
-    # NOT silently degrade to the empty generic plan.
+    # Explicit CTF workflows infer a CTF category and return a usable tool list.
     with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
         result = build_guided_plan(
             target="./challenge.bin",
@@ -428,8 +426,7 @@ def test_explicit_ctf_workflow_with_auto_type_stays_in_ctf_taxonomy() -> None:
 
 
 def test_explicit_ctf_workflow_with_auto_type_on_host_resolves() -> None:
-    # C4: a bare host under explicit workflow='ctf' must infer the CTF "networking"
-    # category (not bounty's "network"), so _resolve_workflow does not fail.
+    # Bare hosts in CTF workflows use the CTF "networking" category.
     with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
         result = build_guided_plan(
             target="10.0.0.5",
@@ -468,7 +465,7 @@ def test_explicit_ctf_workflow_with_auto_type_on_host_resolves() -> None:
     ],
 )
 def test_file_extension_category_covers_common_types(filename, expected_category) -> None:
-    # C5: extensions that previously fell through to 'misc' now map to a category.
+    # Known file extensions map to their specific category.
     with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
         result = build_guided_plan(
             target=filename,
@@ -488,8 +485,7 @@ def test_file_extension_category_covers_common_types(filename, expected_category
 
 
 def test_bare_hostname_not_misclassified_as_file_when_cwd_file_exists(tmp_path, monkeypatch) -> None:
-    # C6: a bare network hostname must be classified as a host (network recon,
-    # auth required) even if a same-named file happens to exist in the CWD.
+    # A network hostname remains a host when the CWD contains a same-named file.
     monkeypatch.chdir(tmp_path)
     (tmp_path / "internal-host").write_text("not a real target")
 
@@ -520,9 +516,7 @@ def test_bare_hostname_not_misclassified_as_file_when_cwd_file_exists(tmp_path, 
     ],
 )
 def test_bare_challenge_filename_in_default_auto_mode_is_a_ctf_file(filename, expected_category) -> None:
-    # F7: in default companion mode (workflow=auto, target_type=auto) a bare
-    # filename with no path separator but a known extension must be a CTF file
-    # (local triage: file/strings/xxd), not a host routed to bounty/network.
+    # A bare filename with a known extension uses local CTF file triage.
     with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
         result = build_guided_plan(
             target=filename,
@@ -547,9 +541,7 @@ def test_bare_challenge_filename_in_default_auto_mode_is_a_ctf_file(filename, ex
 
 
 def test_url_with_multiple_query_params_is_accepted_and_planned() -> None:
-    # F10: '&' and ';' are legal in URL query strings and the execution path uses
-    # create_subprocess_exec + shlex.quote (no shell), so a multi-param URL must
-    # plan instead of being rejected as containing shell metacharacters.
+    # URL query separators are valid when execution does not pass through a shell.
     with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
         result = build_guided_plan(
             target="http://10.0.0.1/api?id=1&x=2;y=3",

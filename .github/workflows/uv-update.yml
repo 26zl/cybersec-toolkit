@@ -9,10 +9,15 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   uv-update:
     name: Bump uv packages
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -20,9 +25,6 @@ jobs:
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # checkout v6 needs the token passed explicitly or its fetch fails with
-          # "could not read Username for github.com" (git 2.54). See github/community
-          # #183817. The PR push uses GITHUB_TOKEN (below), not this step.
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -54,8 +56,6 @@ jobs:
         id: verify
         if: steps.upgrade.outputs.changed == 'true'
         run: |
-          # Exercise the upgraded uv.lock before it can auto-merge — GITHUB_TOKEN
-          # PRs do not trigger ci.yml/security.yml, so run the gating checks here.
           cd mcp_server && uv sync --quiet
           uv run python -c "
           import sys; sys.path.insert(0, '..')
@@ -66,7 +66,15 @@ jobs:
           uv run --group dev ruff check .
           uv run --group dev ruff format --check .
           uv run --group dev python -m pytest tests/ -q
-          uvx pip-audit
+          # Ignore IDs in known-vulnerabilities.txt (mirrors security.yml).
+          ignore_args=""
+          while IFS= read -r line; do
+            line="${line%%#*}"
+            line="$(echo "$line" | xargs)"
+            [[ -z "$line" ]] && continue
+            ignore_args="$ignore_args --ignore-vuln $line"
+          done < known-vulnerabilities.txt
+          uvx pip-audit $ignore_args
           cd ..
           python3 scripts/validate_mcp_sync.py
 
@@ -91,8 +99,6 @@ jobs:
           labels: dependencies
 
       - name: Enable auto-merge
-        # Only auto-merge when every prior step (including the verify gate above)
-        # succeeded — the upgraded lock has now passed import/lint/tests/audit/sync.
         if: success() && steps.verify.outcome == 'success' && steps.upgrade.outputs.changed == 'true' && steps.cpr.outputs.pull-request-number != ''
         run: |
           gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}" || true

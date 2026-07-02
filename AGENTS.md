@@ -145,10 +145,16 @@ such as `curl` remain normal `run_tool` calls.
 
 ### MCP environment variables
 
-- `CYBERSEC_MCP_ALLOW_SCRIPTS=1` — enables `run_script()` (Python/Bash execution)
-- `CYBERSEC_MCP_ALLOW_EXTERNAL=0` — safest default; network tools target private/loopback only
+- `CYBERSEC_MCP_ALLOW_SCRIPTS=1` — enables unsandboxed Python/Bash execution with
+  the MCP process user's filesystem and network permissions
+- `CYBERSEC_MCP_ALLOW_EXTERNAL=0` — safest default; governed network tools and
+  SSH remotes target private/loopback only (it does not sandbox `run_script`)
 - `CYBERSEC_MCP_ALLOW_EXTERNAL=1` — opt in only for explicitly authorized external scopes
 - `CYBERSEC_MCP_VENVS_DIR` — custom location for script venvs (default: `~/.ctf-venvs/`)
+- `CYBERSEC_MCP_AUDIT_LOG` — custom audit path (default:
+  `~/.local/state/cybersec-tools-mcp/audit.log`)
+- `CYBERSEC_MCP_AUDIT_REQUIRED=1` — fail startup instead of falling back to stderr
+  when file audit logging is unavailable
 - `CYBERSEC_INSTALLER_ROOT` — override project root for `tools_config.json` lookup
 
 ## Architecture
@@ -181,7 +187,11 @@ Separate Python package (FastMCP), managed with `uv` (`pyproject.toml`), not pip
 
 - `server.py` — FastMCP tool registrations (15 tools)
 - `cve_advisor.py` — CVE → curated skills/tools/modules mapping + live NVD/KEV/EPSS lookup commands (local-first)
-- `guided_assessment.py` — companion-first target/finding classification, triage/report routing, tool-selection, and opt-in autonomous MCP toolchain solver (modes: `companion`/`autonomous`): default auto-detects the workflow/problem type, returns `classification`/`triage_gate`/`recommended_skills`/`reporting_next_steps`, selects from all modules/profiles, recommends the next command, and guides step-by-step; autonomous starts the user-approved solver loop via `run_tool`/`run_pipeline`/`run_script`, creates/saves/runs scoped helper scripts for the user when tools/pipelines are not enough, stays authorization-gated, and never bypasses MCP policy
+- `guided_assessment.py` — companion-first target/finding classification, triage/report
+  routing, tool selection, and opt-in autonomous solving. Autonomous mode uses governed
+  `run_tool`/`run_pipeline` calls and may use the separately enabled, unsandboxed
+  `run_script` capability for scoped helpers; scripts must not bypass authorization,
+  scope, or policy decisions
 - `security.py` — execution engine + policy enforcement + argument sanitization
 - `tools_db.py` — tool registry loader, install checks, version tracking
 - `advisor_utils.py` — shared alias map + install-status helpers used by the advisor modules
@@ -243,8 +253,8 @@ skills route through: `finding-triage` (finding → disposition), `security-comm
 - Empty arrays guarded with `[[ ${#arr[@]} -gt 0 ]]` before expansion (bash `set -u`)
 - Version tracking: `.versions` file with `tool|method|version|timestamp` format
 - Non-system binaries end up in `/usr/local/bin` (Linux) or `$PREFIX/bin` (Termux)
-- Binary releases SHA256-verified when checksums available; `--require-checksums`
-  makes missing checksums a hard failure
+- Binary releases SHA256-verified when checksums available; `--production` or
+  `--require-checksums` makes missing checksums a hard failure
 - GitHub API auth: auto-detects `gh auth token` if `GITHUB_TOKEN` is unset (60 → 5000 req/hr)
 - `fixup_package_names()` in `lib/installers.sh` translates package names per distro from
   `lib/distro_compat.tsv`

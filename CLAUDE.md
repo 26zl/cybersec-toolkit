@@ -119,7 +119,9 @@ The same stdio server is exposed to other MCP clients (config differs per client
 1. `export VAR=val &&` inside the `bash -lc` command string
 2. `WSLENV` env var listing variables to forward (e.g. `"WSLENV": "CYBERSEC_MCP_ALLOW_SCRIPTS/u:CYBERSEC_MCP_ALLOW_EXTERNAL/u"`)
 
-**Pwntools venv:** Must be created directly in WSL (has full network access), NOT through `run_script` (which is subject to MCP network policy). The venv lives at `~/.ctf-venvs/pwntools/` and is used via `run_script(code, venv="pwntools")`.
+**Pwntools venv:** Create it directly in WSL instead of enabling unrestricted
+`run_script` only for environment setup. The venv lives at
+`~/.ctf-venvs/pwntools/` and is selected with `run_script(code, venv="pwntools")`.
 
 ### Docker
 
@@ -161,9 +163,9 @@ Integration tests (`.github/workflows/integration.yml`, push to main + weekly): 
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
 
-**CI gotcha (checkout v6 auth):** `actions/checkout@v6` fails on its initial fetch with `fatal: could not read Username for 'https://github.com'` unless the token is passed explicitly (git 2.54). `uv-update.yml` and the scorecard job in `security.yml` both pass `token: ${{ secrets.GITHUB_TOKEN }}` on the checkout step. See github/community #183817.
-
-**`create-pull-request` token:** `uv-update.yml` opens its PR with `GITHUB_TOKEN` only (not a PAT). A stale `PAT_TOKEN` secret had expired and produced the *same* `could not read Username` error at push time — using `GITHUB_TOKEN` sidesteps the expiry entirely (the repo allows Actions to create PRs and the workflow grants `contents`/`pull-requests: write`). Trade-off: PRs opened by `GITHUB_TOKEN` do not trigger downstream CI workflows. The `could not read Username` symptom therefore has two unrelated causes here — checkout-v6 auth (fetch) and an expired/invalid push token — so check both.
+`uv-update.yml` uses the workflow `GITHUB_TOKEN` for checkout and PR creation. Its
+verification runs inside the same workflow because token-created PRs do not trigger
+normal downstream workflows.
 
 ## Architecture
 
@@ -211,7 +213,11 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 
 - `server.py` — FastMCP tool registrations (15 tools)
 - `cve_advisor.py` — CVE → curated skills/tools/modules mapping + live NVD/KEV/EPSS lookup commands (local-first, no network calls of its own)
-- `guided_assessment.py` — companion-first target/finding classification, triage/report routing, tool-selection, and opt-in autonomous MCP toolchain solver (modes: `companion`/`autonomous`): default auto-detects the workflow/problem type, returns `classification`/`triage_gate`/`recommended_skills`/`reporting_next_steps`, selects from all modules/profiles, recommends the next command, and guides step-by-step; autonomous starts the user-approved solver loop via run_tool/run_pipeline/run_script, creates/saves/runs scoped helper scripts for the user when tools/pipelines are not enough, stays authorization-gated, and never bypasses MCP policy
+- `guided_assessment.py` — companion-first target/finding classification, triage/report
+  routing, tool selection, and opt-in autonomous solving. Autonomous mode uses governed
+  `run_tool`/`run_pipeline` calls and may use the separately enabled, unsandboxed
+  `run_script` capability for scoped helpers; scripts must not bypass authorization,
+  scope, or policy decisions
 - `security.py` — Execution engine: `execute_tool()`, `execute_pipeline()`, `execute_script()`, `execute_tool_remote()`, policy enforcement, argument sanitization
 - `tools_db.py` — Tool registry loader, install checks, version tracking
 - `advisor_utils.py` — shared `TOOL_ALIASES` map + `check_tool_installed()` install-status helper used by `ctf_advisor.py`, `bounty_advisor.py`, and `cve_advisor.py`
@@ -219,7 +225,9 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 - `ctf_advisor.py` — CTF category suggestions and methodology steps (tool-status entries via `advisor_utils.build_tool_status_list`)
 - `bounty_advisor.py` — Bug bounty target-type suggestions, methodology, common vulns
 - `remote.py` — `RemoteHostConfig` for SSH-based remote tool execution
-- `audit.py` — JSON-line audit logging (5MB rotating) for blocked/executed tools and scripts. Script bodies are NOT persisted (CWE-312 clear-text-logging): `log_script_execution`/`log_tool_call` log `"[OMITTED]"` for the body plus an irreversible SHA256 + byte length of the original code for forensic correlation. `_redact_script_code()` still best-effort scrubs credential-shaped strings (OpenAI/GitHub/AWS/JWT tokens, `API_KEY=...` assignments, HTTP Authorization headers, `sshpass`/`hydra` `-p <pass>` flags, `PGPASSWORD`/`MYSQL_PWD`/`MARIADB_PASSWORD`/`REDISCLI_AUTH` env-vars) from the tool arguments/commands and `log_tool_result` error/summary text it does log.
+- `audit.py` — owner-only rotating JSON-line audit logging. Script bodies are omitted
+  and represented by SHA256 plus byte length; logged arguments and summaries use
+  best-effort credential redaction
 - `sanitize.py` — Output processing: ANSI stripping, LLM prompt-injection marker stripping. (Size truncation is enforced during subprocess read by `security._bounded_communicate()`, not post-hoc here.)
 
 **Key design decisions:**
@@ -232,10 +240,16 @@ Separate Python package (FastMCP). 15 AI-accessible tools: `list_tools`, `check_
 
 **Environment variables** (set in `.mcp.json` / `claude_desktop_config.json`):
 
-- `CYBERSEC_MCP_ALLOW_SCRIPTS=1` — enables `run_script()` (Python/Bash execution)
-- `CYBERSEC_MCP_ALLOW_EXTERNAL=0` — safest default; network tools can target private/loopback only
+- `CYBERSEC_MCP_ALLOW_SCRIPTS=1` — enables unsandboxed Python/Bash execution with
+  the MCP process user's filesystem and network permissions
+- `CYBERSEC_MCP_ALLOW_EXTERNAL=0` — safest default; governed network tools and
+  SSH remotes target private/loopback only (it does not sandbox `run_script`)
 - `CYBERSEC_MCP_ALLOW_EXTERNAL=1` — opt in only for explicitly authorized external scopes
 - `CYBERSEC_MCP_VENVS_DIR` — custom location for script venvs (default: `~/.ctf-venvs/`)
+- `CYBERSEC_MCP_AUDIT_LOG` — custom audit path (default:
+  `~/.local/state/cybersec-tools-mcp/audit.log`)
+- `CYBERSEC_MCP_AUDIT_REQUIRED=1` — fail startup instead of falling back to stderr
+  when file audit logging is unavailable
 - `CYBERSEC_INSTALLER_ROOT` — override project root path for tools_config.json lookup
 
 **Hardcoded data that must stay in sync with bash sources** (validated by `scripts/validate_mcp_sync.py`):
@@ -284,7 +298,7 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 - Version tracking: `.versions` file with `tool|method|version|timestamp` format
 - All non-system binaries end up in `/usr/local/bin` (Linux) or `$PREFIX/bin` (Termux)
 - `TOTAL_TOOL_FAILURES` global counter in `installers.sh` tracks failures across all batch install functions
-- Binary releases SHA256-verified when checksums available; `--require-checksums` makes missing checksums a hard failure
+- Binary releases SHA256-verified when checksums available; `--production` or `--require-checksums` makes missing checksums a hard failure
 - Go SDK version fetched dynamically from `go.dev/dl/?mode=json` API (fallback: hardcoded). SHA256-verified against the same API. `ensure_go()` downloads Go when system Go < 1.21
 - GitHub API auth: auto-detects `gh auth token` if `GITHUB_TOKEN` is not set. Raises rate limit from 60 to 5000 req/hr
 - setuptools<75 injected into all pipx venvs on Python 3.12+ (setuptools 75+ removed `pkg_resources`)
@@ -303,15 +317,16 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 
 ## DANGER: Never Read Unvalidated Images
 
-**NEVER use the `Read` tool on image files (PNG, JPG, PPM, BMP, etc.) without first verifying they are valid.** Reading a corrupt or malformed image poisons the entire conversation context — the broken image gets stuck in the message history, and every subsequent API call fails with "Could not process image". The only fix is to abandon the conversation and start a new one.
+**NEVER use the `Read` tool on image files (PNG, JPG, PPM, BMP, etc.) without first
+verifying they are valid.**
 
 **Before viewing any image with `Read`:**
 
 1. Validate with MCP tools first: `run_tool("file", "/path/to/image")` — confirm it reports a valid image type
 2. Check integrity: `run_tool("identify", "/path/to/image")` (ImageMagick) or `run_script("from PIL import Image; img = Image.open('/path/to/image'); print(img.size, img.mode)")`
-3. Only if both checks pass, copy to a Windows path and use `Read` to view it
+3. Use `Read` only if both checks pass
 
-**If the image is reconstructed, converted, or extracted from a challenge:** assume it may be corrupt until proven otherwise. Always validate first.
+Treat reconstructed, converted, or extracted images as untrusted until validated.
 
 ## Writeups (MANDATORY)
 

@@ -13,7 +13,8 @@ RUN apt-get update && apt-get upgrade -y \
         git curl wget sudo ca-certificates python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user with sudo access (install.sh requires root for apt).
+# Passwordless sudo — install.sh needs broad root throughout, so this image is a
+# build/install convenience, not a hardened sandbox (code in it is effectively root).
 RUN useradd -m -s /bin/bash toolkit \
     && echo "toolkit ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/toolkit
 
@@ -23,9 +24,9 @@ RUN chmod +x install.sh scripts/*.sh
 
 # MCP server: install uv + resolve dependencies so `uv run` works offline.
 # uv is pulled from the official Astral image, pinned by SHA256 digest
-# (corresponds to uv v0.11.21). Replaces a curl-pipe install to satisfy
+# (corresponds to uv v0.11.25). Replaces a curl-pipe install to satisfy
 # Scorecard's PinnedDependencies check.
-COPY --from=ghcr.io/astral-sh/uv:0.11.21@sha256:ff07b86af50d4d9391d9daf4ff89ce427bc544f9aae87057e69a1cc0aa369946 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.25@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9 /uv /uvx /usr/local/bin/
 RUN cd mcp_server && uv sync
 
 # Give toolkit user ownership of the working directory.

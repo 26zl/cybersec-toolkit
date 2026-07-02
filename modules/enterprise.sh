@@ -29,7 +29,6 @@ ENTERPRISE_GIT=(
     "PCredz=https://github.com/lgandx/PCredz.git"
     "krbrelayx=https://github.com/dirkjanm/krbrelayx.git"
     "spraykatz=https://github.com/aas-n/spraykatz.git"
-    "azurehound=https://github.com/BloodHoundAD/AzureHound.git"
     "dfscoerce=https://github.com/Wh04m1001/dfscoerce.git"
     "petitpotam=https://github.com/topotam/PetitPotam.git"
     "shadowcoerce=https://github.com/ShutdownRepo/shadowcoerce.git"
@@ -62,27 +61,39 @@ ENTERPRISE_GIT=(
     "keytabextract=https://github.com/sosdave/KeyTabExtract.git"
     "ldaprelayscan=https://github.com/zyn3rgy/LdapRelayScan.git"
     "LDAPWordlistHarvester=https://github.com/p0dalirius/pyLDAPWordlistHarvester.git"
-    "rusthound=https://github.com/NH-RED-TEAM/RustHound.git"
-    "rusthound-ce=https://github.com/g0h4n/RustHound-CE.git"
-    "GoExec=https://github.com/FalconOpsLLC/goexec.git"
-    "GoMapEnum=https://github.com/nodauf/GoMapEnum.git"
-    "gosecretsdump=https://github.com/c-sto/gosecretsdump.git"
 )
 
 ENTERPRISE_GO_BINS=(godap pretender)
-ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx spraykatz azurehound dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester rusthound rusthound-ce GoExec GoMapEnum gosecretsdump)
+ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx spraykatz dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester)
 
+ENTERPRISE_BUILD_NAMES=(azurehound gosecretsdump GoExec GoMapEnum rusthound rusthound-ce)
+declare -A ENTERPRISE_BUILD_URLS=(
+    [azurehound]="https://github.com/BloodHoundAD/AzureHound.git"
+    [gosecretsdump]="https://github.com/c-sto/gosecretsdump.git"
+    [GoExec]="https://github.com/FalconOpsLLC/goexec.git"
+    [GoMapEnum]="https://github.com/nodauf/GoMapEnum.git"
+    [rusthound]="https://github.com/NH-RED-TEAM/RustHound.git"
+    [rusthound-ce]="https://github.com/g0h4n/RustHound-CE.git"
+)
+declare -A ENTERPRISE_BUILD_CMDS=(
+    [azurehound]="go build"
+    [gosecretsdump]="go build"
+    [GoExec]="go build -o GoExec ."
+    [GoMapEnum]="go build -o GoMapEnum ./src"
+    [rusthound]="cargo build --release"
+    [rusthound-ce]="cargo build --release"
+)
+
+# Direct module selection installs the full offensive Active Directory tool set.
 install_module_enterprise() {
     [[ ${#ENTERPRISE_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Enterprise - Packages" "${ENTERPRISE_PACKAGES[@]}"
     install_pipx_batch "Enterprise - Python" "${ENTERPRISE_PIPX[@]}"
 
-    # NetExec — install from git (PyPI package 'nxc' was removed)
     if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! pipx list --short 2>/dev/null | grep -qi "^netexec "; then
         log_info "Installing NetExec from GitHub..."
         if pipx install "git+https://github.com/Pennyw0rth/NetExec" >> "$LOG_FILE" 2>&1; then
             log_success "NetExec installed"
-            # Track under 'nxc' (the binary verify.sh checks) so it is visible to
-            # verify.sh --installed-only and version tracking.
+            # The installed binary is named nxc.
             track_version "nxc" "pipx" "git"
         else
             log_error "Failed pipx: NetExec"
@@ -92,6 +103,9 @@ install_module_enterprise() {
     install_go_batch "Enterprise - Go" "${ENTERPRISE_GO[@]}"
     install_gem_batch "Enterprise - Ruby" "${ENTERPRISE_GEMS[@]}"
     install_git_batch "Enterprise - Git" "${ENTERPRISE_GIT[@]}"
+
+    log_info "Building enterprise tools from source..."
+    build_module_from_source ENTERPRISE
 
     # Binary releases
     install_binary_releases "${BINARY_RELEASES_ENTERPRISE[@]}"

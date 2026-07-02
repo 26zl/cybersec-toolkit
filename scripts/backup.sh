@@ -9,20 +9,10 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-# common.sh registers _global_cleanup on EXIT, but Ctrl-C during the multi-second
-# PBKDF2 encryption would otherwise leave the plaintext-passphrase temp file in
-# place. Mirror install.sh: also clean up (and exit) on INT/TERM. The passphrase
-# temp files are registered via _register_cleanup at their mktemp sites below.
+# Also clean up on INT/TERM (not just the EXIT trap from common.sh) so Ctrl-C during the multi-second PBKDF2 encryption can't leave the plaintext-passphrase temp file behind.
 trap '_global_cleanup; exit 130' INT TERM
 
-# Resolve the REAL user's home. README/install.sh tell users to run backup under
-# sudo, and `schedule` requires root and writes the root crontab — under sudo (or
-# cron) $HOME is /root, so a bare $HOME would back up /root/.* (empty for a real
-# user) and restore under /root: a silent near-total failure. When privilege-
-# dropping ($SUDO_USER set and not root), resolve $SUDO_USER's home via getent,
-# falling back to a direct /etc/passwd lookup; otherwise use the invoking $HOME.
-# SUDO_USER is untrusted: it is only ever passed to getent/awk as data (never
-# interpreted by a shell), so it cannot inject commands.
+# Resolve the REAL user's home (via getent on $SUDO_USER, falling back to /etc/passwd, else $HOME) so running under sudo/cron doesn't back up and restore /root instead of the real user; $SUDO_USER is untrusted and only ever passed to getent/awk as data.
 if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
     HOME_DIR="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
     [[ -z "$HOME_DIR" ]] && HOME_DIR="$(awk -F: -v u="$SUDO_USER" '$1==u{print $6; exit}' /etc/passwd 2>/dev/null)"
@@ -204,9 +194,7 @@ _backup_mac_key() {
         | tr -d ':' | tr 'A-F' 'a-f'
 }
 
-# _backup_mac_key_legacy — the original weak derivation (unsalted, single-round
-# SHA256 of "cybersec-backup-hmac:" + passphrase). Retained ONLY so backups
-# written before the salted-KDF change still verify on restore.
+# Verify v1 backup tags that use the legacy unsalted SHA256 derivation.
 _backup_mac_key_legacy() {
     local pass_file="$1"
     { printf 'cybersec-backup-hmac:'; cat "$pass_file"; } \
@@ -461,12 +449,7 @@ cmd_restore() {
         exit 1
     fi
 
-    # Reject anything except regular files and directories. The names-only check
-    # above cannot see symlink targets, so a cleanly-named member pointing at /etc
-    # could otherwise be restored verbatim by restore_configs' `cp -r` outside
-    # $HOME. cmd_backup only archives regular config dirs/files, so rejecting
-    # links, devices, FIFOs, sockets, and other special members has no legitimate
-    # false-positive cost. `-tvzf` emits the type char in column 1.
+    # Reject any member that isn't a regular file or directory (`-tvzf` type char in column 1), since a cleanly-named symlink to /etc could otherwise be restored outside $HOME by `cp -r` and backups only ever contain regular config files.
     if tar -tvzf "$tar_file" 2>/dev/null | grep -qEv '^[-d]'; then
         log_error "Archive contains links or special members — refusing to restore (untrusted or malformed backup)"
         [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"

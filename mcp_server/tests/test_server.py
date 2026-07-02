@@ -32,6 +32,20 @@ async def test_manage_remote_hosts_test_logs_success(monkeypatch: pytest.MonkeyP
     assert log_tool_result.call_args.args[2] is True
 
 
+@pytest.mark.asyncio
+async def test_run_script_reports_unsandboxed_security_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        server,
+        "_execute_script",
+        AsyncMock(return_value={"exit_code": 0, "stdout": "ok", "stderr": "", "truncated": False}),
+    )
+    with patch("mcp_server.server.log_tool_result"):
+        result = await server.run_script("print('ok')")
+
+    assert result["security_scope"]["sandboxed"] is False
+    assert result["security_scope"]["external_network_policy_enforced"] is False
+
+
 # ---- C2 gating reflected in MCP output (uses the real registry) ----
 
 
@@ -79,7 +93,7 @@ def test_get_module_info_update_command_whole_system() -> None:
     assert any(t["name"] == "gophish" for t in c2_flagged)
 
 
-# ---- F9: advisor docstrings stay in sync with the category maps ----
+# ---- Advisor docstrings stay in sync with the category maps ----
 
 
 def test_suggest_for_ctf_docstring_count_and_llm_listed() -> None:

@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -21,13 +26,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Run ShellCheck on all shell scripts
-        # Glob matches the documented local command (CLAUDE.md / AGENTS.md) and the
-        # sibling syntax-check job, so coverage stays in sync as scripts are added.
         run: shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
 
   syntax-check:
     name: Bash Syntax Check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -49,6 +53,7 @@ jobs:
   markdown-lint:
     name: Markdown Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -57,10 +62,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: DavidAnson/markdownlint-cli2-action@ded1f9488f68a970bc66ea5619e13e9b52e601cd # v23.2.0
-        # The .agents/skills/ exclusion below is inert in CI (that tree is the
-        # git-ignored mirror of .claude/skills/, never generated on the runner);
-        # it only matters for a local `markdownlint-cli2 "**/*.md"` over a
-        # populated working tree.
         with:
           globs: |
             **/*.md
@@ -74,6 +75,7 @@ jobs:
   tests:
     name: Tests (bats-core)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -89,6 +91,7 @@ jobs:
   tools-config-validate:
     name: Validate tools_config.json
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -102,6 +105,7 @@ jobs:
   distro-compat-validate:
     name: Validate distro_compat.tsv
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -115,6 +119,7 @@ jobs:
   claude-skills-validate:
     name: Validate Claude Skills
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -131,6 +136,7 @@ jobs:
   python-lint:
     name: Python Lint (ruff)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -151,6 +157,7 @@ jobs:
   python-tests:
     name: Python Tests (pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -165,11 +172,35 @@ jobs:
 
   mcp-server-check:
     name: MCP Server Import Check
+    needs:
+      - shellcheck
+      - syntax-check
+      - markdown-lint
+      - tests
+      - tools-config-validate
+      - distro-compat-validate
+      - claude-skills-validate
+      - python-lint
+      - python-tests
+      - profile-validate
+    if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
+
+      - name: Enforce all CI prerequisites
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"' <<<"$NEEDS_JSON")
+          if [[ -n "$failed" ]]; then
+            echo "::error::Required CI jobs did not succeed:"
+            echo "$failed"
+            exit 1
+          fi
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -216,6 +247,7 @@ jobs:
   profile-validate:
     name: Validate Profiles
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:

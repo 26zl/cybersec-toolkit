@@ -43,12 +43,12 @@ Only the latest `main` branch is supported. This project does not maintain backp
 For context when evaluating a report:
 
 - **System packages** — GPG-signed via the distro's repos (apt, dnf, pacman, zypper, pkg)
-- **Binary releases** — SHA256-verified against published checksums when available. `--require-checksums` turns missing checksums into a hard failure
+- **Binary releases** — SHA256-verified against published checksums when available. `--production` or `--require-checksums` turns missing checksums into a hard failure
 - **Go SDK** — SHA256-verified against `go.dev/dl/?mode=json` when reachable
 - **MCP Python dependencies** — resolved by `uv` with a 3-day `exclude-newer` release-age window for project runtime dependencies
 - **GitHub Actions** — all SHA-pinned with version comments; `step-security/harden-runner` enforces egress audit in every job
-- **MCP execution engine** — tool allowlisting, argument sanitization (blocks `|`, backtick, `$(`, `${`; `;` and `&` pass through as literals since no shell is used), per-tool blocked flags, network target allowlisting (private/loopback only by default — `CYBERSEC_MCP_ALLOW_EXTERNAL=1` opts in), rate limiting, and audit logging
-- **MCP script execution** — off by default; requires `CYBERSEC_MCP_ALLOW_SCRIPTS=1`
+- **MCP execution engine** — tool allowlisting, argument sanitization (blocks `|`, backtick, `$(`, `${`; `;` and `&` pass through as literals since no shell is used), protected write destinations, per-tool blocked flags, private/loopback network and SSH scope by default, rate limiting, and audit logging
+- **MCP script execution** — off by default; `CYBERSEC_MCP_ALLOW_SCRIPTS=1` is an explicit unsandboxed code-execution opt-in and is not constrained by `CYBERSEC_MCP_ALLOW_EXTERNAL`
 
 ## Automated security checks
 

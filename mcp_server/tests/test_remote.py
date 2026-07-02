@@ -128,6 +128,27 @@ class TestRemoteHostConfig:
         assert "-i" not in args
         assert "root@10.0.0.5" in args
 
+    def test_external_host_blocked_by_default(self, remote_config: RemoteHostConfig) -> None:
+        remote_config.add_host(name="public", hostname="8.8.8.8")
+        with patch("mcp_server.security._allow_external", return_value=False):
+            with pytest.raises(ValueError, match="Blocked by policy"):
+                remote_config.get_ssh_base_args("public")
+
+    def test_external_hostname_blocked_by_default(self, remote_config: RemoteHostConfig) -> None:
+        remote_config.add_host(name="public", hostname="example.com")
+        with (
+            patch("mcp_server.security._allow_external", return_value=False),
+            patch("mcp_server.security._is_safe_target", return_value=False),
+        ):
+            with pytest.raises(ValueError, match="Blocked by policy"):
+                remote_config.get_ssh_base_args("public")
+
+    def test_external_host_allowed_after_opt_in(self, remote_config: RemoteHostConfig) -> None:
+        remote_config.add_host(name="public", hostname="8.8.8.8")
+        with patch("mcp_server.security._allow_external", return_value=True):
+            args = remote_config.get_ssh_base_args("public")
+        assert "kali@8.8.8.8" in args
+
     def test_get_ssh_base_args_unknown_host(self, remote_config: RemoteHostConfig) -> None:
         with pytest.raises(ValueError, match="not found"):
             remote_config.get_ssh_base_args("nonexistent")
@@ -185,19 +206,14 @@ class TestRemoteHostConfig:
         assert "/nonexistent/key_file" not in str(exc_info.value)
 
     def test_corrupt_json_raises_and_backs_up(self, tmp_path: Path) -> None:
-        """Corrupt config must fail loudly and preserve the bad file for recovery.
-
-        Supersedes the older silent-reset behaviour, which could quietly lose
-        every registered host on the next save.
-        """
+        """Corrupt config must fail loudly and preserve the bad file for recovery."""
         config_path = tmp_path / "remote_hosts.json"
         config_path.write_text("NOT VALID JSON {{{", encoding="utf-8")
 
         with pytest.raises(ValueError, match="not valid JSON"):
             RemoteHostConfig(config_path=config_path)
 
-        # Original corrupt file was renamed out of the way — a .corrupt.* sibling
-        # exists and the main path no longer does.
+        # The corrupt file is preserved as a .corrupt.* sibling.
         assert not config_path.exists()
         backups = list(tmp_path.glob("remote_hosts.json.corrupt.*"))
         assert len(backups) == 1

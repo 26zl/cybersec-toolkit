@@ -163,10 +163,8 @@ def _infer_workflow_type(target: str, kind: str, workflow: str | None = None) ->
         ext = Path(target).suffix.lower()
         category = _FILE_EXT_CATEGORY.get(ext, "misc")
         if explicit == "bounty":
-            # Files are not a bounty target type. Map mobile bundles to the
-            # mobile_app taxonomy; otherwise default to web_app so the bounty
-            # advisor still returns a usable toolset instead of resolving to
-            # nothing (which would silently degrade to the empty generic plan).
+            # Files aren't a bounty target type, so map mobile bundles to mobile_app
+            # and everything else to web_app rather than degrade to the empty generic plan.
             return "bounty", "mobile_app" if category == "mobile" else "web_app"
         return "ctf", category
     if kind == "url":
@@ -198,11 +196,9 @@ def _target_kind(target: str, workflow: str, target_type: str | None) -> str:
     parsed = urlparse(target)
     if parsed.scheme:
         return "url"
-    # Treat as a local file ONLY when the target carries an explicit path sigil
-    # or separator. A bare token (e.g. "internal-host") must NOT be classified as
-    # a file just because a same-named file happens to exist in the server CWD —
-    # that would bypass network recon and drop the authorization floor. The CTF
-    # file-category path below still covers bare-name challenge files explicitly.
+    # Treat as a local file only with an explicit path sigil/separator, so a bare token
+    # like "internal-host" isn't misclassified (bypassing network recon and lowering the
+    # authorization floor) just because a same-named file exists in CWD.
     if target.startswith(("/", "./", "../", "~")) or "/" in target:
         return "file"
     if workflow == "ctf" and target_type in _FILE_CTF_CATEGORIES:
@@ -779,12 +775,9 @@ def build_guided_plan(
     if intensity_norm not in INTENSITIES:
         return {"error": f"Unknown intensity '{intensity}'. Available: {', '.join(sorted(INTENSITIES))}"}
 
-    # Auto tool selection: when workflow/target_type are "auto", infer only the
-    # field(s) actually set to "auto" so the default mode picks the right tools.
-    # When the workflow is explicit (e.g. "ctf") but target_type is "auto", the
-    # inference must stay inside THAT workflow's taxonomy — otherwise it produces
-    # a cross-taxonomy type (e.g. bounty's "network" under workflow="ctf") that
-    # _resolve_workflow rejects, silently degrading to the empty generic plan.
+    # Infer only the field(s) set to "auto", keeping inference inside an explicit
+    # workflow's taxonomy so it can't produce a cross-taxonomy type that _resolve_workflow
+    # rejects (degrading to the empty generic plan).
     auto_detected = None
     workflow_is_auto = workflow.lower().strip() == "auto"
     target_type_is_auto = target_type.lower().strip() == "auto"
@@ -935,9 +928,10 @@ def build_guided_plan(
             "toolchain_access": toolchain_scope,
             "guardrails": (
                 "Stay strictly inside the authorized scope. Never run C2/phishing, DoS/high-volume, "
-                "credential-stuffing, or destructive actions. Every command still passes the MCP execution "
-                "policy (scope/external/blocked-flag checks). For external targets, authorization_confirmed "
-                "must be true and CYBERSEC_MCP_ALLOW_EXTERNAL=1."
+                "credential-stuffing, or destructive actions. run_tool/run_pipeline remain subject to "
+                "scope, external-target, and blocked-flag checks. run_script is unsandboxed and must never "
+                "be used to bypass those decisions. For external targets, authorization_confirmed must be "
+                "true and CYBERSEC_MCP_ALLOW_EXTERNAL=1."
             ),
             "use_mcp_tools": mcp_toolchain,
             "use_skills": [entry["name"] for entry in recommended_skills],

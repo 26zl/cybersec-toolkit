@@ -43,6 +43,7 @@ SKIP_SOURCE="${SKIP_SOURCE:-false}"
 ENABLE_DOCKER="${ENABLE_DOCKER:-false}"
 INCLUDE_C2="${INCLUDE_C2:-false}"
 REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
+PRODUCTION_MODE="${PRODUCTION_MODE:-false}"
 # Track which flags were explicitly set on the CLI (for profile override logic)
 _CLI_SET_SKIP_HEAVY=false
 _CLI_SET_ENABLE_DOCKER=false
@@ -91,6 +92,9 @@ Options:
   --fast               Skip checksum verification for faster binary downloads
                          (mutually exclusive with --require-checksums)
   --require-checksums  Fail if a binary release has no checksum file
+  --production         Security preset: require available upstream checksums
+                         and reject unverified binary/Go release downloads.
+                         Rolling source installs are still upstream-latest.
   --enable-docker      Pull Docker images (C2 frameworks, IR platforms, MobSF, etc.)
   --include-c2         Install C2 + phishing frameworks (Sliver, Caldera, Loki-C2,
                          gophish, evilginx, SET, …; Empire also needs --enable-docker)
@@ -190,6 +194,7 @@ while [[ $# -gt 0 ]]; do
         --skip-source)     SKIP_SOURCE=true; shift ;;
         --fast)            FAST_MODE=true; shift ;;
         --require-checksums) REQUIRE_CHECKSUMS=true; shift ;;
+        --production)      PRODUCTION_MODE=true; shift ;;
         --enable-docker)   ENABLE_DOCKER=true; _CLI_SET_ENABLE_DOCKER=true; shift ;;
         --include-c2)      INCLUDE_C2=true; _CLI_SET_INCLUDE_C2=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
@@ -214,9 +219,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# --fast and --require-checksums are mutually exclusive
+[[ "$PRODUCTION_MODE" == "true" ]] && REQUIRE_CHECKSUMS=true
+
 if [[ "$FAST_MODE" == "true" && "$REQUIRE_CHECKSUMS" == "true" ]]; then
-    log_error "--fast and --require-checksums are mutually exclusive"
+    log_error "--fast is mutually exclusive with --require-checksums/--production"
     exit 1
 fi
 
@@ -224,6 +230,9 @@ fi
 # shellcheck disable=SC2034  # Arrays read via nameref
 install_single_tool() {
     local tool="$1"
+    # An explicit --tool request overrides method-wide skip flags.
+    local SKIP_PIPX=false SKIP_GO=false SKIP_CARGO=false SKIP_GEMS=false
+    local SKIP_GIT=false SKIP_BINARY=false SKIP_SOURCE=false
 
     # Helper: check if a named array contains a value
     _arr_has() {
@@ -293,7 +302,7 @@ install_single_tool() {
                 log_info "Installing $tool via go install..."
                 # Use _as_builder + staging GOBIN (consistent with batch installer)
                 local _gobin_stage _go_gopath_esc _go_gobin_esc _go_pkg_esc
-                _gobin_stage=$(mktemp -d "/tmp/cybersec-gobin.XXXXXX")
+                _gobin_stage=$(mktemp -d "${TMPDIR:-/tmp}/cybersec-gobin.XXXXXX")
                 _register_cleanup "$_gobin_stage"
                 if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
                     _chown_for_builder "$_gobin_stage"
@@ -302,8 +311,8 @@ install_single_tool() {
                 _go_gopath_esc="$(_escape_single_quoted "$GOPATH")"
                 _go_gobin_esc="$(_escape_single_quoted "$_gobin_stage")"
                 _go_pkg_esc="$(_escape_single_quoted "$gopkg")"
-                if _as_builder "GOPATH='$_go_gopath_esc' GOBIN='$_go_gobin_esc' $(command -v go) install $_go_pkg_esc" >> "$LOG_FILE" 2>&1; then
-                    [[ -f "$_gobin_stage/$tool" ]] && mv "$_gobin_stage/$tool" "$GOBIN/$tool" && chmod +x "$GOBIN/$tool"
+                if _as_builder "GOPATH='$_go_gopath_esc' GOBIN='$_go_gobin_esc' $(command -v go) install $_go_pkg_esc" >> "$LOG_FILE" 2>&1 \
+                    && [[ -f "$_gobin_stage/$tool" ]] && mv "$_gobin_stage/$tool" "$GOBIN/$tool" && chmod +x "$GOBIN/$tool"; then
                     log_success "Installed: $tool"
                     track_version "$tool" "go" "latest"
                 else
@@ -387,6 +396,46 @@ install_single_tool() {
         done
     done
 
+    # GitHub binary releases
+    local binary_arr
+    while IFS= read -r binary_arr; do
+        declare -p "$binary_arr" &>/dev/null || continue
+        local -n _binary_ref="$binary_arr"
+        [[ ${#_binary_ref[@]} -eq 0 ]] && continue
+        for entry in "${_binary_ref[@]}"; do
+            IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$entry"
+            local _registry_name="$_binary"
+            case "$_binary" in
+                d2j-dex2jar) _registry_name="dex2jar" ;;
+                heimdall) _registry_name="heimdall-rs" ;;
+            esac
+            if [[ "$tool" == "$_binary" || "$tool" == "$_registry_name" ]]; then
+                log_info "Installing $tool from GitHub releases..."
+                download_github_release \
+                    "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}" "${_archive_binary:-$_binary}"
+                return $?
+            fi
+        done
+    done < <(compgen -A variable BINARY_RELEASES_ | sort)
+
+    # Build-from-source registries
+    local mod prefix names_var
+    for mod in "${ALL_MODULES[@]}"; do
+        prefix="$(_module_prefix "$mod")"
+        names_var="${prefix}_BUILD_NAMES"
+        declare -p "$names_var" &>/dev/null || continue
+        local -n _build_names="$names_var"
+        for _build_name in "${_build_names[@]}"; do
+            if [[ "$_build_name" == "$tool" ]]; then
+                local -n _build_urls="${prefix}_BUILD_URLS"
+                local -n _build_cmds="${prefix}_BUILD_CMDS"
+                log_info "Building $tool from source..."
+                build_from_source "$tool" "${_build_urls[$tool]:-}" "${_build_cmds[$tool]:-}"
+                return $?
+            fi
+        done
+    done
+
     # npm tools (promptfoo)
     if [[ "$tool" == "promptfoo" ]]; then
         ensure_node || { log_error "Node.js/npm not available — cannot install $tool"; return 1; }
@@ -466,6 +515,11 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
     while IFS='|' read -r rb_tool rb_method rb_action _; do
         [[ "$rb_tool" == \#* ]] && continue
         [[ "$rb_action" == "installed" ]] || continue
+        # Reject empty or path-bearing names before destructive rm/uninstall.
+        if [[ -z "$rb_tool" || "$rb_tool" == */* || "$rb_tool" == *..* ]]; then
+            log_warn "Skipping invalid rollback entry: '${rb_tool}'"
+            continue
+        fi
         RB_TOOLS+=("$rb_tool")
         RB_METHODS+=("$rb_method")
     done < "$ROLLBACK_FILE"
@@ -628,7 +682,7 @@ fi
 
 # Export flags for modules
 export SKIP_HEAVY SKIP_PIPX SKIP_GO SKIP_CARGO SKIP_GEMS SKIP_GIT SKIP_BINARY SKIP_SOURCE
-export ENABLE_DOCKER INCLUDE_C2 REQUIRE_CHECKSUMS FAST_MODE UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
+export ENABLE_DOCKER INCLUDE_C2 REQUIRE_CHECKSUMS PRODUCTION_MODE FAST_MODE UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
 
 # Source selected modules
 for mod in "${MODULES_TO_INSTALL[@]}"; do
@@ -851,6 +905,8 @@ if [[ "$DRY_RUN" == "true" ]]; then
         echo "Skipping:       ${_skip_flags[*]}"
     fi
     echo "Fast mode:      $FAST_MODE"
+    echo "Production:     $PRODUCTION_MODE"
+    echo "Checksums req.: $REQUIRE_CHECKSUMS"
     echo "Docker:         $ENABLE_DOCKER"
     echo "C2:             $INCLUDE_C2"
     echo "System upgrade: $UPGRADE_SYSTEM"
@@ -1039,11 +1095,7 @@ install_modules() {
         # Binary releases (BINARY_RELEASES_<MODULE_UPPER> in installers.sh)
         _append_module_array _ALL_BINARY "BINARY_RELEASES_${_mod_upper}"
 
-        # C2 / phishing frameworks — only with --include-c2. Append the per-module
-        # C2 git repos and binary releases so they flow through the same batch
-        # installers as the non-C2 arrays (the module-level C2 calls no-op here
-        # because _SKIP_BATCH_REINSTALL is set). _append_module_array tolerates
-        # undefined arrays, so this is harmless for modules without C2 arrays.
+        # Include gated C2 registries in the normal batch flow.
         if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
             _append_module_array _ALL_GIT    "${_pfx}_C2_GIT"
             _append_module_array _ALL_BINARY "BINARY_RELEASES_${_mod_upper}_C2"
@@ -1080,19 +1132,11 @@ install_modules() {
         # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
         trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _stop_progress_display; _global_cleanup; exit 130' INT TERM
 
-        # Subshells redirect stdout to /dev/null so their log_message() output
-        # doesn't interleave on the terminal.  The log file still gets everything
-        # because log_message() opens it explicitly via >> "$LOG_FILE".
-        # Progress reporting writes to PROGRESS_DIR files, not stdout.
+        # Subshells redirect stdout to /dev/null so log_message() output doesn't interleave on the terminal; the log file and PROGRESS_DIR still get everything via their own explicit redirects.
         local _method_names=()
         local _job_pids=()
 
-        # Pre-write method totals from the main process so the progress display
-        # has immediate access.  The batch functions later re-write the same
-        # .total files with the same values from inside their subshells — the
-        # `> /dev/null` redirect does NOT suppress those writes (_report_method_total
-        # writes via a direct file redirect to PROGRESS_DIR, not stdout), so it's
-        # a harmless idempotent re-write, not a duplicate.
+        # Pre-write method totals from the main process so the progress display has them immediately; batch subshells later re-write the same values idempotently via a direct PROGRESS_DIR redirect (unaffected by `> /dev/null`).
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]];   then _method_names+=("pipx");   _report_method_total "pipx"   "${#_ALL_PIPX[@]}";   fi
         if [[ ${#_ALL_GO[@]} -gt 0 ]];     then _method_names+=("Go");     _report_method_total "Go"     "${#_ALL_GO[@]}";     fi
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]];  then _method_names+=("Cargo");  _report_method_total "Cargo"  "${#_ALL_CARGO[@]}";  fi

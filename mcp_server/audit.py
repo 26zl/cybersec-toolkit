@@ -1,10 +1,7 @@
-"""Audit logging — comprehensive JSON-line logger for all MCP server activity.
+"""JSON-line audit logging for MCP server activity.
 
-Every action the MCP server performs is logged here: tool calls, executions,
-validations, pipeline steps, DNS lookups, config state, and more. The audit
-log provides full visibility into what the server does at all times.
-
-Log file: ``mcp_server/audit.log`` (5 MB rotating, 3 backups).
+Log file: ``$CYBERSEC_MCP_AUDIT_LOG`` or the user's state directory
+(``~/.local/state/cybersec-tools-mcp/audit.log`` by default).
 Format: one JSON object per line, always with ``ts`` and ``event`` fields.
 """
 
@@ -16,7 +13,9 @@ import logging
 import logging.handlers
 import os
 import re
+import sys
 import time
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,21 +24,10 @@ from typing import Any
 # Credential redaction
 # ---------------------------------------------------------------------------
 
-# Patterns that may contain credentials in tool arguments.
-# Matches: -H "Authorization: Bearer xxx", --password xxx, --token=xxx, etc.
-# ``[REDACTED]`` sentinel is never re-consumed: the value-matching parts exclude
-# ``]`` (or stop before a literal ``[REDACTED]``) so re-running the redactor is
-# idempotent and never leaves a stray ``]`` behind.
+# Credential patterns must remain idempotent when applied repeatedly.
 _REDACTED = "[REDACTED]"
 _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    # Auth header keywords ("Authorization:", "Api-Key="). A [:=] separator is
-    # MANDATORY here so prose like "the token is rotated" is never eaten (a bare
-    # keyword followed only by whitespace no longer matches). An optional auth
-    # scheme word (Bearer/Basic/Token/Digest) after the separator is preserved so
-    # the credential after it — not just the scheme — is what gets redacted
-    # ("Authorization: Bearer xyz" -> "...Bearer [REDACTED]"). The value must not
-    # already be [REDACTED], and the value matcher stops at quotes so a trailing
-    # quote is not consumed (keeps re-runs idempotent / no stray "]" left behind).
+    # Authorization and API-key headers; preserve the auth scheme.
     (
         re.compile(
             r"((?:Authorization|Api-?Key)\s*[:=]\s*"
@@ -50,11 +38,7 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1" + _REDACTED,
     ),
-    # Bare auth-scheme prefix ("Bearer <token>", "Basic <b64>") wherever it
-    # appears — these schemes are unambiguous (a credential always follows), so a
-    # whitespace separator is enough. A [:=] separator is also accepted
-    # ("Bearer: xyz"). Prose words like "token"/"password" are deliberately NOT
-    # in this set, so they still require the [:=]/flag forms below.
+    # Unambiguous auth-scheme prefixes
     (
         re.compile(
             r"((?:Bearer|Basic|Digest)[\s:=]+)(?!\[REDACTED\])[^\s\"']+",
@@ -75,20 +59,12 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"((?:\B-u|--user)[\s=]+)(?!\[REDACTED\])\S+", re.IGNORECASE),
         r"\1" + _REDACTED,
     ),
-    # Inline no-space password flag for DB clients: mysql/mariadb/psql/mongo
-    # "-pSECRET". Scoped to a single-dash short flag (the negative lookbehind for
-    # "-" stops it firing inside "--password") with a password shape: the value
-    # must contain a char outside the nmap port-spec alphabet, so nmap
-    # "-p80,443", "-p-", "-pU:53,T:80" survive intact (their values are only
-    # digits, commas, dashes, colons, and the U:/T: protocol prefixes).
+    # Inline database password flags; preserve nmap port specifications.
     (
         re.compile(r"(?<!-)(\B-p)(?![\dUT,:\-]+(?:\s|$))(?=\S*[^\d\s,:\-])(?!\[REDACTED\])\S+"),
         r"\1" + _REDACTED,
     ),
-    # DB / cache password env-vars: PGPASSWORD=, MYSQL_PWD=, MARIADB_PASSWORD=,
-    # REDISCLI_AUTH=, MONGODB_PASSWORD=. These carry the secret directly in the
-    # value, so redact the assigned value (quoted or bare) while keeping the var
-    # name for context.
+    # Database and cache password environment variables
     (
         re.compile(
             r"\b(PGPASSWORD|MYSQL_PWD|MARIADB_PASSWORD|REDISCLI_AUTH|MONGODB_PASSWORD)="
@@ -97,26 +73,18 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1=" + _REDACTED,
     ),
-    # HTTP Cookie / Set-Cookie header values carry session tokens. Redact the
-    # whole header value (up to a quote or end of line) — re-run safe because the
-    # value matcher stops before [REDACTED] would be re-consumed.
+    # HTTP cookie headers
     (
         re.compile(r"((?:Set-)?Cookie\s*:\s*)(?!\[REDACTED\])[^\r\n\"']+", re.IGNORECASE),
         r"\1" + _REDACTED,
     ),
 ]
 
-# Tools that take a password as a *separated* "-p <value>" argument. The
-# attached-form "-p" rule above is deliberately scoped to preserve nmap port
-# specs ("-p 80" would otherwise be ambiguous), so the separated form is only
-# redacted when one of these credential tools is present in the command — that
-# is what distinguishes a password from an nmap/curl port/path option.
+# Tools where a separated ``-p`` value is a password.
 _CREDENTIAL_TOOLS = re.compile(r"\b(?:sshpass|hydra|medusa|ncrack)\b", re.IGNORECASE)
 _SEPARATED_PASSWORD_FLAG = re.compile(r"(\B-p[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
 
-# redis-cli passes its auth via "-a <pass>" / "-a<pass>". "-a" is too ambiguous
-# to redact unconditionally (other tools use it differently), so gate on the
-# presence of redis-cli — same approach as the separated "-p" rule above.
+# redis-cli uses ``-a`` for authentication.
 _REDIS_TOOL = re.compile(r"\bredis-cli\b", re.IGNORECASE)
 _REDIS_AUTH_FLAG = re.compile(r"(\B-a[\s=]?)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
 
@@ -125,11 +93,8 @@ def _redact_sensitive(value: str) -> str:
     """Replace likely credentials in a string with [REDACTED]."""
     for pattern, replacement in _SENSITIVE_PATTERNS:
         value = pattern.sub(replacement, value)
-    # Separated "-p <password>" only when a credential tool is present, so nmap
-    # "-p 80" stays readable (no credential tool to gate on).
     if _CREDENTIAL_TOOLS.search(value):
         value = _SEPARATED_PASSWORD_FLAG.sub(r"\1" + _REDACTED, value)
-    # redis-cli "-a <pass>" only when redis-cli is in the command.
     if _REDIS_TOOL.search(value):
         value = _REDIS_AUTH_FLAG.sub(r"\1" + _REDACTED, value)
     return value
@@ -207,7 +172,18 @@ def _redact_script_code(code: str) -> str:
 # Logger setup
 # ---------------------------------------------------------------------------
 
-_AUDIT_LOG_PATH = Path(__file__).resolve().parent / "audit.log"
+
+def _default_audit_log_path() -> Path:
+    """Resolve the audit log outside the installed package tree."""
+    configured = os.environ.get("CYBERSEC_MCP_AUDIT_LOG", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    state_home = os.environ.get("XDG_STATE_HOME", "").strip()
+    base = Path(state_home).expanduser() if state_home else Path.home() / ".local" / "state"
+    return base / "cybersec-tools-mcp" / "audit.log"
+
+
+_AUDIT_LOG_PATH = _default_audit_log_path()
 
 _logger: logging.Logger | None = None
 
@@ -215,12 +191,8 @@ _logger: logging.Logger | None = None
 class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """RotatingFileHandler that keeps the audit log owner-only (0600).
 
-    The audit log records tool args, command lines, DNS lookups and (redacted,
-    best-effort) script bodies, so it must not be readable by other local users.
-    chmod is applied on every stream open so it survives initial creation,
-    reopen, and post-rotation (rotated .1/.2/.3 backups inherit 0600 because they
-    were the 0600 base file before being renamed). Best-effort: a chmod failure
-    (e.g. Windows/NTFS) must never break logging.
+    Permissions are applied whenever the stream opens. chmod remains best-effort
+    for filesystems without POSIX mode support.
     """
 
     def _open(self):  # type: ignore[override]
@@ -235,8 +207,9 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
 def get_audit_logger() -> logging.Logger:
     """Return (and lazily configure) the audit logger.
 
-    Uses a RotatingFileHandler writing to ``mcp_server/audit.log``
-    (max 5 MB per file, 3 backups).
+    Uses a RotatingFileHandler (max 5 MB per file, 3 backups). If file
+    logging is unavailable, a warning is emitted and sanitized audit events go
+    to stderr. Set ``CYBERSEC_MCP_AUDIT_REQUIRED=1`` to fail startup instead.
     """
     global _logger
     if _logger is not None:
@@ -247,16 +220,24 @@ def get_audit_logger() -> logging.Logger:
     _logger.propagate = False
 
     try:
+        _AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(_AUDIT_LOG_PATH.parent, 0o700)
+        except OSError:
+            pass
         handler: logging.Handler = _SecureRotatingFileHandler(
             _AUDIT_LOG_PATH,
             maxBytes=5 * 1024 * 1024,  # 5 MB
             backupCount=3,
             encoding="utf-8",
         )
-    except OSError:
-        # Log path unwritable (read-only install, container, etc.) — fall back
-        # to a no-op handler so audit calls never crash tool execution.
-        handler = logging.NullHandler()
+    except OSError as exc:
+        message = f"Audit file logging unavailable at {_AUDIT_LOG_PATH}: {exc}"
+        if os.environ.get("CYBERSEC_MCP_AUDIT_REQUIRED", "").strip().lower() in ("1", "true", "yes"):
+            _logger = None
+            raise RuntimeError(message) from exc
+        warnings.warn(message + "; audit events will be written to stderr", RuntimeWarning, stacklevel=2)
+        handler = logging.StreamHandler(sys.stderr)
 
     handler.setFormatter(logging.Formatter("%(message)s"))
     _logger.addHandler(handler)
@@ -265,7 +246,7 @@ def get_audit_logger() -> logging.Logger:
 
 
 def _log(level: int, entry: dict[str, Any]) -> None:
-    """Write a JSON audit entry at the given level. Never raises."""
+    """Write a JSON audit entry; fail only when required audit setup fails."""
     try:
         get_audit_logger().log(level, json.dumps(entry, ensure_ascii=False))
     except OSError:
@@ -305,12 +286,8 @@ def log_server_start() -> None:
 def _redact_steps(steps: Any) -> Any:
     """Redact credentials from a pipeline ``steps`` value for logging.
 
-    Each step is a dict with a ``tool`` and an optional ``args`` (which may carry
-    ``-u user:pass`` / bearer tokens). The ``args`` field is run through the full
-    :func:`_redact_script_code` so pipeline args get the same coverage as
-    standalone tool args — without it, ``run_pipeline`` would be a redaction
-    bypass. Non-list / non-dict shapes are returned untouched so logging never
-    raises on unexpected input.
+    Pipeline arguments use the same redaction as standalone tool arguments.
+    Unexpected input shapes are returned unchanged.
     """
     if not isinstance(steps, list):
         return steps

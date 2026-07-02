@@ -54,12 +54,7 @@ _global_cleanup() {
     type -t _gh_api_cache_cleanup &>/dev/null && _gh_api_cache_cleanup 2>/dev/null || true
 }
 
-# Run cleanup on normal exit too, not only on INT/TERM. Without this, a normal
-# early `return`/`exit` (e.g. before the per-function `rm -rf`) would leave
-# registered temp paths behind — notably the gh-netrc file holding GITHUB_TOKEN
-# (mode 600). INT/TERM handlers additionally `exit 130`; this is the catch-all.
-# `( )` subshells reset traps to the shell's inherited defaults, so this does
-# not fire inside flock/parallel-job subshells.
+# Catch-all EXIT cleanup so an early return/exit can't leave registered temp paths behind (e.g. the mode-600 gh-netrc holding GITHUB_TOKEN); subshells reset traps, so it won't fire inside flock/parallel jobs.
 trap '_global_cleanup' EXIT
 
 # ── Session tracking for rollback ──
@@ -611,10 +606,7 @@ pkg_install() {
     case "$PKG_MANAGER" in
         apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
         dnf)
-            # Handle @group entries separately, then install remaining packages.
-            # OR each sub-install's exit code into a running rc so a failed group
-            # is not masked by a later successful plain-package install (the case
-            # branch would otherwise return only the last command's status).
+            # Install @group entries separately from plain packages, OR-ing each exit code into a running rc so a failed group isn't masked by a later successful install.
             local -a _dnf_groups=() _dnf_pkgs=()
             local _arg
             local _dnf_rc=0
@@ -927,9 +919,8 @@ _escape_single_quoted() {
 
 # Non-destructive fallback when `git pull` fails on a cloned tool repo.
 # Preserves any local user edits by stashing them first, then fetches + resets
-# to origin/<branch>, then pops the stash back. If stash pop leaves conflicts
-# the user's work remains in the stash list — better than the old behaviour
-# which silently discarded local changes via a bare `git reset --hard`.
+# to origin/<branch>, then pops the stash back. Conflicted stash entries remain
+# recoverable from the stash list.
 # Callers:  git_clone_or_pull below, scripts/update.sh
 # Args:     $1 = repo path (must contain .git)
 #           $2 = log file for verbose git output

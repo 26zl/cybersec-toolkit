@@ -99,6 +99,19 @@ setup() {
     assert_output --partial "true"
 }
 
+@test "install.sh --production enables strict checksum mode" {
+    run bash "$INSTALL_SH" --profile ctf --production --dry-run
+    assert_success
+    assert_output --partial "Production:     true"
+    assert_output --partial "Checksums req.: true"
+}
+
+@test "install.sh rejects --production with --fast" {
+    run bash "$INSTALL_SH" --production --fast --dry-run
+    assert_failure
+    assert_output --partial "mutually exclusive"
+}
+
 @test "install.sh --dry-run with --module shows selected modules" {
     run bash "$INSTALL_SH" --module web --module recon --dry-run
     assert_success
@@ -221,7 +234,55 @@ setup() {
     assert_output --partial "Installing aderyn via cargo"
 }
 
-# ---------- platform module filtering shared with dry-run (F16) --------------
+@test "install_single_tool finds binary release tools" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        download_github_release() {
+            echo "BINARY=$1|$2|$3"
+            return 0
+        }
+        install_single_tool gitleaks
+    '
+    assert_success
+    assert_output --partial "BINARY=gitleaks/gitleaks|gitleaks"
+}
+
+@test "install_single_tool preserves explicit archive binary aliases" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        download_github_release() {
+            echo "ARCHIVE_BINARY=$5"
+            return 0
+        }
+        install_single_tool crytic-medusa
+    '
+    assert_success
+    assert_output --partial "ARCHIVE_BINARY=medusa"
+}
+
+@test "install_single_tool finds build-from-source tools" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        build_from_source() {
+            echo "SOURCE=$1|$2|$3"
+            return 0
+        }
+        install_single_tool massdns
+    '
+    assert_success
+    assert_output --partial "SOURCE=massdns|https://github.com/blechschmidt/massdns.git|make"
+}
+
+# ---------- platform module filtering shared with dry-run --------------------
 
 @test "_apply_platform_module_filters drops wireless module under WSL" {
     run bash -lc '

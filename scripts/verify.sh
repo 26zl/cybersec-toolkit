@@ -192,7 +192,7 @@ check_pipx() {
     if command_exists pipx; then
         # Normalize hyphens/underscores for PEP 503 compatibility
         local _norm="${tool//-/_}"
-        if pipx list --short 2>/dev/null | sed 's/-/_/g' | grep -qi "^${_norm} "; then
+        if pipx list --short 2>/dev/null | sed 's/-/_/g' | awk -v t="$_norm" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
             vlog_success "$tool — installed (pipx)"
             return 0
@@ -281,10 +281,7 @@ check_cargo() {
     fi
 }
 
-# check_module_cargo — verify every crate in a module's <PREFIX>_CARGO array.
-# Derives the array name dynamically so a module's cargo tools can never be
-# forgotten here (which is how BLOCKCHAIN_CARGO/aderyn previously went unchecked).
-# No-op if the module defines no cargo array.
+# Verify a module's optional <PREFIX>_CARGO array.
 check_module_cargo() {
     local _mod="$1"
     local _arr_name
@@ -364,9 +361,7 @@ if should_verify "misc"; then
     check_cmd "pspy" || true
     check_cmd "trufflehog" || true
     check_cmd "gitleaks" || true
-    # C2 + phishing frameworks install only with INCLUDE_C2 (redteam/full profiles).
-    # Check them only when INCLUDE_C2=true to avoid false "missing" elsewhere; run
-    # `INCLUDE_C2=true scripts/verify.sh` to verify a red-team install.
+    # C2 + phishing frameworks install only with INCLUDE_C2 (redteam/full), so check them only when INCLUDE_C2=true to avoid false "missing" elsewhere.
     if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
         log_info "Misc (C2/Phishing — INCLUDE_C2):"
         check_git_repos "${MISC_C2_GIT_NAMES[@]}"
@@ -516,6 +511,8 @@ if should_verify "enterprise"; then
     check_cmds "${ENTERPRISE_GEMS[@]}"
     log_info "Enterprise (Git):"
     check_git_repos "${ENTERPRISE_GIT_NAMES[@]}"
+    log_info "Enterprise (Build):"
+    check_builds "${ENTERPRISE_BUILD_NAMES[@]}"
     log_info "Enterprise (Binary):"
     check_cmd "kerbrute" || true
     log_info "Enterprise (Special):"

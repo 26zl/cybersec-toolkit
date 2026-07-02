@@ -69,6 +69,8 @@ SAMPLE_TOOLS = [
     {"name": "aircrack-ng", "method": "apt", "module": "wireless", "url": ""},
     {"name": "pwntools", "method": "pipx", "module": "pwn", "url": ""},
     {"name": "garak", "method": "pipx", "module": "llm", "url": ""},
+    {"name": "libimage-exiftool-perl", "method": "apt", "module": "forensics", "url": ""},
+    {"name": "metasploit", "method": "special", "module": "pwn", "url": ""},
 ]
 
 

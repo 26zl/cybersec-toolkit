@@ -10,6 +10,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _bash_arrays import balanced_array_body  # noqa: E402
@@ -79,17 +80,12 @@ def parse_arrays(text):
             line = raw_line.strip()
             if not line:
                 continue
-            # A line that is purely one-or-more quoted cells counts toward the
-            # quoted-line tally used to detect silent truncation.
             if re.fullmatch(r'(?:"[^"]*"\s*)+', line):
                 quoted_lines += len(re.findall(r'"[^"]*"', line))
         for item in re.finditer(r'"([^"]*)"|(\S+)', body):
             val = item.group(1) if item.group(1) is not None else item.group(2)
             if val:
                 entries.append(val)
-        # Sanity: when the array is written one quoted cell per line, the number
-        # of parsed quoted entries must match — a mismatch means a ')' or stray
-        # token truncated the body (the bug this guard exists to catch).
         quoted_entries = sum(1 for it in re.finditer(r'"[^"]*"', body))
         if quoted_lines and quoted_entries != quoted_lines:
             print(
@@ -121,6 +117,26 @@ def go_github_url(import_path):
     parts = clean.split("/")
     if len(parts) >= 3 and parts[0] == "github.com":
         return f"https://github.com/{parts[1]}/{parts[2]}"
+    return ""
+
+
+def canonical_package_url(method, name):
+    """Return a deterministic registry URL when source code has no homepage."""
+    encoded = quote(name, safe="@/-")
+    if method == "apt":
+        return f"https://packages.debian.org/search?keywords={encoded}"
+    if method == "pipx":
+        return f"https://pypi.org/project/{encoded}/"
+    if method == "cargo":
+        return f"https://crates.io/crates/{encoded}"
+    if method == "gem":
+        return f"https://rubygems.org/gems/{encoded}"
+    if method == "npm":
+        return f"https://www.npmjs.com/package/{encoded}"
+    if method == "go":
+        return f"https://pkg.go.dev/search?q={encoded}"
+    if method == "docker":
+        return f"https://hub.docker.com/search?q={encoded}"
     return ""
 
 
@@ -229,6 +245,9 @@ def extract_module_tools(module_name):
             # Last component before @
             last = entry.split("/")[-1].split("@")[0]
             url_map[last] = url
+            parts = entry.split("@")[0].split("/")
+            if len(parts) >= 3 and parts[0] == "github.com":
+                url_map[parts[2]] = url
             # cmd/ pattern: github.com/.../cmd/toolname@latest
             if "/cmd/" in entry:
                 cmd_name = entry.split("/cmd/")[-1].split("@")[0]
@@ -268,9 +287,15 @@ def extract_module_tools(module_name):
         raw_name = m.group(2)
         if raw_name.startswith("$"):
             continue  # bash variable, not a literal name
+        image = m.group(1).split(":", 1)[0]
         name = raw_name.lower().replace(" ", "-")
+        url = (
+            f"https://{image}"
+            if image.startswith(("ghcr.io/", "quay.io/"))
+            else f"https://hub.docker.com/r/{image}"
+        )
         if name not in docker_names:
-            tools.append({"name": name, "method": "docker", "url": ""})
+            tools.append({"name": name, "method": "docker", "url": url})
             docker_names.add(name)
 
     # install_cargo_batch "label" tool1 tool2 ...
@@ -374,6 +399,13 @@ def validate():
         if entry.get("module") not in ALL_MODULES:
             print(f"ERROR: Invalid module '{entry.get('module')}' for '{entry.get('name')}'")
             errors += 1
+        url = entry.get("url", "")
+        if not url:
+            print(f"ERROR: Missing URL for '{entry.get('name')}'")
+            errors += 1
+        elif not url.startswith("https://"):
+            print(f"ERROR: URL for '{entry.get('name')}' must use HTTPS: {url}")
+            errors += 1
 
     # Duplicate check
     seen = set()
@@ -406,10 +438,9 @@ def validate():
     # Tools in modules but missing from JSON → ERROR
     for (name, method), mod in sorted(module_tools.items()):
         if (name, method) not in config_tools:
-            # A docker tool installed alongside a same-named git clone is stored
-            # in JSON with a "-docker" suffix to avoid a duplicate name (e.g.
-            # pentagi git + pentagi-docker). That is the documented convention,
-            # not method drift — mirror the JSON-side check below.
+            # A docker tool sharing a git clone's name is stored with a "-docker" suffix by
+            # convention (e.g. pentagi + pentagi-docker), not method drift — mirror the
+            # JSON-side check below.
             if method == "docker" and (f"{name}-docker", "docker") in config_tools:
                 continue
             # Check if name exists with a different method
@@ -482,7 +513,10 @@ def sync():
     # Merge URLs into config
     for entry in config:
         if "url" not in entry or not entry["url"]:
-            entry["url"] = url_map.get(entry["name"], "")
+            entry["url"] = url_map.get(entry["name"]) or canonical_package_url(
+                entry["method"],
+                entry["name"],
+            )
 
     # Write back — one entry per line, matching existing style
     with CONFIG_PATH.open("w", encoding="utf-8", newline="\n") as f:

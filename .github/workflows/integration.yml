@@ -3,16 +3,34 @@ name: Integration
 on:
   push:
     branches: [main, master]
+  pull_request:
+    # Run on installer/Docker-touching PRs so breakage is caught pre-merge, not only weekly.
+    paths:
+      - "install.sh"
+      - "lib/**"
+      - "modules/**"
+      - "profiles/**"
+      - "scripts/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "tests/**"
+      - ".github/workflows/integration.yml"
+  workflow_dispatch:
   schedule:
     - cron: "0 3 * * 0"   # Weekly Sunday at 03:00 UTC
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   integration:
     name: "${{ matrix.distro }} integration"
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     container:
       image: "${{ matrix.image }}"
     strategy:
@@ -49,18 +67,12 @@ jobs:
       - name: Install prerequisites (Arch)
         if: matrix.distro == 'arch'
         run: |
-          # Full upgrade first — archlinux:latest images go stale and partial
-          # syncs break on package splits (e.g. gcc-libs → libgcc + libstdc++)
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed git curl wget sudo which
 
       - name: Install prerequisites (openSUSE)
         if: matrix.distro == 'opensuse'
         run: |
-          # openSUSE Tumbleweed's download redirector/CDN intermittently times out
-          # in CI (Curl error 28 on repo metadata). Make libzypp far more patient
-          # before giving up, and propagate generous retry settings to install.sh's
-          # own zypper refresh in the later steps (it honors these env vars).
           printf '%s\n' \
             'download.max_silent_tries = 10' \
             'download.transfer_timeout = 300' \
@@ -120,3 +132,76 @@ jobs:
 
       - name: Remove networking module
         run: bash scripts/remove.sh --module networking --yes
+
+  method-canaries:
+    name: "${{ matrix.method }} method canary"
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - method: pipx
+            tool: factordb-python
+            verify: factordb
+          - method: go
+            tool: anew
+            verify: anew
+          - method: binary
+            tool: gitleaks
+            verify: gitleaks
+          - method: git
+            tool: linux-smart-enumeration
+            verify: /opt/linux-smart-enumeration
+          - method: source
+            tool: massdns
+            verify: /opt/massdns/bin/massdns
+
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: true
+
+      - name: Install through the real single-tool path
+        env:
+          METHOD: ${{ matrix.method }}
+          TOOL: ${{ matrix.tool }}
+        run: |
+          extra_args=()
+          [[ "$METHOD" == "binary" ]] && extra_args+=(--production)
+          sudo bash install.sh --tool "$TOOL" "${extra_args[@]}"
+
+      - name: Verify canary result
+        env:
+          VERIFY: ${{ matrix.verify }}
+        run: |
+          if [[ "$VERIFY" == /* ]]; then
+            test -e "$VERIFY"
+          else
+            command -v "$VERIFY"
+          fi
+
+  docker-build:
+    name: Docker image build
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: true
+
+      - name: Build production image
+        run: docker build --pull --tag cybersec-toolkit:ci .
+
+      - name: Verify default container command
+        run: docker run --rm cybersec-toolkit:ci

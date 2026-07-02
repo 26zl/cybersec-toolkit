@@ -6,13 +6,8 @@
 # post-exploitation, mobile, resources
 # =============================================================================
 
-# Intentionally empty placeholders: this module currently ships no apt-installed
-# tools. Both arrays are kept for structural consistency — generic batch counters
-# and verify/update/remove iterate every module's <PREFIX>_PACKAGES/_HEAVY_PACKAGES.
-# Add apt package names here (and a distro_compat.tsv row if names differ).
 MISC_PACKAGES=()
 
-# Heavy tools (skipped with --skip-heavy) — currently none.
 MISC_HEAVY_PACKAGES=()
 
 MISC_PIPX=(arsenal-cli sploitscan faraday-cli)
@@ -30,26 +25,16 @@ MISC_GIT=(
     "SecLists=https://github.com/danielmiessler/SecLists.git"
     "PayloadsAllTheThings=https://github.com/swisskyrepo/PayloadsAllTheThings.git"
     "InternalAllTheThings=https://github.com/swisskyrepo/InternalAllTheThings.git"
-    # Post-exploitation
+    # Enumeration
     "PEASS-ng=https://github.com/peass-ng/PEASS-ng.git"
     "linux-smart-enumeration=https://github.com/diego-treitos/linux-smart-enumeration.git"
     "SUDO_KILLER=https://github.com/TH3xACE/SUDO_KILLER.git"
-    "LaZagne=https://github.com/AlessandroZ/LaZagne.git"
-    "mimipenguin=https://github.com/huntergregal/mimipenguin.git"
-    "PyExfil=https://github.com/ytisf/PyExfil.git"
-    "usbkill=https://github.com/hephaest0s/usbkill.git"
     # General
     "CyberChef=https://github.com/gchq/CyberChef.git"
     "RedEye=https://github.com/cisagov/RedEye.git"
 )
 
-# C2 + credential-phishing/social-engineering frameworks — gated behind INCLUDE_C2.
-# Only the redteam/full profiles set INCLUDE_C2=true; every other profile leaves it
-# false, so these offensive deployment frameworks are NOT cloned unless explicitly
-# opted in. Loki-C2 note: teamserver-less (Azure Blob channel), CLONED AS A RESOURCE
-# ONLY (setup_git_repo installs requirements.txt for Python repos but does not build
-# Node projects); manual setup per upstream README. BSL-1.1 (non-commercial; →
-# Apache-2.0 in 2030). Authorized red-team use only.
+# Tools gated by INCLUDE_C2. Loki-C2 is cloned as a resource and requires manual setup.
 MISC_C2_GIT=(
     # Social engineering / phishing
     "SET=https://github.com/trustedsec/social-engineer-toolkit.git"
@@ -61,6 +46,11 @@ MISC_C2_GIT=(
     # C2 / adversary emulation
     "Caldera=https://github.com/mitre/caldera.git"
     "Loki-C2=https://github.com/boku7/Loki.git"
+    # Gated post-exploitation tools
+    "LaZagne=https://github.com/AlessandroZ/LaZagne.git"
+    "mimipenguin=https://github.com/huntergregal/mimipenguin.git"
+    "PyExfil=https://github.com/ytisf/PyExfil.git"
+    "usbkill=https://github.com/hephaest0s/usbkill.git"
 )
 
 # Git repo names for verify/remove (general). remove.sh removes both sets; verify.sh
@@ -68,13 +58,12 @@ MISC_C2_GIT=(
 MISC_GIT_NAMES=(
     SecLists PayloadsAllTheThings InternalAllTheThings
     PEASS-ng linux-smart-enumeration SUDO_KILLER
-    LaZagne mimipenguin
-    PyExfil usbkill
     CyberChef RedEye
 )
 MISC_C2_GIT_NAMES=(
     SET Zphisher EvilGoPhish SquarePhish CredMaster Modlishka
     Caldera Loki-C2
+    LaZagne mimipenguin PyExfil usbkill
 )
 MISC_GO_BINS=(gf anew qsreplace notify pdtm)
 

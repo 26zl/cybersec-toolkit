@@ -3,5 +3,14 @@ tests/
 .github/
 *.log
 .versions
+__pycache__/
 mcp_server/.venv/
-mcp_server/__pycache__/
+# Local secrets / sensitive artifacts that must never be baked into image layers
+.env
+.env.*
+writeups/
+manual_scripts/
+.agents/
+remote_hosts.json
+*.corrupt.*
+.DS_Store

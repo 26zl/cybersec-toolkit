@@ -15,18 +15,24 @@ useDefault = true
 # - test_security.py uses "-u admin:pass" / "user:pw" as curl auth fixtures to
 #   verify the curl-policy exemption. Those match the curl-auth-user rule.
 #
-# Any real leak committed inside these two files would still slip through, so
-# keep them small and review-heavy. New test files are NOT covered here by
-# default — add paths explicitly as needed.
+# Scoped by pattern (condition=AND + line regexes) so a differently-shaped real secret is still caught.
 [[allowlists]]
-description = "Test fixtures with intentionally fake credentials"
+description = "Intentionally fake credential fixtures in the two MCP test files (scoped by pattern so a real secret of another shape is still caught)"
+condition = "AND"
+regexTarget = "line"
 paths = [
     '''mcp_server/tests/test_audit\.py''',
     '''mcp_server/tests/test_security\.py''',
 ]
+regexes = [
+    '''sk-[A-Za-z0-9]{6,}''',
+    '''ghp_[A-Za-z0-9]{6,}''',
+    '''Authorization: Bearer xyz[A-Za-z0-9]+''',
+    '''"-u", "admin:pass"''',
+    '''eyJhbGciOiJIUzI1NiJ9\.eyJ''',
+]
 
-# Literal placeholder strings used in old examples and fixtures. These are not
-# credentials, but git-history scanning can still see them.
+# Literal placeholder strings used in examples and fixtures.
 [[allowlists]]
 description = "Literal placeholder API keys"
 regexes = [

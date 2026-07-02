@@ -151,6 +151,11 @@ C2_TOOLS: frozenset[str] = frozenset(
         "sliver-client",
         "evilginx",
         "empire",
+        # INCLUDE_C2-gated post-exploitation tools
+        "LaZagne",
+        "mimipenguin",
+        "PyExfil",
+        "usbkill",
     }
 )
 

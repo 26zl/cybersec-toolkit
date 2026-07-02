@@ -15,7 +15,7 @@
               Toolkit
 ```
 
-__Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets any MCP-capable AI -- Claude Code, Claude Desktop, Cursor -- query the tool registry, check install status, recommend the right tools for a CTF category or bug-bounty target, and execute them with enforced safety policies (argument sanitization, network allowlists, rate limiting, audit logging). Jump to [MCP Server (AI Integration)](#mcp-server-ai-integration).
+__Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets MCP-capable clients -- Claude Code/Desktop, Codex, Cursor, and local MCP hosts -- query the tool registry, check install status, recommend tools for a CTF category or bug-bounty target, and run installed tools through a governed execution path. Jump to [MCP Server (AI Integration)](#mcp-server-ai-integration).
 
 Bundled with a modular installer for Linux and Termux (Android) covering __580+ tools__, __18 modules__, __14 profiles__, and __12 install methods__.
 
@@ -25,13 +25,13 @@ Bundled with a modular installer for Linux and Termux (Android) covering __580+ 
 
 ## How it works
 
-Two entry points share one tool registry. An __operator__ runs the bash installer to put tools on disk; an __AI agent__ talks to the MCP server to discover, recommend, and safely execute those same tools. `tools_config.json` is the single source of truth the modules define and the MCP advisors read, and CI validators keep the Python and bash sides in sync.
+Two entry points share one tool registry. An __operator__ runs the bash installer to put tools on disk; an __AI agent__ talks to the MCP server to discover, recommend, and execute those same tools through its governed tool path. `tools_config.json` is the single source of truth the modules define and the MCP advisors read, and CI validators keep the Python and bash sides in sync.
 
 <!-- Rendered to a PNG so it shows everywhere — including the GitHub mobile app,
      which displays raw Mermaid instead of rendering it. Edit the Mermaid source in
      the <details> block below, then re-render with:
      npx @mermaid-js/mermaid-cli -i diagram.mmd -o assets/how-it-works.png -t dark -b "#0d1117" -s 3 -->
-![How it works: an operator runs the bash installer to put tools on disk; an AI agent drives the MCP server to discover, recommend, and safely execute them. The installer and MCP server never call each other — they meet at the tools_config.json registry and the installed tools on disk, with security.py as the single execution gate and CI validators keeping the Python and bash sides in sync.](assets/how-it-works.png)
+![How it works: an operator runs the bash installer to put tools on disk; an AI agent drives the MCP server to discover, recommend, and execute them. The installer and MCP server meet at the tools_config.json registry and the installed tools on disk, with security.py governing tool execution and CI validators keeping the Python and bash sides in sync.](assets/how-it-works.png)
 
 <details>
 <summary>Diagram source (Mermaid)</summary>
@@ -89,22 +89,22 @@ flowchart TB
 
 </details>
 
-__Reading the diagram:__ solid arrows are runtime/install actions, dashed arrows are data relationships. The installer (left) and MCP server (right) never call each other — they meet at the registry and at the tools on disk. `security.py` is the gate every AI-driven execution passes through; nothing reaches the shell without clearing the allowlist, argument sanitization, and network policy. Skills are methodology context the AI loads on demand; they guide _how_ tools get used but sit outside the execution path.
+__Reading the diagram:__ solid arrows are runtime/install actions, dashed arrows are data relationships. The installer (left) and MCP server (right) never call each other — they meet at the registry and at the tools on disk. `security.py` governs `run_tool` and `run_pipeline` through the allowlist, argument checks, and network policy without invoking a shell. `run_script` is a separate, disabled-by-default full-code-execution capability. Skills are methodology context the AI loads on demand; they guide _how_ tools get used but sit outside the execution path.
 
 ---
 
 ## Why not just Kali (or another installer)?
 
-Kali/Parrot/BlackArch ship the tools; this is __complementary, not a replacement__. It runs on the box you already have (incl. Termux) and adds what a distro doesn't: an __AI control plane__ that can discover, recommend, chain, and safely _execute_ those tools under one policy. Want all the tools? A distro is fine. Want an AI that can _use_ them safely? That's the gap.
+Kali/Parrot/BlackArch ship the tools; this is __complementary, not a replacement__. It runs on the box you already have (incl. Termux) and adds an __AI control plane__ that can discover, recommend, chain, and execute installed tools through one governed interface. Want all the tools? A distro is fine. Want an MCP client that can select and run them under explicit policy? That's the gap.
 
 ## Trust & safety
 
 Security users should be paranoid — here's exactly what runs and what's gated:
 
 - __Default-safe MCP.__ Out of the box `CYBERSEC_MCP_ALLOW_EXTERNAL=0` (network tools can only hit private/loopback ranges) and `CYBERSEC_MCP_ALLOW_SCRIPTS=0` (`run_script` disabled). You opt into external scopes / scripting explicitly.
-- __Every AI execution passes one gate__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list/target-injection flags), target/network policy, rate limiting, output caps, and timeouts.
+- __Governed tool execution passes one gate__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list/target-injection flags), target/network policy, rate limiting, output caps, and timeouts.
 - __Tool-aware policy is not solver hardcoding.__ The solver chooses tools from the registry/advisors; the policy layer only understands enough CLI grammar to tell a real target from a header, wordlist, output path, config file, or target-list flag. That keeps normal commands usable without letting file-list/config flags bypass scope checks.
-- __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating `audit.log`. Script bodies are never persisted — only an irreversible SHA256 + length is logged for correlation — and credential-shaped strings are redacted from tool arguments.
+- __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never persisted — only an irreversible SHA256 + length is logged for correlation — and credential-shaped strings are redacted from tool arguments.
 - __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds and `pip`/`cargo`/`gem` installs; binary releases are SHA256-verified when checksums are published.
 - __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam`/`full` profiles); the MCP layer reflects this and never auto-runs them.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [Supply Chain Model](#supply-chain-model), and the [Disclaimer](#disclaimer).
@@ -133,7 +133,9 @@ All required runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pi
 git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
 ```
 
-That installs all 580+ tools. To install a subset:
+That installs the standard tools from all 18 modules. C2/phishing tools and Docker images
+remain opt-in; use `--profile full --enable-docker` when you explicitly want the complete
+registry supported by the current platform. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -193,6 +195,7 @@ sudo ./install.sh --skip-binary         # Skip all binary release downloads
 sudo ./install.sh --skip-source         # Skip build-from-source, snap, npm, and curl-pipe installs
 sudo ./install.sh --fast                # Skip checksum verification (see Security note below)
 sudo ./install.sh --require-checksums   # Fail if binary release has no checksum file
+sudo ./install.sh --production          # Strict checksum preset for release downloads
 sudo ./install.sh --upgrade-system      # Upgrade system packages before installing
 sudo ./install.sh --list-sessions       # List install sessions and exit
 sudo ./install.sh --rollback <id|last>  # Rollback tools installed in a session
@@ -326,21 +329,20 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | `get_profile_tools` | See every tool a profile installs, grouped by module |
 | `suggest_for_ctf` | Curated tool recommendations for 14 CTF challenge categories |
 | `suggest_for_bounty` | Bug bounty tool recommendations for 7 target types with methodology and common vulns |
-| `guided_assessment` | Companion-first solve assistant for an authorized target — classifies the target/finding, returns triage gates, recommends skills, picks tools from all modules/profiles, and guides step-by-step; opt-in `autonomous` starts an auto-solver loop over the full MCP toolchain via `run_tool`/`run_pipeline`/`run_script`, including AI-created scoped helper scripts when tools/pipelines are not enough, under MCP policy |
+| `guided_assessment` | Companion-first solve assistant for an authorized target — classifies the target/finding, returns triage gates, recommends skills, picks tools from all modules/profiles, and guides step-by-step; opt-in `autonomous` starts an auto-solver loop over `run_tool`, `run_pipeline`, and the separately gated `run_script` capability |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
 | `list_profiles` | All 14 profiles with tool counts and install commands |
 | `run_tool` | Execute installed tools safely (sanitized args, network policy, rate limiting, audit logging). Supports remote execution via SSH |
 | `run_pipeline` | Pipe tools together safely without shell (`strings binary \| grep flag`) |
-| `run_script` | Write and execute Python/Bash scripts (pwntools, z3, requests, crypto). Supports per-script venv selection |
+| `run_script` | Explicit, unsandboxed Python/Bash execution opt-in. Supports per-script venv selection |
 | `manage_remote_hosts` | Add, remove, list, and test SSH remote hosts for remote tool execution |
 
 <details>
 <summary><strong>Usage examples — full workflows, offense to defense</strong></summary>
 
-The AI knows every tool, what's installed, and runs them under policy — so you can drive
-whole engagements conversationally, red team or blue. It selects tools, chains them, parses
-the output, and pivots on what it finds.
+The MCP client can query every tool and its install state, chain governed tool calls, parse
+the output, and pivot on what it finds. Script execution requires a separate opt-in.
 
 #### External recon → attack surface (needs `CYBERSEC_MCP_ALLOW_EXTERNAL=1`, authorized scope only)
 
@@ -391,10 +393,11 @@ the output, and pivots on what it finds.
 - __"Audit this Wi-Fi capture"__ — parses the handshake and runs `aircrack-ng` / `hashcat` against it
 - __"Review this Solidity contract for reentrancy"__ — runs `slither` / `mythril` and explains the findings
 
-Every execution is argument-sanitized, network-policed, rate-limited, and audit-logged.
-`run_script` and external targets are off by default; destructive flags (`--os-shell`,
-`-rf`, `--exploit`, …) are blocked outright. Use only against systems you are authorized
-to test.
+`run_tool` and `run_pipeline` are argument-sanitized, network-policed, rate-limited, and
+audit-logged. `run_script` is off by default because enabling it is a full-code-execution
+opt-in with the MCP server user's filesystem and network permissions; the external-target
+policy does not sandbox scripts. Destructive flags (`--os-shell`, `-rf`, `--exploit`, …)
+are blocked in the governed tool path. Use only against systems you are authorized to test.
 
 </details>
 
@@ -500,8 +503,10 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
 
 ### Script Execution
 
-`run_script` lets the AI write and execute Python or Bash scripts. Requires `CYBERSEC_MCP_ALLOW_SCRIPTS=1`.
-External targets stay blocked by default; set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` only for explicitly authorized scopes:
+`run_script` lets the AI write and execute Python or Bash scripts. It requires
+`CYBERSEC_MCP_ALLOW_SCRIPTS=1`, is not OS-sandboxed, and is not constrained by
+`CYBERSEC_MCP_ALLOW_EXTERNAL`. Enabling it grants scripts the same filesystem and network
+permissions as the MCP server process. Review generated code and scope before opting in:
 
 ```json
 {
@@ -528,7 +533,11 @@ python3.12 -m venv ~/.ctf-venvs/pwntools
 ~/.ctf-venvs/pwntools/bin/pip install pwntools z3-solver
 ```
 
-The AI then uses `run_script("from pwn import *; ...", venv="pwntools")` automatically. Scripts that only need standard libs or the server's packages (requests, pycryptodome, beautifulsoup4) run without `venv`. Set `CYBERSEC_MCP_VENVS_DIR` to override the default `~/.ctf-venvs/` location.
+The AI then uses `run_script("from pwn import *; ...", venv="pwntools")` automatically.
+The default MCP environment contains FastMCP and the Python standard library. Install the
+optional helper set with `cd mcp_server && uv sync --extra ctf-core` before using
+`requests`, `pycryptodome`, `beautifulsoup4`, Pillow, or NumPy without a named venv.
+Set `CYBERSEC_MCP_VENVS_DIR` to override the default `~/.ctf-venvs/` location.
 
 ### Manual Scripts
 
@@ -697,7 +706,7 @@ This installer downloads and runs code from the internet. On Linux it runs as ro
 
 - __System packages__: GPG-signed by your distro's repos (apt, dnf, pacman, zypper, pkg)
 - __pipx/Go/Cargo/Gem/npm__: Downloads from registries (no signature verification, pipx isolated in venvs)
-- __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch. Use `--require-checksums` to also fail when no checksum file is published. __Warning:__ `--fast` disables _all_ checksum verification, including for releases that do publish checksums — do not use in production or CI environments
+- __Binary releases__: SHA256 verified when checksum file available, hard-fails on mismatch. Use `--require-checksums` or the `--production` preset to also fail when no checksum file is published. __Warning:__ `--fast` disables _all_ checksum verification, including for releases that do publish checksums — do not use in production or CI environments
 - __MCP Python dependencies__: Resolved by `uv` with a 3-day `exclude-newer` window; Dependabot also waits 3 days before proposing dependency PRs. This does not apply to installed security tools
 - __Go SDK__: SHA256 verified against go.dev published hashes when available; warns on API failure, hard-fails with `--require-checksums`
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
@@ -707,9 +716,9 @@ The `.versions` file logs what was installed and when.
 
 ## Known Limitations
 
-Checksum verification is best-effort by default. Some upstream releases do not publish checksums or signatures, so downloads may proceed without cryptographic verification in those cases. Use `--require-checksums` to fail-closed when no checksum file is available. Go SDK downloads are SHA256-verified against go.dev when the API is reachable; use `--require-checksums` to hard-fail if it is not.
+Checksum verification is best-effort by default. Some upstream releases do not publish checksums or signatures, so downloads may proceed without cryptographic verification in those cases. Use `--production` (or `--require-checksums`) to fail closed when no checksum file is available. This preset does not pin Git clones, language-package registries, or build-from-source tools; those still track their upstream release channels. Go SDK downloads are SHA256-verified against go.dev when the API is reachable; strict checksum mode hard-fails if it is not.
 
-`--fast` skips __all__ checksum verification for binary releases (both SHA256 checks and the missing-checksum warning), including releases that _do_ publish checksums. This trades integrity verification for speed. It is mutually exclusive with `--require-checksums`. Do not use `--fast` in CI pipelines or environments where supply-chain integrity matters.
+`--fast` skips __all__ checksum verification for binary releases (both SHA256 checks and the missing-checksum warning), including releases that _do_ publish checksums. This trades integrity verification for speed. It is mutually exclusive with `--require-checksums` and `--production`. Do not use `--fast` in CI pipelines or environments where supply-chain integrity matters.
 
 ### Windows Defender false positives
 

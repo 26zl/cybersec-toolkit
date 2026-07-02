@@ -43,6 +43,20 @@ def _reset_audit_logger(tmp_path: Path):
 
 
 class TestGetAuditLogger:
+    def test_default_path_uses_xdg_state_home(self, tmp_path: Path, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.delenv("CYBERSEC_MCP_AUDIT_LOG", raising=False)
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        assert mod._default_audit_log_path() == tmp_path / "cybersec-tools-mcp" / "audit.log"
+
+    def test_explicit_audit_path_wins(self, tmp_path: Path, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        configured = tmp_path / "custom.jsonl"
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_LOG", str(configured))
+        assert mod._default_audit_log_path() == configured
+
     def test_returns_logger(self, tmp_path: Path) -> None:
         logger = get_audit_logger()
         assert isinstance(logger, logging.Logger)
@@ -169,17 +183,49 @@ class TestLogBlocked:
 
 
 class TestAuditCrashSafety:
-    def test_unwritable_log_path_uses_null_handler(self, tmp_path: Path) -> None:
-        """Logger falls back to NullHandler when log path is unwritable."""
+    def test_missing_parent_is_created_securely(self, tmp_path: Path) -> None:
+        """A normal user-state path is created instead of disabling audit."""
         import mcp_server.audit as mod
 
-        # Reset and point to unwritable path
         mod._logger = None
         mod._AUDIT_LOG_PATH = tmp_path / "no_such_dir" / "sub" / "audit.log"
-        # Don't create the parent — handler creation should fail gracefully
         logger = get_audit_logger()
-        null_handlers = [h for h in logger.handlers if isinstance(h, logging.NullHandler)]
-        assert len(null_handlers) == 1
+        handlers = [h for h in logger.handlers if isinstance(h, logging.handlers.RotatingFileHandler)]
+        assert len(handlers) == 1
+        assert mod._AUDIT_LOG_PATH.parent.is_dir()
+
+    def test_unwritable_log_warns_and_uses_stderr(self, tmp_path: Path, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        def fail_handler(*args, **kwargs):
+            raise OSError("unwritable")
+
+        mod._logger = None
+        mod._AUDIT_LOG_PATH = tmp_path / "audit.log"
+        monkeypatch.setattr(mod, "_SecureRotatingFileHandler", fail_handler)
+        with pytest.warns(RuntimeWarning, match="Audit file logging unavailable"):
+            logger = get_audit_logger()
+        stream_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+            and getattr(h, "stream", None) is sys.stderr
+        ]
+        assert len(stream_handlers) == 1
+
+    def test_required_audit_fails_closed(self, tmp_path: Path, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        def fail_handler(*args, **kwargs):
+            raise OSError("unwritable")
+
+        mod._logger = None
+        mod._AUDIT_LOG_PATH = tmp_path / "audit.log"
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", "1")
+        monkeypatch.setattr(mod, "_SecureRotatingFileHandler", fail_handler)
+        with pytest.raises(RuntimeError, match="Audit file logging unavailable"):
+            get_audit_logger()
 
     def test_log_execution_never_raises_on_write_error(self, tmp_path: Path) -> None:
         """log_execution must not crash even if the handler raises."""

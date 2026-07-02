@@ -36,6 +36,7 @@ Options:
   --skip-special   Skip Metasploit/ZAP update
   --skip-docker    Skip Docker image update
   --require-checksums  Fail if a binary release has no checksum file
+  --production     Alias for strict release checksum verification
   -v, --verbose    Enable debug logging and system environment dump
   -h, --help       Show this help and exit
 EOF
@@ -53,6 +54,7 @@ SKIP_BINARY=false
 SKIP_SPECIAL=false
 SKIP_DOCKER=false
 REQUIRE_CHECKSUMS="${REQUIRE_CHECKSUMS:-false}"
+PRODUCTION_MODE="${PRODUCTION_MODE:-false}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -66,11 +68,14 @@ while [[ $# -gt 0 ]]; do
         --skip-special) SKIP_SPECIAL=true; shift ;;
         --skip-docker)  SKIP_DOCKER=true; shift ;;
         --require-checksums) REQUIRE_CHECKSUMS=true; shift ;;
+        --production)   PRODUCTION_MODE=true; REQUIRE_CHECKSUMS=true; shift ;;
         -v|--verbose)   VERBOSE=true; shift ;;
         -h|--help)      exec "$0" --help ;;
         *)              log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+export VERBOSE REQUIRE_CHECKSUMS PRODUCTION_MODE
 
 _init_log_file "$SCRIPT_DIR/tool_update.log"
 
@@ -141,7 +146,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
         # Use staging GOBIN + _as_builder (consistent with batch installer)
         _gobin_stage=""
         if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
-            _gobin_stage=$(mktemp -d "/tmp/cybersec-gobin.XXXXXX")
+            _gobin_stage=$(mktemp -d "${TMPDIR:-/tmp}/cybersec-gobin.XXXXXX")
             _register_cleanup "$_gobin_stage"
             _chown_for_builder "$_gobin_stage"
             chown -R "$SUDO_USER" "$GOPATH" 2>/dev/null || true
@@ -405,6 +410,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
     # Re-download only if the binary is already installed and a new version exists
     update_binary() {
         local repo="$1" binary="$2" pattern="$3" dest="${4:-$PIPX_BIN_DIR}"
+        local archive_binary="${5:-$binary}"
 
         # Skip if not installed
         command_exists "$binary" || [[ -f "$dest/$binary" ]] || [[ -f "$dest/bin/$binary" ]] || return 0
@@ -439,7 +445,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         [[ -z "$_bin_path" ]] && [[ -f "$dest/bin/$binary" ]] && _bin_path="$dest/bin/$binary"
         [[ -n "$_bin_path" ]] && _old_bin_sum=$(sha256sum "$_bin_path" 2>/dev/null | cut -d' ' -f1)
 
-        if download_github_release_update "$repo" "$binary" "$pattern" "$dest" >> "$LOG_FILE" 2>&1; then
+        if download_github_release_update "$repo" "$binary" "$pattern" "$dest" "$archive_binary" >> "$LOG_FILE" 2>&1; then
             local tag="${_RELEASE_TAG:-$latest_tag}"
             track_version "$binary" "binary" "$tag"
 
@@ -474,8 +480,8 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         _append_module_array _ALL_BIN_RELEASES "BINARY_RELEASES_${_br_mod^^}_C2"
     done
     for _entry in "${_ALL_BIN_RELEASES[@]}"; do
-        IFS='|' read -r _repo _binary _pattern _dest <<< "$_entry"
-        update_binary "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}"
+        IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
+        update_binary "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}" "${_archive_binary:-$_binary}"
     done
 
     if [[ "$BIN_TOTAL" -gt 0 ]]; then

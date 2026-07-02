@@ -65,6 +65,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+export VERBOSE
+
 if [[ ${#REMOVE_MODULES[@]} -eq 0 ]]; then
     REMOVE_MODULES=("${ALL_MODULES[@]}")
 else
@@ -93,7 +95,7 @@ if [[ "$_avail_mb" =~ ^[0-9]+$ ]] && [[ "$_avail_mb" -lt 100 ]]; then
     if [[ "$LOG_FILE" == "/dev/null" ]]; then
         if : > "$SCRIPT_DIR/tool_removal.log" 2>/dev/null; then
             LOG_FILE="$SCRIPT_DIR/tool_removal.log"
-            chmod 644 "$LOG_FILE" 2>/dev/null || true
+            chmod 600 "$LOG_FILE" 2>/dev/null || true
             log_info "Disk space freed — logging to $LOG_FILE"
         fi
     fi
@@ -173,7 +175,7 @@ if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
         for tool in "${PIPX_TO_REMOVE[@]}"; do
             # Normalize hyphens → underscores (PEP 503: pip/pipx normalize package names)
             _norm="${tool//-/_}"
-            if echo "$installed_pipx" | grep -qi "^${_norm} "; then
+            if echo "$installed_pipx" | awk -v t="$_norm" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
                 if pipx_remove "$tool" >> "$LOG_FILE" 2>&1; then
                     log_success "Removed pipx: $tool"
                     pipx_removed=$((pipx_removed + 1))
@@ -221,7 +223,7 @@ if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
     gems_removed=0
     gems_skipped=0
     for gem_name in "${GEMS_TO_REMOVE[@]}"; do
-        if echo "$installed_gems" | grep -q "^${gem_name} "; then
+        if echo "$installed_gems" | awk -v t="$gem_name" '$1==t{f=1} END{exit !f}'; then
             if gem uninstall -x --force "$gem_name" >> "$LOG_FILE" 2>&1; then
                 gems_removed=$((gems_removed + 1))
             else
@@ -373,6 +375,8 @@ for bin in "${BINARY_TOOLS[@]}"; do
         log_debug "Skipping binary $bin (not present)"
         bin_skipped=$((bin_skipped + 1))
     fi
+    # Clean up the version sidecar written by download_github_release (default dest).
+    rm -f "$PIPX_BIN_DIR/.$bin.vtag" 2>/dev/null || true
 done
 log_info "Binary releases: $bin_removed removed, $bin_skipped already removed"
 # Jar wrappers and custom dest directories used by binary releases
@@ -472,11 +476,7 @@ if should_remove "recon"; then
     # theHarvester wrapper script (not cleaned by git repo removal)
     [[ -f "$PIPX_BIN_DIR/theHarvester" ]] && rm -f "$PIPX_BIN_DIR/theHarvester" 2>/dev/null && \
         log_success "Removed theHarvester wrapper"
-    # uv (Python package manager — installed for theHarvester). uv is also the
-    # shared runtime for the MCP server (.mcp.json launches `uv run`), so only
-    # remove it with --remove-deps to avoid silently breaking the MCP companion.
-    # Use _builder_home() (not bare $HOME, which is /root under sudo) so the real
-    # user's uv install is the one removed.
+    # uv (installed for theHarvester) is also the MCP server's runtime, so only remove it under --remove-deps, and via _builder_home() (not $HOME, which is /root under sudo) to target the real user's install.
     if [[ "$REMOVE_DEPS" == "true" ]]; then
         _uv_home="$(_builder_home)"
         _uv_removed=false

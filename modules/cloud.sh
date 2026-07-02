@@ -32,28 +32,25 @@ install_module_cloud() {
     install_go_batch "Cloud - Go" "${CLOUD_GO[@]}"
     install_git_batch "Cloud - Git" "${CLOUD_GIT[@]}"
 
-    # Steampipe (Linux only — curl-pipe installer)
     if [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
         log_info "Installing Steampipe..."
         local _sp_installer
         _sp_installer=$(mktemp); _register_cleanup "$_sp_installer"
-        if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE"; then
-            if grep -q "steampipe" "$_sp_installer" 2>/dev/null; then
-                _start_spinner "Installing Steampipe..."
-                if bash "$_sp_installer" >> "$LOG_FILE" 2>&1; then
-                    _stop_spinner
-                    log_success "Steampipe installed"
-                    track_version "steampipe" "special" "latest"
-                else
-                    _stop_spinner
-                    log_error "Steampipe install failed"
-                    TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
-                fi
+        if curl -L --proto '=https' --tlsv1.2 -fsSL "https://raw.githubusercontent.com/turbot/steampipe/v2.4.4/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE" \
+                && _validate_curl_pipe "$_sp_installer" 'steampipe' 'install'; then
+            _start_spinner "Installing Steampipe..."
+            if bash "$_sp_installer" >> "$LOG_FILE" 2>&1; then
+                _stop_spinner
+                log_success "Steampipe installed"
+                track_version "steampipe" "special" "latest"
             else
-                log_error "Steampipe installer content verification failed"
+                _stop_spinner
+                log_error "Steampipe install failed"
+                TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             fi
         else
-            log_error "Failed to download Steampipe installer"
+            log_error "Steampipe installer download or content verification failed"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         fi
         rm -f "$_sp_installer"
     elif command_exists steampipe; then

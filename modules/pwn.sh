@@ -22,36 +22,40 @@ PWN_GIT=(
     "Penelope=https://github.com/brightio/penelope.git"
     "ShellNoob=https://github.com/reyammer/shellnoob.git"
     "unicorn=https://github.com/trustedsec/unicorn.git"
-    "Donut=https://github.com/TheWover/donut.git"
-    "ScareCrow=https://github.com/optiv/ScareCrow.git"
-    "Freeze=https://github.com/Tylous/Freeze.git"
+    # Windows/BOF source; not a host binary
     "nanodump=https://github.com/fortra/nanodump.git"
     "eviltree=https://github.com/t3l3machus/eviltree.git"
     "Hoaxshell=https://github.com/t3l3machus/hoaxshell.git"
-    "QueenSono=https://github.com/ariary/QueenSono.git"
     "DNSExfiltrator=https://github.com/Arno0x/DNSExfiltrator.git"
     "Egress-Assess=https://github.com/FortyNorthSecurity/Egress-Assess.git"
-    "Ivy=https://github.com/optiv/Ivy.git"
     "Villain=https://github.com/t3l3machus/Villain.git"
 )
 
 PWN_CARGO=(pwninit)
 PWN_GO_BINS=(interactsh-client)
-PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn Donut ScareCrow Freeze nanodump eviltree Hoaxshell QueenSono DNSExfiltrator Egress-Assess Ivy Villain)
-PWN_BUILD_NAMES=(AFLplusplus honggfuzz radamsa)
-# Source of truth for build-from-source url + command (install + update).
-# AFLplusplus: 'make source-only' builds the core afl-fuzz binary without optional
-# QEMU/FRIDA/unicorn sub-modules that need extra deps and often fail on VMs
-# ('make distrib' would build everything but many optional targets fail).
+PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn nanodump eviltree Hoaxshell DNSExfiltrator Egress-Assess Villain)
+PWN_BUILD_NAMES=(AFLplusplus honggfuzz radamsa Donut ScareCrow Freeze QueenSono Ivy)
+# Build metadata shared by install and update.
+# AFL++ source-only excludes optional QEMU, FRIDA, and unicorn dependencies.
 declare -A PWN_BUILD_URLS=(
     [AFLplusplus]="https://github.com/AFLplusplus/AFLplusplus.git"
     [honggfuzz]="https://github.com/google/honggfuzz.git"
     [radamsa]="https://gitlab.com/akihe/radamsa.git"
+    [Donut]="https://github.com/TheWover/donut.git"
+    [ScareCrow]="https://github.com/optiv/ScareCrow.git"
+    [Freeze]="https://github.com/Tylous/Freeze.git"
+    [QueenSono]="https://github.com/ariary/QueenSono.git"
+    [Ivy]="https://github.com/optiv/Ivy.git"
 )
 declare -A PWN_BUILD_CMDS=(
     [AFLplusplus]="make source-only"
     [honggfuzz]="make"
     [radamsa]="make"
+    [Donut]="make"
+    [ScareCrow]="go build ScareCrow.go"
+    [Freeze]="go build Freeze.go"
+    [QueenSono]="go build -o QueenSono ./cmd/client"
+    [Ivy]="go build Ivy.go"
 )
 
 install_module_pwn() {

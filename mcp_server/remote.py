@@ -24,7 +24,8 @@ _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "remote_hosts.json"
 
 # Safe character patterns for SSH hostname and user — prevent option injection.
 _SAFE_HOST_RE = re.compile(r"^[a-zA-Z0-9._:\-]+$")
-_SAFE_USER_RE = re.compile(r"^[a-zA-Z0-9._\-]+$")
+# First char not '-' so a username can't be read as an ssh option in argv position 0.
+_SAFE_USER_RE = re.compile(r"^[a-zA-Z0-9._][a-zA-Z0-9._\-]*$")
 
 # SSH options applied to every connection.
 _SSH_BASE_OPTIONS = [
@@ -46,20 +47,7 @@ class RemoteHostConfig:
         self._load()
 
     def _load(self) -> None:
-        """Load the host table, failing loudly on corrupt config.
-
-        Previously a malformed ``remote_hosts.json`` was silently reset to an
-        empty host table — an operator could lose every registered host (and
-        the subsequent ``_save`` would persist the empty state) without ever
-        seeing an error. Now:
-
-        - Corrupt JSON raises :class:`ValueError` with a message pointing at
-          the offending file and, when possible, the byte offset.
-        - The corrupt file is renamed to ``<path>.corrupt.<epoch>`` so the
-          operator can recover state or inspect what went wrong.
-        - Type mismatches (non-object top level, non-object ``hosts`` key)
-          also raise rather than fall through to an empty dict.
-        """
+        """Load the host table and preserve corrupt input for recovery."""
         if not self._path.exists():
             self._hosts = {}
             return
@@ -87,19 +75,7 @@ class RemoteHostConfig:
         self._hosts = hosts
 
     def _save(self) -> None:
-        """Atomically persist the host table with 0600 permissions.
-
-        Writes to a temp file in the same directory, fsyncs, chmods, and
-        renames over the target. ``os.replace`` is atomic on POSIX and Windows
-        (Python 3.3+), so a crash mid-write leaves either the previous file
-        or the fully-written new one — never a truncated/corrupt file that
-        would be silently loaded as an empty host table by ``_load``.
-
-        Concurrent savers race at the rename step; last writer wins without
-        interleaved writes, making the old advisory flock unnecessary. The
-        0600 mode keeps hostnames, IPs, and SSH key paths out of reach of
-        other local users.
-        """
+        """Atomically persist the host table with owner-only permissions."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = json.dumps({"hosts": self._hosts}, indent=2) + "\n"
 
@@ -205,6 +181,13 @@ class RemoteHostConfig:
         if not host:
             raise ValueError(f"Remote host '{name}' not found. Use manage_remote_hosts to add it.")
 
+        hostname = str(host["hostname"])
+        if not _security._allow_external() and not _security._is_safe_target(hostname):
+            raise ValueError(
+                f"Blocked by policy: remote host '{name}' is not in a private/local "
+                "network range. Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 to allow external hosts."
+            )
+
         args = list(_SSH_BASE_OPTIONS)
         args += ["-p", str(host["port"])]
 
@@ -219,7 +202,7 @@ class RemoteHostConfig:
                 raise ValueError("SSH key file not found for this host; verify its configured ssh_key path")
             args += ["-i", key_path]
 
-        args.append(f"{host['user']}@{host['hostname']}")
+        args.append(f"{host['user']}@{hostname}")
         return args
 
 

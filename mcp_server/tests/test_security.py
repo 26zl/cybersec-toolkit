@@ -11,6 +11,7 @@ import pytest
 
 from mcp_server.sanitize import truncate_output
 from mcp_server.security import (
+    _NETWORK_TOOLS,
     SYSTEM_UTILITIES,
     _append_truncation_marker,
     _bounded_communicate,
@@ -251,6 +252,11 @@ class TestCheckPolicy:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["-sV", "8.8.8.8"])
 
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_openssl_network_subcommand_still_validates_target(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("openssl", ["s_client", "-connect", "8.8.8.8:443"])
+
     @patch("mcp_server.security._allow_external", return_value=True)
     def test_network_tool_external_allowed_with_env(self, _mock_ext) -> None:
         check_policy("nmap", ["-sV", "8.8.8.8"])
@@ -281,9 +287,103 @@ class TestCheckPolicy:
             check_policy("nmap", ["google"])
 
     @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_connect_to_external_blocked(self, _mock_ext) -> None:
+        """curl --connect-to must not redirect to an external host past the allowlist."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["--connect-to=localhost:80:8.8.8.8:80", "http://localhost/"])
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["--connect-to", "example.com:443:8.8.8.8:443", "https://example.com/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_resolve_external_blocked(self, _mock_ext) -> None:
+        """curl --resolve must not map a host to an external IP past the allowlist."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["--resolve=localhost:80:8.8.8.8", "http://localhost/"])
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["--resolve", "example.com:443:1.2.3.4", "https://example.com/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_redirect_local_allowed(self, _mock_ext) -> None:
+        """Redirecting a name to loopback/private (local testing) and removal entries are fine."""
+        check_policy("curl", ["--resolve", "example.com:443:127.0.0.1", "http://localhost/"])
+        check_policy("curl", ["--connect-to", "example.com:443:127.0.0.1:8443", "http://localhost/"])
+        check_policy("curl", ["--resolve", "-example.com:443", "http://localhost/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_hydra_x_password_spec_not_treated_as_proxy(self, _mock_ext) -> None:
+        """hydra -x min:max:charset is password generation, not a proxy target."""
+        check_policy("hydra", ["-x", "4:8:aA", "-l", "admin", "127.0.0.1"])
+        check_policy("hydra", ["-x4:8:aA", "127.0.0.1"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
     def test_single_label_scanme_blocked(self, _mock_ext) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("nmap", ["scanme"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_userinfo_prefix_does_not_bypass_allowlist(self, _mock_ext) -> None:
+        for url in (
+            "http://127.0.0.1:x@evil.com/",
+            "http://[::1]:pw@evil.com/",
+            "http://user:pw@8.8.8.8/",
+        ):
+            with pytest.raises(ValueError, match="not in a private/local"):
+                check_policy("curl", [url])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_userinfo_with_private_host_still_allowed(self, _mock_ext) -> None:
+        check_policy("curl", ["http://user:pw@10.0.0.1/"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_at_sign_in_path_or_query_not_treated_as_userinfo(self, _mock_ext) -> None:
+        check_policy("curl", ["http://10.0.0.1/path@evil.com"])
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["http://evil.com/?x=@127.0.0.1"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_expanded_network_tools_block_external(self, _mock_ext) -> None:
+        cases = [
+            ("wpscan", ["--url", "http://evil.com/"]),
+            ("sslscan", ["evil.com"]),
+            ("dnsrecon", ["-d", "evil.com"]),
+            ("naabu", ["-host", "evil.com"]),
+            ("katana", ["-u", "http://evil.com/"]),
+            ("theHarvester", ["-d", "evil.com"]),
+            ("dnsx", ["-d", "evil.com"]),
+            ("gau", ["evil.com"]),
+            ("waybackurls", ["evil.com"]),
+            ("rustscan", ["-a", "8.8.8.8"]),
+        ]
+        for tool, args in cases:
+            with pytest.raises(ValueError, match="not in a private/local"):
+                check_policy(tool, args)
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_expanded_network_tools_allow_private(self, _mock_ext) -> None:
+        check_policy("wpscan", ["--url", "http://10.0.0.1/"])
+        check_policy("naabu", ["-host", "10.0.0.1"])
+        check_policy("sslscan", ["127.0.0.1"])
+        check_policy("katana", ["-u", "http://127.0.0.1/"])
+
+    def test_network_tools_cover_confirmed_bypass_tools(self) -> None:
+        must_cover = {
+            "wpscan",
+            "sslscan",
+            "sslyze",
+            "testssl.sh",
+            "dnsrecon",
+            "dnsenum",
+            "wafw00f",
+            "theHarvester",
+            "dnsx",
+            "katana",
+            "gau",
+            "waybackurls",
+            "naabu",
+            "dnstwist",
+            "httprobe",
+        }
+        assert must_cover <= _NETWORK_TOOLS
 
     def test_sqlmap_os_shell_blocked(self) -> None:
         with pytest.raises(ValueError, match="sqlmap: OS shell access"):
@@ -420,7 +520,7 @@ class TestCheckPolicy:
         """A benign output file must not be mistaken for a proxy target."""
         check_policy("curl", ["-o", "report.json", "http://10.0.0.1/"])
 
-    # ----- nc/ncat/netcat -e/-c/--exec/--sh-exec/--lua-exec are local RCE (C1) -----
+    # ----- nc/ncat/netcat execution flags are local RCE -----
 
     @pytest.mark.parametrize("tool", ["nc", "ncat", "netcat"])
     def test_nc_exec_short_flag_blocked(self, tool) -> None:
@@ -459,7 +559,7 @@ class TestCheckPolicy:
         """A benign port-check still passes (no exec flag present)."""
         check_policy("nc", ["-zv", "10.0.0.1", "80"])
 
-    # ----- dig/host "@resolver" must be validated against the allowlist (C2) -----
+    # ----- dig/host "@resolver" must be validated against the allowlist -----
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_dig_at_external_resolver_blocked(self, _mock_ext) -> None:
@@ -476,7 +576,7 @@ class TestCheckPolicy:
     def test_dig_at_external_resolver_allowed_with_env(self, _mock_ext) -> None:
         check_policy("dig", ["@8.8.8.8", "localhost"])
 
-    # ----- token after an UNKNOWN flag must still be target-validated (C3) -----
+    # ----- Tokens after unknown flags must still be target-validated -----
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_unknown_flag_encoded_int_target_blocked(self, _mock_ext) -> None:
@@ -495,7 +595,7 @@ class TestCheckPolicy:
         """A bare port/number after an unknown flag is a flag value, not a target."""
         check_policy("nc", ["--unknownflag", "4444", "10.0.0.1", "80"])
 
-    # ----- extension-TLD bypass: .zip/.mobi/.sh are file extensions AND TLDs (F1) -----
+    # ----- Extension-TLD bypass: .zip/.mobi/.sh are file extensions and TLDs -----
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_unknown_flag_url_with_extension_tld_blocked(self, _mock_ext) -> None:
@@ -591,6 +691,19 @@ class TestValidateToolForExecution:
         with patch("shutil.which", return_value="/usr/local/bin/sherlock"):
             binary = validate_tool_for_execution("sherlock-project", tools_db)
         assert binary == "sherlock"
+
+    @pytest.mark.parametrize(
+        ("tool_name", "expected"),
+        [
+            ("libimage-exiftool-perl", "exiftool"),
+            ("metasploit", "msfconsole"),
+        ],
+    )
+    def test_method_specific_binary_name_mapping(self, tools_db, tool_name, expected) -> None:
+        with patch("shutil.which", return_value=f"/usr/local/bin/{expected}") as mock_which:
+            binary = validate_tool_for_execution(tool_name, tools_db)
+        assert binary == expected
+        mock_which.assert_called_once_with(expected)
 
 
 # ---------------------------------------------------------------------------
@@ -694,6 +807,16 @@ class TestValidateToolForRemoteExecution:
         # Should resolve without needing shutil.which
         binary = validate_tool_for_remote_execution("sherlock-project", tools_db)
         assert binary == "sherlock"
+
+    @pytest.mark.parametrize(
+        ("tool_name", "expected"),
+        [
+            ("libimage-exiftool-perl", "exiftool"),
+            ("metasploit", "msfconsole"),
+        ],
+    )
+    def test_method_specific_binary_name_mapping(self, tools_db, tool_name, expected) -> None:
+        assert validate_tool_for_remote_execution(tool_name, tools_db) == expected
 
     def test_does_not_require_local_install(self, tools_db) -> None:
         # Even with which returning None, remote validation should succeed
@@ -939,7 +1062,7 @@ class TestSystemUtilityNetworkPolicy:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("dig", ["example.com"])
 
-    # ----- Regression: -u for curl is HTTP auth, not a target (issue: false positive) -----
+    # ----- curl -u is HTTP authentication, not a target -----
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_curl_dash_u_auth_with_private_url_allowed(self, _mock_ext) -> None:
@@ -1013,7 +1136,7 @@ class TestSystemUtilityNetworkPolicy:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("sqlmap", ["-u", "http://evil.com/"])
 
-    # ----- Regression: config/input-file flags bypass target validation -----
+    # ----- Config and input-file flags cannot bypass target validation -----
 
     @patch("mcp_server.security._allow_external", return_value=False)
     def test_curl_config_short_flag_blocked(self, _mock_ext) -> None:
@@ -1086,7 +1209,7 @@ class TestSystemUtilityNetworkPolicy:
         with pytest.raises(ValueError, match="target list"):
             check_policy("whatweb", ["--input-file=targets.txt"])
 
-    # ----- Regression: =joined and attached single-token forms of the file-list flags -----
+    # ----- Joined and attached file-list flag forms -----
     @pytest.mark.parametrize(
         "tool,arg",
         [
@@ -1153,6 +1276,13 @@ class TestSensitiveWriteGuard:
         assert _is_sensitive_write_target("-") is False
         assert _is_sensitive_write_target("http://10.0.0.1/x") is False
 
+    def test_symlink_to_sensitive_target_blocked(self, tmp_path) -> None:
+        link = tmp_path / "passwd-link"
+        link.symlink_to("/etc/passwd")
+        assert _is_sensitive_write_target(str(link)) is True
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("tee", [str(link)])
+
     def test_tee_to_bashrc_blocked(self) -> None:
         with pytest.raises(ValueError, match="sensitive location"):
             check_policy("tee", [os.path.join(os.path.expanduser("~"), ".bashrc")])
@@ -1172,6 +1302,19 @@ class TestSensitiveWriteGuard:
 
     def test_cp_to_tmp_allowed(self) -> None:
         check_policy("cp", ["a.txt", "/tmp/b.txt"])
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["a.txt", "--target-directory=/etc"],
+            ["a.txt", "--target-directory", "/etc"],
+            ["a.txt", "-t/etc"],
+            ["a.txt", "-t", "/etc"],
+        ],
+    )
+    def test_cp_target_directory_variants_blocked(self, args) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("cp", args)
 
     def test_mv_to_autostart_blocked(self) -> None:
         with pytest.raises(ValueError, match="sensitive location"):
@@ -1197,6 +1340,11 @@ class TestSensitiveWriteGuard:
             check_policy("curl", ["http://127.0.0.1/x", "--output=" + os.path.join(os.path.expanduser("~"), ".zshrc")])
 
     @patch("mcp_server.security._allow_external", return_value=False)
+    def test_curl_attached_output_to_system_dir_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("curl", ["-o/etc/cron.d/job", "http://127.0.0.1/x"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
     def test_curl_output_to_tmp_allowed(self, _mock_ext) -> None:
         check_policy("curl", ["http://127.0.0.1/x", "-o", "/tmp/out"])
 
@@ -1206,8 +1354,80 @@ class TestSensitiveWriteGuard:
             check_policy("wget", ["http://127.0.0.1/x", "-O", os.path.join(os.path.expanduser("~"), ".bashrc")])
 
     @patch("mcp_server.security._allow_external", return_value=False)
+    def test_wget_attached_output_to_system_dir_blocked(self, _mock_ext) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy("wget", ["-O/etc/cron.d/job", "http://127.0.0.1/x"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
     def test_wget_output_to_tmp_allowed(self, _mock_ext) -> None:
         check_policy("wget", ["http://127.0.0.1/x", "-O", "/tmp/x"])
+
+    @pytest.mark.parametrize(
+        ("tool", "args"),
+        [
+            ("tar", ["-xf", "archive.tar", "-C", "/etc"]),
+            ("tar", ["--extract", "--file=archive.tar", "--directory=/etc"]),
+            ("tar", ["-xC", "/etc", "-f", "archive.tar"]),
+            ("tar", ["-czf", "/etc/archive.tar.gz", "input"]),
+            ("tar", ["cf", "/etc/archive.tar", "input"]),
+            ("unzip", ["archive.zip", "-d/etc"]),
+            ("7z", ["x", "archive.7z", "-o/etc"]),
+            ("zip", ["/etc/archive.zip", "input.txt"]),
+        ],
+    )
+    def test_archive_sensitive_destinations_blocked(self, tool, args) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy(tool, args)
+
+    @pytest.mark.parametrize(
+        ("tool", "args"),
+        [
+            ("tar", ["-xf", "archive.tar", "-C", "/tmp/out"]),
+            ("tar", ["-czf", "/tmp/archive.tar.gz", "input"]),
+            ("unzip", ["archive.zip", "-d", "/tmp/out"]),
+            ("7z", ["x", "archive.7z", "-o/tmp/out"]),
+            ("zip", ["/tmp/archive.zip", "input.txt"]),
+        ],
+    )
+    def test_archive_tmp_destinations_allowed(self, tool, args) -> None:
+        check_policy(tool, args)
+
+    def test_cp_can_read_sensitive_source_into_tmp(self) -> None:
+        check_policy("cp", ["/etc/hosts", "/tmp/hosts-copy"])
+
+    @pytest.mark.parametrize(
+        ("tool", "args"),
+        [
+            ("gzip", ["/etc/hosts"]),
+            ("gunzip", ["/etc/hosts.gz"]),
+            ("7z", ["a", "/etc/archive.7z", "input"]),
+            ("openssl", ["enc", "-out", "/etc/output.pem"]),
+            ("gpg", ["--output=/etc/plaintext", "--decrypt", "/tmp/data.gpg"]),
+            ("age", ["-o/etc/data.age", "/tmp/data"]),
+            ("ssh-keygen", ["-f/etc/ssh/host_key", "-N", ""]),
+            ("convert", ["/tmp/input.png", "/etc/output.png"]),
+            ("foremost", ["-o", "/etc/foremost", "/tmp/disk.img"]),
+            ("qrencode", ["-o/etc/code.png", "data"]),
+            ("pdftotext", ["/tmp/input.pdf", "/etc/output.txt"]),
+            ("yq", ["-i", ".x = 1", "/etc/config.yaml"]),
+        ],
+    )
+    def test_other_mutators_block_sensitive_destinations(self, tool, args) -> None:
+        with pytest.raises(ValueError, match="sensitive location"):
+            check_policy(tool, args)
+
+    @pytest.mark.parametrize(
+        ("tool", "args"),
+        [
+            ("gzip", ["-c", "/etc/hosts"]),
+            ("openssl", ["enc", "-out", "/tmp/output.pem"]),
+            ("gpg", ["--output=/tmp/plaintext", "--decrypt", "/tmp/data.gpg"]),
+            ("convert", ["/tmp/input.png", "/tmp/output.png"]),
+            ("pdftotext", ["/tmp/input.pdf", "/tmp/output.txt"]),
+        ],
+    )
+    def test_other_mutators_allow_safe_destinations(self, tool, args) -> None:
+        check_policy(tool, args)
 
 
 class TestAwkProgramFileBlocked:
@@ -1432,6 +1652,9 @@ class TestExecutePipeline:
         assert result["exit_code"] == 0
         assert result["step_count"] == 2
         assert "failed_step" not in result
+        assert result["had_failures"] is True
+        assert result["step_results"][0]["exit_code"] == 1
+        assert result["step_results"][1]["exit_code"] == 0
 
     @pytest.mark.asyncio
     async def test_pipeline_timeout(self, tools_db) -> None:
