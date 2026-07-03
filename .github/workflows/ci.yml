@@ -133,6 +133,9 @@ jobs:
       - name: Validate Claude Code skill optional dependencies
         run: python3 scripts/audit_skill_dependencies.py --check-declared
 
+      - name: Validate vendored skill upstream pins are consistent
+        run: bash scripts/update-skills.sh --check-pins
+
   python-lint:
     name: Python Lint (ruff)
     runs-on: ubuntu-latest

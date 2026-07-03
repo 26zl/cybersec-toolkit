@@ -235,6 +235,19 @@ scripts/sync-skills.sh --check    # report drift without writing
 mirror and is git-ignored. Re-run the sync after editing skills. Source/category index:
 [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
 
+Vendored skills are copies (not submodules) of six upstream repos, each pinned to a
+commit in `SKILLS.md`. `scripts/update-skills.sh` clones every pinned source and reports
+drift per skill (in sync / locally modified / upstream-only / local-only) plus whether a
+source's HEAD moved past the pin. It only reports — re-vendoring is manual. "locally
+modified" is an upper bound: it also counts the `source:`/`license:` frontmatter we add
+and the upstream helper dirs we trim, so review the listed skills, not the raw count.
+When you re-vendor a source, bump its pin in `SKILLS.md`, `THIRD_PARTY_NOTICES.md`, and
+the `SOURCES` array in that script; `update-skills.sh --check-pins` (offline, no cloning)
+asserts all four places — including per-skill `upstream_commit` frontmatter — agree, and
+runs as a CI gate. A weekly workflow (`.github/workflows/skills-update.yml`) opens a
+`skills-update` tracking issue when a source advances past its pin (past a 3-day cooldown)
+or ships new skills — the notify-only analog of Dependabot, which does not cover copies.
+
 Each skill is `<name>/SKILL.md` with frontmatter where `name` must equal the directory
 name. `SKILLS.md` counts, generated `curation.json` + `CURATION.md` (written by
 `scripts/curate_claude_skills.py --write`), and `.claude/skills/requirements.txt`

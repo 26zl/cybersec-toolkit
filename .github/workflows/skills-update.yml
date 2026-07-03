@@ -1,0 +1,74 @@
+name: Skills upstream drift check
+
+# Weekly notifier for the vendored .claude/skills/ sources (they are copies, not
+# submodules, so Dependabot does not cover them). Reports only — re-vendoring is a
+# manual, reviewed step. Mirrors the deps 3-day cooldown via MIN_AGE_DAYS.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # Every Monday 07:00 UTC (after uv-update at 06:00)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  skills-drift:
+    name: Check vendored skills for upstream updates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: false
+
+      - name: Check upstream skill sources
+        id: check
+        env:
+          MIN_AGE_DAYS: "3"
+        run: |
+          bash scripts/update-skills.sh > skills-report.txt 2>&1 || true
+          cat skills-report.txt
+          updates=$(grep -c '^  UPDATE:' skills-report.txt || true)
+          newskills=$(grep -oE 'upstream-only:[[:space:]]+[0-9]+' skills-report.txt | grep -oE '[0-9]+' | head -1 || true)
+          echo "updates=${updates:-0}" >> "$GITHUB_OUTPUT"
+          echo "newskills=${newskills:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update tracking issue
+        if: steps.check.outputs.updates != '0' || steps.check.outputs.newskills != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Build the body from a file (never interpolate report text into the shell).
+          {
+            echo "Weekly check found vendored skill sources that advanced past their pin"
+            echo "(past the 3-day cooldown) or upstream skills not yet vendored."
+            echo
+            echo "Re-vendoring is manual and reviewed (see CLAUDE.md \"Skill Library\"). After"
+            echo "re-vendoring, bump the pin in SKILLS.md, THIRD_PARTY_NOTICES.md, and"
+            echo "scripts/update-skills.sh, then run \`scripts/update-skills.sh --check-pins\`."
+            echo
+            echo "<details><summary>Full report</summary>"
+            echo
+            echo '```'
+            cat skills-report.txt
+            echo '```'
+            echo "</details>"
+          } > issue-body.md
+
+          existing=$(gh issue list --state open --label skills-update --json number --jq '.[0].number' 2>/dev/null || true)
+          if [[ -n "$existing" ]]; then
+            gh issue edit "$existing" --body-file issue-body.md
+          else
+            gh label create skills-update --description "Vendored skill upstream drift" --color 0e8a16 2>/dev/null || true
+            gh issue create --title "Vendored skills: upstream updates available" --body-file issue-body.md --label skills-update
+          fi

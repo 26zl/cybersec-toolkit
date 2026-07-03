@@ -18,12 +18,12 @@ table's counts against the live inventory.
 
 | Source | Skills | License | License text | Upstream |
 | --- | ---: | --- | --- | --- |
-| [mukul975/Anthropic-Cybersecurity-Skills (community project)](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) | 754 | Apache-2.0 | [`LICENSE-Apache-2.0`](.claude/skills/LICENSE-Apache-2.0) | operational how-tos |
+| [mukul975/Anthropic-Cybersecurity-Skills (community project)](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) | 754 | Apache-2.0 | [`LICENSE-Apache-2.0`](.claude/skills/LICENSE-Apache-2.0) | operational how-tos; commit `673da1f3b0b7be34ffc9624ef3858fe45f1c3bed` |
 | [SnailSploit Claude-Red](https://github.com/SnailSploit/Claude-Red) | 58 | MIT | [`LICENSE-Claude-Red-MIT`](.claude/skills/LICENSE-Claude-Red-MIT) | commit `aeb41eca7088a703c3a35fbcba3086d4a6c1aa4e` |
-| [Trail of Bits skills](https://github.com/trailofbits/skills) | 14 | CC-BY-SA-4.0 | [`LICENSE-CC-BY-SA-4.0`](.claude/skills/LICENSE-CC-BY-SA-4.0) | code audit & vuln research; `constant-time-analysis` ships the upstream `ct_analyzer/` (commit `c070b9b`) and `zeroize-audit` its `tools/` |
+| [Trail of Bits skills](https://github.com/trailofbits/skills) | 14 | CC-BY-SA-4.0 | [`LICENSE-CC-BY-SA-4.0`](.claude/skills/LICENSE-CC-BY-SA-4.0) | commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`; code audit & vuln research; `constant-time-analysis` ships the upstream `ct_analyzer/` (commit `c070b9b`) and `zeroize-audit` its `tools/` |
 | [BugHunter (claude-bug-bounty)](https://github.com/shuvonsec/claude-bug-bounty) | 10 | MIT | [`LICENSE-BugHunter-MIT`](.claude/skills/LICENSE-BugHunter-MIT) | commit `22ea70b763618984a08d6f601bb2e3e079e86a15` |
-| [Transilience community tools](https://github.com/transilienceai/communitytools) | 4 | MIT | [`LICENSE-Transilience-MIT`](.claude/skills/LICENSE-Transilience-MIT) | high-level workflows |
-| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 | MIT | (frontmatter attribution) | coding-agent workflow |
+| [Transilience community tools](https://github.com/transilienceai/communitytools) | 4 | MIT | [`LICENSE-Transilience-MIT`](.claude/skills/LICENSE-Transilience-MIT) | high-level workflows; commit `58b552ef35029814b95fa53924790e3546a4a146` |
+| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 | MIT | (frontmatter attribution) | coding-agent workflow; commit `2c606141936f1eeef17fa3043a72095b4765b9c2` |
 
 The remaining 31 skills (project developer skills, cross-skill coordinators,
 coverage-gap anchors, CTF methodology, and the `bounty-*` methodology set) are

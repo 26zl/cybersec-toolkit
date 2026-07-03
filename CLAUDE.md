@@ -143,7 +143,7 @@ Eleven parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 4. **bats-tests** — `bats tests/*.bats` (unit tests)
 5. **validate-tools-config** — `python3 scripts/validate_tools_config.py` (0 errors, 0 warnings)
 6. **distro-compat-validate** — `python3 scripts/validate_distro_compat.py` (distro package mappings)
-7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py` and `python3 scripts/audit_skill_dependencies.py --check-declared` (skill frontmatter + index counts + helper script syntax + optional helper deps)
+7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py`, `python3 scripts/audit_skill_dependencies.py --check-declared`, and `bash scripts/update-skills.sh --check-pins` (skill frontmatter + index counts + helper script syntax + optional helper deps + vendored-skill upstream pins agree across SKILLS.md/THIRD_PARTY_NOTICES.md/frontmatter)
 8. **python-lint** — `ruff check` + `ruff format --check` on the MCP server, plus `ruff check ../scripts/` on the repo-root helper scripts (own root `ruff.toml`)
 9. **python-tests** — `pytest` on MCP server tests
 10. **mcp-server-check** — `uv sync`, import test, `validate_mcp_sync.py`
@@ -162,6 +162,8 @@ Supply chain hardening: all workflow jobs use `step-security/harden-runner` (egr
 Integration tests (`.github/workflows/integration.yml`, push to main + weekly): Ubuntu 26.04, Fedora 44, Arch, openSUSE.
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
+
+Vendored-skill drift (`.github/workflows/skills-update.yml`): weekly `update-skills.sh` run that opens/updates a `skills-update` tracking issue when an upstream source advances past its pin (past a 3-day `MIN_AGE_DAYS` cooldown, matching the deps policy) or ships new skills. Notify-only — re-vendoring stays manual, since a naive re-vendor would clobber local hardening edits. Dependabot (`.github/dependabot.yml`, 3-day cooldown) covers GitHub Actions, uv deps, and the Docker base image; skills are copies, not submodules, so this workflow fills that gap.
 
 `uv-update.yml` uses the workflow `GITHUB_TOKEN` for checkout and PR creation. Its
 verification runs inside the same workflow because token-created PRs do not trigger
@@ -198,6 +200,8 @@ All scripts source the chain in this order. `common.sh` auto-detects distro/pkg 
 Each skill is `<name>/SKILL.md` with YAML frontmatter where `name` **must equal the directory name** plus a `description`. After adding/removing/renaming a skill dir: update `SKILLS.md` counts, run `curate_claude_skills.py --write`, then `validate_claude_skills.py`. After changing skill helper-script imports: run `audit_skill_dependencies.py --write-requirements`, then `audit_skill_dependencies.py --check-declared`.
 
 `validate_claude_skills.py` and `curate_claude_skills.py` share the YAML frontmatter parser in `scripts/_skill_frontmatter.py`; the two config validators (`validate_tools_config.py`, `validate_mcp_sync.py`) share the paren-balanced bash-array scanner in `scripts/_bash_arrays.py`. Edit those shared helpers rather than re-duplicating the parsing logic.
+
+Vendored skills are copies (not submodules) of six upstream repos, each pinned to a commit in `SKILLS.md`. `scripts/update-skills.sh` clones every pinned source and reports drift per skill (in sync / locally modified / upstream-only / local-only) plus whether a source's HEAD moved past the pin. It only reports — re-vendoring is manual. "locally modified" is an upper bound: it also counts the `source:`/`license:` frontmatter we add and the upstream helper dirs we trim, so review the listed skills rather than trusting the raw count. When you re-vendor a source, bump its pin in `SKILLS.md`, `THIRD_PARTY_NOTICES.md`, and the `SOURCES` array in that script; `update-skills.sh --check-pins` (offline, no cloning) asserts all four places — including per-skill `upstream_commit` frontmatter — agree.
 
 **Cross-skill coordinators** (project-authored; route offensive/audit/detection work through these): `finding-triage` (normalize a finding → disposition), `security-comms` (translate for an audience), `authorization-gate` (pre-flight authorization check for offensive/simulation work), `evidence-hygiene` (sanitize report/writeup evidence before sharing).
 

@@ -115,7 +115,7 @@ Use these only for authorized security research, training, CTF/lab work, or scop
 
 ## Trail of Bits — code audit & vulnerability research (14)
 
-CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailofbits/skills>.
+CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailofbits/skills>, commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`.
 
 | Skill | What it does |
 | --- | --- |
@@ -136,7 +136,7 @@ CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailof
 
 ## mukul975/Anthropic-Cybersecurity-Skills (community project) — operational how-tos (754)
 
-Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/Anthropic-Cybersecurity-Skills>. The full upstream skill set is mirrored here as local Claude Code skills. Each skill maps to MITRE ATT&CK / D3FEND / NIST CSF.
+Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/Anthropic-Cybersecurity-Skills>, commit `673da1f3b0b7be34ffc9624ef3858fe45f1c3bed`. The full upstream skill set is mirrored here as local Claude Code skills. Each skill maps to MITRE ATT&CK / D3FEND / NIST CSF.
 
 Subdomain coverage:
 
@@ -190,7 +190,7 @@ Subdomain coverage:
 
 ## Transilience — high-level workflows (4)
 
-MIT — see `LICENSE-Transilience-MIT`. Source: <https://github.com/transilienceai/communitytools>.
+MIT — see `LICENSE-Transilience-MIT`. Source: <https://github.com/transilienceai/communitytools>, commit `58b552ef35029814b95fa53924790e3546a4a146`.
 
 - `cve-poc-generator` — Research CVEs, query NVD, generate Python PoCs
 - `dfir` — Windows event logs, PCAP, AD attack pattern analysis
@@ -233,7 +233,7 @@ This project is MIT-licensed. The vendored skills retain their original licenses
 - Trail of Bits skills: CC-BY-SA 4.0 (`LICENSE-CC-BY-SA-4.0`)
 - mukul975/Anthropic-Cybersecurity-Skills (community project): Apache 2.0 (`LICENSE-Apache-2.0`)
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
-- Karpathy guidelines skill: MIT, source <https://github.com/multica-ai/andrej-karpathy-skills>
+- Karpathy guidelines skill: MIT, source <https://github.com/multica-ai/andrej-karpathy-skills>, commit `2c606141936f1eeef17fa3043a72095b4765b9c2`
 - SnailSploit Claude-Red skills: MIT (`LICENSE-Claude-Red-MIT`)
 - BugHunter (claude-bug-bounty) skills: MIT (`LICENSE-BugHunter-MIT`)
 
