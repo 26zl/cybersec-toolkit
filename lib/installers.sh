@@ -1157,6 +1157,8 @@ for asset in data.get('assets', []):
     if [[ -f "$_cksum_cache_file" ]]; then
         checksums=$(< "$_cksum_cache_file")
     else
+        # Repopulate _CURL_OPTS (-sSL) — _gh_api_get set it only inside its subshell, so the checksum curl otherwise skips redirect-follow.
+        _setup_curl_opts
         checksums=$(curl "${_CURL_OPTS[@]}" "$checksum_url" 2>>"$LOG_FILE")
         if [[ -n "$checksums" ]]; then
             echo "$checksums" > "$_cksum_cache_file"
