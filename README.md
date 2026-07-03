@@ -6,14 +6,16 @@
 ![Status: Under Active Development](https://img.shields.io/badge/status-under%20active%20development-blue)
 
 ```text
-   ______      __              _____
-  / ____/_  __/ /_  ___  _____/ ___/___  _____
- / /   / / / / __ \/ _ \/ ___/\__ \/ _ \/ ___/
-/ /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
-\____/\__, /_.___/\___/_/   /____/\___/\___/
-     /____/                          by 26zl
-              Toolkit
+    /\   /\        ______      __              _____
+   (o ) ( o)      / ____/_  __/ /_  ___  _____/ ___/___  _____
+    \ \_/ /      / /   / / / / __ \/ _ \/ ___/\__ \/ _ \/ ___/
+  <==\   /==>   / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
+     \ V /      \____/\__, /_.___/\___/_/   /____/\___/\___/
+     /_ _\           /____/                          by 26zl
+      |_|                     Toolkit
 ```
+
+<p align="center"><em>&ldquo;I am a friend of virtue, not of fortune.&rdquo;</em><br>&mdash; Gjergj Kastrioti &middot; Skanderbeg (1405&ndash;1468)</p>
 
 __Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets MCP-capable clients -- Claude Code/Desktop, Codex, Cursor, and local MCP hosts -- query the tool registry, check install status, recommend tools for a CTF category or bug-bounty target, and run installed tools through a governed execution path. Jump to [MCP Server (AI Integration)](#mcp-server-ai-integration).
 
@@ -570,17 +572,14 @@ Open an issue for bigger changes, or send a focused PR for small fixes. See
 Public contributor docs live in [`CONTRIBUTING.md`](CONTRIBUTING.md). The quick-start is:
 
 ```bash
-git submodule update --init --recursive
-shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
-bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
-python3 scripts/validate_tools_config.py
-python3 scripts/validate_mcp_sync.py
-python3 scripts/validate_distro_compat.py
-python3 scripts/validate_claude_skills.py
-python3 scripts/audit_skill_dependencies.py --check-declared
-./tests/bats/bin/bats tests/*.bats
-cd mcp_server && uv sync --group dev && uv run ruff check . && uv run ruff format --check . && uv run pytest tests/ -q
+git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
+make setup    # submodules + MCP deps + skill mirror (Codex-ready)
+make check    # everything CI runs — shellcheck, validators, bats, ruff, pytest
 ```
+
+`make help` lists every shortcut (`lint`, `test`, `validate`, `curate`, `sync-skills`,
+`check-skills`, `mcp`, `docker`, …); the raw command each target runs is in
+[`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md).
 
 The MCP Python project uses `uv` with `[tool.uv] exclude-newer = "3 days"`.
 New dependency resolutions intentionally ignore packages uploaded in the last
@@ -638,6 +637,8 @@ look for:
 scripts/sync-skills.sh            # mirror .claude/skills/ -> .agents/skills/
 scripts/sync-skills.sh --check    # report drift without writing (exit 1 if out of date)
 ```
+
+`make setup` (see [Development](#development)) runs this mirror step for you.
 
 `.claude/skills/` stays the single source of truth; `.agents/skills/` is generated and
 git-ignored, so re-run the sync after editing a skill. Codex reads [`AGENTS.md`](AGENTS.md)

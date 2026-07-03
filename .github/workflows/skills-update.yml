@@ -65,7 +65,8 @@ jobs:
             echo "</details>"
           } > issue-body.md
 
-          existing=$(gh issue list --state open --label skills-update --json number --jq '.[0].number' 2>/dev/null || true)
+          # REST list-issues is authoritative here; `gh issue list --label` proved version-flaky.
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=skills-update" --jq '[.[] | select(.pull_request == null)][0].number // empty' 2>/dev/null || true)
           if [[ -n "$existing" ]]; then
             gh issue edit "$existing" --body-file issue-body.md
           else

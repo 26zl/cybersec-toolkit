@@ -10,6 +10,8 @@ Modular bash installer for 580+ cybersecurity tools on Linux and Termux (Android
 
 ## Commands
 
+A `Makefile` wraps the common workflows: `make setup` (submodules + MCP deps + skill mirror), `make lint`, `make test`, `make validate`, `make check` (everything CI runs), `make check-skills`/`check-pins`, `make sync-skills`, `make mcp`. `make help` lists them. The raw commands below are what those targets run.
+
 ### Validation (run before pushing)
 
 ```bash
@@ -163,7 +165,7 @@ Integration tests (`.github/workflows/integration.yml`, push to main + weekly): 
 
 Automated dependency updates (`.github/workflows/uv-update.yml`): weekly `uv lock --upgrade` with auto-PR.
 
-Vendored-skill drift (`.github/workflows/skills-update.yml`): weekly `update-skills.sh` run that opens/updates a `skills-update` tracking issue when an upstream source advances past its pin (past a 3-day `MIN_AGE_DAYS` cooldown, matching the deps policy) or ships new skills. Notify-only — re-vendoring stays manual, since a naive re-vendor would clobber local hardening edits. Dependabot (`.github/dependabot.yml`, 3-day cooldown) covers GitHub Actions, uv deps, and the Docker base image; skills are copies, not submodules, so this workflow fills that gap.
+Vendored-skill drift (`.github/workflows/skills-update.yml`): weekly `update-skills.sh` run that opens/updates a `skills-update` tracking issue when an upstream source advances past its pin (past a 3-day `MIN_AGE_DAYS` cooldown, matching the deps policy) or ships new skills. The report diffs pin..HEAD to name the exact skills to re-merge (upstream changed a skill we vendor) and the new upstream skills, so the issue is a direct work-list. Notify-only — re-vendoring stays manual, since a naive re-vendor would clobber local hardening edits. Dependabot (`.github/dependabot.yml`, 3-day cooldown) covers GitHub Actions, uv deps, and the Docker base image; skills are copies, not submodules, so this workflow fills that gap.
 
 `uv-update.yml` uses the workflow `GITHUB_TOKEN` for checkout and PR creation. Its
 verification runs inside the same workflow because token-created PRs do not trigger

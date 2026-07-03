@@ -103,6 +103,18 @@ for entry in "${SOURCES[@]}"; do
     echo "  pin is at upstream HEAD"
   elif (( head_age_days >= MIN_AGE_DAYS )); then
     echo "  UPDATE: upstream HEAD advanced past pin (HEAD ${head_age_days}d old ≥ ${MIN_AGE_DAYS}d cooldown): $pin -> $remote_head"
+    # Diff pin..HEAD to name the exact skills that changed — the actual re-merge list.
+    remerge=() newup=()
+    while IFS=$'\t' read -r st path _; do
+      case "$path" in */SKILL.md) ;; *) continue ;; esac
+      sk="$(basename "$(dirname "$path")")"
+      case "$st" in
+        A*) newup+=("$sk") ;;
+        *)  [[ -d "$SKILLS/$sk" ]] && remerge+=("$sk") ;;
+      esac
+    done < <(git -C "$clone" diff --name-status "$pin" "$remote_head" 2>/dev/null)
+    [[ ${#remerge[@]} -gt 0 ]] && echo "  re-merge (upstream changed our vendored skills): ${remerge[*]}"
+    [[ ${#newup[@]} -gt 0 ]]   && echo "  new upstream skills since pin (optional to vendor): ${newup[*]}"
     echo "  (re-vendor, then bump the pin in SKILLS.md + THIRD_PARTY_NOTICES.md + this script)"
     drift=1
   else
