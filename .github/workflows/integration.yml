@@ -171,10 +171,12 @@ jobs:
         env:
           METHOD: ${{ matrix.method }}
           TOOL: ${{ matrix.tool }}
+          # Authenticate GitHub API calls (raises rate limit 60→5000/hr).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           extra_args=()
           [[ "$METHOD" == "binary" ]] && extra_args+=(--production)
-          sudo bash install.sh --tool "$TOOL" "${extra_args[@]}"
+          sudo --preserve-env=GITHUB_TOKEN bash install.sh --tool "$TOOL" "${extra_args[@]}"
 
       - name: Verify canary result
         env:
