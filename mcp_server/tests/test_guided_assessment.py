@@ -560,3 +560,45 @@ def test_url_with_multiple_query_params_is_accepted_and_planned() -> None:
     assert any(step["tool"] == "curl" for step in result["plan"]["steps"])
     # The full multi-param URL is preserved (shlex-quoted) in the planned command.
     assert any("id=1&x=2;y=3" in step["args"] for step in result["plan"]["steps"])
+
+
+def _file_type_step(result: dict) -> dict:
+    return next(step for step in result["plan"]["steps"] if step["id"] == "file_type")
+
+
+def test_extensionless_file_names_escalation_target_types() -> None:
+    # An extension-less file is "misc"; the file step must name the escalation target_types.
+    result = build_guided_plan(
+        target="/tmp/challenge_bin",
+        target_type="auto",
+        workflow="auto",
+        mode="companion",
+        intensity="low",
+        authorization_confirmed=False,
+        max_steps=6,
+        external_enabled=False,
+        tools_db=server._db,
+    )
+
+    assert result["target_type"] == "misc"
+    desc = _file_type_step(result)["rationale"]
+    assert "target_type" in desc
+    assert "pwn" in desc and "forensics" in desc and "stego" in desc
+
+
+def test_typed_file_keeps_plain_file_description() -> None:
+    # Known category: no escalation hint.
+    result = build_guided_plan(
+        target="/tmp/capture.pcap",
+        target_type="forensics",
+        workflow="ctf",
+        mode="companion",
+        intensity="low",
+        authorization_confirmed=False,
+        max_steps=6,
+        external_enabled=False,
+        tools_db=server._db,
+    )
+
+    desc = _file_type_step(result)["rationale"]
+    assert "re-run guided_assessment" not in desc

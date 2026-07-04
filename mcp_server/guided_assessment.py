@@ -429,13 +429,22 @@ def _network_steps(target: dict, target_type: str, workflow: str) -> list[dict]:
 
 def _file_steps(target: dict, target_type: str) -> list[dict]:
     path_q = _quote(target["raw"])
+    # For an undetermined file ("misc"), name which target_type to escalate to after `file`.
+    if target_type == "misc":
+        file_desc = (
+            "Identify the file type, then re-run guided_assessment with the matching "
+            "target_type: ELF/PE/Mach-O -> pwn (or reversing); zip/tar/gz/office/pcap -> "
+            "forensics; png/jpg/bmp/wav -> stego; otherwise keep misc."
+        )
+    else:
+        file_desc = "Identify the file type before choosing a deeper workflow."
     steps = [
         _step(
             "file_type",
             "identify",
             "file",
             path_q,
-            "Identify the file type before choosing a deeper workflow.",
+            file_desc,
             network=False,
         ),
         _step(

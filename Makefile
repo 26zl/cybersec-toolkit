@@ -4,9 +4,8 @@
 
 SHELL := bash
 SH_FILES := install.sh lib/*.sh modules/*.sh scripts/*.sh
-# Same globs as the markdown-lint CI job (skips vendored skills and submodules).
-MD_GLOBS := **/*.md !docs/TOOL_ANALYSIS.md !tests/bats/**/*.md !tests/test_helper/**/*.md \
-	!mcp_server/.venv/**/*.md !.claude/skills/**/*.md !.agents/skills/**/*.md
+# Paths the CI markdown-lint job skips; applied to the tracked *.md list so make lint-md mirrors CI.
+MD_EXCLUDE := ^docs/TOOL_ANALYSIS\.md$$|^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
 
 .DEFAULT_GOAL := help
 .PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py \
@@ -31,8 +30,8 @@ lint-py: ## ruff check on the MCP server and repo-root scripts
 	cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . \
 		&& uv run --group dev ruff check ../scripts/
 
-lint-md: ## markdownlint on tracked docs (CI globs)
-	npx --yes markdownlint-cli2 $(MD_GLOBS)
+lint-md: ## markdownlint on tracked docs (mirrors the CI markdown-lint job)
+	git ls-files '*.md' | grep -vE '$(MD_EXCLUDE)' | xargs npx --yes markdownlint-cli2
 
 format: ## Auto-format the MCP server with ruff
 	cd mcp_server && uv run --group dev ruff format .
@@ -45,13 +44,14 @@ test-bats: ## Bash unit tests (bats)
 test-py: ## MCP server tests (pytest)
 	cd mcp_server && uv run --group dev pytest tests/ -q
 
-validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles)
+validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles, agent docs)
 	python3 scripts/validate_tools_config.py
 	python3 scripts/validate_mcp_sync.py
 	python3 scripts/validate_distro_compat.py
 	python3 scripts/validate_claude_skills.py
 	python3 scripts/audit_skill_dependencies.py --check-declared
 	bash scripts/update-skills.sh --check-pins
+	python3 scripts/validate_agent_docs.py
 
 check-pins: ## Assert vendored-skill upstream pins agree across all sources (offline)
 	bash scripts/update-skills.sh --check-pins

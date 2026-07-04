@@ -116,6 +116,22 @@ jobs:
       - name: Validate distro compatibility mappings
         run: python3 scripts/validate_distro_compat.py
 
+  agent-docs-validate:
+    name: Validate Agent Docs (CLAUDE.md/AGENTS.md)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Check CLAUDE.md and AGENTS.md stay consistent
+        run: |
+          python3 scripts/validate_agent_docs.py --selftest
+          python3 scripts/validate_agent_docs.py
+
   claude-skills-validate:
     name: Validate Claude Skills
     runs-on: ubuntu-latest
@@ -182,6 +198,7 @@ jobs:
       - tests
       - tools-config-validate
       - distro-compat-validate
+      - agent-docs-validate
       - claude-skills-validate
       - python-lint
       - python-tests

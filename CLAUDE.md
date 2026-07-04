@@ -36,6 +36,9 @@ python3 scripts/validate_claude_skills.py
 # Validate optional Python deps used by skill helper scripts are declared
 python3 scripts/audit_skill_dependencies.py --check-declared
 
+# Check CLAUDE.md and AGENTS.md agree (headline counts + shared MANDATORY sections)
+python3 scripts/validate_agent_docs.py
+
 # Regenerate skill curation index after adding/removing/renaming a skill dir
 # (validate_claude_skills.py checks curation freshness; this writes curation.json + CURATION.md)
 python3 scripts/curate_claude_skills.py --write
@@ -137,7 +140,7 @@ docker run -i --rm --entrypoint bash cybersec-toolkit \
 
 ## CI Pipeline
 
-Eleven parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
+Twelve parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 
 1. **shellcheck** — `shellcheck --severity=warning` on all `.sh` files
 2. **bash-syntax** — `bash -n` on all `.sh` files
@@ -145,11 +148,12 @@ Eleven parallel jobs on push to main and PRs (`.github/workflows/ci.yml`):
 4. **bats-tests** — `bats tests/*.bats` (unit tests)
 5. **validate-tools-config** — `python3 scripts/validate_tools_config.py` (0 errors, 0 warnings)
 6. **distro-compat-validate** — `python3 scripts/validate_distro_compat.py` (distro package mappings)
-7. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py`, `python3 scripts/audit_skill_dependencies.py --check-declared`, and `bash scripts/update-skills.sh --check-pins` (skill frontmatter + index counts + helper script syntax + optional helper deps + vendored-skill upstream pins agree across SKILLS.md/THIRD_PARTY_NOTICES.md/frontmatter)
-8. **python-lint** — `ruff check` + `ruff format --check` on the MCP server, plus `ruff check ../scripts/` on the repo-root helper scripts (own root `ruff.toml`)
-9. **python-tests** — `pytest` on MCP server tests
-10. **mcp-server-check** — `uv sync`, import test, `validate_mcp_sync.py`
-11. **validate-profiles** — checks every `profiles/*.conf` module name against `ALL_MODULES`
+7. **agent-docs-validate** — `python3 scripts/validate_agent_docs.py` (CLAUDE.md/AGENTS.md headline counts agree with each other and the repo; shared MANDATORY/safety sections present in both)
+8. **claude-skills-validate** — `python3 scripts/validate_claude_skills.py`, `python3 scripts/audit_skill_dependencies.py --check-declared`, and `bash scripts/update-skills.sh --check-pins` (skill frontmatter + index counts + helper script syntax + optional helper deps + vendored-skill upstream pins agree across SKILLS.md/THIRD_PARTY_NOTICES.md/frontmatter)
+9. **python-lint** — `ruff check` + `ruff format --check` on the MCP server, plus `ruff check ../scripts/` on the repo-root helper scripts (own root `ruff.toml`)
+10. **python-tests** — `pytest` on MCP server tests
+11. **mcp-server-check** — `uv sync`, import test, `validate_mcp_sync.py`
+12. **validate-profiles** — checks every `profiles/*.conf` module name against `ALL_MODULES`
 
 Security workflow (`.github/workflows/security.yml`, separate from CI):
 

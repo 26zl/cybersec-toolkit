@@ -79,6 +79,9 @@ python3 scripts/validate_claude_skills.py
 # Validate optional Python deps used by skill helper scripts are declared
 python3 scripts/audit_skill_dependencies.py --check-declared
 
+# Check CLAUDE.md and AGENTS.md agree (headline counts + shared MANDATORY sections)
+python3 scripts/validate_agent_docs.py
+
 # Regenerate skill curation index after adding/removing/renaming a skill dir
 # (validate_claude_skills.py checks curation freshness)
 python3 scripts/curate_claude_skills.py --write
