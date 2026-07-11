@@ -10,12 +10,12 @@ if [[ -z "${BASH_VERSION:-}" ]] || [[ "${BASH_VERSINFO[0]}" -lt 4 ]] || \
     exit 1
 fi
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
+# Colors (256-color palette)
+RED='\033[38;5;88m'      # blood red   — errors + banner
+GREEN='\033[38;5;71m'    # sage green  — success
+YELLOW='\033[38;5;136m'  # amber/gold  — warnings
+BLUE='\033[38;5;67m'     # steel blue  — info
+CYAN='\033[38;5;73m'     # muted teal  — debug
 BOLD='\033[1m'
 NC='\033[0m'
 
@@ -1306,16 +1306,16 @@ _stop_progress_display() {
 
 # Banner
 print_banner() {
-    echo -e "${CYAN}${BOLD}"
+    echo -e "${RED}${BOLD}"
     cat << 'BANNER'
-   ______      __              _____
-  / ____/_  __/ /_  ___  _____/ ___/___  _____
- / /   / / / / __ \/ _ \/ ___/\__ \/ _ \/ ___/
-/ /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
-\____/\__, /_.___/\___/_/   /____/\___/\___/
-     /____/                          by 26zl
+    /\   /\        ______      __              _____
+   (o ) ( o)      / ____/_  __/ /_  ___  _____/ ___/___  _____
+    \ \_/ /      / /   / / / / __ \/ _ \/ ___/\__ \/ _ \/ ___/
+  <==\   /==>   / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
+     \ V /      \____/\__, /_.___/\___/_/   /____/\___/\___/
+     /_ _\           /____/                          by 26zl
 BANNER
-    echo "              Tools Installer${INSTALLER_VERSION:+  v${INSTALLER_VERSION}}"
+    echo "      |_|                     Toolkit${INSTALLER_VERSION:+  v${INSTALLER_VERSION}}"
     echo -e "${NC}"
     log_info "Distro: $DISTRO_NAME ($DISTRO_ID)"
     log_info "Package manager: $PKG_MANAGER"

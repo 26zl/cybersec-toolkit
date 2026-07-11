@@ -885,9 +885,9 @@ if [[ "$DRY_RUN" == "true" ]]; then
     # what runs on Termux/WSL (e.g. the wireless module under WSL).
     _apply_platform_module_filters
     echo ""
-    _separator_line "$CYAN"
-    echo -e "  ${CYAN}${BOLD}DRY RUN${NC}"
-    _separator_line "$CYAN"
+    _separator_line "$RED"
+    echo -e "  ${RED}${BOLD}DRY RUN${NC}"
+    _separator_line "$RED"
     echo ""
     echo "Profile:        ${PROFILE:-custom}"
     echo "Modules:        ${MODULES_TO_INSTALL[*]}"
