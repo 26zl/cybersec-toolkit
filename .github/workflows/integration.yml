@@ -122,7 +122,12 @@ jobs:
         run: |
           # Verify the specific tools we installed are present
           for tool in nmap curl tcpdump socat whois; do
-            command -v "$tool" >/dev/null 2>&1 && echo "OK: $tool" || { echo "FAIL: $tool"; exit 1; }
+            if command -v "$tool" >/dev/null 2>&1; then
+              echo "OK: $tool"
+            else
+              echo "FAIL: $tool"
+              exit 1
+            fi
           done
 
       - name: Run verify script (smoke test)

@@ -87,6 +87,10 @@ PIPX_BIN_NAMES: dict[str, str] = {
     "eth-ape": "ape",
     "vcdvcd": "vcdcat",
     "lascar": "lascarctl",
+    "plaso": "log2timeline",
+    "pyrit": "pyrit_scan",
+    "cisco-ai-mcp-scanner": "mcp-scanner",
+    "cisco-ai-skill-scanner": "skill-scanner",
 }
 
 # apt package name -> primary executable name, for packages whose binary differs
@@ -193,6 +197,8 @@ DOCKER_IMAGES: dict[str, str] = {
     "Cortex": "thehiveproject/cortex:latest",
     "Echidna": "trailofbits/echidna",
     "PentAGI": "vxcontrol/pentagi:latest",
+    "Zeek": "zeek/zeek:latest",
+    "Zircolite": "wagga40/zircolite:latest",
 }
 
 

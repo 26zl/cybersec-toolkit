@@ -166,6 +166,10 @@ declare -A _PIPX_BIN_NAMES=(
     [eth-ape]="ape"
     [vcdvcd]="vcdcat"
     [lascar]="lascarctl"
+    [plaso]="log2timeline"
+    [pyrit]="pyrit_scan"
+    [cisco-ai-mcp-scanner]="mcp-scanner"
+    [cisco-ai-skill-scanner]="skill-scanner"
 )
 
 check_pipx() {

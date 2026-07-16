@@ -87,14 +87,14 @@ Replace `/path/to/cybersec-toolkit` with the actual path.
 
 ### Codex and other MCP clients
 
-MCP is an open standard, so the same stdio server works with any MCP-capable client. The repository ships a project `.codex/config.toml` for [Codex](https://github.com/openai/codex) that mirrors `.mcp.json`:
+MCP is an open standard, so the same stdio server works with any MCP-capable client. The repository ships a project `.codex/config.toml` for [Codex](https://github.com/openai/codex) that resolves the Git root first:
 
 ```toml
 [mcp_servers.cybersec-tools]
 command = "bash"
 args = [
     "-lc",
-    "cd \"$(git rev-parse --show-toplevel)\" && exec uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner",
+    "cd \"$(git rev-parse --show-toplevel)\" && exec bash scripts/mcp-launch.sh",
 ]
 
 [mcp_servers.cybersec-tools.env]
@@ -102,7 +102,7 @@ CYBERSEC_MCP_ALLOW_EXTERNAL = "0"
 CYBERSEC_MCP_ALLOW_SCRIPTS = "0"
 ```
 
-Codex's primary config is `~/.codex/config.toml`; if the project-level file isn't picked up, copy the `[mcp_servers.cybersec-tools]` block into your home config. The wrapper moves to the Git root first, so it works when Codex starts inside a subdirectory. For **Cursor / Continue / Cline / Roo / Goose**, add the same launch command in the client's MCP settings. For a **local LLM**, run it behind an MCP-capable client (the wrapper speaks MCP, not the model itself) and point that client at the launch command above.
+Codex's primary config is `~/.codex/config.toml`; if the project-level file isn't picked up, copy the `[mcp_servers.cybersec-tools]` block into your home config. The wrapper moves to the Git root first, so it works when Codex starts inside a subdirectory. For **Cursor / Continue / Cline / Goose**, add the same launch command in the client's MCP settings. For a **local LLM**, run it behind an MCP-capable client (the wrapper speaks MCP, not the model itself) and point that client at the launch command above.
 
 Vendor-neutral repo instructions live in [`AGENTS.md`](../AGENTS.md) (read natively by Codex and many agentic tools); Claude Code reads [`CLAUDE.md`](../CLAUDE.md).
 

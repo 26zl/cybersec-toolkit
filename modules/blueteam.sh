@@ -33,7 +33,7 @@ install_module_blueteam() {
 
     install_git_batch "Blue Team - Git" "${BLUETEAM_GIT[@]}"
 
-    # Binary releases (Velociraptor, Laurel, FLOSS, Capa, Loki)
+    # Binary releases (Velociraptor, Laurel, FLOSS, Capa, Loki, Hayabusa)
     install_binary_releases "${BINARY_RELEASES_BLUETEAM[@]}"
 
     # Docker: IR platforms (only if enabled)
@@ -41,5 +41,7 @@ install_module_blueteam() {
         log_info "Installing Blue Team Docker platforms..."
         docker_pull "strangebee/thehive:latest" "TheHive" || true
         docker_pull "thehiveproject/cortex:latest" "Cortex" || true
+        docker_pull "zeek/zeek:latest" "Zeek" || true
+        docker_pull "wagga40/zircolite:latest" "Zircolite" || true
     fi
 }

@@ -427,6 +427,26 @@ PY
     [[ "$(_go_bin_name "github.com/OJ/gobuster/v3@latest")" == "gobuster" ]]
 }
 
+# ---------- architecture-aware release assets ------------------------------
+
+@test "new forensic and blue-team releases select x64 assets on amd64" {
+    source_libs debian apt
+    export SYS_ARCH=amd64
+    source "$PROJECT_ROOT/lib/installers.sh"
+
+    [[ "${BINARY_RELEASES_FORENSICS[*]}" == *"MemProcFS|memprocfs|linux_x64-"* ]]
+    [[ "${BINARY_RELEASES_BLUETEAM[*]}" == *"hayabusa|hayabusa|lin-x64-gnu"* ]]
+}
+
+@test "new forensic and blue-team releases select aarch64 assets on arm64" {
+    source_libs debian apt
+    export SYS_ARCH=arm64
+    source "$PROJECT_ROOT/lib/installers.sh"
+
+    [[ "${BINARY_RELEASES_FORENSICS[*]}" == *"MemProcFS|memprocfs|linux_aarch64-"* ]]
+    [[ "${BINARY_RELEASES_BLUETEAM[*]}" == *"hayabusa|hayabusa|lin-aarch64-gnu"* ]]
+}
+
 # ---------- Stage-1 C2 aggregation (install.sh install_modules loop) ---------
 #
 # Replicates the per-module aggregation loop from install_modules() in

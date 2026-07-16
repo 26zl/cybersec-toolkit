@@ -7,13 +7,14 @@ CLOUD_PACKAGES=()
 
 CLOUD_PIPX=(
     kube-hunter pacu cloudsplaining prowler scoutsuite
-    roadrecon checkov
+    roadrecon checkov cloudgoat
 )
 
 CLOUD_GO=(
     "github.com/BishopFox/cloudfox@latest"
     "github.com/projectdiscovery/cloudlist/cmd/cloudlist@latest"
     "github.com/sa7mon/s3scanner@latest"
+    "github.com/DataDog/stratus-red-team/v2/cmd/stratus@latest"
 )
 
 CLOUD_GIT=(
@@ -23,7 +24,7 @@ CLOUD_GIT=(
     "cloud_enum=https://github.com/initstring/cloud_enum.git"
 )
 
-CLOUD_GO_BINS=(cloudfox cloudlist s3scanner)
+CLOUD_GO_BINS=(cloudfox cloudlist s3scanner stratus)
 CLOUD_GIT_NAMES=(CloudBrute enumerate-iam GCPBucketBrute cloud_enum)
 
 install_module_cloud() {

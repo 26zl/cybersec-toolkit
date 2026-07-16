@@ -582,5 +582,15 @@
   {"name": "lascar", "method": "pipx", "module": "crypto", "url": "https://github.com/Ledger-Donjon/lascar"},
   {"name": "USB-HID-decoders", "method": "git", "module": "forensics", "url": "https://github.com/Nissen96/USB-HID-decoders"},
   {"name": "ctf-usb-keyboard-parser", "method": "git", "module": "forensics", "url": "https://github.com/TeamRocketIst/ctf-usb-keyboard-parser"},
-  {"name": "ffmpeg", "method": "apt", "module": "forensics", "url": "https://github.com/FFmpeg/FFmpeg"}
+  {"name": "ffmpeg", "method": "apt", "module": "forensics", "url": "https://github.com/FFmpeg/FFmpeg"},
+  {"name": "zeek", "method": "docker", "module": "blueteam", "url": "https://hub.docker.com/r/zeek/zeek"},
+  {"name": "hayabusa", "method": "binary", "module": "blueteam", "url": "https://github.com/Yamato-Security/hayabusa"},
+  {"name": "zircolite", "method": "docker", "module": "blueteam", "url": "https://hub.docker.com/r/wagga40/zircolite"},
+  {"name": "plaso", "method": "pipx", "module": "forensics", "url": "https://pypi.org/project/plaso/"},
+  {"name": "memprocfs", "method": "binary", "module": "forensics", "url": "https://github.com/ufrisk/MemProcFS"},
+  {"name": "stratus", "method": "go", "module": "cloud", "url": "https://github.com/DataDog/stratus-red-team"},
+  {"name": "cloudgoat", "method": "pipx", "module": "cloud", "url": "https://pypi.org/project/cloudgoat/"},
+  {"name": "pyrit", "method": "pipx", "module": "llm", "url": "https://pypi.org/project/pyrit/"},
+  {"name": "cisco-ai-mcp-scanner", "method": "pipx", "module": "llm", "url": "https://pypi.org/project/cisco-ai-mcp-scanner/"},
+  {"name": "cisco-ai-skill-scanner", "method": "pipx", "module": "llm", "url": "https://pypi.org/project/cisco-ai-skill-scanner/"}
 ]

@@ -4,7 +4,7 @@
 
 SHELL := bash
 SH_FILES := install.sh lib/*.sh modules/*.sh scripts/*.sh
-# Paths the CI markdown-lint job skips; applied to the tracked *.md list so make lint-md mirrors CI.
+# Paths the CI markdown-lint job skips; applied to tracked and untracked *.md files.
 MD_EXCLUDE := ^docs/TOOL_ANALYSIS\.md$$|^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
 
 .DEFAULT_GOAL := help
@@ -30,8 +30,8 @@ lint-py: ## ruff check on the MCP server and repo-root scripts
 	cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . \
 		&& uv run --group dev ruff check ../scripts/
 
-lint-md: ## markdownlint on tracked docs (mirrors the CI markdown-lint job)
-	git ls-files '*.md' | grep -vE '$(MD_EXCLUDE)' | xargs npx --yes markdownlint-cli2
+lint-md: ## markdownlint on tracked and untracked docs (mirrors the CI job)
+	git ls-files --cached --others --exclude-standard '*.md' | grep -vE '$(MD_EXCLUDE)' | xargs npx --yes markdownlint-cli2
 
 format: ## Auto-format the MCP server with ruff
 	cd mcp_server && uv run --group dev ruff format .

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "cybersec-tools": {
+      "type": "local",
+      "command": [
+        "bash",
+        "-lc",
+        "cd \"$(git rev-parse --show-toplevel)\" && exec bash scripts/mcp-launch.sh"
+      ],
+      "enabled": true,
+      "environment": {
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
+      }
+    }
+  }
+}

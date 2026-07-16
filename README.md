@@ -17,11 +17,32 @@
 
 <p align="center"><em>&ldquo;I am a friend of virtue, not of fortune.&rdquo;</em><br>&mdash; Gjergj Kastrioti &middot; Skanderbeg (1405&ndash;1468)</p>
 
-__Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets MCP-capable clients -- Claude Code/Desktop, Codex, Cursor, and local MCP hosts -- query the tool registry, check install status, recommend tools for a CTF category or bug-bounty target, and run installed tools through a governed execution path. Jump to [MCP Server (AI Integration)](#mcp-server-ai-integration).
+__Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets MCP-capable clients query the tool registry, check install status, recommend tools for a CTF category or bug-bounty target, and run installed tools through a governed execution path. Jump to [MCP Server (AI Integration)](#mcp-server-ai-integration).
 
 Bundled with a modular installer for Linux and Termux (Android) covering __580+ tools__, __18 modules__, __14 profiles__, and __12 install methods__.
 
 > __What makes it different:__ most toolkits stop at _installing_ tools. Here an AI can also _drive_ them — infer the problem type, pick the right tools from all modules/profiles, and work with you as an interactive companion. When you explicitly authorize it, the same MCP toolchain can enter an autonomous solver loop. __Companion by default; autonomous only when you ask.__
+
+### Works with
+
+| Client | Integration | Label |
+| ------ | ----------- | ----- |
+| Claude Code | `.mcp.json` (tracked) + `.claude/skills/` | Native configuration included |
+| Claude Desktop | `claude_desktop_config.json` | Configuration example documented |
+| OpenCode | `opencode.jsonc` (tracked) + `.agents/skills/` | Live tested |
+| Codex | `.codex/config.toml` (tracked) | Native configuration included |
+| Gemini CLI | `GEMINI.md` + `.gemini/settings.json` (tracked) | Native configuration included |
+| GitHub Copilot | `.mcp.json` (CLI) + `.github/copilot-instructions.md` | CLI live tested; VS Code documented |
+| Hermes Agent | User `~/.hermes/config.yaml` | Live tested |
+| OpenClaw | User `~/.openclaw/openclaw.json` + `.agents/skills/` | Live tested |
+| Cursor / Cline / Goose | Client MCP settings + Agent Skills | Compatible through MCP; skills supported |
+| Continue | Client MCP settings; rules/prompts for context | Compatible through MCP |
+| LM Studio (>=0.3.17) | `mcp.json`; manual or MCP-provided context | Compatible through MCP |
+| Ollama | MCP host in front of it | Compatible through an MCP host |
+| Aider | — | Not applicable |
+| Open WebUI | MCP-to-OpenAPI bridge | Compatible through MCP host or bridge |
+
+See [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md) for detailed configuration per client.
 
 ---
 
@@ -29,69 +50,16 @@ Bundled with a modular installer for Linux and Termux (Android) covering __580+ 
 
 Two entry points share one tool registry. An __operator__ runs the bash installer to put tools on disk; an __AI agent__ talks to the MCP server to discover, recommend, and execute those same tools through its governed tool path. `tools_config.json` is the single source of truth the modules define and the MCP advisors read, and CI validators keep the Python and bash sides in sync.
 
-<!-- Rendered to a PNG so it shows everywhere — including the GitHub mobile app,
-     which displays raw Mermaid instead of rendering it. Edit the Mermaid source in
-     the <details> block below, then re-render with:
-     npx @mermaid-js/mermaid-cli -i diagram.mmd -o assets/how-it-works.png -t dark -b "#0d1117" -s 3 -->
+<!-- Rendered from assets/how-it-works.mmd so it displays consistently everywhere.
+     Re-render with:
+     npm_config_cache=/tmp/cybersec-npm-cache npx --yes \
+       --package @mermaid-js/mermaid-cli@11.16.0 mmdc \
+       -i assets/how-it-works.mmd -o assets/how-it-works.png -t dark -b "#0d1117" -s 3 -->
 ![How it works: an operator runs the bash installer to put tools on disk; an AI agent drives the MCP server to discover, recommend, and execute them. The installer and MCP server meet at the tools_config.json registry and the installed tools on disk, with security.py governing tool execution and CI validators keeping the Python and bash sides in sync.](assets/how-it-works.png)
 
-<details>
-<summary>Diagram source (Mermaid)</summary>
+Mermaid source: [`assets/how-it-works.mmd`](assets/how-it-works.mmd).
 
-```mermaid
-flowchart TB
-    user(["Operator"]):::actor
-    ai(["AI agent — Claude Code / Cursor / local LLM"]):::actor
-
-    subgraph INSTALL["Installer (bash)"]
-        direction TB
-        sh["install.sh"]:::core
-        prof["14 profiles<br/>profiles/*.conf"]:::data
-        mod["18 modules<br/>modules/*.sh<br/>per-module tool arrays"]:::core
-        meth["12 install methods<br/>apt → pipx → go → cargo →<br/>binary → gem → docker → git"]:::core
-        sh --> prof --> mod --> meth
-    end
-
-    subgraph MCP["MCP server (Python / FastMCP)"]
-        direction TB
-        srv["server.py<br/>15 AI tools"]:::core
-        adv["tools_db · profiles<br/>ctf_advisor · bounty_advisor"]:::core
-        sec["security.py — policy engine<br/>allowlist · arg sanitize<br/>net policy · rate limit · audit"]:::sec
-        rem["remote.py<br/>SSH hosts"]:::core
-        srv --> adv
-        srv --> sec --> rem
-    end
-
-    reg[("tools_config.json<br/>tool registry — 580+")]:::data
-    disk["Installed tools<br/>/usr/local/bin + .versions"]:::data
-    post["verify · update · remove · backup"]:::core
-    skills["872 Claude skills + 4 coordinators<br/>finding-triage · security-comms<br/>authorization-gate · evidence-hygiene"]:::skill
-    ci["CI validators<br/>shellcheck · bats · ruff · pytest<br/>validate_tools_config · validate_mcp_sync"]:::ci
-
-    user -->|"sudo ./install.sh"| sh
-    ai <-->|"stdio MCP"| srv
-    ai -.->|"activate on demand"| skills
-
-    meth -->|"installs"| disk
-    sec -->|"run_tool / run_pipeline / run_script"| disk
-    disk --- post
-
-    mod -.->|"defines"| reg
-    adv -.->|"reads"| reg
-    ci -.->|"keep Python ↔ bash in sync"| reg
-    ci -.-> srv
-
-    classDef actor fill:#1f6feb,stroke:#0b3d91,color:#ffffff;
-    classDef core fill:#161b22,stroke:#30363d,color:#e6edf3;
-    classDef data fill:#1c2a1c,stroke:#2ea043,color:#e6edf3;
-    classDef sec fill:#3d1d1d,stroke:#f85149,color:#ffffff;
-    classDef skill fill:#2d2238,stroke:#a371f7,color:#e6edf3;
-    classDef ci fill:#33291a,stroke:#d29922,color:#e6edf3;
-```
-
-</details>
-
-__Reading the diagram:__ solid arrows are runtime/install actions, dashed arrows are data relationships. The installer (left) and MCP server (right) never call each other — they meet at the registry and at the tools on disk. `security.py` governs `run_tool` and `run_pipeline` through the allowlist, argument checks, and network policy without invoking a shell. `run_script` is a separate, disabled-by-default full-code-execution capability. Skills are methodology context the AI loads on demand; they guide _how_ tools get used but sit outside the execution path.
+__Reading the diagram:__ solid arrows are runtime or installation actions; dashed arrows are validation and context relationships. Client configurations enter through the root-aware launcher before reaching FastMCP. `security.py` governs `run_tool` and `run_pipeline` through the allowlist, argument checks, and network policy without invoking a shell. `run_script` remains a separate, disabled-by-default full-code-execution capability. Agent Skills stay outside the execution path: `.claude/skills/` is canonical and `scripts/sync-skills.sh` produces `.agents/skills/` for clients that use the portable mirror.
 
 ---
 
@@ -433,19 +401,25 @@ the repo root the launch command is:
 uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner
 ```
 
-`--directory mcp_server` is relative to the working directory, so if a client may start
-the server from a subdirectory, wrap it to move to the repo root first:
+`--directory mcp_server` is relative to the working directory. If a client may start
+the server from a subdirectory, use the root-aware launcher from the repo root:
 
 ```bash
-bash -lc 'cd "$(git rev-parse --show-toplevel)" && exec uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner'
+bash scripts/mcp-launch.sh
 ```
 
-- __Codex__ — a project `.codex/config.toml` is included (mirrors `.mcp.json`, using the
-  git-root wrapper above so it works from any subdirectory). Codex's primary config is
+From outside the repository, use the launcher's absolute path:
+
+```bash
+bash /path/to/cybersec-toolkit/scripts/mcp-launch.sh
+```
+
+- __Codex__ — a project `.codex/config.toml` is included (resolves the Git root
+  first so it works from any subdirectory). Codex's primary config is
   `~/.codex/config.toml`; if the project file isn't picked up, copy the
   `[mcp_servers.cybersec-tools]` block into your home config.
-- __Cursor / Continue / Cline / Roo / Goose__ — add the same launch command in the
-  client's MCP settings UI or config file (use the wrapper form if the client's working
+- __Cursor / Continue / Cline / Goose__ — add the same launch command in the
+  client's MCP settings UI or config file (use an absolute path if the client's working
   directory isn't the repo root).
 - __LM Studio (≥0.3.17)__ — LM Studio is itself an MCP host, no bridge needed. Add the
   server to its `mcp.json` (Cursor notation, same `mcpServers` shape as `.mcp.json`) using
@@ -596,9 +570,9 @@ research utilities.
 
 Run shell tests on Linux or WSL. Native Windows checkouts can rewrite the vendored Bats submodules with CRLF and cause `$'\r'` failures.
 
-## Claude Code Skills
+## Agent Skills
 
-This repo ships 872 [Claude Code skills](https://docs.claude.com/en/docs/claude-code/skills) under `.claude/skills/`. They activate on demand based on the task — they don't permanently consume context. Of these, __31 are project-authored__ and __841 are curated from open-source projects__ — each attributed below and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+This repo ships 872 Agent Skills under the canonical `.claude/skills/` source tree. Claude Code discovers that tree directly; `scripts/sync-skills.sh` generates the portable `.agents/skills/` mirror for compatible clients. Skills activate on demand based on the task — they don't permanently consume context. Of these, __31 are project-authored__ and __841 are curated from open-source projects__ — each attributed below and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 - 10 project-specific developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `guided-assessment`, `skill-dependency-audit`, `skill-curation-router`)
 - 4 cross-skill coordinators (`finding-triage`, `security-comms`, `authorization-gate`, `evidence-hygiene`) that other skills route findings, communication, authorization checks, and evidence sanitization through
@@ -625,13 +599,13 @@ The repo doubles as a [plugin marketplace](https://docs.claude.com/en/docs/claud
 
 The plugin exposes the skills under `.claude/skills/` (declared via the `skills` field in `.claude-plugin/plugin.json`). The MCP server is configured separately via `.mcp.json` — see [MCP Server](#mcp-server-ai-integration).
 
-### Use these skills outside Claude Code (Codex, Cursor, local LLMs)
+### Use these skills across supported clients
 
-On-demand activation — the Skill tool that loads a skill only when a task needs it — is
-specific to Claude Code. The skills themselves are just Markdown plus helper scripts, so
-any agent can use them as reference. `scripts/sync-skills.sh` mirrors `.claude/skills/`
-into `.agents/skills/`, the vendor-neutral path Codex and other `AGENTS.md`-aware tools
-look for:
+Agent Skills are Markdown plus optional helper files, but discovery and activation are
+client features rather than MCP features. Claude Code, OpenCode, Codex, Gemini CLI,
+GitHub Copilot, Cursor, Cline, Goose, Hermes, and OpenClaw support Agent Skills through
+different paths or settings. `scripts/sync-skills.sh` mirrors the repository's
+`.claude/skills/` source into `.agents/skills/` for clients that use that location:
 
 ```bash
 scripts/sync-skills.sh            # mirror .claude/skills/ -> .agents/skills/
@@ -641,10 +615,12 @@ scripts/sync-skills.sh --check    # report drift without writing (exit 1 if out 
 `make setup` (see [Development](#development)) runs this mirror step for you.
 
 `.claude/skills/` stays the single source of truth; `.agents/skills/` is generated and
-git-ignored, so re-run the sync after editing a skill. Codex reads [`AGENTS.md`](AGENTS.md)
-natively, which points it at `.agents/skills/`. Without Claude Code's auto-activation, name
-the skill you want the agent to follow (or let it search the mirrored directory) — the
-content works the same, it's just loaded manually instead of on demand.
+git-ignored, so re-run the sync after editing a skill. Continue and LM Studio can use the
+MCP server, but neither client currently documents automatic discovery of this
+repository's `SKILL.md` files. A standalone `SKILLS.md` index would only be manual
+context; it would not add on-demand activation. Use Continue rules/prompts or provide
+selected skill content as context in those clients. See
+[`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md) for the client-specific paths and limits.
 
 `scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax for Python and PowerShell. Vendored skill helper scripts can also have optional task-specific Python imports. Those imports are declared in [`.claude/skills/requirements.txt`](.claude/skills/requirements.txt), generated from the helper-script import inventory:
 

@@ -1,0 +1,64 @@
+%%{init: {"theme": "base", "themeVariables": {"background": "#0d1117", "primaryColor": "#161b22", "primaryTextColor": "#e6edf3", "primaryBorderColor": "#8b949e", "lineColor": "#8b949e", "secondaryColor": "#161b22", "tertiaryColor": "#0d1117", "clusterBkg": "#0d1117", "clusterBorder": "#30363d", "edgeLabelBackground": "#0d1117", "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif"}}}%%
+flowchart TB
+    clients["MCP / Agent Skills clients"]:::actor
+    configs["Client configurations"]:::core
+    launcher["scripts/mcp-launch.sh<br/>root-aware launcher"]:::core
+
+    clients --> configs --> launcher
+
+    subgraph MCP["FastMCP server"]
+        direction TB
+        gateway["MCP transport and tool API"]:::core
+        advisors["Discovery and advisors"]:::core
+        governed["Governed tool execution<br/>run_tool · run_pipeline"]:::security
+        scripts["Opt-in script execution<br/>run_script"]:::optin
+        remote["Authorized remote hosts"]:::core
+
+        gateway --> advisors
+        gateway --> governed
+        gateway --> scripts
+        governed --> remote
+    end
+
+    launcher --> gateway
+
+    subgraph INSTALLER["Tool installation"]
+        direction TB
+        operator(["Operator"]):::actor
+        installer["install.sh and module installers"]:::core
+        registry[("tools_config.json<br/>tool registry")]:::data
+        installed[("Installed security tools")]:::data
+
+        operator --> installer
+        installer --> registry
+        installer --> installed
+    end
+
+    registry --> advisors
+    registry --> governed
+    governed --> installed
+
+    subgraph SKILLS["Agent Skills"]
+        direction LR
+        source[".claude/skills/<br/>source of truth"]:::skill
+        sync["scripts/sync-skills.sh"]:::core
+        mirror[".agents/skills/<br/>generated mirror"]:::skill
+
+        source --> sync --> mirror
+    end
+
+    source -. "native client discovery" .-> clients
+    mirror -. "portable client discovery" .-> clients
+
+    ci["CI validation<br/>shell and Bats · registry and MCP<br/>Ruff and Pytest · skills and pins<br/>agent docs and client configs"]:::ci
+    ci -.-> registry
+    ci -.-> gateway
+    ci -.-> source
+
+    classDef actor fill:#1f6feb,stroke:#0b3d91,color:#ffffff;
+    classDef core fill:#161b22,stroke:#8b949e,color:#e6edf3;
+    classDef data fill:#1c2a1c,stroke:#2ea043,color:#e6edf3;
+    classDef security fill:#3d1d1d,stroke:#f85149,color:#ffffff;
+    classDef optin fill:#3a2d13,stroke:#d29922,color:#ffffff;
+    classDef skill fill:#2d2238,stroke:#a371f7,color:#e6edf3;
+    classDef ci fill:#1f2937,stroke:#58a6ff,color:#e6edf3;

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "cybersec-tools": {
+      "command": "bash",
+      "args": [
+        "-lc",
+        "cd \"$(git rev-parse --show-toplevel)\" && exec bash scripts/mcp-launch.sh"
+      ],
+      "env": {
+        "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+        "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
+      },
+      "trust": false
+    }
+  }
+}

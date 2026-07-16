@@ -7,7 +7,10 @@ PROMPTFOO_VERSION="${PROMPTFOO_VERSION:-latest}"
 
 LLM_PACKAGES=()
 
-LLM_PIPX=(garak cai-framework)
+LLM_PIPX=(
+    garak cai-framework pyrit
+    cisco-ai-mcp-scanner cisco-ai-skill-scanner
+)
 
 LLM_GIT=(
     "FuzzyAI=https://github.com/cyberark/FuzzyAI.git"

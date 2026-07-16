@@ -17,7 +17,7 @@ FORENSICS_PACKAGES=(
     ffmpeg
 )
 
-FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3 vcdvcd)
+FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3 vcdvcd plaso)
 
 FORENSICS_GIT=(
     "RegRipper=https://github.com/keydet89/RegRipper3.0.git"

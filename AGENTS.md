@@ -1,13 +1,13 @@
 # AGENTS.md
 
 Vendor-neutral guidance for AI coding agents and MCP-capable assistants working in
-this repository (Codex, Cursor, Continue, Cline/Roo, Goose, Aider, local LLMs behind
+this repository (Codex, Cursor, Continue, Cline, Goose, Aider, local LLMs behind
 an MCP-capable client, and others).
 
-> Claude Code reads [`CLAUDE.md`](CLAUDE.md), which carries the same project guidance
-> plus Claude-specific extras. This file is the vendor-neutral companion — keep the two
-> in sync when you change shared guidance (project layout, commands, MCP rules,
-> methodology). Sections marked **(Claude-specific)** below do not apply to other agents.
+This file is the single source of truth for shared project architecture, security,
+testing, tool-use, and contribution rules. Client entrypoints import it instead of
+copying it: [`CLAUDE.md`](CLAUDE.md) adds Claude Code-specific guidance and
+[`GEMINI.md`](GEMINI.md) adds Gemini CLI-specific guidance.
 
 ## Project Overview
 
@@ -22,13 +22,15 @@ The integration surface is split into two layers:
 
 1. **MCP server (`mcp_server/`) — vendor-neutral.** This is the core integration. Any
    MCP-capable client can launch it over stdio and use its 15 tools. This works with
-   Claude Code/Desktop, Codex, Cursor, Continue, Cline/Roo, Goose, and local LLMs that
+   Claude Code/Desktop, Codex, Cursor, Continue, Cline, Goose, and local LLMs that
    run behind an MCP-capable client. A bare local model does **not** speak MCP on its
    own — it needs an agent/client wrapper that can call MCP tools.
-2. **Agent instructions and skills — partly portable.** `AGENTS.md` (this file) is read
+2. **Agent instructions and skills — client-dependent.** `AGENTS.md` (this file) is read
    natively by Codex and many agentic tools. `CLAUDE.md` is Claude's equivalent.
-   `.claude/skills/` is a Claude Code feature; other agents can consume a mirrored copy
-   via `scripts/sync-skills.sh` (see [Skills](#skills-portable-via-sync)).
+   `.claude/skills/` is the repository source of truth; clients that use
+   `.agents/skills/` consume the generated mirror created by `scripts/sync-skills.sh`.
+   MCP compatibility alone does not imply automatic Agent Skills discovery (see
+   [Skills](#skills-portable-via-sync)).
 
 ### Connecting a client to the MCP server
 
@@ -42,10 +44,15 @@ uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banne
 | --- | --- | --- |
 | Claude Code | `.mcp.json` (tracked, repo root) | Picked up automatically; tools appear in `/mcp`. |
 | Claude Desktop | `claude_desktop_config.json` | See `mcp_server/README.md`. |
+| OpenCode | `opencode.jsonc` (tracked, repo root) | Picked up automatically; MCP server defined under `mcp`. Skills discovered from `.agents/skills/` and `.claude/skills/`. |
 | Codex | `.codex/config.toml` (repo) or `~/.codex/config.toml` | `[mcp_servers.*]` block. Codex's primary config is `~/.codex/config.toml`; if project-level config is not picked up, merge the block into the home config. |
-| Cursor / Continue / Cline / Roo / Goose | client-specific MCP settings | Same command/args; consult the client's MCP docs. |
+| Gemini CLI | `.gemini/settings.json` (tracked) + `GEMINI.md` | MCP server defined under `mcpServers`. Project context in `GEMINI.md`. |
+| GitHub Copilot | `.mcp.json` (CLI) + `.github/copilot-instructions.md` (tracked) | Copilot CLI reads the workspace MCP definition; the instructions file supplies concise repository guidance. VS Code uses `.vscode/mcp.json`; see `docs/AI_CLIENTS.md`. |
+| Hermes Agent | `~/.hermes/config.yaml` | Native MCP client. See `docs/AI_CLIENTS.md` for example config. |
+| OpenClaw | `~/.openclaw/openclaw.json` | Native MCP client + `.agents/skills/` discovery. See `docs/AI_CLIENTS.md`. |
+| Cursor / Continue / Cline / Goose | client-specific MCP settings | Same command/args; consult the client's MCP docs. |
 | LM Studio (≥0.3.17) | `mcp.json` (Cursor notation) | Native MCP host, no bridge needed. Add the server under `mcpServers` with an absolute path (or the git-root wrapper), since LM Studio's working directory isn't the repo. Using MCP via LM Studio's API requires ≥0.4.0 and an MCP-capable endpoint such as `/api/v1/chat` or `/v1/responses`. |
-| Ollama | the MCP host/agent in front of it | Ollama is a model runtime, not an MCP host. Put an MCP-capable agent in front of it (e.g. Kit). |
+| Ollama | the MCP host/agent in front of it | Ollama is a model runtime, not an MCP host. Put an MCP-capable agent in front of it (e.g. OpenCode, Hermes, OpenClaw). |
 | Local LLM (other) | the MCP-capable host/client wrapping it | A bare model doesn't speak MCP; configure the host (LM Studio, Cline, Continue, Goose, Kit, or Open WebUI via an MCP→OpenAPI bridge such as `mcpo`), not the model. |
 
 Default-safe environment for every client: `CYBERSEC_MCP_ALLOW_EXTERNAL=0` and
@@ -79,7 +86,7 @@ python3 scripts/validate_claude_skills.py
 # Validate optional Python deps used by skill helper scripts are declared
 python3 scripts/audit_skill_dependencies.py --check-declared
 
-# Check CLAUDE.md and AGENTS.md agree (headline counts + shared MANDATORY sections)
+# Check AGENTS.md claims and the Claude/Gemini import contracts
 python3 scripts/validate_agent_docs.py
 
 # Regenerate skill curation index after adding/removing/renaming a skill dir
@@ -223,9 +230,9 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 ## Skills (portable via sync)
 
 `.claude/skills/` ships 872 on-demand skills (CTF/bounty methodology, offensive/defensive
-how-tos, code-audit skills, project developer skills, and cross-skill coordinators). They
-are a **Claude Code feature**, but the content is plain Markdown + helper scripts and is
-useful to any agent.
+how-tos, code-audit skills, project developer skills, and cross-skill coordinators).
+The content follows the Agent Skills directory pattern, but discovery paths, activation,
+dependency handling, and limits are controlled by each client.
 
 To make them available to Codex and other agents that read `.agents/skills/`, mirror them:
 
@@ -237,6 +244,11 @@ scripts/sync-skills.sh --check    # report drift without writing
 `.claude/skills/` is the **single source of truth**; `.agents/skills/` is a generated
 mirror and is git-ignored. Re-run the sync after editing skills. Source/category index:
 [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md).
+
+Continue and LM Studio can use the MCP server but do not currently document automatic
+discovery of these repository skills. A root `SKILLS.md` would be an index for manual
+context, not an activation mechanism. Use client rules/prompts or selected skill content
+when native discovery is unavailable.
 
 Vendored skills are copies (not submodules) of six upstream repos, each pinned to a
 commit in `SKILLS.md`. `scripts/update-skills.sh` clones every pinned source and reports

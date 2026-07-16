@@ -67,14 +67,14 @@ jobs:
           uv run --group dev ruff format --check .
           uv run --group dev python -m pytest tests/ -q
           # Ignore IDs in known-vulnerabilities.txt (mirrors security.yml).
-          ignore_args=""
+          ignore_args=()
           while IFS= read -r line; do
             line="${line%%#*}"
             line="$(echo "$line" | xargs)"
             [[ -z "$line" ]] && continue
-            ignore_args="$ignore_args --ignore-vuln $line"
+            ignore_args+=(--ignore-vuln "$line")
           done < known-vulnerabilities.txt
-          uvx pip-audit $ignore_args
+          uvx pip-audit "${ignore_args[@]}"
           cd ..
           python3 scripts/validate_mcp_sync.py
 

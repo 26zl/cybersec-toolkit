@@ -1693,6 +1693,11 @@ build_module_from_source() {
 # Format: "repo|binary|pattern|dest_dir|archive_binary" (last two optional)
 # Used by modules for install and scripts/update.sh for updates.
 # These arrays use uppercased module names, not short module prefixes.
+# Hayabusa and MemProcFS call their 64-bit release assets x64 on Intel and
+# aarch64 on ARM. armv7 has no upstream release and is filtered below.
+_BINARY_RELEASE_ARCH_X64="x64"
+[[ "${SYS_ARCH:-amd64}" == "arm64" ]] && _BINARY_RELEASE_ARCH_X64="aarch64"
+
 BINARY_RELEASES_MISC=(
     "DominicBreuker/pspy|pspy|pspy64$"
     "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz"
@@ -1725,6 +1730,7 @@ BINARY_RELEASES_REVERSING=(
 )
 BINARY_RELEASES_FORENSICS=(
     "WithSecureLabs/chainsaw|chainsaw|x86_64.*linux"
+    "ufrisk/MemProcFS|memprocfs|linux_${_BINARY_RELEASE_ARCH_X64}-.*\\.tar\\.gz$|${GITHUB_TOOL_DIR}/MemProcFS|memprocfs"
 )
 BINARY_RELEASES_ENTERPRISE=(
     "ropnop/kerbrute|kerbrute|linux_amd64"
@@ -1735,6 +1741,7 @@ BINARY_RELEASES_BLUETEAM=(
     "mandiant/flare-floss|floss|linux\\.zip"
     "mandiant/capa|capa|linux\\.zip"
     "Neo23x0/Loki-RS|loki|loki-linux-x86_64.*\\.tar\\.gz"
+    "Yamato-Security/hayabusa|hayabusa|lin-${_BINARY_RELEASE_ARCH_X64}-gnu\\.zip$|${GITHUB_TOOL_DIR}/hayabusa|hayabusa-*-lin-${_BINARY_RELEASE_ARCH_X64}-gnu"
 )
 BINARY_RELEASES_CONTAINERS=(
     "anchore/grype|grype|linux_amd64\\.tar\\.gz"
@@ -1769,6 +1776,8 @@ ALL_DOCKER_IMAGES=(
     "thehiveproject/cortex:latest|Cortex"
     "trailofbits/echidna|Echidna"
     "vxcontrol/pentagi:latest|PentAGI"
+    "zeek/zeek:latest|Zeek"
+    "wagga40/zircolite:latest|Zircolite"
 )
 
 # install_binary_releases — install all binary releases from a registry array.
@@ -1798,6 +1807,9 @@ install_binary_releases() {
     if [[ "$IS_ARM" == "true" ]]; then
         local -a _arm_filtered=()
         local -a _arm_skip_bins=(pspy rp-lin chainsaw velociraptor laurel)
+        if [[ "$SYS_ARCH" == "armv7" ]]; then
+            _arm_skip_bins+=(hayabusa memprocfs)
+        fi
         for _entry in "${entries[@]}"; do
             IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
             local _skip=false
