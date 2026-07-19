@@ -137,9 +137,7 @@ docker build --platform linux/amd64 -t cybersec-toolkit .
 docker run --platform linux/amd64 cybersec-toolkit --profile ctf
 ```
 
-__Termux (Android, experimental):__
-
-> __Note:__ Termux support is under development and has not been fully tested on physical Android devices. Expect rough edges.
+__Termux (Android):__
 
 ```bash
 pkg install git
@@ -677,7 +675,7 @@ __Debian/Ubuntu/Kali is the primary target__ -- the full 580+ registry is availa
 | -------- | ------ |
 | __WSL__ | Supported for installs and MCP usage. Wireless module auto-skipped (no hardware access) and kernel-level packages filtered. Validate release-critical changes in a local WSL distro because there is no dedicated CI job yet. See the [Windows Defender note](#windows-defender-false-positives) below if you keep the repo on a Windows-mounted path. |
 | __ARM__ (aarch64/armv7) | Supported with automatic skips for x86-only binary releases and build-from-source tools. No dedicated CI job yet. |
-| __Termux__ (Android) | Experimental. Under development, not covered by CI, and not yet broadly tested on physical devices. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
+| __Termux__ (Android) | Supported. No dedicated CI job yet. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
 | __Windows__ (native) | Not supported. Use WSL. |
 | __macOS__ | Not supported. Use Docker container. |
 
