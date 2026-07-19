@@ -10,6 +10,12 @@ updates:
       prefix: "ci"
     labels:
       - "dependencies"
+    # codeql-action's init/analyze/upload-sarif must move together — separate PRs
+    # per sub-action fail the version-consistency check. Group them into one PR.
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   - package-ecosystem: "uv"
     directory: "/mcp_server"
