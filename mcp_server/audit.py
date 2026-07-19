@@ -20,9 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
 # Credential redaction
-# ---------------------------------------------------------------------------
 
 # Credential patterns must remain idempotent when applied repeatedly.
 _REDACTED = "[REDACTED]"
@@ -168,9 +166,7 @@ def _redact_script_code(code: str) -> str:
     return code
 
 
-# ---------------------------------------------------------------------------
 # Logger setup
-# ---------------------------------------------------------------------------
 
 
 def _default_audit_log_path() -> Path:
@@ -258,9 +254,7 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
-# ---------------------------------------------------------------------------
 # Server lifecycle
-# ---------------------------------------------------------------------------
 
 
 def log_server_start() -> None:
@@ -278,9 +272,7 @@ def log_server_start() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
 # MCP tool call tracking
-# ---------------------------------------------------------------------------
 
 
 def _redact_steps(steps: Any) -> Any:
@@ -364,9 +356,7 @@ def log_tool_result(
     _log(logging.INFO, entry)
 
 
-# ---------------------------------------------------------------------------
 # Validation steps (granular)
-# ---------------------------------------------------------------------------
 
 
 def log_validation(
@@ -388,9 +378,7 @@ def log_validation(
     _log(logging.DEBUG, entry)
 
 
-# ---------------------------------------------------------------------------
 # Execution events (tool, script, pipeline)
-# ---------------------------------------------------------------------------
 
 
 def log_blocked(
@@ -505,9 +493,7 @@ def log_script_result(
     )
 
 
-# ---------------------------------------------------------------------------
 # Pipeline step tracking
-# ---------------------------------------------------------------------------
 
 
 def log_pipeline_start(steps: list[dict], timeout: int) -> str:
@@ -577,9 +563,7 @@ def log_pipeline_result(
     )
 
 
-# ---------------------------------------------------------------------------
 # Rate limiting
-# ---------------------------------------------------------------------------
 
 
 def log_rate_limit(action: str, current: int, max_val: int) -> None:
@@ -596,9 +580,7 @@ def log_rate_limit(action: str, current: int, max_val: int) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
 # DNS resolution
-# ---------------------------------------------------------------------------
 
 
 def log_dns(
@@ -626,9 +608,7 @@ def log_dns(
     _log(logging.DEBUG, entry)
 
 
-# ---------------------------------------------------------------------------
 # Remote host management
-# ---------------------------------------------------------------------------
 
 
 def log_remote_op(action: str, host: str = "", detail: str = "") -> None:

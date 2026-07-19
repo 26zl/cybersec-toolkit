@@ -239,29 +239,29 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | `crypto` | 13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
 | `pwn` | 33 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | 31 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | 50 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
+| `forensics` | 52 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
 | `enterprise` | 76 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | 39 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | 28 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | 13 | Image/audio steganography, detection, StegCracker |
-| `cloud` | 15 | AWS/Azure/GCP security auditing, Checkov |
+| `cloud` | 17 | AWS/Azure/GCP security auditing, Checkov |
 | `containers` | 8 | Docker/Kubernetes security (Grype, Syft, Kubescape, kubeaudit) |
-| `blueteam` | 31 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
+| `blueteam` | 34 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
 | `mobile` | 12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
 | `blockchain` | 12 | Smart contract auditing (Slither, Mythril, Foundry, Aderyn), blockchain forensics, Echidna (Docker) |
-| `llm` | 9 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
+| `llm` | 12 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
 
 ## Install Methods
 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
-| Git clone | ~182 | GitHub repos with auto-setup, resources, wordlists |
+| Git clone | ~171 | GitHub repos with auto-setup, resources, wordlists |
 | System packages (apt/dnf/pacman/zypper) | ~161 | nmap, wireshark, john, hashcat |
-| pipx | ~116 | sqlmap, impacket, bloodhound, volatility3 |
-| Go install | ~53 | nuclei, subfinder, ffuf, httpx |
-| Binary release | ~35 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
-| Build from source | ~12 | massdns, duplicut, AFLplusplus, honggfuzz |
-| Docker | ~9 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
+| pipx | ~121 | sqlmap, impacket, bloodhound, volatility3 |
+| Go install | ~54 | nuclei, subfinder, ffuf, httpx |
+| Binary release | ~37 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
+| Build from source | ~23 | massdns, duplicut, AFLplusplus, honggfuzz |
+| Docker | ~11 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
 | Cargo (Rust) | 5 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
@@ -468,8 +468,10 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
     "cybersec-tools": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm", "cybersec-toolkit",
-        "bash", "-c",
+        "run", "-i", "--rm",
+        "-e", "CYBERSEC_MCP_ALLOW_EXTERNAL=0", "-e", "CYBERSEC_MCP_ALLOW_SCRIPTS=0",
+        "--entrypoint", "bash", "cybersec-toolkit",
+        "-c",
         "cd /opt/cybersec-toolkit/mcp_server && uv run fastmcp run server.py --transport stdio --no-banner"
       ]
     }
@@ -663,6 +665,8 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 | `trailofbits/echidna` | blockchain | `--enable-docker` | Echidna smart contract fuzzer |
 | `strangebee/thehive:latest` | blueteam | `--enable-docker` | TheHive IR platform |
 | `thehiveproject/cortex:latest` | blueteam | `--enable-docker` | Cortex analysis |
+| `zeek/zeek:latest` | blueteam | `--enable-docker` | Zeek network analysis |
+| `wagga40/zircolite:latest` | blueteam | `--enable-docker` | Zircolite EVTX detection |
 | `vxcontrol/pentagi:latest` | llm | `--enable-docker` | PentAGI autonomous pentesting |
 
 ## Distro Support
@@ -723,6 +727,11 @@ If this toolkit is useful to you, a star helps others find it.
 ## License
 
 MIT License -- see [LICENSE](LICENSE) for details.
+
+This repository also redistributes third-party components under their own terms,
+including some under CC-BY-SA-4.0 (ShareAlike, not relicensable to MIT). If you
+redistribute or adapt bundled content, follow those terms — see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 For contribution workflow and review expectations, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 For community behavior expectations, see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).

@@ -555,12 +555,11 @@ detect_pkg_manager() {
     export PKG_MANAGER
 }
 
-# Conditional sudo — no-op when already root (EUID=0).
-# Prevents failures in minimal containers and environments without sudo.
-# Uses env(1) so VAR=val arguments (e.g. DEBIAN_FRONTEND=noninteractive)
-# are interpreted correctly in both paths.
+# Conditional sudo — run directly when already root (EUID=0) or on Termux, where
+# there is no sudo and the user is never root. Uses env(1) so VAR=val arguments
+# (e.g. DEBIAN_FRONTEND=noninteractive) are interpreted correctly in both paths.
 maybe_sudo() {
-    if [[ $EUID -eq 0 ]]; then
+    if [[ $EUID -eq 0 ]] || [[ -n "${TERMUX_VERSION:-}" ]] || [[ "${PKG_MANAGER:-}" == "pkg" ]]; then
         env "$@"
     else
         sudo env "$@"
@@ -917,6 +916,11 @@ _escape_single_quoted() {
     echo "${s//\'/\'\\\'\'}"
 }
 
+# Abort git transfers that stall below ~1 KB/s for 60s so an unattended install/
+# update can't hang forever on a dead mirror. Passed as `git -c` config (not env
+# vars, which would not survive the _as_builder privilege drop).
+_GIT_STALL_OPTS="-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60"
+
 # Non-destructive fallback when `git pull` fails on a cloned tool repo.
 # Preserves any local user edits by stashing them first, then fetches + resets
 # to origin/<branch>, then pops the stash back. Conflicted stash entries remain
@@ -945,7 +949,7 @@ _git_safe_reset_to_remote() {
         [[ "$_stash_top" == *"cybersec-toolkit: auto-stash before update"* ]] && _stashed=1
     fi
 
-    if ! _as_builder "git -C '$_repo_escaped' fetch origin" >> "$log_file" 2>&1 \
+    if ! _as_builder "git $_GIT_STALL_OPTS -C '$_repo_escaped' fetch origin" >> "$log_file" 2>&1 \
         || ! _as_builder "git -C '$_repo_escaped' reset --hard '$_branch_escaped'" >> "$log_file" 2>&1; then
         [[ "$_stashed" == "1" ]] && log_warn "Local changes preserved in stash for $(basename "$repo_path") — run 'git -C $repo_path stash list'"
         return 1
@@ -971,7 +975,7 @@ git_clone_or_pull() {
     _url_escaped="$(_escape_single_quoted "$repo_url")"
     if [[ -d "$dest/.git" ]]; then
         log_info "Updating $(basename "$dest")..."
-        if ! _as_builder "git -C '$_dest_escaped' pull -q" >> "$LOG_FILE" 2>&1; then
+        if ! _as_builder "git $_GIT_STALL_OPTS -C '$_dest_escaped' pull -q" >> "$LOG_FILE" 2>&1; then
             log_debug "git pull failed for $(basename "$dest") — stashing local changes and resetting to remote HEAD..."
             if ! _git_safe_reset_to_remote "$dest" "$LOG_FILE"; then
                 log_warn "git update failed for $(basename "$dest")"
@@ -982,7 +986,7 @@ git_clone_or_pull() {
         mkdir -p "$dest" 2>/dev/null || true
         _chown_for_builder "$dest"
         log_info "Cloning $(basename "$dest")..."
-        if ! _as_builder "git clone --depth 1 -q '$_url_escaped' '$_dest_escaped'" >> "$LOG_FILE" 2>&1; then
+        if ! _as_builder "git $_GIT_STALL_OPTS clone --depth 1 -q '$_url_escaped' '$_dest_escaped'" >> "$LOG_FILE" 2>&1; then
             log_warn "git clone failed for $(basename "$dest")"
             return 1
         fi

@@ -156,6 +156,30 @@ setup() {
 
 # ---------- Package manager abstraction --------------------------------------
 
+@test "maybe_sudo runs env directly on Termux (no sudo)" {
+    make_test_tmpdir
+    export TERMUX_VERSION=0.118
+    sudo() { echo called > "$TEST_TMPDIR/sudo_marker"; }
+    env() { echo "ENV_DIRECT:$*"; }
+
+    run maybe_sudo apt-get update
+    assert_success
+    assert_output --partial "ENV_DIRECT:apt-get update"
+    [ ! -f "$TEST_TMPDIR/sudo_marker" ]
+}
+
+@test "maybe_sudo runs env directly when PKG_MANAGER=pkg (no sudo)" {
+    make_test_tmpdir
+    export PKG_MANAGER=pkg
+    sudo() { echo called > "$TEST_TMPDIR/sudo_marker"; }
+    env() { echo "ENV_DIRECT:$*"; }
+
+    run maybe_sudo pkg install foo
+    assert_success
+    assert_output --partial "ENV_DIRECT:pkg install foo"
+    [ ! -f "$TEST_TMPDIR/sudo_marker" ]
+}
+
 @test "pkg_update retries zypper refresh after cleaning stale metadata" {
     source_libs opensuse-tumbleweed zypper
     make_test_tmpdir

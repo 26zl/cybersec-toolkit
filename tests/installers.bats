@@ -63,6 +63,154 @@ PY
     assert_output --partial "invalid zip archive"
 }
 
+@test "release archive validator rejects tar path traversal members" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    python3 - "$TEST_TMPDIR/release.tar.gz" <<'PY'
+import io, sys, tarfile
+with tarfile.open(sys.argv[1], "w:gz") as tf:
+    data = b"x"
+    info = tarfile.TarInfo(name="../escape")
+    info.size = len(data)
+    tf.addfile(info, io.BytesIO(data))
+PY
+
+    run _validate_release_archive "$TEST_TMPDIR/release.tar.gz" tar
+    assert_failure
+    assert_output --partial "unsafe archive member path"
+}
+
+@test "release archive validator rejects zip path traversal members" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    python3 - "$TEST_TMPDIR/release.zip" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    archive.writestr("../escape", "x")
+PY
+
+    run _validate_release_archive "$TEST_TMPDIR/release.zip" zip
+    assert_failure
+    assert_output --partial "unsafe archive member path"
+}
+
+# ---------- GitHub release checksum enforcement (offline) --------------------
+
+@test "verify_github_checksum accepts a matching checksum" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local url="https://example.com/checksums.txt"
+    local key; key=$(echo "$url" | sed 's|[/:?&=]|_|g')
+    local bin="$TEST_TMPDIR/tool"
+    printf 'binary-contents\n' > "$bin"
+    local hash; hash=$(sha256sum "$bin" | awk '{print $1}')
+    printf '%s  tool\n' "$hash" > "$_GH_API_CACHE_DIR/checksum_${key}"
+    local rel='{"assets":[{"name":"checksums.txt","browser_download_url":"'"$url"'"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool"
+    assert_success
+}
+
+@test "verify_github_checksum rejects a mismatch and writes the .checksum_mismatch marker" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local url="https://example.com/checksums.txt"
+    local key; key=$(echo "$url" | sed 's|[/:?&=]|_|g')
+    local bin="$TEST_TMPDIR/tool"
+    printf 'binary-contents\n' > "$bin"
+    printf '%s  tool\n' "$(printf '0%.0s' {1..64})" > "$_GH_API_CACHE_DIR/checksum_${key}"
+    local rel='{"assets":[{"name":"checksums.txt","browser_download_url":"'"$url"'"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool"
+    assert_failure
+    [ -f "$TEST_TMPDIR/.checksum_mismatch" ]
+}
+
+@test "verify_github_checksum fails (no marker) when the asset has no checksum entry" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local url="https://example.com/checksums.txt"
+    local key; key=$(echo "$url" | sed 's|[/:?&=]|_|g')
+    local bin="$TEST_TMPDIR/tool"
+    printf 'binary-contents\n' > "$bin"
+    local hash; hash=$(sha256sum "$bin" | awk '{print $1}')
+    printf '%s  someotherfile\n' "$hash" > "$_GH_API_CACHE_DIR/checksum_${key}"
+    local rel='{"assets":[{"name":"checksums.txt","browser_download_url":"'"$url"'"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool"
+    assert_failure
+    [ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]
+}
+
+# ---------- GitHub token handling (netrc, not a header) ---------------------
+
+@test "_setup_curl_opts stores the token in a chmod-600 netrc, never a header or the raw token" {
+    source_libs --installers debian apt
+    export GITHUB_TOKEN=faketoken123
+
+    _setup_curl_opts
+
+    [ -n "$_GH_NETRC_FILE" ]
+    [ -f "$_GH_NETRC_FILE" ]
+    local mode
+    mode=$(stat -c '%a' "$_GH_NETRC_FILE" 2>/dev/null || stat -f '%Lp' "$_GH_NETRC_FILE")
+    [ "$mode" = "600" ]
+    grep -q "password faketoken123" "$_GH_NETRC_FILE"
+
+    local opts="${_CURL_OPTS[*]}"
+    [[ "$opts" == *"--netrc-file"* ]]
+    [[ "$opts" != *"faketoken123"* ]]
+    [[ "$opts" != *" -H "* ]]
+}
+
+# ---------- curl-pipe content validation gate -------------------------------
+
+@test "curl-pipe validator rejects an empty download" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/lib/shared.sh"
+    make_test_tmpdir
+    : > "$TEST_TMPDIR/script.sh"
+
+    run _validate_curl_pipe "$TEST_TMPDIR/script.sh" install
+    assert_failure
+    assert_output --partial "empty or missing"
+}
+
+@test "curl-pipe validator rejects a suspiciously small download" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/lib/shared.sh"
+    make_test_tmpdir
+    printf '#!/bin/sh\necho hi\n' > "$TEST_TMPDIR/script.sh"
+
+    run _validate_curl_pipe "$TEST_TMPDIR/script.sh" install
+    assert_failure
+    assert_output --partial "suspiciously small"
+}
+
+@test "curl-pipe validator accepts a valid script containing all keywords" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/lib/shared.sh"
+    make_test_tmpdir
+    { printf 'install github\n'; printf '%*s' 600 ''; printf '\n'; } > "$TEST_TMPDIR/script.sh"
+
+    run _validate_curl_pipe "$TEST_TMPDIR/script.sh" install github
+    assert_success
+}
+
+@test "curl-pipe validator rejects a script missing a required keyword" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/lib/shared.sh"
+    make_test_tmpdir
+    { printf 'install only\n'; printf '%*s' 600 ''; printf '\n'; } > "$TEST_TMPDIR/script.sh"
+
+    run _validate_curl_pipe "$TEST_TMPDIR/script.sh" install github
+    assert_failure
+    assert_output --partial "missing expected keyword"
+}
+
 # ---------- fixup_package_names — apt (no-op) --------------------------------
 
 @test "fixup_package_names is a no-op for apt" {

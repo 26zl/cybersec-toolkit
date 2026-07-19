@@ -219,12 +219,14 @@ echo ""
 
 # 2) Ruby gems — must run BEFORE system packages remove ruby
 if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
-    installed_gems=$(gem list --no-details 2>/dev/null || true)
+    # Query and uninstall in the builder's gem store (install runs as $SUDO_USER),
+    # not root's — otherwise nothing is detected or removed under sudo.
+    installed_gems=$(_as_builder "$(command -v gem) list --no-details" 2>/dev/null || true)
     gems_removed=0
     gems_skipped=0
     for gem_name in "${GEMS_TO_REMOVE[@]}"; do
         if echo "$installed_gems" | awk -v t="$gem_name" '$1==t{f=1} END{exit !f}'; then
-            if gem uninstall -x --force "$gem_name" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(command -v gem) uninstall -x --force '$(_escape_single_quoted "$gem_name")'" >> "$LOG_FILE" 2>&1; then
                 gems_removed=$((gems_removed + 1))
             else
                 log_warn "Failed to remove gem: $gem_name"
@@ -426,14 +428,17 @@ fi
 
 # Foundry (forge, cast, anvil, chisel — installed by blockchain module)
 if should_remove "blockchain"; then
-    _foundry_dir="$HOME/.foundry"
+    # Foundry installs under the invoking user's home; $HOME is /root under sudo.
+    _foundry_dir="$(_builder_home)/.foundry"
+    # Remove the /usr/local/bin symlinks regardless of whether the dir still exists,
+    # so a partial/stale install is cleaned up too. (chisel is never symlinked by
+    # the blockchain module — the [[ -L ]] guard leaves a real go-installed chisel alone.)
+    for _fbin in foundryup forge cast anvil; do
+        [[ -L "$PIPX_BIN_DIR/$_fbin" ]] && rm -f "$PIPX_BIN_DIR/$_fbin" 2>/dev/null
+    done
     if [[ -d "$_foundry_dir" ]]; then
-        # Remove symlinks from PIPX_BIN_DIR
-        for _fbin in foundryup forge cast anvil chisel; do
-            [[ -L "$PIPX_BIN_DIR/$_fbin" ]] && rm -f "$PIPX_BIN_DIR/$_fbin" 2>/dev/null
-        done
         rm -rf "$_foundry_dir"
-        log_success "Removed Foundry ($HOME/.foundry)"
+        log_success "Removed Foundry ($_foundry_dir)"
     fi
 fi
 

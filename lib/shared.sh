@@ -155,7 +155,7 @@ ensure_go() {
     local GO_INSTALL_VERSION=""
     local _go_json
     _go_json=$(mktemp); _register_cleanup "$_go_json"
-    if curl -fsSL "https://go.dev/dl/?mode=json" -o "$_go_json" 2>>"$LOG_FILE"; then
+    if curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 "https://go.dev/dl/?mode=json" -o "$_go_json" 2>>"$LOG_FILE"; then
         GO_INSTALL_VERSION=$(python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -199,7 +199,9 @@ if data:
     log_info "Downloading Go $GO_INSTALL_VERSION (latest stable) from go.dev..."
     local tmp_tar
     tmp_tar=$(mktemp); _register_cleanup "$tmp_tar"
-    if ! curl -fsSL "$url" -o "$tmp_tar" 2>>"$LOG_FILE"; then
+    if ! curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --connect-timeout 30 --speed-limit 1024 --speed-time 30 \
+            "$url" -o "$tmp_tar" 2>>"$LOG_FILE"; then
         log_error "Failed to download Go $GO_INSTALL_VERSION"
         rm -f "$tmp_tar"
         return 1
@@ -311,7 +313,7 @@ ensure_cargo() {
 
     local _rustup_tmp
     _rustup_tmp=$(mktemp); _register_cleanup "$_rustup_tmp"
-    if curl -L --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
+    if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -sSf https://sh.rustup.rs -o "$_rustup_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_rustup_tmp" 'rustup' 'RUSTUP' 'sh' \
             && chmod +r "$_rustup_tmp" \
             && _as_builder "sh '$(_escape_single_quoted "$_rustup_tmp")' -y" >> "$LOG_FILE" 2>&1; then
@@ -360,7 +362,7 @@ ensure_cargo_binstall() {
 
     local _binstall_tmp
     _binstall_tmp=$(mktemp); _register_cleanup "$_binstall_tmp"
-    if curl -L --proto '=https' --tlsv1.2 -sSf \
+    if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -sSf \
             https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
             -o "$_binstall_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_binstall_tmp" 'cargo-binstall' 'install' 'github.com' \
@@ -402,7 +404,7 @@ ensure_uv() {
 
     local _uv_tmp
     _uv_tmp=$(mktemp); _register_cleanup "$_uv_tmp"
-    if curl -L --proto '=https' --tlsv1.2 -sSf https://astral.sh/uv/install.sh -o "$_uv_tmp" 2>>"$LOG_FILE" \
+    if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -sSf https://astral.sh/uv/install.sh -o "$_uv_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_uv_tmp" 'uv' 'astral' 'install' \
             && chmod +r "$_uv_tmp" \
             && _as_builder "sh '$(_escape_single_quoted "$_uv_tmp")'" >> "$LOG_FILE" 2>&1; then
@@ -545,7 +547,7 @@ ensure_node() {
         log_info "Installing Node.js ${NODE_MIN_VERSION}.x LTS from NodeSource..."
         local _ns_tmp
         _ns_tmp=$(mktemp); _register_cleanup "$_ns_tmp"
-        if curl -fsSL "https://deb.nodesource.com/setup_${NODE_MIN_VERSION}.x" -o "$_ns_tmp" 2>>"$LOG_FILE" \
+        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -fsSL "https://deb.nodesource.com/setup_${NODE_MIN_VERSION}.x" -o "$_ns_tmp" 2>>"$LOG_FILE" \
                 && _validate_curl_pipe "$_ns_tmp" 'nodesource' 'nodejs' 'apt'; then
             if bash "$_ns_tmp" >> "$LOG_FILE" 2>&1; then
                 pkg_install nodejs >> "$LOG_FILE" 2>&1 || true

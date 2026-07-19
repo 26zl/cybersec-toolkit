@@ -791,9 +791,16 @@ def build_guided_plan(
     workflow_is_auto = workflow.lower().strip() == "auto"
     target_type_is_auto = target_type.lower().strip() == "auto"
     if workflow_is_auto or target_type_is_auto:
-        kind = _target_kind(target.strip(), "generic", None)
-        explicit_workflow = None if workflow_is_auto else workflow.lower().strip()
-        inf_workflow, inf_type = _infer_workflow_type(target.strip(), kind, explicit_workflow)
+        # _target_kind/_infer_workflow_type call urlparse, which raises ValueError
+        # on a malformed target (e.g. "http://[::1" — unclosed IPv6 bracket). This
+        # pre-pass is on the default auto path, so guard it with the same contract
+        # as _normalize_target below instead of leaking the exception.
+        try:
+            kind = _target_kind(target.strip(), "generic", None)
+            explicit_workflow = None if workflow_is_auto else workflow.lower().strip()
+            inf_workflow, inf_type = _infer_workflow_type(target.strip(), kind, explicit_workflow)
+        except ValueError as exc:
+            return {"error": str(exc)}
         if workflow_is_auto:
             workflow = inf_workflow
         if target_type_is_auto:

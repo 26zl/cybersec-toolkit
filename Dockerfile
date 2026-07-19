@@ -19,7 +19,7 @@ RUN useradd -m -s /bin/bash toolkit \
     && echo "toolkit ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/toolkit
 
 WORKDIR /opt/cybersec-toolkit
-COPY . .
+COPY --chown=toolkit:toolkit . .
 RUN chmod +x install.sh scripts/*.sh
 
 # MCP server: install uv + resolve dependencies so `uv run` works offline.
@@ -29,8 +29,9 @@ RUN chmod +x install.sh scripts/*.sh
 COPY --from=ghcr.io/astral-sh/uv:0.11.25@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9 /uv /uvx /usr/local/bin/
 RUN cd mcp_server && uv sync
 
-# Give toolkit user ownership of the working directory.
-RUN chown -R toolkit:toolkit /opt/cybersec-toolkit
+# uv sync ran as root; hand the resulting venv to toolkit. The rest of the tree
+# is already toolkit-owned via COPY --chown, so no full-tree re-chown is needed.
+RUN chown -R toolkit:toolkit mcp_server
 
 USER toolkit
 

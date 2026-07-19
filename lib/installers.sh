@@ -9,11 +9,9 @@
 # the module function's return code (which only reflects the last command).
 TOTAL_TOOL_FAILURES=0
 
-# ---------------------------------------------------------------------------
 # Distro compatibility layer — data-driven package name translation
 # Maps Debian package names to equivalents for dnf/pacman/zypper/pkg.
 # Mappings are loaded from lib/distro_compat.tsv (lazy, once).
-# ---------------------------------------------------------------------------
 
 # Associative arrays populated by _load_distro_compat()
 declare -gA _COMPAT_DNF=()
@@ -977,7 +975,14 @@ _CURL_OPTS_DONE=false
 _setup_curl_opts() {
     [[ "$_CURL_OPTS_DONE" == "true" ]] && return 0
     _CURL_OPTS_DONE=true
-    _CURL_OPTS=(-sSL)
+    # Suppress xtrace across the whole token-detection + netrc-write block so
+    # `set -x` (-v/--verbose) never traces the plaintext token — the assignment
+    # and the [[ -n "$GITHUB_TOKEN" ]] tests would otherwise echo it to the log.
+    local _xt=false; [[ $- == *x* ]] && _xt=true
+    { set +x; } 2>/dev/null
+    # --proto/--proto-redir '=https' + --tlsv1.2: no redirect may downgrade off HTTPS.
+    # Timeouts bound the small API/checksum requests so a stalled server can't hang the run.
+    _CURL_OPTS=(-sSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120)
     # Auto-detect token from gh CLI if not explicitly set
     if [[ -z "${GITHUB_TOKEN:-}" ]] && command -v gh &>/dev/null; then
         GITHUB_TOKEN=$(gh auth token 2>/dev/null) || true
@@ -986,16 +991,13 @@ _setup_curl_opts() {
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         _GH_NETRC_FILE=$(mktemp "${TMPDIR:-/tmp}/gh-netrc.XXXXXX")
         chmod 600 "$_GH_NETRC_FILE"
-        # Save/restore xtrace around the token write so `set -x` (-v/--verbose)
-        # never traces the plaintext token into the (chmod 600) log file.
-        local _xt=false; [[ $- == *x* ]] && _xt=true
-        { set +x; } 2>/dev/null
         printf 'machine github.com\nlogin x-access-token\npassword %s\n' "$GITHUB_TOKEN" > "$_GH_NETRC_FILE"
         printf 'machine api.github.com\nlogin x-access-token\npassword %s\n' "$GITHUB_TOKEN" >> "$_GH_NETRC_FILE"
-        [[ "$_xt" == "true" ]] && { set -x; } 2>/dev/null
         _register_cleanup "$_GH_NETRC_FILE"
         _CURL_OPTS+=(--netrc-file "$_GH_NETRC_FILE")
     fi
+    # if-form (not `&& …`) so the function returns 0, not the test's exit status.
+    if [[ "$_xt" == "true" ]]; then { set -x; } 2>/dev/null; fi
 }
 
 # GitHub API response cache — avoids redundant API calls and rate limit exhaustion.
@@ -1116,8 +1118,13 @@ _gh_api_get() {
         return 1
     fi
 
-    # Cache and output (cache write is best-effort — disk may be full)
-    cp "$tmp_body" "$cache_file" 2>/dev/null || true
+    # Cache and output (cache write is best-effort — disk may be full).
+    # Atomic write into the same dir: parallel same-repo subshells share this cache,
+    # so a reader must never see a half-written file.
+    local _cache_tmp
+    if _cache_tmp=$(mktemp "${cache_file}.XXXXXX" 2>/dev/null); then
+        cp "$tmp_body" "$_cache_tmp" 2>/dev/null && mv -f "$_cache_tmp" "$cache_file" 2>/dev/null || rm -f "$_cache_tmp" 2>/dev/null
+    fi
     cat "$tmp_body"
     rm -f "$tmp_body"
 }
@@ -1159,9 +1166,14 @@ for asset in data.get('assets', []):
     else
         # Repopulate _CURL_OPTS (-sSL) — _gh_api_get set it only inside its subshell, so the checksum curl otherwise skips redirect-follow.
         _setup_curl_opts
-        checksums=$(curl "${_CURL_OPTS[@]}" "$checksum_url" 2>>"$LOG_FILE")
+        # -f so an HTTP error page isn't captured as the checksum body.
+        checksums=$(curl -f "${_CURL_OPTS[@]}" "$checksum_url" 2>>"$LOG_FILE")
         if [[ -n "$checksums" ]]; then
-            echo "$checksums" > "$_cksum_cache_file"
+            # Atomic write: parallel same-release subshells share this cache dir.
+            local _cksum_tmp
+            _cksum_tmp=$(mktemp "${_cksum_cache_file}.XXXXXX") \
+                && printf '%s\n' "$checksums" > "$_cksum_tmp" \
+                && mv -f "$_cksum_tmp" "$_cksum_cache_file"
         fi
     fi
     if [[ -z "$checksums" ]]; then
@@ -1311,7 +1323,12 @@ for asset in data.get('assets', []):
     tmp_dir=$(mktemp -d); _register_cleanup "$tmp_dir"
     local asset_name
     asset_name=$(basename "$download_url")
-    if ! curl -sSL -o "$tmp_dir/$asset_name" "$download_url" >> "$LOG_FILE" 2>&1; then
+    # -f: HTTP errors (expired signed URL, 404/5xx) fail instead of writing the error
+    # body as the "binary". --proto/--tlsv1.2: no downgrade off HTTPS on redirect.
+    # --speed-limit/--speed-time abort a stalled transfer without hard-killing a slow-but-live one.
+    if ! curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --connect-timeout 30 --speed-limit 1024 --speed-time 30 \
+            -o "$tmp_dir/$asset_name" "$download_url" >> "$LOG_FILE" 2>&1; then
         log_error "Download failed: $binary$(_disk_hint)"
         rm -rf "$tmp_dir"
         return 1
@@ -1960,7 +1977,7 @@ install_metasploit() {
         local _keyring="/usr/share/keyrings/metasploit-framework.gpg"
         local _tmp_key
         _tmp_key=$(mktemp); _register_cleanup "$_tmp_key"
-        if curl -fsSL "https://apt.metasploit.com/metasploit-framework.gpg.key" -o "$_tmp_key" 2>>"$LOG_FILE"; then
+        if curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 "https://apt.metasploit.com/metasploit-framework.gpg.key" -o "$_tmp_key" 2>>"$LOG_FILE"; then
             # Verify downloaded key is non-empty before processing
             if [[ ! -s "$_tmp_key" ]]; then
                 log_error "Metasploit GPG key download produced empty file"

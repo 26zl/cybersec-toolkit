@@ -470,7 +470,7 @@ def recommend_install(task: str) -> dict:
     call_id = log_tool_call("recommend_install", {"task": task})
     t0 = time.monotonic()
     result = _recommend_install(task, _db)
-    log_tool_result("recommend_install", call_id, True, (time.monotonic() - t0) * 1000)
+    log_tool_result("recommend_install", call_id, "error" not in result, (time.monotonic() - t0) * 1000)
     return result
 
 

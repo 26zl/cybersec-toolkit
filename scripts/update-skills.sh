@@ -82,7 +82,7 @@ for entry in "${SOURCES[@]}"; do
   echo "== $name ($url) =="
 
   clone="$WORK/$name"
-  if ! git clone --quiet --filter=blob:none "$url" "$clone" 2>/dev/null; then
+  if ! git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 clone --quiet --filter=blob:none "$url" "$clone" 2>/dev/null; then
     echo "  ERROR: clone failed (unreachable?) — skipping"
     drift=1
     echo

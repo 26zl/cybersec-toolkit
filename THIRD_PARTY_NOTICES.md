@@ -23,7 +23,7 @@ table's counts against the live inventory.
 | [Trail of Bits skills](https://github.com/trailofbits/skills) | 14 | CC-BY-SA-4.0 | [`LICENSE-CC-BY-SA-4.0`](.claude/skills/LICENSE-CC-BY-SA-4.0) | commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`; code audit & vuln research; `constant-time-analysis` ships the upstream `ct_analyzer/` (commit `c070b9b`) and `zeroize-audit` its `tools/` |
 | [BugHunter (claude-bug-bounty)](https://github.com/shuvonsec/claude-bug-bounty) | 10 | MIT | [`LICENSE-BugHunter-MIT`](.claude/skills/LICENSE-BugHunter-MIT) | commit `22ea70b763618984a08d6f601bb2e3e079e86a15` |
 | [Transilience community tools](https://github.com/transilienceai/communitytools) | 4 | MIT | [`LICENSE-Transilience-MIT`](.claude/skills/LICENSE-Transilience-MIT) | high-level workflows; commit `58b552ef35029814b95fa53924790e3546a4a146` |
-| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 | MIT | (frontmatter attribution) | coding-agent workflow; commit `2c606141936f1eeef17fa3043a72095b4765b9c2` |
+| [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 | MIT | [`LICENSE-Karpathy-MIT`](.claude/skills/LICENSE-Karpathy-MIT) (upstream declares MIT in README/frontmatter but ships no LICENSE file) | coding-agent workflow; commit `2c606141936f1eeef17fa3043a72095b4765b9c2` |
 
 The remaining 31 skills (project developer skills, cross-skill coordinators,
 coverage-gap anchors, CTF methodology, and the `bounty-*` methodology set) are

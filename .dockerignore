@@ -1,10 +1,18 @@
 .git/
-tests/
 .github/
 *.log
 .versions
-__pycache__/
+# Recursive: a bare "__pycache__/" only matches the context root, not nested dirs.
+**/tests/
+**/__pycache__/
+**/*.pyc
+**/.ruff_cache/
+**/.pytest_cache/
+**/.mypy_cache/
 mcp_server/.venv/
+# Skills are a client/marketplace concern (the git repo), never read at container
+# runtime; excluding keeps ~40M of markdown and developer-local settings out of layers.
+.claude/
 # Local secrets / sensitive artifacts that must never be baked into image layers
 .env
 .env.*

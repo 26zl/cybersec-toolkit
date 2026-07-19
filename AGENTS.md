@@ -283,6 +283,14 @@ skills route through: `finding-triage` (finding → disposition), `security-comm
 - Non-system binaries end up in `/usr/local/bin` (Linux) or `$PREFIX/bin` (Termux)
 - Binary releases SHA256-verified when checksums available; `--production` or
   `--require-checksums` makes missing checksums a hard failure
+- Install-method trust model (per method): binary releases are SHA256-verified only
+  when the upstream release ships checksums (same-channel integrity, not authenticity);
+  apt/dnf rely on distro-signed repos; go/pipx/cargo/gem and git clones fetch the latest
+  tag/HEAD **unpinned** (integrity rests on TLS plus each ecosystem's own checksums, e.g.
+  the Go module checksum DB). By default a missing binary checksum only warns and proceeds
+  — including `.deb` assets whose maintainer scripts then run as root — so use
+  `--production` / `--require-checksums` for non-interactive or production installs to
+  fail closed
 - GitHub API auth: auto-detects `gh auth token` if `GITHUB_TOKEN` is unset (60 → 5000 req/hr)
 - `fixup_package_names()` in `lib/installers.sh` translates package names per distro from
   `lib/distro_compat.tsv`

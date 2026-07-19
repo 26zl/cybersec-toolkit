@@ -521,13 +521,16 @@ def _exempt_flag_value(
         flag, value = arg.split("=", 1)
         if flag in exempt:
             return True, 1, flag, value
+        # An '=' means the flag is exactly the pre-'=' token (handled above). Do
+        # NOT fall through to attached-short prefix matching, or a longer flag like
+        # goflags' -target= would be mis-split as the exempt short flag -t with value
+        # "arget=http://…", laundering the URL past _validate_exempt_remote_resource.
+        return False, 0, None, None
     for flag in sorted(exempt, key=len, reverse=True):
         if flag.startswith("--") or len(flag) != 2:
             continue
         if arg.startswith(flag) and len(arg) > len(flag):
             value = arg[len(flag) :]
-            if value.startswith("="):
-                value = value[1:]
             return True, 1, flag, value
     return False, 0, None, None
 
@@ -1172,6 +1175,26 @@ def _looks_like_target(value: str) -> bool:
     return False
 
 
+def _looks_like_external_target(value: str) -> bool:
+    """Stricter than :func:`_looks_like_target`: match only unambiguous network
+    targets (URL, IP, dotted host, IPv6, CIDR, encoded IPv4), never bare
+    single-label words.
+
+    Used to decide whether a value embedded in an *unrecognized* flag
+    (``-flag=<host>`` or attached ``-f<host>``) must clear the external-target
+    allowlist. Excluding bare words keeps boolean flags (``-silent``) and local
+    output names (``-o=results``) from falsely tripping the gate, while still
+    catching goflags-style ``-target=http://…`` / ``-host=8.8.8.8`` bypasses.
+    """
+    if not _looks_like_target(value):
+        return False
+    if re.match(r"^https?://", value, re.IGNORECASE):
+        return True
+    if "." in value or ":" in value or "/" in value:
+        return True
+    return _decode_encoded_ipv4(value) is not None
+
+
 def _network_target_host(value: str) -> str:
     """Normalize a URL/host argument to the host value used for allowlist checks."""
     clean = re.sub(r"^https?://", "", value)
@@ -1237,9 +1260,7 @@ def _validate_curl_redirect_target(flag: str, value: str) -> None:
             )
 
 
-# ---------------------------------------------------------------------------
 # Write-destination guard
-# ---------------------------------------------------------------------------
 
 # Allowlisted utilities whose positional arguments can create, overwrite, or
 # symlink a file. Tools with mode-dependent output paths are handled separately
@@ -1686,30 +1707,50 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
                 value = arg
             i += 1
         else:
-            # Unrecognized flag. After --long-flags, the next non-flag token
-            # may be a flag value (--script vuln) or a real target after a
-            # boolean flag (--open evil.com). Use the same _looks_like_target
-            # heuristic as positional args so encoded-integer IPs and bare
-            # single-label hostnames (which lack dots/colons/slashes) are still
-            # validated — a leading-flag form must not be more lenient than the
-            # positional one. Plain non-target words are consumed as flag values.
-            if arg.startswith("-") and i + 1 < len(arg_list) and not arg_list[i + 1].startswith("-"):
-                next_token = arg_list[i + 1]
-                # Skip tokens with file extensions as flag values (scan.txt, report.json)
-                # — but only when clearly a LOCAL path, since some extensions are also live
-                # TLDs (evil.zip, example.mobi) that must fall through to target validation
-                # and not launder an external host past the allowlist.
-                if _looks_like_target(next_token) and (
-                    not _has_file_extension(next_token) or not _is_local_path(next_token)
-                ):
-                    # Looks like a real target — don't consume, validate next iteration
-                    i += 1
-                else:
-                    # Plain word or filename — likely a flag value, consume it
-                    i += 2
-            else:
+            # Unrecognized flag. First close the embedded-value bypass: a target
+            # joined to the flag as -flag=<host> (single/double-dash long flags like
+            # goflags' -target=/-host=/-domain=) or attached as -f<host> never reaches
+            # the separated-token heuristic below, so extract and allowlist-check it
+            # here. Only strong targets are validated (see _looks_like_external_target)
+            # so boolean flags (-silent) and local output names (-o=results) don't trip.
+            _embedded = None
+            if "=" in arg:
+                _embedded = arg.split("=", 1)[1]
+            elif not arg.startswith("--") and len(arg) > 2:
+                _embedded = arg[2:]
+            if (
+                _embedded
+                and _looks_like_external_target(_embedded)
+                and not (_has_file_extension(_embedded) and _is_local_path(_embedded))
+            ):
+                value = _embedded
                 i += 1
-            continue
+                # fall through (no continue) to the allowlist check below
+            else:
+                # After --long-flags, the next non-flag token may be a flag value
+                # (--script vuln) or a real target after a boolean flag (--open evil.com).
+                # Use the same _looks_like_target heuristic as positional args so
+                # encoded-integer IPs and bare single-label hostnames (which lack
+                # dots/colons/slashes) are still validated — a leading-flag form must
+                # not be more lenient than the positional one. Plain non-target words
+                # are consumed as flag values.
+                if arg.startswith("-") and i + 1 < len(arg_list) and not arg_list[i + 1].startswith("-"):
+                    next_token = arg_list[i + 1]
+                    # Skip tokens with file extensions as flag values (scan.txt, report.json)
+                    # — but only when clearly a LOCAL path, since some extensions are also live
+                    # TLDs (evil.zip, example.mobi) that must fall through to target validation
+                    # and not launder an external host past the allowlist.
+                    if _looks_like_target(next_token) and (
+                        not _has_file_extension(next_token) or not _is_local_path(next_token)
+                    ):
+                        # Looks like a real target — don't consume, validate next iteration
+                        i += 1
+                    else:
+                        # Plain word or filename — likely a flag value, consume it
+                        i += 2
+                else:
+                    i += 1
+                continue
 
         if value:
             clean = _network_target_host(value)
@@ -2059,9 +2100,7 @@ async def execute_tool(
             }
 
 
-# ---------------------------------------------------------------------------
 # Pipeline execution — safe stdin piping without shell
-# ---------------------------------------------------------------------------
 
 MAX_PIPELINE_STEPS = 10
 
@@ -2332,9 +2371,7 @@ async def execute_pipeline(
     return result
 
 
-# ---------------------------------------------------------------------------
 # Script execution — write-and-run Python/Bash scripts
-# ---------------------------------------------------------------------------
 
 _SCRIPT_LANGUAGES = {"python": ".py", "bash": ".sh"}
 
@@ -2612,9 +2649,7 @@ async def execute_script(
             pass
 
 
-# ---------------------------------------------------------------------------
 # Remote execution support
-# ---------------------------------------------------------------------------
 
 
 def validate_tool_for_remote_execution(tool_name: str, tools_db: ToolsDatabase) -> str:

@@ -5,7 +5,6 @@
 *.swo
 *~
 nul
-instructions/
 
 # Claude Code — track .claude/skills/ but not user-local settings
 .claude/settings.local.json
@@ -22,10 +21,6 @@ instructions/
 Thumbs.db
 desktop.ini
 ._*
-
-# Temp files from install
-msfinstall
-burpsuite.sh
 
 # Python
 __pycache__/
@@ -48,7 +43,6 @@ htmlcov/
 # Secrets / environment
 .env
 .env.*
-!.env.example
 *.pem
 *.p12
 credentials.json

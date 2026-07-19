@@ -52,6 +52,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Install prerequisites (Ubuntu)
         if: matrix.distro == 'ubuntu'
@@ -171,6 +173,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: true
+          persist-credentials: false
 
       - name: Install through the real single-tool path
         env:
@@ -206,9 +209,19 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: true
+          persist-credentials: false
 
       - name: Build production image
         run: docker build --pull --tag cybersec-toolkit:ci .
+
+      - name: Scan image for fixable HIGH/CRITICAL vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cybersec-toolkit:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
 
       - name: Verify default container command
         run: docker run --rm cybersec-toolkit:ci

@@ -481,6 +481,51 @@ class TestCheckPolicy:
             check_policy("sqlmap", ["-u", "http://example.com/page?id=1"])
 
     @patch("mcp_server.security._allow_external", return_value=False)
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            # goflags single-dash long flags accept =joined values natively.
+            ("nuclei", ["-target=http://evil.example.com"]),
+            ("httpx", ["-target=http://evil.example.com"]),
+            ("naabu", ["-host=8.8.8.8"]),
+            ("dnsx", ["-domain=evil.example.com"]),
+            ("naabu", ["-host=134744072"]),  # encoded IPv4 == 8.8.8.8
+            # attached short form (-u<host>) and double-dash long =joined form.
+            ("nuclei", ["-uhttp://evil.example.com"]),
+            ("httpx", ["--website=http://evil.example.com"]),
+        ],
+    )
+    def test_embedded_flag_value_external_target_blocked(self, _mock_ext, tool, args) -> None:
+        """A target embedded in a flag (-flag=<host> or attached -f<host>) must
+        still clear the allowlist — the =joined/attached forms previously skipped
+        target validation entirely (external-network gate bypass)."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy(tool, args)
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("naabu", ["-host=10.0.0.1"]),  # private embedded target is fine
+            ("httpx", ["-location=true", "-u", "http://10.0.0.1/"]),  # boolean =value
+            ("nuclei", ["-silent", "-u", "http://10.0.0.1/"]),  # boolean flag (not -s + "ilent")
+            ("nuclei", ["-o=results", "-u", "http://10.0.0.1/"]),  # local output name, not a host
+            ("nuclei", ["-t=cves/", "-u", "http://10.0.0.1/"]),  # exempt =joined template still ok
+        ],
+    )
+    def test_embedded_flag_value_non_target_allowed(self, _mock_ext, tool, args) -> None:
+        """Embedded values that are not strong network targets (booleans, local
+        output names, private hosts) must not trip the gate."""
+        check_policy(tool, args)
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_exempt_short_flag_prefix_does_not_launder_longer_flag(self, _mock_ext) -> None:
+        """'-target=<url>' must not be mis-split as the exempt short flag '-t'
+        (nuclei templates) with value 'arget=<url>', laundering the host."""
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("nuclei", ["-target=http://evil.example.com"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
     def test_proxy_flag_external_host_blocked(self, _mock_ext) -> None:
         """A proxy flag pointing at an external host must be blocked."""
         with pytest.raises(ValueError, match="proxy target"):

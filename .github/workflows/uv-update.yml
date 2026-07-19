@@ -26,6 +26,9 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Don't leave the write-scoped token in .git/config while the verify step
+          # runs freshly-upgraded deps; create-pull-request authenticates via its own token.
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
@@ -74,7 +77,9 @@ jobs:
             [[ -z "$line" ]] && continue
             ignore_args+=(--ignore-vuln "$line")
           done < known-vulnerabilities.txt
-          uvx pip-audit "${ignore_args[@]}"
+          # Audit the full locked set incl. ctf extras (mirrors security.yml).
+          uv export --all-extras --no-hashes --frozen > /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt "${ignore_args[@]}"
           cd ..
           python3 scripts/validate_mcp_sync.py
 

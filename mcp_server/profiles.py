@@ -304,13 +304,22 @@ _MODULE_KEYWORDS: dict[str, list[str]] = {
 }
 
 
+def _keyword_in_task(keyword: str, task_lower: str) -> bool:
+    """Word-boundary keyword match. A bare substring test false-positives on
+    ordinary prose (``europe`` → ``rop`` → pwn, ``provides`` → ``ids`` → blueteam,
+    ``capital`` → ``api`` → web). ``\\b`` is zero-width, so multi-word keywords
+    ("smart contract", "ai security") and alphanumeric ones ("k8s", "c2") still
+    match. Mirrors the boundary match already used in _match_individual_tools."""
+    return re.search(rf"\b{re.escape(keyword)}\b", task_lower) is not None
+
+
 def _score_profiles(task: str) -> dict[str, float]:
     """Score each profile against a task description using keyword matching."""
     task_lower = task.lower()
     scores: dict[str, float] = {name: 0.0 for name in PROFILES}
 
     for keyword, profile_weights in _KEYWORD_MAP.items():
-        if keyword in task_lower:
+        if _keyword_in_task(keyword, task_lower):
             for profile_name, weight in profile_weights:
                 scores[profile_name] += weight
 
@@ -325,7 +334,7 @@ def _match_modules(task: str) -> list[tuple[str, float]]:
     for module, keywords in _MODULE_KEYWORDS.items():
         score = 0.0
         for kw in keywords:
-            if kw in task_lower:
+            if _keyword_in_task(kw, task_lower):
                 score += 1.0
         if score > 0:
             scores[module] = score

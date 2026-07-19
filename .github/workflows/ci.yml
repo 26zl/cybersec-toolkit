@@ -24,6 +24,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Run ShellCheck on all shell scripts
         run: shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
@@ -38,6 +40,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Check bash syntax on all shell scripts
         run: |
@@ -60,12 +64,13 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25 # v24.0.0
         with:
           globs: |
             **/*.md
-            !docs/TOOL_ANALYSIS.md
             !tests/bats/**/*.md
             !tests/test_helper/**/*.md
             !mcp_server/.venv/**/*.md
@@ -84,6 +89,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: true
+          persist-credentials: false
 
       - name: Run bats tests
         run: ./tests/bats/bin/bats tests/*.bats
@@ -98,6 +104,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Cross-validate tools_config.json against module arrays
         run: python3 scripts/validate_tools_config.py
@@ -112,6 +120,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Validate distro compatibility mappings
         run: python3 scripts/validate_distro_compat.py
@@ -126,11 +136,16 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Check CLAUDE.md and AGENTS.md stay consistent
         run: |
           python3 scripts/validate_agent_docs.py --selftest
           python3 scripts/validate_agent_docs.py
+
+      - name: Check VERSION matches mcp_server/pyproject.toml
+        run: bash scripts/validate_version.sh
 
   claude-skills-validate:
     name: Validate Claude Skills
@@ -142,6 +157,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Validate Claude Code skill metadata
         run: python3 scripts/validate_claude_skills.py
@@ -162,6 +179,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
@@ -183,6 +202,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
@@ -223,6 +244,8 @@ jobs:
           fi
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
@@ -274,44 +297,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Validate profile configs
-        run: |
-          # Extract valid modules dynamically from lib/common.sh (single source of truth)
-          VALID_MODULES=$(grep '^ALL_MODULES=' lib/common.sh | sed 's/ALL_MODULES=(//' | sed 's/)//')
-          exit_code=0
-
-          for conf in profiles/*.conf; do
-            profile_name="$(basename "$conf")"
-
-            # Check MODULES variable exists
-            if ! grep -q '^MODULES=' "$conf"; then
-              echo "::error file=$conf::$profile_name: missing MODULES variable"
-              exit_code=1
-              continue
-            fi
-
-            # Extract module list
-            modules_line=$(grep '^MODULES=' "$conf" | head -1)
-            # Remove MODULES=" and trailing "
-            modules_value=$(echo "$modules_line" | sed 's/^MODULES="//' | sed 's/"$//')
-
-            # Validate each module name
-            for mod in $modules_value; do
-              found=0
-              for valid in $VALID_MODULES; do
-                if [[ "$mod" == "$valid" ]]; then
-                  found=1
-                  break
-                fi
-              done
-              if [[ $found -eq 0 ]]; then
-                echo "::error file=$conf::$profile_name: unknown module '$mod'"
-                exit_code=1
-              fi
-            done
-
-            echo "$profile_name: OK (modules: $modules_value)"
-          done
-
-          exit $exit_code
+        run: bash scripts/validate_profiles.sh

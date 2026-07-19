@@ -5,7 +5,7 @@
 SHELL := bash
 SH_FILES := install.sh lib/*.sh modules/*.sh scripts/*.sh
 # Paths the CI markdown-lint job skips; applied to tracked and untracked *.md files.
-MD_EXCLUDE := ^docs/TOOL_ANALYSIS\.md$$|^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
+MD_EXCLUDE := ^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
 
 .DEFAULT_GOAL := help
 .PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py \
@@ -44,7 +44,7 @@ test-bats: ## Bash unit tests (bats)
 test-py: ## MCP server tests (pytest)
 	cd mcp_server && uv run --group dev pytest tests/ -q
 
-validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles, agent docs)
+validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles, version, agent docs)
 	python3 scripts/validate_tools_config.py
 	python3 scripts/validate_mcp_sync.py
 	python3 scripts/validate_distro_compat.py
@@ -52,6 +52,8 @@ validate: ## Run every data-consistency validator (tools, MCP sync, distros, ski
 	python3 scripts/audit_skill_dependencies.py --check-declared
 	bash scripts/update-skills.sh --check-pins
 	python3 scripts/validate_agent_docs.py
+	bash scripts/validate_profiles.sh
+	bash scripts/validate_version.sh
 
 check-pins: ## Assert vendored-skill upstream pins agree across all sources (offline)
 	bash scripts/update-skills.sh --check-pins

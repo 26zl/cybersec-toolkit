@@ -252,7 +252,7 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
         return {
             "success": False,
             "message": f"SSH connection failed (exit code {process.returncode})",
-            "stderr": stderr,
+            "stderr": _security.sanitize_output(stderr),
         }
 
     except FileNotFoundError:
@@ -318,8 +318,12 @@ async def execute_remote_command(
                 "remote": True,
             }
 
-        stdout = stdout_bytes.decode("utf-8", errors="replace")
-        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        # Sanitize at the source (ANSI + prompt-injection markers): check_installed
+        # and manage_remote_hosts call this directly, not via execute_tool_remote, so
+        # a remote motd/banner or crafted output would otherwise reach the model raw.
+        # sanitize_output is idempotent, so the execute_tool_remote path re-sanitizing is safe.
+        stdout = _security.sanitize_output(stdout_bytes.decode("utf-8", errors="replace"))
+        stderr = _security.sanitize_output(stderr_bytes.decode("utf-8", errors="replace"))
 
         if t_read_stdout:
             stdout = _security._append_truncation_marker(stdout, max_output)

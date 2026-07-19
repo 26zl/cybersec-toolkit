@@ -654,12 +654,14 @@ if should_verify "blockchain"; then
     # Foundry chisel is NOT symlinked (collides with jpillora/chisel TCP tunnel)
     # Check at its native path instead
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
-    if [[ -x "$HOME/.foundry/bin/chisel" ]]; then
+    # Foundry installs under the invoking user's home; $HOME is /root under sudo.
+    _chisel="$(_builder_home)/.foundry/bin/chisel"
+    if [[ -x "$_chisel" ]]; then
         TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        vlog_success "chisel (foundry) — $HOME/.foundry/bin/chisel"
+        vlog_success "chisel (foundry) — $_chisel"
     else
         TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        vlog_error "chisel (foundry) — NOT found at $HOME/.foundry/bin/chisel"
+        vlog_error "chisel (foundry) — NOT found at $_chisel"
     fi
     log_info "Blockchain (Binary):"
     check_cmd "crytic-medusa" || true

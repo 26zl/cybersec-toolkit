@@ -233,7 +233,7 @@ if [[ "$SKIP_GIT" == "false" ]]; then
 
             pull_output=""
             _dir_escaped="$(_escape_single_quoted "$dir")"
-            if pull_output=$(_as_builder "git -C '$_dir_escaped' pull" 2>>"$LOG_FILE"); then
+            if pull_output=$(_as_builder "git $_GIT_STALL_OPTS -C '$_dir_escaped' pull" 2>>"$LOG_FILE"); then
                 if echo "$pull_output" | grep -q "Already up to date"; then
                     log_debug "Already latest: $name"
                     GIT_SKIPPED=$((GIT_SKIPPED + 1))
@@ -287,8 +287,9 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
         _collect_module_arrays "GEMS" ALL_GEMS
 
         if [[ ${#ALL_GEMS[@]} -gt 0 ]]; then
-            # Only update gems that are already installed
-            installed_gems=$(gem list --no-details 2>/dev/null || true)
+            # Only update gems that are already installed. Query the builder's gem
+            # store (install runs as $SUDO_USER), not root's, or nothing is ever found under sudo.
+            installed_gems=$(_as_builder "$(command -v gem) list --no-details" 2>/dev/null || true)
             GEMS_TO_UPDATE=()
             for _gem in "${ALL_GEMS[@]}"; do
                 if echo "$installed_gems" | grep -q "^${_gem} "; then
@@ -479,6 +480,14 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         _append_module_array _ALL_BIN_RELEASES "BINARY_RELEASES_${_br_mod^^}"
         _append_module_array _ALL_BIN_RELEASES "BINARY_RELEASES_${_br_mod^^}_C2"
     done
+    # Build _CURL_OPTS (token netrc) and the shared API cache in the parent BEFORE
+    # the loop. update_binary's first API call runs in a command-substitution
+    # subshell, where lazy setup would register the netrc/cache cleanup in a scope
+    # that never fires — leaking the token file per tool. Mirror install_binary_releases.
+    if [[ ${#_ALL_BIN_RELEASES[@]} -gt 0 ]]; then
+        _setup_curl_opts
+        _gh_api_cache_init
+    fi
     for _entry in "${_ALL_BIN_RELEASES[@]}"; do
         IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
         update_binary "$_repo" "$_binary" "$_pattern" "${_dest:-$PIPX_BIN_DIR}" "${_archive_binary:-$_binary}"
@@ -532,12 +541,16 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_warn "OWASP ZAP update failed"
     fi
 
-    # Foundry (foundryup)
-    if command_exists foundryup; then
+    # Foundry (foundryup) — run as the invoking user so the update lands in the
+    # user's ~/.foundry (where the /usr/local/bin symlinks point), not /root under sudo.
+    _foundryup_bin="$(_builder_home)/.foundry/bin/foundryup"
+    if [[ -x "$_foundryup_bin" ]]; then
         log_info "Updating Foundry toolchain..."
-        foundryup >> "$LOG_FILE" 2>&1 && \
-            log_success "Foundry updated" || \
+        if _as_builder "'$(_escape_single_quoted "$_foundryup_bin")'" >> "$LOG_FILE" 2>&1; then
+            log_success "Foundry updated"
+        else
             log_warn "Foundry update failed"
+        fi
     fi
 
     # Steampipe (re-install = self-update) — verify script content before executing
@@ -545,7 +558,7 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
         log_info "Updating Steampipe..."
         _sp_tmp=$(mktemp)
         _register_cleanup "$_sp_tmp"
-        if curl -fsSL "https://raw.githubusercontent.com/turbot/steampipe/main/scripts/install.sh" -o "$_sp_tmp" 2>>"$LOG_FILE" \
+        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -fsSL "https://raw.githubusercontent.com/turbot/steampipe/v2.4.4/scripts/install.sh" -o "$_sp_tmp" 2>>"$LOG_FILE" \
                 && _validate_curl_pipe "$_sp_tmp" "steampipe" "install" "github"; then
             if bash "$_sp_tmp" -y >> "$LOG_FILE" 2>&1; then
                 log_success "Steampipe updated"
@@ -609,7 +622,7 @@ for _bmod in "${ALL_MODULES[@]}"; do
         [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_SKIPPED=$((BUILD_SKIPPED + 1)); continue; }
         _bdir_escaped="$(_escape_single_quoted "$_bdir")"
         _pull_out=""
-        if _pull_out=$(_as_builder "git -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
+        if _pull_out=$(_as_builder "git $_GIT_STALL_OPTS -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
             if echo "$_pull_out" | grep -q "Already up to date"; then
                 log_debug "Already latest: $_bname"
                 BUILD_SKIPPED=$((BUILD_SKIPPED + 1))

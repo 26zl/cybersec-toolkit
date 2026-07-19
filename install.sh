@@ -462,7 +462,7 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     for mod in "${ALL_MODULES[@]}"; do
         source "$SCRIPT_DIR/modules/${mod}.sh"
     done
-    LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
+    _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
     log_info "Installing ${#SELECTED_TOOLS[@]} individual tool(s)..."
     TOOL_FAILED=0
@@ -581,7 +581,8 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                 ;;
             gem)
                 if command_exists gem; then
-                    gem uninstall "$rb_tool" -x --force >> "$LOG_FILE" 2>&1 && rb_removed=$((rb_removed + 1)) || true
+                    # Gems install into the invoking user's store; uninstall as that user, not root.
+                    _as_builder "$(command -v gem) uninstall '$(_escape_single_quoted "$rb_tool")' -x --force" >> "$LOG_FILE" 2>&1 && rb_removed=$((rb_removed + 1)) || true
                 fi
                 ;;
             git)
