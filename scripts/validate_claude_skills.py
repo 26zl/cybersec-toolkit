@@ -241,6 +241,7 @@ def _validate_plugin_manifests(skill_dirs: list[Path], errors: list[str]) -> Non
 
 def main() -> int:
     errors: list[str] = []
+    spec_warnings: list[str] = []
 
     if not SKILLS_DIR.is_dir():
         print(f"ERROR: missing skills directory: {SKILLS_DIR.relative_to(ROOT)}")
@@ -265,6 +266,16 @@ def main() -> int:
             errors.append(f"{skill_file.relative_to(ROOT)}: name={name!r}, expected {skill_dir.name!r}")
         if not description:
             errors.append(f"{skill_file.relative_to(ROOT)}: missing description")
+        # agentskills.io spec: name is 1-64 chars, kebab-case, no leading/trailing/consecutive hyphens.
+        if len(name) > 64:
+            errors.append(f"{skill_file.relative_to(ROOT)}: name exceeds the 64-char spec limit")
+        if name and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
+            errors.append(f"{skill_file.relative_to(ROOT)}: name {name!r} is not spec kebab-case")
+        # Spec caps descriptions at 1024 chars; a few skills exceed it for trigger-keyword coverage.
+        if len(description) > 1024:
+            spec_warnings.append(
+                f"{skill_file.relative_to(ROOT)}: description is {len(description)} chars (>1024 spec guidance)"
+            )
 
     python_script_count = _validate_python_scripts(skill_dirs, errors)
     powershell_script_count, powershell_skipped = _validate_powershell_scripts(skill_dirs, errors)
@@ -294,6 +305,10 @@ def main() -> int:
     if powershell_script_count:
         suffix = " (parse skipped: pwsh not found)" if powershell_skipped else " checked"
         print(f"Claude skill PowerShell scripts: {powershell_script_count}{suffix}")
+    if spec_warnings:
+        print(f"NOTE: {len(spec_warnings)} skill(s) exceed the agentskills.io 1024-char description guidance:")
+        for warning in spec_warnings:
+            print(f"  - {warning}")
     if errors:
         print(f"FAILED: {len(errors)} issue(s) found")
         for error in errors:

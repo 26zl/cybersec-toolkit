@@ -678,6 +678,7 @@ __Debian/Ubuntu/Kali is the primary target__ -- the full 580+ registry is availa
 | __Termux__ (Android) | Supported. No dedicated CI job yet. No sudo needed. Docker/snap/binary releases/build-from-source skipped (Bionic incompatible). |
 | __Windows__ (native) | Not supported. Use WSL. |
 | __macOS__ | Not supported. Use Docker container. |
+| __Other Linux distros__ | Anything without a supported package manager (`apt`/`dnf`/`pacman`/`zypper`) — e.g. NixOS, Gentoo, Void, Alpine, Slackware — is detected and blocked with a clear error. Use the [Docker image](#try-in-docker) instead. |
 
 ## Supply Chain Model
 

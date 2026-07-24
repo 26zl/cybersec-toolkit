@@ -2,6 +2,8 @@
 
 This directory contains 872 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
+Every skill follows the open [Agent Skills specification](https://agentskills.io/specification) — a `<name>/SKILL.md` file with `name`/`description` frontmatter — so the same directory is portable across Claude Code, Codex, and OpenCode (mirrored to `.agents/skills/` by `scripts/sync-skills.sh`). Conformance is enforced in CI by `scripts/validate_claude_skills.py`.
+
 ## Project-specific developer skills (10)
 
 Maintained in this repo. Cover the install-side workflow.

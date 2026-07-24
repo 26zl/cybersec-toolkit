@@ -231,8 +231,12 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 
 `.claude/skills/` ships 872 on-demand skills (CTF/bounty methodology, offensive/defensive
 how-tos, code-audit skills, project developer skills, and cross-skill coordinators).
-The content follows the Agent Skills directory pattern, but discovery paths, activation,
-dependency handling, and limits are controlled by each client.
+The content follows the open [Agent Skills specification](https://agentskills.io/specification)
+(`<name>/SKILL.md` with `name`/`description` frontmatter) — the same vendor-neutral format
+Claude Code, Codex, and OpenCode consume — but discovery paths, activation, dependency
+handling, and limits are controlled by each client. `scripts/validate_claude_skills.py`
+gates the spec's `name` rules (kebab-case, ≤64 chars) in CI and flags any description over
+the spec's 1024-char guidance.
 
 To make them available to Codex and other agents that read `.agents/skills/`, mirror them:
 

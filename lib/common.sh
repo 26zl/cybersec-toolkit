@@ -809,6 +809,8 @@ _check_pkg_manager() {
     if [[ "$PKG_MANAGER" == "unknown" ]]; then
         log_error "Unsupported distribution — could not detect package manager"
         log_error "Supported: apt (Debian/Ubuntu/Kali), dnf (Fedora/RHEL), pacman (Arch), zypper (openSUSE), pkg (Termux/Android)"
+        log_info "  Distros without a supported package manager (e.g. NixOS, Gentoo, Void, Alpine) can use a Docker container:"
+        log_info "    docker build -t cybersec-installer . && docker run cybersec-installer"
         exit 1
     fi
 }
