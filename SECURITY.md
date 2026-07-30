@@ -50,6 +50,10 @@ For context when evaluating a report:
 - **MCP execution engine** — tool allowlisting, argument sanitization (blocks `|`, backtick, `$(`, `${`; `;` and `&` pass through as literals since no shell is used), protected write destinations, per-tool blocked flags, private/loopback network and SSH scope by default, rate limiting, and audit logging
 - **MCP script execution** — off by default; `CYBERSEC_MCP_ALLOW_SCRIPTS=1` is an explicit unsandboxed code-execution opt-in and is not constrained by `CYBERSEC_MCP_ALLOW_EXTERNAL`
 
+The MCP execution policy is not an OS sandbox. Allowed tools keep the MCP
+process user's permissions, and disabling `run_script` does not prevent a tool
+from launching child processes or loading plugins.
+
 ## Automated security checks
 
 These run on every push and PR via `.github/workflows/security.yml`:
@@ -62,4 +66,4 @@ These run on every push and PR via `.github/workflows/security.yml`:
 
 ## Disclosure
 
-Once a fix is released, the advisory is made public with credit to the reporter (unless they requested otherwise). Embargo periods can be arranged by email before the advisory is opened.
+Once a fix is released, the advisory is made public with credit to the reporter (unless they requested otherwise). Embargo periods can be arranged in the private advisory.

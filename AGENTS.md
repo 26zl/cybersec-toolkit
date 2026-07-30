@@ -134,9 +134,18 @@ cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff form
 
 ## MCP Server Usage (MANDATORY tool order)
 
-**MCP tools must ALWAYS be used first.** For an unclear or high-level security task,
-start with `guided_assessment` (or `suggest_for_ctf` / `suggest_for_bounty`) so MCP can
-infer the workflow/problem type and choose the right tools. Execution priority after
+**The rule is scoped, so it holds every time.** Are you touching a *target* — a host,
+URL, sample, capture, or a binary/file you did not write? Then the MCP server comes
+first, always. Are you editing *this repository*? Then it does not apply: use normal
+tools, because no `run_tool` call can fix `distro_compat.tsv`.
+
+A rule stated as an unconditional "always" that is obviously wrong part of the time
+gets discounted the rest of the time too. This one is written to be true as stated,
+and `scripts/agent-guard.sh` enforces the target half of it.
+
+For target work, start with `guided_assessment` (or `suggest_for_ctf` /
+`suggest_for_bounty`) so MCP can infer the workflow/problem type and choose the right
+tools. Execution priority after
 that is `run_tool` → `run_pipeline` → `run_script`. Use `run_tool("curl", ...)` for HTTP,
 `run_tool("nmap", ...)` for scanning, etc. Only fall back to `run_script` when you need
 actual programming logic (loops, exploit code, complex parsing). If `run_tool` is
@@ -158,11 +167,16 @@ such as `curl` remain normal `run_tool` calls.
 - `CYBERSEC_MCP_ALLOW_SCRIPTS=1` — enables unsandboxed Python/Bash execution with
   the MCP process user's filesystem and network permissions
 - `CYBERSEC_MCP_ALLOW_EXTERNAL=0` — safest default; governed network tools and
-  SSH remotes target private/loopback only (it does not sandbox `run_script`)
+  SSH remotes reject direct targets outside private/loopback ranges. This is a
+  preflight policy, not a network sandbox: DNS can change after validation and
+  tools can follow redirects
 - `CYBERSEC_MCP_ALLOW_EXTERNAL=1` — opt in only for explicitly authorized external scopes
 - `CYBERSEC_MCP_VENVS_DIR` — custom location for script venvs (default: `~/.ctf-venvs/`)
 - `CYBERSEC_MCP_AUDIT_LOG` — custom audit path (default:
   `~/.local/state/cybersec-tools-mcp/audit.log`)
+- `CYBERSEC_MCP_REMOTE_HOSTS` — custom remote-host config path (default:
+  `~/.local/state/cybersec-tools-mcp/remote_hosts.json`; an existing in-package
+  `mcp_server/remote_hosts.json` still takes precedence)
 - `CYBERSEC_MCP_AUDIT_REQUIRED=1` — fail startup instead of falling back to stderr
   when file audit logging is unavailable
 - `CYBERSEC_INSTALLER_ROOT` — override project root for `tools_config.json` lookup
@@ -334,7 +348,9 @@ block appropriate to the case (Platform/Program, Category, Difficulty/Severity, 
 
 ## Tool-First Approach (MANDATORY)
 
-**ALWAYS use existing tools before attempting anything manually**, across all categories.
+Scope: target work, as defined above. Repository maintenance is exempt.
+
+**Use existing tools before attempting anything manually**, across all categories.
 Before starting: check `writeups/` for prior writeups, run `suggest_for_ctf` /
 `suggest_for_bounty`, check installs with `check_installed`, browse with `list_tools`.
 

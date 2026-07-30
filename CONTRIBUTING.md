@@ -62,7 +62,7 @@ cd mcp_server && uv sync --group dev
 
 4. `verify.sh`, `update.sh`, and `remove.sh` pick up array changes automatically — no extra wiring needed.
 
-Full details on the module system, install method hierarchy, and distro handling live in [CLAUDE.md](CLAUDE.md).
+Full details on the module system, install method hierarchy, and distro handling live in [AGENTS.md](AGENTS.md).
 
 ## Install method priority
 

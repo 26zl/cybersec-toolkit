@@ -71,8 +71,9 @@ Kali/Parrot/BlackArch ship the tools; this is __complementary, not a replacement
 
 Security users should be paranoid — here's exactly what runs and what's gated:
 
-- __Default-safe MCP.__ Out of the box `CYBERSEC_MCP_ALLOW_EXTERNAL=0` (network tools can only hit private/loopback ranges) and `CYBERSEC_MCP_ALLOW_SCRIPTS=0` (`run_script` disabled). You opt into external scopes / scripting explicitly.
+- __Default-safe MCP.__ Out of the box `CYBERSEC_MCP_ALLOW_EXTERNAL=0` rejects network targets that do not resolve to private/loopback ranges, and `CYBERSEC_MCP_ALLOW_SCRIPTS=0` disables `run_script`. You opt into external scopes / scripting explicitly.
 - __Governed tool execution passes one gate__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list/target-injection flags), target/network policy, rate limiting, output caps, and timeouts.
+- __The execution policy is not an OS sandbox.__ Allowed tools run with the MCP process user's permissions, and some security tools can launch child processes or load plugins. Disabling `run_script` only disables that endpoint; run the MCP server as a least-privileged user or inside an isolation boundary appropriate for untrusted targets.
 - __Tool-aware policy is not solver hardcoding.__ The solver chooses tools from the registry/advisors; the policy layer only understands enough CLI grammar to tell a real target from a header, wordlist, output path, config file, or target-list flag. That keeps normal commands usable without letting file-list/config flags bypass scope checks.
 - __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never persisted — only an irreversible SHA256 + length is logged for correlation — and credential-shaped strings are redacted from tool arguments.
 - __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds and `pip`/`cargo`/`gem` installs; binary releases are SHA256-verified when checksums are published.
@@ -119,7 +120,7 @@ sudo ./install.sh --dry-run --profile ctf              # Preview without install
 
 ```bash
 docker build -t cybersec-toolkit .
-docker run cybersec-toolkit --profile ctf
+docker run --rm cybersec-toolkit --profile ctf
 ```
 
 > __Podman__ works as a drop-in replacement — swap `docker` for `podman` (or `alias docker=podman`); rootless builds and runs are supported. For the Compose example below, use `podman compose` (needs a compose provider installed).
@@ -127,14 +128,19 @@ docker run cybersec-toolkit --profile ctf
 Or use the bundled Compose file (builds and runs the `installer` service):
 
 ```bash
-docker compose run installer --profile ctf
+docker compose run --rm installer --profile ctf
 ```
+
+> The image grants the `toolkit` user passwordless sudo so the installer can
+> manage system packages. Treat code inside the container as root-capable; the
+> image is not a security sandbox, especially when `run_script` is enabled or
+> sensitive host paths are mounted.
 
 __macOS (Apple Silicon):__ Add `--platform linux/amd64` to both commands to run via x86 emulation:
 
 ```bash
 docker build --platform linux/amd64 -t cybersec-toolkit .
-docker run --platform linux/amd64 cybersec-toolkit --profile ctf
+docker run --rm --platform linux/amd64 cybersec-toolkit --profile ctf
 ```
 
 __Termux (Android):__
@@ -548,7 +554,7 @@ Public contributor docs live in [`CONTRIBUTING.md`](CONTRIBUTING.md). The quick-
 ```bash
 git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
 make setup    # submodules + MCP deps + skill mirror (Codex-ready)
-make check    # everything CI runs — shellcheck, validators, bats, ruff, pytest
+make check    # core local checks — shellcheck, validators, bats, ruff, pytest
 ```
 
 `make help` lists every shortcut (`lint`, `test`, `validate`, `curate`, `sync-skills`,
@@ -691,6 +697,11 @@ This installer downloads and runs code from the internet. On Linux it runs as ro
 - __Go SDK__: SHA256 verified against go.dev published hashes when available; warns on API failure, hard-fails with `--require-checksums`
 - __Git repos__: Cloned at HEAD, deps installed in isolated venvs (setup.py is NOT executed)
 - __Build from source__: Runs `make` (as root on Linux) -- review what you're building
+- __Toolkit Docker build__: Ubuntu and uv sources are digest-pinned, while apt
+  packages resolve from the current signed Ubuntu repositories; rebuilds are not
+  bit-for-bit reproducible
+- __Optional tool images__: Pulled by mutable tags rather than digests, including several
+  explicit `latest` tags. `--production` does not pin or verify these images
 
 The `.versions` file logs what was installed and when.
 
@@ -716,12 +727,6 @@ These are false positives in the context of a security toolkit. To work with the
 3. __Keep the repo inside the WSL filesystem__ (e.g. `~/cybersec-toolkit` in your distro). Defender does not scan WSL2's vhdx by default, so detections do not occur. `scripts/sync-wsl.sh` already does this for the MCP server subdirectory.
 
 Files removed by Defender will appear as `D` in `git status`. The content is preserved in git history; restore with `git checkout -- <path>` once an exclusion is in place.
-
-## Star History
-
-If this toolkit is useful to you, a star helps others find it.
-
-[![Star History Chart](https://api.star-history.com/svg?repos=26zl/cybersec-toolkit&type=Date)](https://star-history.com/#26zl/cybersec-toolkit&Date)
 
 ## License
 

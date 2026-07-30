@@ -29,6 +29,17 @@ contribution rules there. This file contains only Claude Code-specific behavior.
 - Skill discovery does not replace the MCP server: skills provide methodology and
   context, while MCP provides governed discovery and execution.
 
+### Agent guard (hooks)
+
+`.claude/settings.json` wires `scripts/agent-guard.sh` into two hooks: `SessionStart`
+injects the scoped MCP contract, and `PreToolUse` on `Bash` denies a security-tool
+invocation until the MCP server has been called this session. Clearance is read from
+the server's own audit log, so it cannot be satisfied by an agent asserting compliance;
+one `guided_assessment` call clears the session. Repository work is never gated.
+Denials land in `~/.local/state/cybersec-tools-mcp/guard-denials.log`.
+Disable with `CYBERSEC_AGENT_GUARD=0`. Other clients can call the same two modes from
+whatever pre-execution hook they provide — the logic is not Claude Code-specific.
+
 ### Claude Code verification
 
 1. Run `/mcp` and confirm `cybersec-tools` is connected.

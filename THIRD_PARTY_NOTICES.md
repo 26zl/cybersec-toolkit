@@ -54,6 +54,9 @@ commands and references resolve (the established pattern set by `zeroize-audit`)
 The 14 Trail of Bits skills (and the vendored `ct_analyzer/` and `tools/` companion
 files) are licensed under **CC-BY-SA-4.0**, a copyleft ShareAlike license. The
 project's MIT grant in [`LICENSE`](LICENSE) does **not** apply to this material.
+The repository copies add provenance/license frontmatter and omit upstream helper
+directories except for the companion files listed above; these are the material
+changes made for repository packaging.
 Anyone who redistributes or adapts these skills must comply with CC-BY-SA-4.0:
 keep attribution to Trail of Bits, indicate any changes, and license the
 redistributed material (and any adaptations) under CC-BY-SA-4.0 or a compatible
