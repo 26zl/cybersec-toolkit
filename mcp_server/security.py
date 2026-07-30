@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import ipaddress
 import os
 import re
 import shlex
 import shutil
+import signal
 import socket
 import sys
 import tempfile
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -273,6 +274,15 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "sed": [
         (re.compile(r"^-i"), "sed: in-place file modification"),
         (re.compile(r"^--in-place"), "sed: in-place file modification"),
+        # GNU sed's e/r/w script commands run a shell command or read/write files.
+        # Match them at a command position inside the program (start, after ; { }
+        # newline, or a closing address delimiter). Prefer --sandbox at the argv
+        # level for exotic forms; this closes the reachable e/r/w vectors.
+        # Command position = start, or after ; { } newline, a regex-address close
+        # (/), or an address char (digit $ , ~ + !).
+        (re.compile(r"(?:^|[;{}\n/0-9$,~+!])\s*e(?:\s|$)"), "sed: e command (command execution)"),
+        (re.compile(r"(?:^|[;{}\n/0-9$,~+!])\s*[wWrR](?:\s|$)"), "sed: r/w file command"),
+        (re.compile(r"(?:[^a-zA-Z0-9]|^)s(.).*\1.*\1[a-z0-9]*e"), "sed: s///e execute flag"),
     ],
     "nmap": [
         (re.compile(r"^-iL"), "nmap: target list from file (bypasses target validation)"),
@@ -341,6 +351,23 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "wget": [
         (re.compile(r"^-i"), "wget: URL list from file bypasses target validation"),
         (re.compile(r"^--input-file(?:$|=)"), "wget: URL list from file bypasses target validation"),
+        (re.compile(r"^--use-askpass(?:$|=)"), "wget: --use-askpass runs an external command"),
+    ],
+    # zip/exiftool/openssl are allowlisted for legitimate archive/metadata/crypto
+    # use, but each has an option that shells out or evaluates code — block those.
+    "zip": [
+        (re.compile(r"^-TT$"), "zip: -TT unzip test command (command execution)"),
+        (re.compile(r"^--unzip-command(?:$|=)"), "zip: --unzip-command (command execution)"),
+    ],
+    "exiftool": [
+        (re.compile(r"^-if\d*$"), "exiftool: -if evaluates a Perl expression"),
+        (re.compile(r"^-p$"), "exiftool: -p print-format can evaluate expressions"),
+        (re.compile(r"^-api$"), "exiftool: -api can set Perl-evaluated options"),
+        (re.compile(r"^-@$"), "exiftool: -@ argfile bypasses argument validation"),
+        (re.compile(r"^-geotag$"), "exiftool: -geotag can run external helpers"),
+    ],
+    "openssl": [
+        (re.compile(r"^-engine(?:_impl)?$"), "openssl: -engine loads an arbitrary shared object"),
     ],
     # ProjectDiscovery and similar recon/scan tools read targets from a file via
     # list flags, which would defeat the private/loopback target allowlist the
@@ -734,6 +761,38 @@ _SAFE_NETWORKS = [
     ipaddress.ip_network("fe80::/10"),
 ]
 
+# Link-local cloud metadata endpoints can expose workload credentials and must
+# require the same explicit opt-in as other sensitive external destinations.
+_BLOCKED_SAFE_MODE_NETWORKS = [
+    ipaddress.ip_network("169.254.169.254/32"),
+    ipaddress.ip_network("169.254.170.2/32"),
+    ipaddress.ip_network("fd00:ec2::254/128"),
+]
+
+
+def _address_is_safe(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return whether an address is allowed by the default network policy."""
+    mapped = getattr(addr, "ipv4_mapped", None)
+    effective = mapped if mapped is not None else addr
+    if any(effective in net for net in _BLOCKED_SAFE_MODE_NETWORKS if effective.version == net.version):
+        return False
+    return any(effective in net for net in _SAFE_NETWORKS if effective.version == net.version)
+
+
+def _network_is_safe(net: ipaddress.IPv4Network | ipaddress.IPv6Network) -> bool:
+    """Return whether an entire network is allowed by the default policy."""
+    effective: ipaddress.IPv4Network | ipaddress.IPv6Network = net
+    if isinstance(net, ipaddress.IPv6Network) and net.prefixlen >= 96:
+        mapped = net.network_address.ipv4_mapped
+        if mapped is not None:
+            effective = ipaddress.ip_network((mapped, net.prefixlen - 96), strict=False)
+
+    same_version_blocked = (blocked for blocked in _BLOCKED_SAFE_MODE_NETWORKS if blocked.version == effective.version)
+    if any(effective.overlaps(blocked) for blocked in same_version_blocked):
+        return False
+    same_version_safe = (safe for safe in _SAFE_NETWORKS if safe.version == effective.version)
+    return any(effective.subnet_of(safe) for safe in same_version_safe)
+
 
 class _RateLimiter:
     """Concurrency + sliding-window rate limiter for tool execution."""
@@ -763,34 +822,35 @@ _rate_limiter = _RateLimiter()
 # socket.setdefaulttimeout which races under concurrent tool executions).
 
 
+# Bounded DNS resolver pool. Target validation runs before the rate limiter and
+# concurrency semaphore, so without a cap a burst of requests would spawn one daemon
+# thread per call. A fixed-size pool caps concurrent getaddrinfo calls; excess
+# submissions queue instead of allocating unbounded OS threads. A hung lookup still
+# occupies its worker until the OS resolver gives up (future.cancel cannot interrupt
+# getaddrinfo), which is the intended bound, not a leak.
+_DNS_MAX_WORKERS = 8
+_dns_executor = concurrent.futures.ThreadPoolExecutor(max_workers=_DNS_MAX_WORKERS, thread_name_prefix="cybersec-dns")
+
+
 def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
-    """Resolve hostname via getaddrinfo with a timeout.
-
-    Uses a daemon thread so the calling thread is not blocked beyond *timeout*.
-    """
-    result: list = []
-    error: list = []
+    """Resolve hostname via getaddrinfo with a per-call timeout, through a bounded pool."""
     start = time.monotonic()
-
-    def _resolve() -> None:
-        try:
-            result.extend(socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM))
-        except (socket.gaierror, OSError) as exc:
-            error.append(exc)
-
-    t = threading.Thread(target=_resolve, daemon=True)
-    t.start()
-    t.join(timeout)
-    elapsed = (time.monotonic() - start) * 1000
-    if t.is_alive():
+    future = _dns_executor.submit(socket.getaddrinfo, hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    try:
+        result = future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        future.cancel()  # best-effort; a running getaddrinfo cannot be interrupted
+        elapsed = (time.monotonic() - start) * 1000
         log_dns(hostname, resolved=False, duration_ms=elapsed, error="timeout")
-        raise socket.timeout(f"DNS resolution timed out after {timeout}s")
-    if error:
-        log_dns(hostname, resolved=False, duration_ms=elapsed, error=str(error[0]))
-        raise error[0]
+        raise socket.timeout(f"DNS resolution timed out after {timeout}s") from None
+    except (socket.gaierror, OSError) as exc:
+        elapsed = (time.monotonic() - start) * 1000
+        log_dns(hostname, resolved=False, duration_ms=elapsed, error=str(exc))
+        raise
+    elapsed = (time.monotonic() - start) * 1000
     if result:
         first_ip = result[0][4][0]
-        is_safe = all(any(ipaddress.ip_address(sa[4][0]) in net for net in _SAFE_NETWORKS) for sa in result)
+        is_safe = all(_address_is_safe(ipaddress.ip_address(sa[4][0])) for sa in result)
         log_dns(hostname, resolved=True, ip=first_ip, safe=is_safe, duration_ms=elapsed)
     else:
         log_dns(hostname, resolved=False, duration_ms=elapsed, error="empty_result")
@@ -836,26 +896,19 @@ def _is_safe_target(value: str) -> bool:
     # Resolve before the dotted-quad parser so obfuscated externals are caught.
     encoded = _decode_encoded_ipv4(value)
     if encoded is not None:
-        return any(encoded in net for net in _SAFE_NETWORKS)
+        return _address_is_safe(encoded)
 
     # Try parsing as IP address directly
     try:
         addr = ipaddress.ip_address(value)
-        if any(addr in net for net in _SAFE_NETWORKS):
-            return True
-        # Handle IPv4-mapped IPv6 addresses (e.g. ::ffff:10.0.0.1 → 10.0.0.1)
-        mapped = getattr(addr, "ipv4_mapped", None)
-        if mapped is not None:
-            return any(mapped in net for net in _SAFE_NETWORKS)
-        return False
+        return _address_is_safe(addr)
     except ValueError:
         pass
 
     # Try parsing as CIDR
     try:
         net = ipaddress.ip_network(value, strict=False)
-        same_ver: list[Any] = [s for s in _SAFE_NETWORKS if s.version == net.version]
-        return any(net.subnet_of(s) for s in same_ver)
+        return _network_is_safe(net)
     except (ValueError, TypeError):
         pass
 
@@ -875,7 +928,7 @@ def _is_safe_target(value: str) -> bool:
                 return False  # No resolution results — treat as unsafe
             for _, _, _, _, sockaddr in info:
                 addr = ipaddress.ip_address(sockaddr[0])
-                if not any(addr in net for net in _SAFE_NETWORKS):
+                if not _address_is_safe(addr):
                     return False
             return True
         except (socket.gaierror, OSError, socket.timeout):
@@ -894,7 +947,7 @@ def _is_safe_target(value: str) -> bool:
             return False  # No resolution results — treat as unsafe
         for _, _, _, _, sockaddr in info:
             addr = ipaddress.ip_address(sockaddr[0])
-            if not any(addr in net for net in _SAFE_NETWORKS):
+            if not _address_is_safe(addr):
                 return False
         return True
     except (socket.gaierror, OSError, socket.timeout, ValueError):
@@ -1197,6 +1250,12 @@ def _looks_like_external_target(value: str) -> bool:
 
 def _network_target_host(value: str) -> str:
     """Normalize a URL/host argument to the host value used for allowlist checks."""
+    try:
+        ipaddress.ip_network(value, strict=False)
+        return value
+    except ValueError:
+        pass
+
     clean = re.sub(r"^https?://", "", value)
     # Isolate the authority before stripping URL userinfo.
     clean = re.split(r"[/?#]", clean, maxsplit=1)[0]
@@ -1490,6 +1549,25 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
                 }
             ),
         ):
+            _raise_sensitive_write(name, dest)
+        return
+
+    if name in ("nmap", "masscan"):
+        # Scanner output flags write to an operator-named file; block clobbering a
+        # sensitive path. -oA takes a basename that expands to several files.
+        out_flags = ("-oN", "-oX", "-oG", "-oS", "-oA", "-oL", "-oJ", "-oB")
+        for i, arg in enumerate(arg_list):
+            for f in out_flags:
+                if arg == f and i + 1 < len(arg_list):
+                    _raise_sensitive_write(name, arg_list[i + 1])
+                elif arg.startswith(f) and len(arg) > len(f):
+                    _raise_sensitive_write(name, arg[len(f) :])
+            if arg in ("--output-filename",) and i + 1 < len(arg_list):
+                _raise_sensitive_write(name, arg_list[i + 1])
+        return
+
+    if name in ("tcpdump", "tshark"):
+        for dest in _flag_values(arg_list, short_flags=frozenset({"-w"}), long_flags=frozenset()):
             _raise_sensitive_write(name, dest)
         return
 
@@ -1804,6 +1882,31 @@ MAX_ARGS_LEN = 100_000
 _READ_CHUNK = 65_536
 
 
+def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+    """SIGKILL the whole process group so a timed-out tool's forked children die too.
+
+    Each subprocess is started with ``start_new_session=True``, making it the leader
+    of a new group whose id equals its pid. ``process.kill()`` signals only the
+    direct child, leaving grandchildren (workers a tool forked) running past the
+    timeout. Falls back to the direct process if the group is already gone. (SSH
+    remotes are the exception: killing the local ssh client cannot reap a process
+    still running on the remote host.)
+    """
+    pid = process.pid
+    # os.killpg() accepts any object with __index__, and a test double coerces to 1.
+    # killpg(1) is kill(-1): SIGKILL to every process this user owns. killpg(0) would
+    # signal our own group. Neither is ever a valid target, so require a real child pid.
+    if not isinstance(pid, int) or pid <= 1:
+        return
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+
+
 async def _bounded_communicate(
     process: asyncio.subprocess.Process,
     *,
@@ -1897,6 +2000,21 @@ def _append_truncation_marker(text: str, max_bytes: int) -> str:
         return text + marker
     cut = max(0, max_bytes - len(marker_bytes))
     return encoded[:cut].decode("utf-8", errors="ignore") + marker
+
+
+def _finalize_stream(text: str, max_bytes: int, was_capped: bool) -> str:
+    """Sanitize a captured stream, then bound it to ``max_bytes``.
+
+    Order matters: :func:`sanitize_output` inserts ``[SANITIZED] `` prefixes, so
+    applying the byte budget first lets the returned text exceed ``max_bytes``.
+    The budget is applied even when the stream was not capped upstream, for the
+    same reason — sanitizing can push an under-limit stream over it.
+    """
+    text = sanitize_output(text)
+    if was_capped:
+        return _append_truncation_marker(text, max_bytes)
+    bounded, _ = truncate_output(text, max_bytes)
+    return bounded
 
 
 def _step_args_to_str(step: dict) -> str:
@@ -1994,8 +2112,10 @@ async def execute_tool(
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,  # own process group, so killpg reaps forks
             )
 
             try:
@@ -2004,7 +2124,7 @@ async def execute_tool(
                     timeout=timeout,
                 )
             except asyncio.TimeoutError:
-                process.kill()
+                _kill_process_group(process)
                 try:
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 except asyncio.TimeoutError:
@@ -2030,14 +2150,9 @@ async def execute_tool(
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-            if t_read_stdout:
-                stdout = _append_truncation_marker(stdout, max_output)
-            if t_read_stderr:
-                stderr = _append_truncation_marker(stderr, max_output)
             truncated = t_read_stdout or t_read_stderr
-
-            stdout = sanitize_output(stdout)
-            stderr = sanitize_output(stderr)
+            stdout = _finalize_stream(stdout, max_output, t_read_stdout)
+            stderr = _finalize_stream(stderr, max_output, t_read_stderr)
 
             cmd_str = shlex.join(command)
             rc = process.returncode if process.returncode is not None else -1
@@ -2163,6 +2278,7 @@ async def _run_pipeline_steps(
                 stdin=stdin_mode,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
 
             try:
@@ -2175,7 +2291,7 @@ async def _run_pipeline_steps(
                     timeout=remaining,
                 )
             except asyncio.TimeoutError:
-                process.kill()
+                _kill_process_group(process)
                 try:
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 except asyncio.TimeoutError:
@@ -2239,12 +2355,8 @@ async def _run_pipeline_steps(
             elif rc != 0:
                 # Last step with non-zero exit — return output along with
                 # the exit code (like a shell pipe does).
-                stdout = stdout_bytes.decode("utf-8", errors="replace")
-                if truncated_any:
-                    stdout = _append_truncation_marker(stdout, max_output)
-                stdout = sanitize_output(stdout)
-                stderr = stderr_bytes.decode("utf-8", errors="replace")
-                stderr = sanitize_output(stderr)
+                stdout = _finalize_stream(stdout_bytes.decode("utf-8", errors="replace"), max_output, truncated_any)
+                stderr = _finalize_stream(stderr_bytes.decode("utf-8", errors="replace"), max_output, False)
                 return {
                     "exit_code": rc,
                     "stdout": stdout,
@@ -2288,10 +2400,7 @@ async def _run_pipeline_steps(
             }
 
     # Final output — append truncation marker if any step was bounded
-    stdout = (prev_output or b"").decode("utf-8", errors="replace")
-    if truncated_any:
-        stdout = _append_truncation_marker(stdout, max_output)
-    stdout = sanitize_output(stdout)
+    stdout = _finalize_stream((prev_output or b"").decode("utf-8", errors="replace"), max_output, truncated_any)
 
     return {
         "exit_code": 0,
@@ -2555,9 +2664,11 @@ async def execute_script(
                 process = await asyncio.create_subprocess_exec(
                     interpreter,
                     script_path,
+                    stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=cwd,
+                    start_new_session=True,
                 )
 
                 try:
@@ -2566,7 +2677,7 @@ async def execute_script(
                         timeout=timeout,
                     )
                 except asyncio.TimeoutError:
-                    process.kill()
+                    _kill_process_group(process)
                     try:
                         await asyncio.wait_for(process.wait(), timeout=5.0)
                     except asyncio.TimeoutError:
@@ -2586,14 +2697,9 @@ async def execute_script(
                 stdout = stdout_bytes.decode("utf-8", errors="replace")
                 stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-                if t_read_stdout:
-                    stdout = _append_truncation_marker(stdout, max_output)
-                if t_read_stderr:
-                    stderr = _append_truncation_marker(stderr, max_output)
                 truncated = t_read_stdout or t_read_stderr
-
-                stdout = sanitize_output(stdout)
-                stderr = sanitize_output(stderr)
+                stdout = _finalize_stream(stdout, max_output, t_read_stdout)
+                stderr = _finalize_stream(stderr, max_output, t_read_stderr)
 
                 rc = process.returncode if process.returncode is not None else -1
                 elapsed = (time.monotonic() - script_start) * 1000

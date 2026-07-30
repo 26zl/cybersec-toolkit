@@ -25,6 +25,14 @@ from typing import Any
 # Credential patterns must remain idempotent when applied repeatedly.
 _REDACTED = "[REDACTED]"
 _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # URL userinfo can contain credentials and is not covered by flag/header rules.
+    (
+        re.compile(
+            r"(\b[a-z][a-z0-9+.-]*://)(?!\[REDACTED\]@)[^/\s@]+@",
+            re.IGNORECASE,
+        ),
+        r"\1" + _REDACTED + "@",
+    ),
     # Authorization and API-key headers; preserve the auth scheme.
     (
         re.compile(
@@ -48,6 +56,17 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         re.compile(
             r"(--?(?:password|passwd|token|secret|api[_-]?key|auth)"
             r"[\s=]+)(?!\[REDACTED\])\S+",
+            re.IGNORECASE,
+        ),
+        r"\1" + _REDACTED,
+    ),
+    # Generic catch-all for credential-bearing long flags the specific rule above
+    # misses (--api-token, --client-secret, --access-token). "auth" is excluded so
+    # --author is not matched; the value must not start with '-' (not the next flag).
+    (
+        re.compile(
+            r"(--[a-z0-9-]*(?:password|passwd|secret|token|api[_-]?key|apikey|credential)"
+            r"[a-z0-9-]*[\s=]+)(?!\[REDACTED\])(?!-)\S+",
             re.IGNORECASE,
         ),
         r"\1" + _REDACTED,
@@ -314,6 +333,8 @@ def log_tool_call(tool_name: str, params: dict[str, Any]) -> str:
             # Pipeline step dicts can carry credentials in their nested args —
             # they aren't reachable via the code/args/command branches above.
             safe_params[k] = _redact_steps(v)
+        elif isinstance(v, str):
+            safe_params[k] = _redact_script_code(v)
         else:
             safe_params[k] = v
     _log(
@@ -374,7 +395,7 @@ def log_validation(
         "passed": passed,
     }
     if detail:
-        entry["detail"] = detail
+        entry["detail"] = _redact_script_code(detail)
     _log(logging.DEBUG, entry)
 
 
@@ -398,7 +419,7 @@ def log_blocked(
             "args": _redact_script_code(args),
             "host": host,
             "remote": remote,
-            "reason": reason,
+            "reason": _redact_script_code(reason),
         },
     )
 

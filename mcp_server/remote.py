@@ -19,8 +19,26 @@ if _parent not in sys.path:
 
 from mcp_server import security as _security  # noqa: E402
 
-# Default path for remote hosts configuration.
-_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "remote_hosts.json"
+
+def _default_config_path() -> Path:
+    """Resolve the remote host config outside the installed package tree.
+
+    Next to the source it disappears on reinstall, breaks on a read-only install,
+    and can be packaged by accident. Mirrors the XDG resolution in audit.py. An
+    existing in-package file still wins, so upgrades keep their configured hosts.
+    """
+    configured = os.environ.get("CYBERSEC_MCP_REMOTE_HOSTS", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    legacy = Path(__file__).resolve().parent / "remote_hosts.json"
+    if legacy.exists():
+        return legacy
+    state_home = os.environ.get("XDG_STATE_HOME", "").strip()
+    base = Path(state_home).expanduser() if state_home else Path.home() / ".local" / "state"
+    return base / "cybersec-tools-mcp" / "remote_hosts.json"
+
+
+_DEFAULT_CONFIG_PATH = _default_config_path()
 
 # Safe character patterns for SSH hostname and user — prevent option injection.
 _SAFE_HOST_RE = re.compile(r"^[a-zA-Z0-9._:\-]+$")
@@ -36,6 +54,35 @@ _SSH_BASE_OPTIONS = [
     "-o",
     "StrictHostKeyChecking=accept-new",
 ]
+
+
+def _validate_host_entry(name: str, entry: Any) -> None:
+    """Validate one persisted host entry before it can influence SSH argv."""
+    if not name.strip():
+        raise ValueError("Remote host config contains an empty host name")
+    if not isinstance(entry, dict):
+        raise ValueError(f"Remote host '{name}' must be an object, got {type(entry).__name__}.")
+
+    hostname = entry.get("hostname")
+    user = entry.get("user")
+    port = entry.get("port")
+    if not isinstance(hostname, str) or not hostname.strip():
+        raise ValueError(f"Remote host '{name}' has an invalid hostname")
+    if not _SAFE_HOST_RE.fullmatch(hostname.strip()):
+        raise ValueError(f"Remote host '{name}' has a hostname with invalid characters")
+    if not isinstance(user, str) or not _SAFE_USER_RE.fullmatch(user.strip()):
+        raise ValueError(f"Remote host '{name}' has an invalid username")
+    if type(port) is not int or not (1 <= port <= 65535):
+        raise ValueError(f"Remote host '{name}' has an invalid port")
+
+    ssh_key = entry.get("ssh_key")
+    if ssh_key is not None and not isinstance(ssh_key, str):
+        raise ValueError(f"Remote host '{name}' has a non-string ssh_key")
+    allowlist = entry.get("tool_allowlist")
+    if allowlist is not None and (
+        not isinstance(allowlist, list) or any(not isinstance(tool, str) or not tool.strip() for tool in allowlist)
+    ):
+        raise ValueError(f"Remote host '{name}' has an invalid tool_allowlist")
 
 
 class RemoteHostConfig:
@@ -72,6 +119,8 @@ class RemoteHostConfig:
         hosts = data.get("hosts", {})
         if not isinstance(hosts, dict):
             raise ValueError(f"'hosts' key in {self._path} must be an object, got {type(hosts).__name__}.")
+        for name, entry in hosts.items():
+            _validate_host_entry(name, entry)
         self._hosts = hosts
 
     def _save(self) -> None:
@@ -138,6 +187,7 @@ class RemoteHostConfig:
             entry["ssh_key"] = ssh_key.strip()
         if tool_allowlist is not None:
             entry["tool_allowlist"] = list(tool_allowlist)
+        _validate_host_entry(name.strip(), entry)
 
         self._hosts[name.strip()] = entry
         self._save()
@@ -221,6 +271,7 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
     try:
         process = await asyncio.create_subprocess_exec(
             *command,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -294,6 +345,7 @@ async def execute_remote_command(
     try:
         process = await asyncio.create_subprocess_exec(
             *full_command,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -322,13 +374,8 @@ async def execute_remote_command(
         # and manage_remote_hosts call this directly, not via execute_tool_remote, so
         # a remote motd/banner or crafted output would otherwise reach the model raw.
         # sanitize_output is idempotent, so the execute_tool_remote path re-sanitizing is safe.
-        stdout = _security.sanitize_output(stdout_bytes.decode("utf-8", errors="replace"))
-        stderr = _security.sanitize_output(stderr_bytes.decode("utf-8", errors="replace"))
-
-        if t_read_stdout:
-            stdout = _security._append_truncation_marker(stdout, max_output)
-        if t_read_stderr:
-            stderr = _security._append_truncation_marker(stderr, max_output)
+        stdout = _security._finalize_stream(stdout_bytes.decode("utf-8", errors="replace"), max_output, t_read_stdout)
+        stderr = _security._finalize_stream(stderr_bytes.decode("utf-8", errors="replace"), max_output, t_read_stderr)
         truncated = t_read_stdout or t_read_stderr
 
         return {

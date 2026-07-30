@@ -9,6 +9,12 @@ import pytest
 from mcp_server import server
 
 
+def test_main_disables_banner_and_update_check() -> None:
+    with patch.object(server.mcp, "run") as run:
+        server.main()
+    run.assert_called_once_with(show_banner=False)
+
+
 @pytest.mark.asyncio
 async def test_manage_remote_hosts_test_logs_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """A successful SSH test returns ``success`` and must log success too."""
@@ -46,7 +52,7 @@ async def test_run_script_reports_unsandboxed_security_scope(monkeypatch: pytest
     assert result["security_scope"]["external_network_policy_enforced"] is False
 
 
-# ---- C2 gating reflected in MCP output (uses the real registry) ----
+# C2 gating reflected in MCP output (uses the real registry)
 
 
 def test_get_tool_info_c2_tool_gated_install_and_whole_system_update() -> None:
@@ -93,7 +99,7 @@ def test_get_module_info_update_command_whole_system() -> None:
     assert any(t["name"] == "gophish" for t in c2_flagged)
 
 
-# ---- Advisor docstrings stay in sync with the category maps ----
+# Advisor docstrings stay in sync with the category maps
 
 
 def test_suggest_for_ctf_docstring_count_and_llm_listed() -> None:

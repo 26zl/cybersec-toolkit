@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -238,6 +239,28 @@ class TestRemoteHostConfig:
         cfg = RemoteHostConfig(config_path=config_path)
         assert cfg.list_hosts() == {}
 
+    @pytest.mark.parametrize(
+        "entry,error",
+        [
+            ({"hostname": "10.0.0.1", "user": "-oProxyCommand=invalid", "port": 22}, "username"),
+            ({"hostname": "10.0.0.1", "user": "kali", "port": "22"}, "port"),
+            (
+                {
+                    "hostname": "10.0.0.1",
+                    "user": "kali",
+                    "port": 22,
+                    "tool_allowlist": ["nmap", 123],
+                },
+                "tool_allowlist",
+            ),
+        ],
+    )
+    def test_persisted_host_fields_are_validated(self, tmp_path: Path, entry: dict, error: str) -> None:
+        config_path = tmp_path / "remote_hosts.json"
+        config_path.write_text(json.dumps({"hosts": {"box": entry}}), encoding="utf-8")
+        with pytest.raises(ValueError, match=error):
+            RemoteHostConfig(config_path=config_path)
+
 
 # check_ssh_connection (async, mocked subprocess)
 class TestCheckSshConnection:
@@ -247,11 +270,12 @@ class TestCheckSshConnection:
         mock_proc.communicate.return_value = (b"ok\n", b"")
         mock_proc.returncode = 0
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
             result = await check_ssh_connection(["user@host"])
 
         assert result["success"] is True
         assert "successful" in result["message"]
+        assert mock_exec.call_args.kwargs["stdin"] == asyncio.subprocess.DEVNULL
 
     @pytest.mark.asyncio
     async def test_failed_connection(self) -> None:
@@ -295,7 +319,7 @@ class TestExecuteRemoteCommand:
         mock_proc.communicate.return_value = (b"scan results\n", b"")
         mock_proc.returncode = 0
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
             result = await execute_remote_command(["user@host"], ["nmap", "-sV", "10.0.0.1"])
 
         assert result["exit_code"] == 0
@@ -304,6 +328,7 @@ class TestExecuteRemoteCommand:
         assert result["truncated"] is False
         assert result["remote"] is True
         assert result["command"] == "nmap -sV 10.0.0.1"
+        assert mock_exec.call_args.kwargs["stdin"] == asyncio.subprocess.DEVNULL
 
     @pytest.mark.asyncio
     async def test_timeout(self) -> None:

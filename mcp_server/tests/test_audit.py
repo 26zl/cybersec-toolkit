@@ -21,6 +21,7 @@ from mcp_server.audit import (
     log_script_execution,
     log_tool_call,
     log_tool_result,
+    log_validation,
 )
 
 
@@ -180,6 +181,52 @@ class TestLogBlocked:
         assert entry["reason"] == "sqlmap: OS shell access"
         assert entry["host"] == "kali-vm"
         assert entry["remote"] is True
+
+    def test_log_blocked_redacts_reason(self, tmp_path: Path) -> None:
+        log_blocked(
+            tool_name="curl",
+            args="blocked input",
+            reason="parse failed for token=synthetic-credential-123",
+        )
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert "synthetic-credential-123" not in entry["reason"]
+        assert "[REDACTED]" in entry["reason"]
+
+
+class TestLogValidation:
+    def test_validation_detail_is_redacted(self, tmp_path: Path) -> None:
+        log_validation(
+            tool_name="curl",
+            step="failed",
+            passed=False,
+            detail="invalid input with password=synthetic-credential-456",
+        )
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert "synthetic-credential-456" not in entry["detail"]
+        assert "[REDACTED]" in entry["detail"]
+
+
+class TestGenericCredentialFlagRedaction:
+    """Credential-bearing long flags the specific rules miss (--api-token,
+    --client-secret) must still be redacted; --author must not be."""
+
+    def test_uncommon_credential_flags_redacted(self) -> None:
+        from mcp_server.audit import _redact_sensitive
+
+        for flag in (
+            "--api-token=synthetic-777",
+            "--client-secret synthetic-777",
+            "--access-token=synthetic-777",
+            "--auth-token synthetic-777",
+        ):
+            out = _redact_sensitive(flag)
+            assert "synthetic-777" not in out
+            assert "[REDACTED]" in out
+
+    def test_author_flag_not_redacted(self) -> None:
+        from mcp_server.audit import _redact_sensitive
+
+        assert _redact_sensitive("--author Jane") == "--author Jane"
 
 
 class TestAuditCrashSafety:
@@ -431,6 +478,13 @@ class TestRedactScriptCode:
         assert secret not in redacted
         assert "[REDACTED]" in redacted
 
+    def test_url_userinfo_redacted(self) -> None:
+        value = "https://synthetic-user:synthetic-password@internal.example/path"
+        redacted = _redact_script_code(value)
+        assert "synthetic-user" not in redacted
+        assert "synthetic-password" not in redacted
+        assert redacted == "https://[REDACTED]@internal.example/path"
+
     def test_log_script_execution_omits_body_and_hashes(self, tmp_path: Path) -> None:
         """log_script_execution must NOT persist the script body — only an
         irreversible SHA256 + length of the original. A secret in the code can
@@ -495,6 +549,16 @@ class TestLogToolCallRedaction:
         assert "[REDACTED]" in entry["params"]["steps"][0]["args"]
         # tool name preserved for correlation
         assert entry["params"]["steps"][0]["tool"] == "curl"
+
+    def test_generic_string_param_is_redacted(self, tmp_path: Path) -> None:
+        log_tool_call(
+            "guided_assessment",
+            {"target": "https://internal.example/?token=synthetic-credential-789"},
+        )
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        target = entry["params"]["target"]
+        assert "synthetic-credential-789" not in target
+        assert "[REDACTED]" in target
 
 
 class TestLogPipelineStartRedaction:

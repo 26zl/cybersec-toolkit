@@ -298,7 +298,10 @@ Simple recon/HTTP commands such as `curl` should remain `run_tool` calls.
 ## Security
 
 `run_tool` and `run_pipeline` enforce the governed execution policy below.
-`run_script` is a separate full-code-execution opt-in and is not OS-sandboxed.
+The policy is not an OS sandbox: allowed tools retain the MCP process user's
+permissions, and some can launch child processes or load plugins. Disabling
+`run_script` only disables that endpoint. Run the server as a least-privileged
+user or inside an isolation boundary appropriate for untrusted targets.
 
 - **Registry check**: Only tools listed in `tools_config.json` (plus 128 system utilities) can be executed
 - **Install check**: Tool must be installed and in PATH
@@ -306,7 +309,7 @@ Simple recon/HTTP commands such as `curl` should remain `run_tool` calls.
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
 - **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `--includefile`, sed `-i` (in-place modification)
 - **Tool-aware parsing, not solver hardcoding**: The auto-solver chooses tools from the registry/advisors. The policy layer only knows enough CLI grammar to distinguish targets from headers, wordlists, output files, config files, and target-list flags, so legitimate commands stay usable without letting scope checks be bypassed
-- **Network policy**: Network tools and SSH remote hosts can only target private/loopback IPs by default (including single-label hostnames like `google`). Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
+- **Network policy**: Network tools and SSH remote hosts reject targets that do not resolve to private/loopback IPs by default (including single-label hostnames like `google`). This preflight check is not a network sandbox: DNS can change between validation and connection, and tools can follow redirects. Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
 - **Script execution gate**: `run_script` is disabled by default. Enabling `CYBERSEC_MCP_ALLOW_SCRIPTS=1` grants scripts the MCP process user's filesystem and network permissions; `CYBERSEC_MCP_ALLOW_EXTERNAL` does not constrain arbitrary script code
 - **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing
 - **Pipeline validation**: `run_pipeline` validates all steps (allowlist, args, policy) before executing any. Max 10 steps per pipeline; `step_results` and `had_failures` expose intermediate non-zero exits while preserving shell-like final exit semantics
@@ -315,8 +318,8 @@ Simple recon/HTTP commands such as `curl` should remain `run_tool` calls.
 - **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`
 - **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)
-- **Async DNS**: Network target validation runs in a thread pool to avoid blocking the event loop
-- **Timeout**: Configurable 1-300s, process killed on timeout
+- **Async DNS**: Network target validation runs in a worker thread to avoid blocking the event loop
+- **Timeout**: Configurable 1-300s; the direct process is killed on timeout, but independently forked descendants may survive
 - **Output limits**: Truncated at 200KB to prevent memory issues
 
 ## Environment Variables

@@ -372,6 +372,16 @@ class TestScriptPythonInterpreter:
         call_args = mock_exec.call_args[0]
         assert call_args[0] == sys.executable
 
+    @pytest.mark.asyncio
+    async def test_scripts_use_devnull_stdin(self) -> None:
+        proc = _make_proc(b"ok\n")
+        with (
+            patch("mcp_server.security._allow_scripts", return_value=True),
+            _patch_exec(proc) as mock_exec,
+        ):
+            await execute_script("print('ok')", language="python")
+        assert mock_exec.call_args.kwargs["stdin"] == asyncio.subprocess.DEVNULL
+
 
 # Temp file cleanup
 class TestScriptTempFileCleanup:

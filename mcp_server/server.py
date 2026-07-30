@@ -48,6 +48,9 @@ You are an authorized security assistant using the Cybersec Toolkit MCP server.
 - Ask for approval before destructive actions, persistence, external communication, or scope expansion.
 
 ## Tool order
+This applies whenever you touch a target — a host, URL, sample, capture, or a
+binary/file you did not write. Editing the toolkit repository itself is ordinary
+development; use normal tools there.
 1. For unclear work, start with guided_assessment. Use suggest_for_ctf or
    suggest_for_bounty when the workflow is known.
 2. Use run_tool for existing tools and simple HTTP/file operations.
@@ -1101,7 +1104,8 @@ async def manage_remote_hosts(
 
 def main() -> None:
     """Entry point for the ``cybersec-mcp`` console script."""
-    mcp.run()
+    # A stdio server must not perform FastMCP's banner-time PyPI update check.
+    mcp.run(show_banner=False)
 
 
 if __name__ == "__main__":
