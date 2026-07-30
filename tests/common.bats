@@ -1,15 +1,13 @@
 #!/usr/bin/env bats
-# =============================================================================
 # Tests for lib/common.sh
 # Logging, command_exists, distro detection, exported paths, ALL_MODULES
-# =============================================================================
 
 setup() {
     load 'test_helper'
     source_libs debian apt
 }
 
-# ---------- Logging functions ------------------------------------------------
+# Logging functions
 
 @test "log_success outputs [+] prefix" {
     run log_success "test message"
@@ -48,7 +46,7 @@ setup() {
     grep -q "file write test" "$logfile"
 }
 
-# ---------- command_exists ---------------------------------------------------
+# command_exists
 
 @test "command_exists returns 0 for bash" {
     run command_exists bash
@@ -60,7 +58,7 @@ setup() {
     assert_failure
 }
 
-# ---------- Distro detection -------------------------------------------------
+# Distro detection
 
 @test "detect_pkg_manager sets apt for debian" {
     # Re-source with real detect_pkg_manager
@@ -154,7 +152,7 @@ setup() {
     [[ "$DISTRO_ID" == "android" ]]
 }
 
-# ---------- Package manager abstraction --------------------------------------
+# Package manager abstraction
 
 @test "maybe_sudo runs env directly on Termux (no sudo)" {
     make_test_tmpdir
@@ -237,7 +235,7 @@ setup() {
     assert_output "1"
 }
 
-# ---------- Exported paths (Linux) -------------------------------------------
+# Exported paths (Linux)
 
 @test "GOBIN is /usr/local/bin on Linux" {
     source_libs debian apt
@@ -266,7 +264,7 @@ setup() {
     [[ "$GITHUB_TOOL_DIR" == "/opt" ]]
 }
 
-# ---------- Exported paths (Termux) -----------------------------------------
+# Exported paths (Termux)
 
 @test "GOBIN uses PREFIX/bin on Termux" {
     # Simulate Termux environment
@@ -293,7 +291,7 @@ setup() {
     [[ "$GITHUB_TOOL_DIR" == "$HOME/tools" ]]
 }
 
-# ---------- ALL_MODULES ------------------------------------------------------
+# ALL_MODULES
 
 @test "ALL_MODULES contains exactly 18 entries" {
     [[ ${#ALL_MODULES[@]} -eq 18 ]]
@@ -313,7 +311,7 @@ setup() {
     done
 }
 
-# ---------- VERBOSE / log_debug ----------------------------------------------
+# VERBOSE / log_debug
 
 @test "VERBOSE defaults to false" {
     unset VERBOSE
@@ -346,19 +344,25 @@ setup() {
     grep -q "logfile debug test" "$logfile"
 }
 
-# ---------- Color variables --------------------------------------------------
+# Color variables
 
 @test "color variables are defined" {
-    [[ -n "$RED" ]]
-    [[ -n "$GREEN" ]]
-    [[ -n "$YELLOW" ]]
-    [[ -n "$BLUE" ]]
-    [[ -n "$CYAN" ]]
-    [[ -n "$BOLD" ]]
-    [[ -n "$NC" ]]
+    [[ -n "${RED+x}" ]]
+    [[ -n "${GREEN+x}" ]]
+    [[ -n "${YELLOW+x}" ]]
+    [[ -n "${BLUE+x}" ]]
+    [[ -n "${CYAN+x}" ]]
+    [[ -n "${BOLD+x}" ]]
+    [[ -n "${NC+x}" ]]
 }
 
-# ---------- PARALLEL_JOBS ----------------------------------------------------
+@test "non-interactive output disables ANSI colors" {
+    [[ "$COLOR_ENABLED" == "false" ]]
+    [[ -z "$RED" ]]
+    [[ -z "$NC" ]]
+}
+
+# PARALLEL_JOBS
 
 @test "PARALLEL_JOBS defaults to 4" {
     unset PARALLEL_JOBS
@@ -372,7 +376,7 @@ setup() {
     [[ "$PARALLEL_JOBS" == "8" ]]
 }
 
-# ---------- pkg_is_installed --------------------------------------------------
+# pkg_is_installed
 
 @test "pkg_is_installed function exists" {
     run type -t pkg_is_installed
@@ -380,7 +384,7 @@ setup() {
     assert_output "function"
 }
 
-# ---------- PARALLEL_JOBS / helpers ------------------------------------------
+# PARALLEL_JOBS / helpers
 
 @test "_wait_for_job_slot returns 0 when under limit" {
     PARALLEL_JOBS=4
@@ -414,7 +418,7 @@ setup() {
     ! grep -q "^tool-c|" "$VERSION_FILE"
 }
 
-# ---------- _builder_home ---------------------------------------------------
+# _builder_home
 
 @test "_builder_home returns HOME when SUDO_USER unset" {
     source_libs debian apt
@@ -470,7 +474,7 @@ setup() {
     [[ ! -e "$marker" ]]
 }
 
-# ---------- _list_sessions distinct-installed count --------------------------
+# _list_sessions distinct-installed count
 
 @test "_list_sessions counts distinct installed tools, not raw lines" {
     source_libs debian apt
@@ -500,4 +504,69 @@ MANIFEST
     # The TOOLS column for this session must read 3
     echo "$output" | grep -q "20260614-100000" || false
     [[ "$(echo "$output" | awk '/20260614-100000/{print $4}')" == "3" ]]
+}
+
+# _builder_cmd (privilege-drop tool resolution)
+# Regression cover: root's cargo under /root is unreachable for $SUDO_USER, and a
+# bare name misses ensure_go's /usr/local/go/bin.
+
+_bc_setup() {
+    source_libs debian apt
+    make_test_tmpdir
+    export SUDO_USER=fakebuilder          # force the privilege-drop branch
+    mkdir -p "$TEST_TMPDIR/rootonly" "$TEST_TMPDIR/offpath/bin"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/rootonly/cargo"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/offpath/bin/go"
+    chmod +x "$TEST_TMPDIR/rootonly/cargo" "$TEST_TMPDIR/offpath/bin/go"
+    _BUILDER_CMD_CACHE=()
+
+    # The builder: gem on PATH, go readable off-PATH, cargo unreachable.
+    _as_builder() {
+        case "$1" in
+            "command -v gem")   return 0 ;;
+            "command -v go")    return 1 ;;
+            "command -v cargo") return 1 ;;
+            "test -x '$TEST_TMPDIR/offpath/bin/go'")  return 0 ;;
+            "test -x '$TEST_TMPDIR/rootonly/cargo'")  return 1 ;;
+            *) return 1 ;;
+        esac
+    }
+    # Root's PATH resolution.
+    command() {
+        if [[ "$1" == "-v" ]]; then
+            case "$2" in
+                go)    echo "$TEST_TMPDIR/offpath/bin/go" ;;
+                cargo) echo "$TEST_TMPDIR/rootonly/cargo" ;;
+                gem)   echo /usr/bin/gem ;;
+                *)     return 1 ;;
+            esac
+            return 0
+        fi
+        builtin command "$@"
+    }
+}
+
+@test "_builder_cmd returns the bare name when it is on the builder's PATH" {
+    _bc_setup
+    [[ "$(_builder_cmd gem)" == "gem" ]]
+}
+
+@test "_builder_cmd returns an absolute path for a readable off-PATH tool" {
+    # The /usr/local/go/bin case — a bare name would be "command not found".
+    _bc_setup
+    [[ "$(_builder_cmd go)" == "$TEST_TMPDIR/offpath/bin/go" ]]
+}
+
+@test "_builder_cmd fails on a tool the builder cannot execute" {
+    # The /root/.cargo/bin/cargo case — must fail loudly, not emit an unusable path.
+    _bc_setup
+    run _builder_cmd cargo
+    assert_failure
+    assert_output "cargo"
+}
+
+@test "_builder_cmd caches its resolution" {
+    _bc_setup
+    _builder_cmd gem >/dev/null
+    [[ "${_BUILDER_CMD_CACHE[gem]}" == "gem" ]]
 }

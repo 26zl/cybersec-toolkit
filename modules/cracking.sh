@@ -12,7 +12,7 @@ CRACKING_PACKAGES=(
 )
 
 CRACKING_PIPX=(search-that-hash name-that-hash trevorspray)
-# patator: handled via custom install below (needs --no-deps for cx-Oracle)
+# patator: handled via custom install below (dedicated venv, skips cx-Oracle)
 
 CRACKING_GIT=(
     "DefaultCreds-cheat-sheet=https://github.com/ihebski/DefaultCreds-cheat-sheet.git"
@@ -38,19 +38,26 @@ install_module_cracking() {
     install_apt_batch "Cracking - Packages" "${CRACKING_PACKAGES[@]}"
     install_pipx_batch "Cracking - Python" "${CRACKING_PIPX[@]}"
 
-    # patator: cx-Oracle dependency requires Oracle Instant Client headers (not
-    # available).  Install without deps, then inject everything except cx-Oracle.
-    # Also inject setuptools (missing from pipx venvs on Python 3.12+, PEP 632).
+    # patator hard-depends on cx-Oracle (non-redistributable Oracle headers). pipx
+    # cannot skip it — `--pip-args=--no-deps` makes pipx fail reading the skipped
+    # deps' metadata — so drive the venv directly. setuptools is explicit because
+    # venv stopped seeding it on Python 3.12+ (PEP 632).
     if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! command_exists patator; then
         log_info "Installing patator (excluding cx-Oracle)..."
-        if pipx install patator --pip-args='--no-deps' >> "$LOG_FILE" 2>&1; then
-            # Inject all patator deps except cx-Oracle (Oracle DB brute-forcing is niche)
-            pipx inject patator setuptools paramiko pycurl ajpy impacket \
-                psycopg2-binary pycryptodomex dnspython IPy pysnmp >> "$LOG_FILE" 2>&1 || true
-            # Optional deps that may fail without system headers — don't count as errors
-            pipx inject patator mysqlclient >> "$LOG_FILE" 2>&1 || log_debug "patator: mysqlclient skipped (needs libmysqlclient-dev)"
+        local _pat_dir="$GITHUB_TOOL_DIR/patator"
+        local _pat_esc; _pat_esc="$(_escape_single_quoted "$_pat_dir")"
+        mkdir -p "$_pat_dir" && _chown_for_builder "$_pat_dir"
+        if _as_builder "python3 -m venv '$_pat_esc/venv' \
+                && '$_pat_esc/venv/bin/pip' install -q patator --no-deps \
+                && '$_pat_esc/venv/bin/pip' install -q setuptools paramiko pycurl ajpy \
+                   impacket psycopg2-binary pycryptodomex dnspython IPy pysnmp \
+                   telnetlib-313-and-up" >> "$LOG_FILE" 2>&1; then
+            # Optional dep that fails without system headers — not an error
+            _as_builder "'$_pat_esc/venv/bin/pip' install -q mysqlclient" >> "$LOG_FILE" 2>&1 \
+                || log_debug "patator: mysqlclient skipped (needs libmysqlclient-dev)"
+            ln -sf "$_pat_dir/venv/bin/patator" "$PIPX_BIN_DIR/patator"
             log_success "patator installed"
-            track_version "patator" "pipx" "latest"
+            track_version "patator" "special" "latest"
         else
             log_error "Failed pipx: patator"
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))

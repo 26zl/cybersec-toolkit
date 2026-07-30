@@ -10,14 +10,25 @@ if [[ -z "${BASH_VERSION:-}" ]] || [[ "${BASH_VERSINFO[0]}" -lt 4 ]] || \
     exit 1
 fi
 
-# Colors (256-color palette)
-RED='\033[38;5;88m'      # blood red   — errors + banner
-GREEN='\033[38;5;71m'    # sage green  — success
-YELLOW='\033[38;5;136m'  # amber/gold  — warnings
-BLUE='\033[38;5;67m'     # steel blue  — info
-CYAN='\033[38;5;73m'     # muted teal  — debug
-BOLD='\033[1m'
-NC='\033[0m'
+COLOR_ENABLED=false
+if [[ -t 1 && "${TERM:-dumb}" != "dumb" && -z "${NO_COLOR+x}" ]]; then
+    RED='\033[38;5;88m'
+    GREEN='\033[38;5;71m'
+    YELLOW='\033[38;5;136m'
+    BLUE='\033[38;5;67m'
+    CYAN='\033[38;5;73m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+    COLOR_ENABLED=true
+else
+    RED=""
+    GREEN=""
+    YELLOW=""
+    BLUE=""
+    CYAN=""
+    BOLD=""
+    NC=""
+fi
 
 # Configurable defaults (GITHUB_TOOL_DIR set after distro detection — see path block below)
 VERSION_FILE="${VERSION_FILE:-${SCRIPT_DIR:-.}/.versions}"
@@ -74,6 +85,9 @@ _init_session() {
         echo "# Session: $_SESSION_ID"
         echo "# Started: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "# Version: ${INSTALLER_VERSION:-unknown}"
+        # Schema 2 = pre-existing tools are logged "existing", so --rollback can
+        # safely remove system packages. Schema 1 manifests cannot be trusted for that.
+        echo "# Schema: 2"
         echo "# Profile: $profile"
         echo "# Modules: $modules"
         echo "# tool|method|action|timestamp"
@@ -198,7 +212,8 @@ _setup_verbose() {
 # Usage: _separator_line "$GREEN"   or   _separator_line "$YELLOW"
 _separator_line() {
     local _color="${1:-}"
-    local _hl=$'\xe2\x94\x81'  # ━ U+2501 BOX DRAWINGS HEAVY HORIZONTAL
+    local _hl="-"
+    [[ "$COLOR_ENABLED" == "true" ]] && _hl=$'\xe2\x94\x81'
     local _line=""
     local _i
     for ((_i = 0; _i < 45; _i++)); do _line+="$_hl"; done
@@ -459,10 +474,10 @@ _collect_parallel_results() {
             ok:depwarn)    track_version "$_rname" "$method" "$_rver"
                            _par_dep_warns=$((_par_dep_warns + 1)) ;;
             skip)          _par_skipped=$((_par_skipped + 1))
-                           track_version "$_rname" "$method" "$_rver" ;;
+                           _track_already_present "$_rname" "$method" ;;
             skip:depwarn)  _par_skipped=$((_par_skipped + 1))
                            _par_dep_warns=$((_par_dep_warns + 1))
-                           track_version "$_rname" "$method" "$_rver" ;;
+                           _track_already_present "$_rname" "$method" ;;
             fail)          _par_failed=$((_par_failed + 1)) ;;
         esac
     done
@@ -753,6 +768,35 @@ _as_builder() {
     sudo -H -u "$SUDO_USER" bash -c "export PATH=\"\$HOME/.cargo/bin:/usr/local/bin:\$PATH\"; $1"
 }
 
+# _builder_cmd — resolve <cmd> to a form the BUILDER can run. Root's `command -v`
+# may point under /root (rustup cargo, mode 0700) which $SUDO_USER cannot reach;
+# a bare name misses ensure_go's /usr/local/go/bin, off the builder's PATH. Try the
+# builder's PATH first, then root's path if the builder can exec it. Prints the
+# bare name and returns 1 when neither works.
+# Cached — a miss costs a sudo round trip; ensure_go/ensure_cargo clear it.
+declare -gA _BUILDER_CMD_CACHE=()
+_builder_cmd() {
+    local cmd="$1" resolved
+    if [[ -n "${_BUILDER_CMD_CACHE[$cmd]:-}" ]]; then
+        printf '%s\n' "${_BUILDER_CMD_CACHE[$cmd]}"
+        return 0
+    fi
+    if _as_builder "command -v $cmd" >/dev/null 2>&1; then
+        resolved="$cmd"   # bare name keeps resolving on the builder's PATH
+    else
+        resolved=$(command -v "$cmd" 2>/dev/null) || { printf '%s\n' "$cmd"; return 1; }
+        if ! _as_builder "test -x '$resolved'" 2>/dev/null; then
+            # stderr, not stdout: callers use $(_builder_cmd ...) inside a command
+            # string, and log_message echoes to stdout.
+            log_debug "_builder_cmd: $resolved is not executable by ${SUDO_USER:-root}" >&2
+            printf '%s\n' "$cmd"
+            return 1
+        fi
+    fi
+    _BUILDER_CMD_CACHE["$cmd"]="$resolved"
+    printf '%s\n' "$resolved"
+}
+
 # _chown_for_builder — make directories writable by $SUDO_USER before privilege-dropped operations.
 # Root creates system directories (/opt, /usr/local/bin) but _as_builder runs as $SUDO_USER,
 # who cannot write to root-owned dirs.  Call this after mkdir to hand ownership to the builder.
@@ -892,7 +936,7 @@ pipx_install() {
             fi
             # Retry 3: older Python versions (if available)
             local _alt
-            for _alt in python3.12 python3.11 python3.10; do
+            for _alt in python3.13 python3.12 python3.11 python3.10; do
                 command -v "$_alt" &>/dev/null || continue
                 log_debug "Retrying pipx install $pkg with $_alt..."
                 if pipx install --python "$_alt" "$pkg" --force >> "$LOG_FILE" 2>&1; then

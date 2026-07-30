@@ -123,6 +123,10 @@ fixup_package_names() {
     fi
 }
 
+# Packages already installed before the current install_apt_batch call. Reset per
+# call; read by _track_pkg, which outlives the call that defines it.
+declare -gA _APT_PREEXISTING=()
+
 # Batch APT install with progress and distro fixup
 install_apt_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
@@ -135,6 +139,35 @@ install_apt_batch() {
     [[ "$total" -eq 0 ]] && return 0
     local failed=0
 
+    # Provenance: record what is already installed BEFORE touching anything, so the
+    # uninstall paths never remove a package the user had first. '@group' entries
+    # cannot be queried per-package, so treat them as pre-existing.
+    _APT_PREEXISTING=()
+    _APT_PRIOR_TOOLKIT=()
+    for pkg in "${packages[@]}"; do
+        if [[ "$pkg" == @* ]]; then
+            _APT_PREEXISTING["$pkg"]=1
+        elif pkg_is_installed "$pkg"; then
+            if ! _version_known "$pkg" || _is_preexisting "$pkg"; then
+                _APT_PREEXISTING["$pkg"]=1
+            else
+                _APT_PRIOR_TOOLKIT["$pkg"]=1
+            fi
+        fi
+    done
+    # _APT_PREEXISTING is file-scope, not a caller local: bash leaves this function
+    # defined after install_apt_batch returns, and subscripting an out-of-scope
+    # associative array aborts under `set -u`.
+    _track_pkg() {
+        if [[ -n "${_APT_PREEXISTING[$1]:-}" ]]; then
+            track_version "$1" "$PKG_MANAGER" "existing"
+        elif [[ -n "${_APT_PRIOR_TOOLKIT[$1]:-}" ]]; then
+            _track_already_present "$1" "$PKG_MANAGER"
+        else
+            track_version "$1" "$PKG_MANAGER" "system"
+        fi
+    }
+
     log_debug "install_apt_batch: starting '$label' with $total items"
     local _batch_start; _batch_start=$(date +%s)
 
@@ -144,7 +177,7 @@ install_apt_batch() {
     if pkg_install "${packages[@]}" >> "$LOG_FILE" 2>&1; then
         # All succeeded — track versions in bulk
         for pkg in "${packages[@]}"; do
-            track_version "$pkg" "$PKG_MANAGER" "system"
+            _track_pkg "$pkg"
         done
         echo ""
         log_success "${label}: ${total}/${total} installed (0 failed) [batch]"
@@ -161,7 +194,7 @@ install_apt_batch() {
                     for _g in "${group[@]}"; do
                         current=$((current + 1))
                         show_progress "$current" "$total" "$_g"
-                        track_version "$_g" "$PKG_MANAGER" "system"
+                        _track_pkg "$_g"
                     done
                 else
                     # Group failed — fall back to per-package within this group
@@ -173,7 +206,7 @@ install_apt_batch() {
                             failed=$((failed + 1))
                             track_session "$_g" "$PKG_MANAGER" "failed" 2>/dev/null || true
                         else
-                            track_version "$_g" "$PKG_MANAGER" "system"
+                            _track_pkg "$_g"
                         fi
                     done
                 fi
@@ -186,7 +219,7 @@ install_apt_batch() {
                 for _g in "${group[@]}"; do
                     current=$((current + 1))
                     show_progress "$current" "$total" "$_g"
-                    track_version "$_g" "$PKG_MANAGER" "system"
+                    _track_pkg "$_g"
                 done
             else
                 for _g in "${group[@]}"; do
@@ -197,7 +230,7 @@ install_apt_batch() {
                         failed=$((failed + 1))
                         track_session "$_g" "$PKG_MANAGER" "failed" 2>/dev/null || true
                     else
-                        track_version "$_g" "$PKG_MANAGER" "system"
+                        _track_pkg "$_g"
                     fi
                 done
             fi
@@ -240,7 +273,7 @@ install_pipx_batch() {
     _report_method_total "pipx" "$total"
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
-        # --- Parallel mode ---
+        # Parallel mode
         # pipx venvs are isolated per-package, so parallel installs are safe.
         # pip's download cache has built-in locking for concurrent access.
         local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
@@ -274,7 +307,7 @@ install_pipx_batch() {
         # shellcheck disable=SC2154  # _par_failed/_par_skipped set by _collect_parallel_results
         local failed=$_par_failed skipped=$_par_skipped
     else
-        # --- Sequential mode ---
+        # Sequential mode
         local current=0 failed=0 skipped=0
         for tool in "${tools[@]}"; do
             current=$((current + 1))
@@ -282,7 +315,7 @@ install_pipx_batch() {
             _report_tool_start "pipx" "$tool"
             if echo "$installed_pipx" | awk -v t="$tool" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
                 skipped=$((skipped + 1))
-                track_version "$tool" "pipx" "existing"
+                _track_already_present "$tool" "pipx"
                 _report_tool_done "pipx" "$tool" "skip"
                 continue
             fi
@@ -382,7 +415,7 @@ install_go_batch() {
     _report_method_total "Go" "$total"
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
-        # --- Parallel mode ---
+        # Parallel mode
         local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for tool in "${tools[@]}"; do
@@ -407,7 +440,7 @@ install_go_batch() {
                 trap '_release_job_slot' EXIT
                 _report_tool_start "Go" "$name"
                 # Mark ok only if go install succeeded and (when staged) the binary moved into GOBIN.
-                if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
+                if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(_builder_cmd go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
                     && { [[ -z "$_gobin_stage" ]] || { [[ -f "$_gobin_stage/$name" ]] && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"; }; }; then
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
                     _report_tool_done "Go" "$name" "ok"
@@ -434,14 +467,14 @@ install_go_batch() {
             # Skip if binary already exists (GOBIN is in PATH, so command_exists suffices)
             if command_exists "$name"; then
                 skipped=$((skipped + 1))
-                track_version "$name" "go" "existing"
+                _track_already_present "$name" "go"
                 _report_tool_done "Go" "$name" "skip"
                 continue
             fi
             _go_gopath_escaped="$(_escape_single_quoted "$GOPATH")"
             _go_gobin_escaped="$(_escape_single_quoted "$_effective_gobin")"
             _go_tool_escaped="$(_escape_single_quoted "$tool")"
-            if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(command -v go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
+            if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(_builder_cmd go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
                 && { [[ -z "$_gobin_stage" ]] || { [[ -f "$_gobin_stage/$name" ]] && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"; }; }; then
                 track_version "$name" "go" "latest"
                 _report_tool_done "Go" "$name" "ok"
@@ -467,7 +500,7 @@ install_go_batch() {
 # Most cargo crates install a binary of the same name; these are the exceptions
 # (e.g. yara-x-cli → yr). Shared by verify.sh, update.sh and remove.sh so the
 # crate↔binary mapping lives in one place.
-declare -A _CARGO_BIN_NAMES=(
+declare -gA _CARGO_BIN_NAMES=(
     [yara-x-cli]="yr"
 )
 
@@ -485,8 +518,10 @@ install_cargo_batch() {
         return 0
     fi
 
-    if ! command_exists cargo; then
-        log_error "Cargo not found — cannot install ${label}"
+    # Resolve cargo as the builder will run it, not as root sees it (_builder_cmd).
+    local _cargo_cmd
+    if ! _cargo_cmd=$(_builder_cmd cargo); then
+        log_error "Cargo not found for ${SUDO_USER:-root} — cannot install ${label}"
         log_error "Install Rust first: https://rustup.rs/"
         _report_method_total "Cargo" "$total"
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + total))
@@ -526,7 +561,7 @@ install_cargo_batch() {
         local _cbin="${_CARGO_BIN_NAMES[$crate]:-$crate}"
         if command_exists "$_cbin"; then
             skipped=$((skipped + 1))
-            track_version "$crate" "cargo" "existing"
+            _track_already_present "$crate" "cargo"
             _report_tool_done "Cargo" "$crate" "skip"
             continue
         fi
@@ -534,7 +569,7 @@ install_cargo_batch() {
         local _crate_escaped; _crate_escaped="$(_escape_single_quoted "$crate")"
         # Try cargo-binstall first (downloads pre-compiled binary, ~3s vs ~20s)
         if [[ "$_use_binstall" == "true" ]]; then
-            if _as_builder "$(command -v cargo) binstall $_crate_escaped --no-confirm" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$_cargo_cmd binstall $_crate_escaped --no-confirm" >> "$LOG_FILE" 2>&1; then
                 _installed=true
                 log_debug "Installed $crate via cargo-binstall"
             else
@@ -543,7 +578,7 @@ install_cargo_batch() {
         fi
         # Fall back to cargo install (compiles from source)
         if [[ "$_installed" == "false" ]]; then
-            if ! _as_builder "$(command -v cargo) install $_crate_escaped" >> "$LOG_FILE" 2>&1; then
+            if ! _as_builder "$_cargo_cmd install $_crate_escaped" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed cargo: $crate$(_disk_hint)"
                 failed=$((failed + 1))
                 track_session "$crate" "cargo" "failed" 2>/dev/null || true
@@ -606,12 +641,12 @@ install_gem_batch() {
         _report_tool_start "Gems" "$gem_name"
         if echo "$installed_gems" | awk -v t="$gem_name" '$1==t{f=1} END{exit !f}'; then
             skipped=$((skipped + 1))
-            track_version "$gem_name" "gem" "existing"
+            _track_already_present "$gem_name" "gem"
             _report_tool_done "Gems" "$gem_name" "skip"
             continue
         fi
         local _gem_escaped; _gem_escaped="$(_escape_single_quoted "$gem_name")"
-        if _as_builder "$(command -v gem) install $_gem_escaped --no-document" >> "$LOG_FILE" 2>&1; then
+        if _as_builder "$(_builder_cmd gem) install $_gem_escaped --no-document" >> "$LOG_FILE" 2>&1; then
             # Symlink gem executables to PIPX_BIN_DIR (gems install to user-local
             # dir under _as_builder, which isn't in system PATH)
             local _gem_bin_dir=""
@@ -665,7 +700,7 @@ setup_git_repo() {
     # Early exit: don't clobber existing wrappers
     [[ -f "$PIPX_BIN_DIR/$name_lower" ]] && return 0
 
-    # --- 1. Python project with requirements.txt ---
+    # 1. Python project with requirements.txt
     # The venv and ALL pip operations run as $SUDO_USER via _as_builder (not root).
     # setup.py is not invoked directly, but `pip install -r requirements.txt` can still
     # build sdists (running their setup.py/PEP-517 backend) — running as the unprivileged
@@ -691,7 +726,7 @@ setup_git_repo() {
             # Some packages fail to build against the latest Python (e.g. lxml on 3.13).
             # Try an older Python if available on the system.
             local _fallback_ok=false
-            for _pyver in python3.12 python3.11 python3.10; do
+            for _pyver in python3.13 python3.12 python3.11 python3.10; do
                 command -v "$_pyver" &>/dev/null || continue
                 log_info "Retrying $name with $_pyver (build failed on $(python3 --version 2>&1))..."
                 rm -rf "$dest/venv"
@@ -735,7 +770,7 @@ setup_git_repo() {
         fi
     fi
 
-    # --- 2. Java JAR → java -jar wrapper ---
+    # 2. Java JAR → java -jar wrapper
     local jar_file=""
     for jar_candidate in "$dest/$name.jar" "$dest/$name_lower.jar" \
                          "$dest/${name_under}.jar" "$dest/target/$name.jar" \
@@ -759,7 +794,7 @@ JARWRAP
         return 0
     fi
 
-    # --- 3. Python script → python3 wrapper (case-insensitive, variants) ---
+    # 3. Python script → python3 wrapper (case-insensitive, variants)
     if [[ ! -d "$dest/venv" ]]; then
         local py_file=""
         for py_candidate in "$dest/$name.py" "$dest/$name_lower.py" \
@@ -784,7 +819,7 @@ PYWRAP
         fi
     fi
 
-    # --- 4. Shell script → symlink (case-insensitive, variants) ---
+    # 4. Shell script → symlink (case-insensitive, variants)
     local sh_file=""
     for sh_candidate in "$dest/$name.sh" "$dest/$name_lower.sh" \
                         "$dest/${name_under}.sh"; do
@@ -802,7 +837,7 @@ PYWRAP
         return 0
     fi
 
-    # --- 5. Perl script → perl wrapper ---
+    # 5. Perl script → perl wrapper
     local pl_file=""
     for pl_candidate in "$dest/$name.pl" "$dest/$name_lower.pl" \
                         "$dest/${name_under}.pl"; do
@@ -824,7 +859,7 @@ PLWRAP
         return 0
     fi
 
-    # --- 6. Ruby script → ruby wrapper ---
+    # 6. Ruby script → ruby wrapper
     local rb_file=""
     for rb_candidate in "$dest/$name.rb" "$dest/$name_lower.rb" \
                         "$dest/${name_under}.rb"; do
@@ -846,7 +881,7 @@ RBWRAP
         return 0
     fi
 
-    # --- 7. Executable matching name → symlink (fallback for compiled tools) ---
+    # 7. Executable matching name → symlink (fallback for compiled tools)
     local exec_file=""
     for exec_candidate in "$dest/$name" "$dest/$name_lower" "$dest/$name_under" \
                           "$dest/bin/$name" "$dest/bin/$name_lower" "$dest/bin/$name_under"; do
@@ -884,7 +919,7 @@ install_git_batch() {
     _report_method_total "Git" "$total"
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
-        # --- Parallel mode ---
+        # Parallel mode
         local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for entry in "${repos[@]}"; do
@@ -899,13 +934,15 @@ install_git_batch() {
                 _report_tool_start "Git" "$name"
                 local is_existing=false
                 [[ -d "$dest/.git" ]] && is_existing=true
+                # Provenance before we touch it — a clone we did not create stays put.
+                local _ver; _ver=$(_tree_provenance "$name" "$dest/.git")
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                     _SETUP_GIT_DEP_WARN=false
                     setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || log_warn "setup_git_repo failed for $(basename "$dest")"
                     local _status="ok"
                     [[ "$is_existing" == "true" ]] && _status="skip"
                     [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && _status="${_status}:depwarn"
-                    printf '%s\nHEAD\n' "$_status" > "$_results_dir/$name"
+                    printf '%s\n%s\n' "$_status" "$_ver" > "$_results_dir/$name"
                     _report_tool_done "Git" "$name" "ok"
                 else
                     log_error "Failed git: $name"
@@ -930,6 +967,7 @@ install_git_batch() {
             _report_tool_start "Git" "$name"
             local is_existing=false
             [[ -d "$dest/.git" ]] && is_existing=true
+            local _ver; _ver=$(_tree_provenance "$name" "$dest/.git")
             if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed git: $name$(_disk_hint)"
                 failed=$((failed + 1))
@@ -941,7 +979,11 @@ install_git_batch() {
                 setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
                 [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && dep_warns=$((dep_warns + 1))
                 [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
-                track_version "$name" "git" "HEAD"
+                if [[ "$is_existing" == "true" ]]; then
+                    _track_already_present "$name" "git"
+                else
+                    track_version "$name" "git" "$_ver"
+                fi
                 _report_tool_done "Git" "$name" "ok"
             fi
         done
@@ -1289,7 +1331,13 @@ _download_github_release_impl() {
     local release_json
     release_json=$(_gh_api_get "$api_url")
     if [[ -z "$release_json" ]]; then
-        log_error "Could not fetch release info for $binary (API rate limit or network error)$(_disk_hint)"
+        # /releases/latest 404s on prerelease-only repos (nightly builds, e.g.
+        # fuzzland/ityfuzz) — fall back to the newest release of any kind.
+        release_json=$(_gh_api_get "https://api.github.com/repos/$repo/releases" \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); print(json.dumps(r[0]) if isinstance(r, list) and r else "")' 2>/dev/null || true)
+    fi
+    if [[ -z "$release_json" ]]; then
+        log_error "Could not fetch release info for $binary (no published release, API rate limit, or network error)$(_disk_hint)"
         return 1
     fi
 
@@ -1537,7 +1585,7 @@ download_github_release() {
         log_success "Already installed: $binary"
         # Skip track_version when called from parallel subshell — the parent
         # _collect_parallel_results handles version tracking to avoid duplicates.
-        [[ "${_PARALLEL_CHILD:-false}" != "true" ]] && track_version "$binary" "binary" "existing"
+        [[ "${_PARALLEL_CHILD:-false}" != "true" ]] && _track_already_present "$binary" "binary"
         return 0
     fi
     _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "install" "$archive_binary"
@@ -1599,8 +1647,13 @@ track_version() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
-    # Record in session manifest (if a session is active)
-    track_session "$tool" "$method" "installed" 2>/dev/null || true
+    # Session manifest: pre-existing tools log as "existing", never "installed" —
+    # --rollback acts only on "installed".
+    if [[ "$version" == "existing" ]]; then
+        track_session "$tool" "$method" "existing" 2>/dev/null || true
+    else
+        track_session "$tool" "$method" "installed" 2>/dev/null || true
+    fi
 
     # Inner logic shared between locked and unlocked paths
     _tv_write() {
@@ -1667,6 +1720,11 @@ build_from_source() {
         return 0
     fi
 
+    # Provenance before we touch it — a tree we did not create stays put on uninstall.
+    local is_existing=false
+    [[ -d "$dest" ]] && is_existing=true
+    local _ver; _ver=$(_tree_provenance "$name" "$dest")
+
     _start_spinner "Building $name..."
     if ! git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
         _stop_spinner
@@ -1678,7 +1736,11 @@ build_from_source() {
     if (cd "$dest" && _as_builder "$build_cmd") >> "$LOG_FILE" 2>&1; then
         _stop_spinner
         log_success "Built: $name"
-        track_version "$name" "source" "HEAD"
+        if [[ "$is_existing" == "true" ]]; then
+            _track_already_present "$name" "source"
+        else
+            track_version "$name" "source" "$_ver"
+        fi
     else
         _stop_spinner
         log_error "Build failed: $name"
@@ -1820,6 +1882,29 @@ install_binary_releases() {
         return 0
     fi
 
+    # Non-dpkg distros: drop .deb-only entries (e.g. stegseek) before downloading
+    # rather than failing on dpkg afterwards.
+    # ponytail: pattern sniffing — an entry that can also match a tarball must not
+    # put ".deb" in its pattern.
+    if [[ "$PKG_MANAGER" != "apt" && "$PKG_MANAGER" != "pkg" ]]; then
+        local -a _deb_filtered=()
+        for _entry in "${entries[@]}"; do
+            IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
+            if [[ "$_pattern" == *".deb"* ]]; then
+                log_warn "Skipping $_binary — upstream ships only a .deb, unusable on $PKG_MANAGER"
+            else
+                _deb_filtered+=("$_entry")
+            fi
+        done
+        if [[ ${#_deb_filtered[@]} -gt 0 ]]; then
+            entries=("${_deb_filtered[@]}")
+        else
+            entries=()
+        fi
+        total=${#entries[@]}
+        [[ "$total" -eq 0 ]] && return 0
+    fi
+
     # ARM: filter out x86-only binary releases that have no ARM builds
     if [[ "$IS_ARM" == "true" ]]; then
         local -a _arm_filtered=()
@@ -1862,7 +1947,7 @@ install_binary_releases() {
     _gh_api_cache_init
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
-        # --- Parallel mode ---
+        # Parallel mode
         local _results_dir; _results_dir=$(mktemp -d); _register_cleanup "$_results_dir"
 
         for _entry in "${entries[@]}"; do
@@ -1905,7 +1990,7 @@ install_binary_releases() {
         [[ "$failed" -gt 0 ]] && TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed))
         log_success "Binary releases: $((total - failed - skipped))/$total new, ${skipped} existing, ${failed} failed"
     else
-        # --- Sequential mode ---
+        # Sequential mode
         local failed=0
         for _entry in "${entries[@]}"; do
             IFS='|' read -r _repo _binary _pattern _dest _archive_binary <<< "$_entry"
@@ -2064,5 +2149,172 @@ install_zap() {
         fi
     else
         log_warn "snap not available — install OWASP ZAP manually"
+    fi
+}
+
+# Uninstall helpers for non-batch install methods
+# Shared by install.sh --rollback and scripts/remove.sh. Idempotent; return 1 only
+# for a name the helper does not know, so callers can fall through.
+
+# remove_source_build — build_from_source builds in place under $GITHUB_TOOL_DIR.
+remove_source_build() {
+    local name="$1"
+    [[ -n "$name" ]] || return 1
+    [[ -d "$GITHUB_TOOL_DIR/$name" ]] && rm -rf "${GITHUB_TOOL_DIR:?}/$name"
+    rm -f "$PIPX_BIN_DIR/$name" "$PIPX_BIN_DIR/${name,,}" 2>/dev/null || true
+    # Report the post-condition: callers drop the .versions row on success, and a
+    # tree that survived must not be recorded as removed.
+    [[ ! -e "$GITHUB_TOOL_DIR/$name" ]]
+}
+
+# remove_snap_tool — metasploit falls back to pkg_remove: apt.metasploit.com ships
+# it as a normal package when snap is absent.
+remove_snap_tool() {
+    local snap_name
+    case "$1" in
+        metasploit|metasploit-framework) snap_name="metasploit-framework" ;;
+        zaproxy)                         snap_name="zaproxy" ;;
+        *) return 1 ;;
+    esac
+    if snap_available && snap list "$snap_name" &>/dev/null; then
+        snap remove "$snap_name" >> "$LOG_FILE" 2>&1 || true
+        snap list "$snap_name" &>/dev/null && return 1
+    elif [[ "$snap_name" == "metasploit-framework" ]] && pkg_is_installed "$snap_name"; then
+        pkg_remove "$snap_name" >> "$LOG_FILE" 2>&1 || true
+        pkg_is_installed "$snap_name" && return 1
+    fi
+    return 0
+}
+
+# remove_special_tool — installers that write outside $GITHUB_TOOL_DIR.
+# Returns 0 when the tool is gone, 1 for a name it does not know, and 2 when it
+# tried and something survived — callers must not record 2 as removed.
+remove_special_tool() {
+    local _bin _dir
+    case "$1" in
+        foundry)
+            # Installs under the invoking user's home ($HOME is /root under sudo).
+            # The [[ -L ]] guard leaves a real go-installed chisel alone.
+            for _bin in foundryup forge cast anvil chisel; do
+                [[ -L "$PIPX_BIN_DIR/$_bin" ]] && rm -f "$PIPX_BIN_DIR/$_bin" 2>/dev/null
+            done
+            _dir="$(_builder_home)/.foundry"
+            [[ -d "$_dir" ]] && rm -rf "$_dir"
+            ;;
+        steampipe)
+            rm -f "$PIPX_BIN_DIR/steampipe" 2>/dev/null || true
+            _dir="$(_builder_home)/.steampipe"
+            [[ -d "$_dir" ]] && rm -rf "$_dir"
+            ;;
+        patator)
+            rm -f "$PIPX_BIN_DIR/patator" 2>/dev/null || true
+            _dir="$GITHUB_TOOL_DIR/patator"
+            [[ -d "$_dir" ]] && rm -rf "${GITHUB_TOOL_DIR:?}/patator"
+            ;;
+        *) return 1 ;;
+    esac
+    [[ -n "${_dir:-}" && -e "$_dir" ]] && return 2
+    return 0
+}
+
+# remove_docker_tool — map a tracked label back to its image via ALL_DOCKER_IMAGES.
+remove_docker_tool() {
+    local label="$1" entry img lbl
+    command_exists docker || return 0
+    for entry in "${ALL_DOCKER_IMAGES[@]}"; do
+        IFS='|' read -r img lbl <<< "$entry"
+        if [[ "$lbl" == "$label" || "${img%%:*}" == "$label" ]]; then
+            docker rmi "$img" >> "$LOG_FILE" 2>&1 || true
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Provenance filter
+# track_version records pre-existing tools with version "existing"; the uninstall
+# paths read that back so they never remove what the user had first.
+
+declare -gA _PREEXISTING_TOOLS=()
+_PREEXISTING_LOADED=false
+
+# _version_known — .versions has a row for this tool, i.e. a previous run of THIS
+# installer created it.
+_version_known() {
+    local version_file="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
+    [[ -f "$version_file" ]] || return 1
+    awk -F'|' -v t="$1" '$1==t{f=1} END{exit !f}' "$version_file" 2>/dev/null
+}
+
+# _is_preexisting — the tool is already recorded as pre-existing. The label has to
+# be sticky: on a second run everything is installed, so re-deriving it from the
+# system state alone would flip the user's own tools to removable.
+_is_preexisting() {
+    local version_file="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
+    [[ -f "$version_file" ]] || return 1
+    awk -F'|' -v t="$1" '$1==t && $3=="existing"{f=1} END{exit !f}' "$version_file" 2>/dev/null
+}
+
+# _track_already_present — record a tool found already on the system. It counts as
+# "existing" (protected from uninstall) only when we did not install it ourselves;
+# otherwise it stays ours, so a second run cannot relabel it untouchable.
+_track_already_present() {
+    local tool="$1" method="$2"
+    if ! _version_known "$tool" || _is_preexisting "$tool"; then
+        track_version "$tool" "$method" "existing"
+    else
+        # Present from an earlier toolkit run, but not installed by this session.
+        track_session "$tool" "$method" "existing" 2>/dev/null || true
+    fi
+}
+
+# _tree_provenance — "existing" when the directory predates this installer, else
+# "HEAD". Must run BEFORE track_version writes the tool's row.
+_tree_provenance() {
+    local name="$1" dir="$2"
+    if [[ -d "$dir" ]] && { ! _version_known "$name" || _is_preexisting "$name"; }; then
+        echo "existing"
+    else
+        echo "HEAD"
+    fi
+}
+
+_load_preexisting() {
+    [[ "$_PREEXISTING_LOADED" == "true" ]] && return 0
+    _PREEXISTING_LOADED=true
+    local version_file="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
+    [[ -f "$version_file" ]] || return 0
+    local _t _m _v
+    while IFS='|' read -r _t _m _v _; do
+        [[ -z "$_t" || "$_t" == \#* ]] && continue
+        [[ "$_v" == "existing" ]] && _PREEXISTING_TOOLS["$_t"]=1
+    done < "$version_file"
+    log_debug "_load_preexisting: ${#_PREEXISTING_TOOLS[@]} pre-existing tool(s) in $version_file"
+}
+
+# filter_preexisting — drop entries recorded as pre-existing. Package names must go
+# through fixup_package_names first: .versions stores the distro-specific name.
+# Usage: filter_preexisting <array_nameref> [label]
+filter_preexisting() {
+    local -n __pf_arr=$1
+    local label="${2:-tools}"
+    _load_preexisting
+    [[ ${#_PREEXISTING_TOOLS[@]} -eq 0 ]] && return 0
+    local -a kept=() skipped=()
+    local item
+    for item in "${__pf_arr[@]}"; do
+        if [[ -n "${_PREEXISTING_TOOLS[$item]:-}" ]]; then
+            skipped+=("$item")
+        else
+            kept+=("$item")
+        fi
+    done
+    if [[ ${#skipped[@]} -gt 0 ]]; then
+        log_info "Preserving ${#skipped[@]} pre-existing ${label}: ${skipped[*]}"
+    fi
+    if [[ ${#kept[@]} -gt 0 ]]; then
+        __pf_arr=("${kept[@]}")
+    else
+        __pf_arr=()
     fi
 }

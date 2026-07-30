@@ -161,6 +161,15 @@ for _mod in "${REMOVE_MODULES[@]}"; do
     _append_module_array CARGO_TO_REMOVE     "${_pfx}_CARGO"
 done
 
+# Never remove a tool the installer found already on the system. PKGS_TO_REMOVE is
+# filtered further down, after fixup_package_names (.versions stores the
+# distro-specific name).
+filter_preexisting PIPX_TO_REMOVE      "pipx tools"
+filter_preexisting GO_BINS_TO_REMOVE   "Go binaries"
+filter_preexisting GIT_NAMES_TO_REMOVE "Git/source trees"
+filter_preexisting GEMS_TO_REMOVE      "gems"
+filter_preexisting CARGO_TO_REMOVE     "cargo crates"
+
 # Execute removal
 # ORDER: Tools that need runtime commands (pipx, gem, cargo) are removed FIRST,
 # before system packages which may remove those runtimes.
@@ -221,12 +230,12 @@ echo ""
 if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
     # Query and uninstall in the builder's gem store (install runs as $SUDO_USER),
     # not root's — otherwise nothing is detected or removed under sudo.
-    installed_gems=$(_as_builder "$(command -v gem) list --no-details" 2>/dev/null || true)
+    installed_gems=$(_as_builder "$(_builder_cmd gem) list --no-details" 2>/dev/null || true)
     gems_removed=0
     gems_skipped=0
     for gem_name in "${GEMS_TO_REMOVE[@]}"; do
         if echo "$installed_gems" | awk -v t="$gem_name" '$1==t{f=1} END{exit !f}'; then
-            if _as_builder "$(command -v gem) uninstall -x --force '$(_escape_single_quoted "$gem_name")'" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(_builder_cmd gem) uninstall -x --force '$(_escape_single_quoted "$gem_name")'" >> "$LOG_FILE" 2>&1; then
                 gems_removed=$((gems_removed + 1))
             else
                 log_warn "Failed to remove gem: $gem_name"
@@ -277,6 +286,8 @@ echo ""
 if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
     # Apply distro-specific package name translation (same as install path)
     fixup_package_names PKGS_TO_REMOVE
+    # Then drop the ones that were already installed before this toolkit ran
+    filter_preexisting PKGS_TO_REMOVE "system packages"
 
     # Filter to only installed packages
     PKGS_INSTALLED=()
@@ -385,6 +396,24 @@ log_info "Binary releases: $bin_removed removed, $bin_skipped already removed"
 for jar_bin in ysoserial jd-gui; do
     [[ -f "$PIPX_BIN_DIR/$jar_bin" ]] && rm -f "$PIPX_BIN_DIR/$jar_bin" 2>/dev/null || true
 done
+# A dest dir shared with a module that is NOT being removed must survive:
+# cybersec-jars holds both ysoserial (web) and jd-gui (reversing), so removing one
+# module must not rm -rf the other's jar. Collect dests still claimed by surviving
+# modules first, then skip those below. On full removal nothing survives, so every
+# dest is cleaned.
+declare -A _KEEP_DESTS=()
+for _sv_mod in "${ALL_MODULES[@]}"; do
+    should_remove "$_sv_mod" && continue
+    for _sv_arr in "BINARY_RELEASES_${_sv_mod^^}" "BINARY_RELEASES_${_sv_mod^^}_C2"; do
+        declare -p "$_sv_arr" &>/dev/null || continue
+        declare -n _sv_ref="$_sv_arr"
+        for _sv_entry in "${_sv_ref[@]}"; do
+            IFS='|' read -r _ _ _ _sv_dest <<< "$_sv_entry"
+            [[ -n "${_sv_dest:-}" ]] && _KEEP_DESTS["$_sv_dest"]=1
+        done
+    done
+done
+
 # Clean up custom destination directories from BINARY_RELEASES_* entries
 for _br_mod in "${REMOVE_MODULES[@]}"; do
     for _br_arr in "BINARY_RELEASES_${_br_mod^^}" "BINARY_RELEASES_${_br_mod^^}_C2"; do
@@ -393,8 +422,12 @@ for _br_mod in "${REMOVE_MODULES[@]}"; do
         for _br_entry in "${_br_ref[@]}"; do
             IFS='|' read -r _br_repo _br_binary _br_pattern _br_dest <<< "$_br_entry"
             if [[ -n "${_br_dest:-}" ]] && [[ "$_br_dest" != "$PIPX_BIN_DIR" ]] && [[ -d "$_br_dest" ]]; then
-                rm -rf "$_br_dest" 2>/dev/null
-                log_success "Removed: $_br_dest"
+                if [[ -n "${_KEEP_DESTS[$_br_dest]:-}" ]]; then
+                    log_info "Keeping $_br_dest — still used by another installed module"
+                else
+                    rm -rf "$_br_dest" 2>/dev/null
+                    log_success "Removed: $_br_dest"
+                fi
             fi
         done
     done
@@ -411,43 +444,26 @@ log_info "Removing special tools..."
 # Metasploit (snap or system package)
 if should_remove "pwn" && command_exists msfconsole; then
     log_info "Removing Metasploit..."
-    if snap_available && snap list metasploit-framework &>/dev/null 2>&1; then
-        snap remove metasploit-framework >> "$LOG_FILE" 2>&1 || true
-    else
-        pkg_remove metasploit-framework >> "$LOG_FILE" 2>&1 || true
-    fi
+    remove_snap_tool metasploit
     log_success "Metasploit removed"
 fi
 
 # OWASP ZAP (snap)
 if should_remove "web" && snap_available && snap list zaproxy &>/dev/null; then
     log_info "Removing OWASP ZAP..."
-    snap remove zaproxy >> "$LOG_FILE" 2>&1
+    remove_snap_tool zaproxy
     log_success "OWASP ZAP removed"
 fi
 
 # Foundry (forge, cast, anvil, chisel — installed by blockchain module)
 if should_remove "blockchain"; then
-    # Foundry installs under the invoking user's home; $HOME is /root under sudo.
-    _foundry_dir="$(_builder_home)/.foundry"
-    # Remove the /usr/local/bin symlinks regardless of whether the dir still exists,
-    # so a partial/stale install is cleaned up too. (chisel is never symlinked by
-    # the blockchain module — the [[ -L ]] guard leaves a real go-installed chisel alone.)
-    for _fbin in foundryup forge cast anvil; do
-        [[ -L "$PIPX_BIN_DIR/$_fbin" ]] && rm -f "$PIPX_BIN_DIR/$_fbin" 2>/dev/null
-    done
-    if [[ -d "$_foundry_dir" ]]; then
-        rm -rf "$_foundry_dir"
-        log_success "Removed Foundry ($_foundry_dir)"
-    fi
+    remove_special_tool foundry && log_success "Removed Foundry"
 fi
 
 # Steampipe (curl-pipe installer — installed by cloud module)
 if should_remove "cloud" && command_exists steampipe; then
     log_info "Removing Steampipe..."
-    rm -f /usr/local/bin/steampipe 2>/dev/null
-    [[ -d "$HOME/.steampipe" ]] && rm -rf "$HOME/.steampipe"
-    log_success "Steampipe removed"
+    remove_special_tool steampipe && log_success "Steampipe removed"
 fi
 
 # NetExec (pipx from git — installed outside ENTERPRISE_PIPX, modules/enterprise.sh)
@@ -463,9 +479,14 @@ if should_remove "enterprise" && command_exists pipx; then
     fi
 fi
 
-# patator (pipx --no-deps — installed outside CRACKING_PIPX, modules/cracking.sh)
-if should_remove "cracking" && command_exists pipx; then
-    if pipx list --short 2>/dev/null | grep -qi '^patator '; then
+# patator (dedicated venv — installed outside CRACKING_PIPX, modules/cracking.sh)
+if should_remove "cracking"; then
+    if [[ -d "$GITHUB_TOOL_DIR/patator" ]]; then
+        log_info "Removing patator (venv)..."
+        remove_special_tool patator && log_success "Removed venv: patator"
+    fi
+    # Installs predating the venv switch put patator under pipx — clean those too
+    if command_exists pipx && pipx list --short 2>/dev/null | grep -qi '^patator '; then
         log_info "Removing patator (pipx)..."
         if pipx_remove patator >> "$LOG_FILE" 2>&1; then
             log_success "Removed pipx: patator"
@@ -572,7 +593,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     _deep_freed=0
     _user_home="$(_builder_home)"
 
-    # --- Go caches ---
+    # Go caches
     # Go module cache (downloaded module source)
     if [[ -d "$GOPATH/pkg" ]]; then
         _sz=$(du -sm "$GOPATH/pkg" 2>/dev/null | cut -f1 || echo 0)
@@ -596,7 +617,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         fi
     fi
 
-    # --- Cargo / Rust caches ---
+    # Cargo / Rust caches
     # Cargo registry (crate source downloads)
     if [[ -d "$_user_home/.cargo/registry" ]]; then
         _sz=$(du -sm "$_user_home/.cargo/registry" 2>/dev/null | cut -f1 || echo 0)
@@ -627,7 +648,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         fi
     fi
 
-    # --- pipx / pip caches ---
+    # pipx / pip caches
     # pipx remaining venvs (orphaned after tool removal)
     if [[ -d "$PIPX_HOME/venvs" ]]; then
         _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
@@ -671,7 +692,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         _deep_freed=$((_deep_freed + _sz))
     fi
 
-    # --- npm cache ---
+    # npm cache
     if command_exists npm; then
         _npm_cache=$(npm config get cache 2>/dev/null || echo "$_user_home/.npm")
         if [[ -d "$_npm_cache" ]]; then
@@ -682,7 +703,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         fi
     fi
 
-    # --- Gem cache ---
+    # Gem cache
     _gem_cache="${_user_home}/.gem"
     if [[ -d "$_gem_cache/specs" ]] || [[ -d "$_gem_cache/ruby" ]]; then
         _sz=$(du -sm "$_gem_cache" 2>/dev/null | cut -f1 || echo 0)
@@ -691,7 +712,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         _deep_freed=$((_deep_freed + _sz))
     fi
 
-    # --- Stale symlinks in bin dirs ---
+    # Stale symlinks in bin dirs
     _stale=0
     for _bindir in "$PIPX_BIN_DIR" "$GOBIN"; do
         [[ -d "$_bindir" ]] || continue
@@ -702,7 +723,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     done
     [[ "$_stale" -gt 0 ]] && log_success "Removed $_stale stale symlinks"
 
-    # --- Log files ---
+    # Log files
     for _logfile in "$SCRIPT_DIR/cybersec_install.log" \
                     "$SCRIPT_DIR/tool_verification.log" \
                     "$SCRIPT_DIR/tool_update.log" \

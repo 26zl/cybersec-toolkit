@@ -459,7 +459,7 @@
   {"name": "search-that-hash", "method": "pipx", "module": "cracking", "url": "https://pypi.org/project/search-that-hash/"},
   {"name": "name-that-hash", "method": "pipx", "module": "cracking", "url": "https://pypi.org/project/name-that-hash/"},
   {"name": "trevorspray", "method": "pipx", "module": "cracking", "url": "https://pypi.org/project/trevorspray/"},
-  {"name": "patator", "method": "pipx", "module": "cracking", "url": "https://pypi.org/project/patator/"},
+  {"name": "patator", "method": "special", "module": "cracking", "url": "https://pypi.org/project/patator/"},
   {"name": "DefaultCreds-cheat-sheet", "method": "git", "module": "cracking", "url": "https://github.com/ihebski/DefaultCreds-cheat-sheet"},
   {"name": "pipal", "method": "git", "module": "cracking", "url": "https://github.com/digininja/pipal"},
   {"name": "Hob0Rules", "method": "git", "module": "cracking", "url": "https://github.com/praetorian-inc/Hob0Rules"},

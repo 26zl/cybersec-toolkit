@@ -119,6 +119,7 @@ Environment variables:
                          (avoids rate limits on binary downloads)
   GO_MIN_VERSION       Minimum Go version before auto-upgrade (default: 1.21)
   VERBOSE              Enable verbose/debug output (default: false)
+  NO_COLOR             Disable ANSI colors and use ASCII separators
   PARALLEL_JOBS        Number of parallel install jobs (default: 4)
 
 Examples (Linux):
@@ -234,6 +235,26 @@ install_single_tool() {
     local SKIP_PIPX=false SKIP_GO=false SKIP_CARGO=false SKIP_GEMS=false
     local SKIP_GIT=false SKIP_BINARY=false SKIP_SOURCE=false
 
+    # Provenance: was the tool already on the system before we touched it? If so it
+    # is recorded "existing" so --rollback/remove never uninstall what the user had.
+    # command_exists covers the command-producing methods; the pkg branch overrides
+    # this with pkg_is_installed (a library package is not a command), and git/source
+    # use _tree_provenance on their dest dir.
+    # Present AND not something a previous run of ours installed — otherwise a
+    # second --tool run would see our own install and mark it unremovable (the same
+    # sticky rule the batch installers use via _is_preexisting).
+    local _pre=false
+    if command_exists "$tool" && { ! _version_known "$tool" || _is_preexisting "$tool"; }; then
+        _pre=true
+    fi
+    _track_single() {  # $1=method  $2=version when newly installed (default: latest)
+        if [[ "$_pre" == true ]]; then
+            track_version "$tool" "$1" "existing"
+        else
+            track_version "$tool" "$1" "${2:-latest}"
+        fi
+    }
+
     # Helper: check if a named array contains a value
     _arr_has() {
         local arr_name=$1 val=$2
@@ -259,10 +280,16 @@ install_single_tool() {
                 log_warn "$tool is not available on this distro — skipped"
                 return 0
             fi
+            # A library package is not a command, so re-derive provenance by query.
+            if pkg_is_installed "${_tmp_pkg[0]}" && { ! _version_known "$tool" || _is_preexisting "$tool"; }; then
+                _pre=true
+            else
+                _pre=false
+            fi
             log_info "Installing ${_tmp_pkg[*]} via $PKG_MANAGER..."
             if pkg_install "${_tmp_pkg[@]}" >> "$LOG_FILE" 2>&1; then
                 log_success "Installed: ${_tmp_pkg[*]}"
-                track_version "$tool" "$PKG_MANAGER" "latest"
+                _track_single "$PKG_MANAGER"
             else
                 log_error "Failed: ${_tmp_pkg[*]}"
                 return 1
@@ -279,7 +306,7 @@ install_single_tool() {
             ensure_pipx
             if pipx_install "$tool" >> "$LOG_FILE" 2>&1; then
                 log_success "Installed: $tool"
-                track_version "$tool" "pipx" "latest"
+                _track_single "pipx"
             else
                 log_error "Failed: $tool"
                 return 1
@@ -311,10 +338,10 @@ install_single_tool() {
                 _go_gopath_esc="$(_escape_single_quoted "$GOPATH")"
                 _go_gobin_esc="$(_escape_single_quoted "$_gobin_stage")"
                 _go_pkg_esc="$(_escape_single_quoted "$gopkg")"
-                if _as_builder "GOPATH='$_go_gopath_esc' GOBIN='$_go_gobin_esc' $(command -v go) install $_go_pkg_esc" >> "$LOG_FILE" 2>&1 \
+                if _as_builder "GOPATH='$_go_gopath_esc' GOBIN='$_go_gobin_esc' $(_builder_cmd go) install $_go_pkg_esc" >> "$LOG_FILE" 2>&1 \
                     && [[ -f "$_gobin_stage/$tool" ]] && mv "$_gobin_stage/$tool" "$GOBIN/$tool" && chmod +x "$GOBIN/$tool"; then
                     log_success "Installed: $tool"
-                    track_version "$tool" "go" "latest"
+                    _track_single "go"
                 else
                     log_error "Failed: $tool"
                     rm -rf "$_gobin_stage"
@@ -333,9 +360,9 @@ install_single_tool() {
             ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
             log_info "Installing $tool via cargo..."
             local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
-            if _as_builder "$(command -v cargo) install $_tool_esc" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(_builder_cmd cargo) install $_tool_esc" >> "$LOG_FILE" 2>&1; then
                 log_success "Installed: $tool"
-                track_version "$tool" "cargo" "latest"
+                _track_single "cargo"
             else
                 log_error "Failed: $tool"
                 return 1
@@ -354,7 +381,7 @@ install_single_tool() {
         if _arr_has "$a" "$tool"; then
             log_info "Installing $tool via gem..."
             local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
-            if _as_builder "$(command -v gem) install $_tool_esc --no-document" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$(_builder_cmd gem) install $_tool_esc --no-document" >> "$LOG_FILE" 2>&1; then
                 # Symlink gem binary to PIPX_BIN_DIR (consistent with batch installer).
                 # Glob the ruby-version dir directly — do not store a literal '*'.
                 local _gdir
@@ -362,7 +389,7 @@ install_single_tool() {
                     [[ -f "$_gdir/$tool" ]] && ln -sf "$_gdir/$tool" "$PIPX_BIN_DIR/$tool" 2>/dev/null || true
                 done
                 log_success "Installed: $tool"
-                track_version "$tool" "gem" "latest"
+                _track_single "gem"
             else
                 log_error "Failed: $tool"
                 return 1
@@ -382,11 +409,12 @@ install_single_tool() {
             if [[ "$gname" == "$tool" ]]; then
                 local url="${entry#*=}"
                 local dest="$GITHUB_TOOL_DIR/$gname"
+                local _gver; _gver=$(_tree_provenance "$gname" "$dest/.git")
                 log_info "Cloning $tool..."
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                     setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || log_warn "setup_git_repo failed for $tool"
                     log_success "Installed: $tool → $dest"
-                    track_version "$tool" "git" "HEAD"
+                    track_version "$tool" "git" "$_gver"
                 else
                     log_error "Failed: $tool"
                     return 1
@@ -443,7 +471,7 @@ install_single_tool() {
         if npm install -g "$tool@latest" >> "$LOG_FILE" 2>&1; then
             local _pf_ver; _pf_ver=$(promptfoo --version 2>/dev/null || echo "latest")
             log_success "Installed: $tool ($_pf_ver)"
-            track_version "$tool" "npm" "$_pf_ver"
+            _track_single "npm" "$_pf_ver"
         else
             log_error "Failed: $tool"
             return 1
@@ -509,6 +537,9 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
     ROLLBACK_SESSION=$(basename "$ROLLBACK_FILE" .manifest)
     log_info "Rolling back session: $ROLLBACK_SESSION"
 
+    RB_SCHEMA=$(sed -n 's/^# Schema: \([0-9]\{1,\}\).*/\1/p' "$ROLLBACK_FILE" | head -1)
+    RB_SCHEMA="${RB_SCHEMA:-1}"
+
     # Parse installed tools from manifest (skip comments and failed entries)
     declare -a RB_TOOLS=()
     declare -a RB_METHODS=()
@@ -535,11 +566,12 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
         echo "  - ${RB_TOOLS[$i]} (${RB_METHODS[$i]})"
     done
     echo ""
+    log_info "Tools already present before this session are not listed — they stay."
+    echo ""
 
-    # Confirm — rollback is destructive (pipx/cargo/gem uninstall + rm -rf of
-    # cloned repo dirs). Require an interactive confirmation, or an explicit
-    # --yes/--force when running non-interactively (pipe/CI/cron). Never proceed
-    # unconfirmed. Mirrors the safe-by-default posture of scripts/remove.sh.
+    # Confirm — rollback is destructive (uninstalls, rm -rf of cloned/built trees,
+    # pkg_remove of this session's system packages). Require an interactive
+    # confirmation, or an explicit --yes/--force when non-interactive (pipe/CI/cron).
     if [[ -t 0 ]]; then
         read -rp "$(echo -e "${YELLOW}[!]${NC} Proceed with rollback? [y/N] ")" _rb_answer
         case "$_rb_answer" in
@@ -552,24 +584,50 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
         exit 1
     fi
 
-    # Remove in reverse dependency order: gems → cargo → go → pipx → git → binary
-    # APT packages are skipped (too risky — use scripts/remove.sh)
+    # _rb_forget_version — drop a tool's row from .versions.
+    _rb_forget_version() {
+        local _tool="$1"
+        [[ -f "$SCRIPT_DIR/.versions" ]] || return 0
+        _rb_versions_write() {
+            local _tmp_ver
+            _tmp_ver=$(mktemp "${SCRIPT_DIR}/.versions.XXXXXX")
+            grep -v "^${_tool}|" "$SCRIPT_DIR/.versions" > "$_tmp_ver" 2>/dev/null || true
+            mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
+        }
+        if command -v flock &>/dev/null; then
+            ( flock -x 200; _rb_versions_write ) 200>"${SCRIPT_DIR}/.versions.lock"
+        else
+            _rb_versions_write
+        fi
+    }
+
+    # System packages are collected and removed LAST: they provide the runtimes
+    # (python3, ruby, go) every step above needs. Only packages this run installed
+    # reach that list — pre-existing ones are recorded "existing", not "installed".
     rb_removed=0
     rb_skipped=0
+    rb_failed=0
+    declare -a RB_SYS_PKGS=()
+    declare -A RB_SYS_SEEN=()
     for i in "${!RB_TOOLS[@]}"; do
         rb_tool="${RB_TOOLS[$i]}"
         rb_method="${RB_METHODS[$i]}"
+        # _rb_ok is the post-condition, not the exit code: `rm -f` succeeds on a
+        # file that was never there, and `cargo uninstall` fails for a crate that
+        # was binstalled rather than compiled. What matters is whether the artifact
+        # is actually gone afterwards.
+        _rb_ok=true
         case "$rb_method" in
             pipx)
                 if command_exists pipx; then
-                    pipx uninstall "$rb_tool" >> "$LOG_FILE" 2>&1 && rb_removed=$((rb_removed + 1)) || true
+                    pipx uninstall "$rb_tool" >> "$LOG_FILE" 2>&1 || true
+                    pipx list --short 2>/dev/null |
+                        awk -v t="$rb_tool" 'tolower($1)==tolower(t){f=1} END{exit !f}' && _rb_ok=false
                 fi
                 ;;
             go)
-                rb_bin="$GOBIN/$rb_tool"
-                if [[ -f "$rb_bin" ]]; then
-                    rm -f "$rb_bin" && rb_removed=$((rb_removed + 1))
-                fi
+                rm -f "$GOBIN/$rb_tool" 2>/dev/null || true
+                [[ -e "$GOBIN/$rb_tool" ]] && _rb_ok=false
                 ;;
             cargo)
                 if command_exists cargo; then
@@ -577,30 +635,71 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                 fi
                 rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
                 rm -f "$(_builder_home)/.cargo/bin/$rb_tool" 2>/dev/null || true
-                rb_removed=$((rb_removed + 1))
+                { [[ -e "$PIPX_BIN_DIR/$rb_tool" ]] || [[ -e "$(_builder_home)/.cargo/bin/$rb_tool" ]]; } && _rb_ok=false
                 ;;
             gem)
                 if command_exists gem; then
                     # Gems install into the invoking user's store; uninstall as that user, not root.
-                    _as_builder "$(command -v gem) uninstall '$(_escape_single_quoted "$rb_tool")' -x --force" >> "$LOG_FILE" 2>&1 && rb_removed=$((rb_removed + 1)) || true
+                    _as_builder "$(_builder_cmd gem) uninstall '$(_escape_single_quoted "$rb_tool")' -x --force" \
+                        >> "$LOG_FILE" 2>&1 || _rb_ok=false
                 fi
                 ;;
             git)
                 rb_dir="$GITHUB_TOOL_DIR/$rb_tool"
-                if [[ -d "$rb_dir" ]]; then
-                    rm -rf "$rb_dir" && rb_removed=$((rb_removed + 1))
-                fi
-                # Remove symlink/wrapper
+                [[ -d "$rb_dir" ]] && { rm -rf "$rb_dir" 2>/dev/null || true; }
                 rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
                 rm -f "$PIPX_BIN_DIR/${rb_tool,,}" 2>/dev/null || true
+                [[ -e "$rb_dir" ]] && _rb_ok=false
                 ;;
             binary)
                 rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
-                rb_removed=$((rb_removed + 1))
+                [[ -e "$PIPX_BIN_DIR/$rb_tool" ]] && _rb_ok=false
+                ;;
+            source)
+                remove_source_build "$rb_tool" || _rb_ok=false
+                ;;
+            special)
+                remove_special_tool "$rb_tool"
+                case $? in
+                    0) ;;
+                    2) _rb_ok=false ;;
+                    *) log_info "  Skipping $rb_tool (special — no known uninstaller)"
+                       rb_skipped=$((rb_skipped + 1))
+                       continue ;;
+                esac
+                ;;
+            snap)
+                if remove_snap_tool "$rb_tool"; then
+                    :
+                else
+                    log_info "  Skipping $rb_tool (snap — no known uninstaller)"
+                    rb_skipped=$((rb_skipped + 1))
+                    continue
+                fi
+                ;;
+            docker)
+                if remove_docker_tool "$rb_tool"; then
+                    :
+                else
+                    log_info "  Skipping $rb_tool (docker — image not in registry)"
+                    rb_skipped=$((rb_skipped + 1))
+                    continue
+                fi
                 ;;
             apt|dnf|pacman|zypper|pkg)
-                log_info "  Skipping APT package: $rb_tool (use scripts/remove.sh)"
-                rb_skipped=$((rb_skipped + 1))
+                # Schema 1 manifests predate provenance tracking: every package in
+                # them looks self-installed, so removing one could take out
+                # something the user already had. Skip system packages for them.
+                if [[ "$RB_SCHEMA" -lt 2 ]]; then
+                    log_info "  Skipping system package: $rb_tool (pre-provenance manifest)"
+                    rb_skipped=$((rb_skipped + 1))
+                    continue
+                fi
+                # Deferred to a single pkg_remove after the loop — see above.
+                if [[ -z "${RB_SYS_SEEN[$rb_tool]:-}" ]]; then
+                    RB_SYS_SEEN["$rb_tool"]=1
+                    RB_SYS_PKGS+=("$rb_tool")
+                fi
                 continue
                 ;;
             *)
@@ -610,32 +709,51 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                 ;;
         esac
 
-        # Remove from .versions file (use flock for parallel safety, matching track_version)
-        if [[ -f "$SCRIPT_DIR/.versions" ]]; then
-            _rb_versions_write() {
-                local _tmp_ver
-                _tmp_ver=$(mktemp "${SCRIPT_DIR}/.versions.XXXXXX")
-                grep -v "^${rb_tool}|" "$SCRIPT_DIR/.versions" > "$_tmp_ver" 2>/dev/null || true
-                mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
-            }
-            if command -v flock &>/dev/null; then
-                (
-                    flock -x 200
-                    _rb_versions_write
-                ) 200>"${SCRIPT_DIR}/.versions.lock"
-            else
-                _rb_versions_write
-            fi
+        # Only drop the .versions row once the tool is actually gone. Forgetting it
+        # after a failed removal leaves an installed tool with no record, which the
+        # next run reads as pre-existing and then refuses to ever remove.
+        if [[ "$_rb_ok" != "true" ]]; then
+            log_warn "Still present after removal attempt: $rb_tool ($rb_method) — keeping its .versions entry"
+            rb_failed=$((rb_failed + 1))
+            continue
         fi
+        _rb_forget_version "$rb_tool"
+        rb_removed=$((rb_removed + 1))
         log_success "Removed: $rb_tool ($rb_method)"
     done
 
-    echo ""
-    log_success "Rollback complete: $rb_removed removed, $rb_skipped skipped (APT/unknown)"
+    # One transaction so the package manager resolves dependencies once.
+    if [[ ${#RB_SYS_PKGS[@]} -gt 0 ]]; then
+        echo ""
+        log_info "Removing ${#RB_SYS_PKGS[@]} system package(s) this session installed..."
+        if pkg_remove "${RB_SYS_PKGS[@]}" >> "$LOG_FILE" 2>&1; then
+            for rb_tool in "${RB_SYS_PKGS[@]}"; do
+                _rb_forget_version "$rb_tool"
+            done
+            rb_removed=$((rb_removed + ${#RB_SYS_PKGS[@]}))
+            log_success "System packages: ${#RB_SYS_PKGS[@]} removed ($PKG_MANAGER)"
+        else
+            log_warn "Some system packages failed to remove — see $LOG_FILE"
+            rb_failed=$((rb_failed + ${#RB_SYS_PKGS[@]}))
+        fi
+    fi
 
-    # Rename the manifest to indicate it was rolled back
-    mv "$ROLLBACK_FILE" "${ROLLBACK_FILE%.manifest}.rolled_back" 2>/dev/null || true
-    exit 0
+    echo ""
+    if [[ "$rb_failed" -gt 0 ]]; then
+        log_warn "Rollback incomplete: $rb_removed removed, $rb_skipped skipped, $rb_failed still present"
+    else
+        log_success "Rollback complete: $rb_removed removed, $rb_skipped skipped"
+    fi
+
+    # Keep the manifest when anything survived, so the run can be retried after the
+    # cause is fixed. Renaming it regardless would strand those tools: still
+    # installed, no .versions row, and no manifest left to roll back from.
+    if [[ "$rb_failed" -eq 0 ]]; then
+        mv "$ROLLBACK_FILE" "${ROLLBACK_FILE%.manifest}.rolled_back" 2>/dev/null || true
+    else
+        log_info "Manifest kept — re-run --rollback $ROLLBACK_SESSION once the failures above are resolved"
+    fi
+    exit "$([[ "$rb_failed" -eq 0 ]] && echo 0 || echo 1)"
 fi
 
 # Resolve modules to install
@@ -1023,12 +1141,16 @@ main() {
     fi
     log_info "Profile: ${PROFILE:-full}"
     log_info "Modules installed: ${MODULES_TO_INSTALL[*]}"
-    # Count tools tracked in .versions file (excludes header/comment lines)
-    local tools_installed=0
+    # Tools tracked in .versions, minus the ones that were already on the system.
+    # Counting those too would both overstate the run and break the invariant that
+    # this matches the manifest total reported by --list-sessions.
+    local tools_installed=0 tools_existing=0
     if [[ -f "$VERSION_FILE" ]]; then
-        tools_installed=$(grep -cv '^#' "$VERSION_FILE" 2>/dev/null) || tools_installed=0
+        tools_installed=$(awk -F'|' '!/^#/ && $3 != "existing"' "$VERSION_FILE" 2>/dev/null | wc -l) || tools_installed=0
+        tools_existing=$(awk -F'|' '!/^#/ && $3 == "existing"' "$VERSION_FILE" 2>/dev/null | wc -l) || tools_existing=0
     fi
     log_info "Tools installed: $tools_installed"
+    [[ "$tools_existing" -gt 0 ]] && log_info "Already present (left alone): $tools_existing"
     if _installation_failed; then
         [[ "$TOTAL_MODULE_FAILURES" -gt 0 ]] && log_error "Modules with failures: $TOTAL_MODULE_FAILURES"
         log_error "Total tool failures: $TOTAL_TOOL_FAILURES"
@@ -1118,7 +1240,7 @@ install_modules() {
     local _apt_failures=$TOTAL_TOOL_FAILURES
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
-        # --- Parallel: launch all batches as concurrent subshells ---
+        # Parallel: launch all batches as concurrent subshells
         log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
         local _fail_dir
         _fail_dir=$(mktemp -d); _register_cleanup "$_fail_dir"
@@ -1248,7 +1370,7 @@ install_modules() {
             log_success "Stage 3/4 complete: all tools installed"
         fi
     else
-        # --- Sequential: PARALLEL_JOBS=1, run each batch inline ---
+        # Sequential: PARALLEL_JOBS=1, run each batch inline
         log_info "Stage 3/4: Installing non-APT tools sequentially (pipx, Go, Cargo, Gems, Git, Binary)..."
         [[ ${#_ALL_PIPX[@]}   -gt 0 ]] && install_pipx_batch    "All modules - Python" "${_ALL_PIPX[@]}"
         [[ ${#_ALL_GO[@]}     -gt 0 ]] && install_go_batch      "All modules - Go"     "${_ALL_GO[@]}"

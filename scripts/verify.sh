@@ -557,7 +557,7 @@ if should_verify "cracking"; then
     check_git_repos "${CRACKING_GIT_NAMES[@]}"
     log_info "Cracking (Build from source):"
     check_builds "${CRACKING_BUILD_NAMES[@]}"
-    # patator is installed via a custom pipx block outside CRACKING_PIPX (modules/cracking.sh)
+    # patator is installed into a dedicated venv outside CRACKING_PIPX (modules/cracking.sh)
     log_info "Cracking (Special):"
     check_cmd "patator" || true
 fi

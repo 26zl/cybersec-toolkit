@@ -1,14 +1,12 @@
 #!/usr/bin/env bats
-# =============================================================================
 # Tests for lib/installers.sh
 # fixup_package_names, track_version, Go binary name extraction
-# =============================================================================
 
 setup() {
     load 'test_helper'
 }
 
-# ---------- release archive validation --------------------------------------
+# release archive validation
 
 @test "release archive validator accepts regular tar contents" {
     source_libs --installers debian apt
@@ -94,7 +92,7 @@ PY
     assert_output --partial "unsafe archive member path"
 }
 
-# ---------- GitHub release checksum enforcement (offline) --------------------
+# GitHub release checksum enforcement (offline)
 
 @test "verify_github_checksum accepts a matching checksum" {
     source_libs --installers debian apt
@@ -145,7 +143,7 @@ PY
     [ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]
 }
 
-# ---------- GitHub token handling (netrc, not a header) ---------------------
+# GitHub token handling (netrc, not a header)
 
 @test "_setup_curl_opts stores the token in a chmod-600 netrc, never a header or the raw token" {
     source_libs --installers debian apt
@@ -166,7 +164,7 @@ PY
     [[ "$opts" != *" -H "* ]]
 }
 
-# ---------- curl-pipe content validation gate -------------------------------
+# curl-pipe content validation gate
 
 @test "curl-pipe validator rejects an empty download" {
     source_libs --installers debian apt
@@ -211,7 +209,7 @@ PY
     assert_output --partial "missing expected keyword"
 }
 
-# ---------- fixup_package_names — apt (no-op) --------------------------------
+# fixup_package_names — apt (no-op)
 
 @test "fixup_package_names is a no-op for apt" {
     source_libs --installers debian apt
@@ -221,7 +219,7 @@ PY
     [[ "${pkgs[*]}" == "${original[*]}" ]]
 }
 
-# ---------- fixup_package_names — dnf translations ---------------------------
+# fixup_package_names — dnf translations
 
 @test "fixup: dnf translates netcat-openbsd to nmap-ncat" {
     source_libs --installers fedora dnf
@@ -265,7 +263,7 @@ PY
     [[ "${pkgs[0]}" == "openssl-devel" ]]
 }
 
-# ---------- fixup_package_names — pacman translations ------------------------
+# fixup_package_names — pacman translations
 
 @test "fixup: pacman translates build-essential to base-devel" {
     source_libs --installers arch pacman
@@ -274,11 +272,13 @@ PY
     [[ "${pkgs[0]}" == "base-devel" ]]
 }
 
-@test "fixup: pacman translates netcat-openbsd to gnu-netcat" {
+# openbsd-netcat is the Arch [extra] package; gnu-netcat (the old mapping) is
+# AUR-only, so the container audit corrected it.
+@test "fixup: pacman translates netcat-openbsd to openbsd-netcat" {
     source_libs --installers arch pacman
     local -a pkgs=(netcat-openbsd)
     fixup_package_names pkgs
-    [[ "${pkgs[0]}" == "gnu-netcat" ]]
+    [[ "${pkgs[0]}" == "openbsd-netcat" ]]
 }
 
 @test "fixup: pacman translates dnsutils to bind" {
@@ -309,9 +309,9 @@ PY
     [[ "${pkgs[0]}" == "go" ]]
 }
 
-# ---------- fixup_package_names — skipped packages ---------------------------
+# fixup_package_names — skipped packages
 
-# ---------- fixup_package_names — apt Kali-only filtering --------------------
+# fixup_package_names — apt Kali-only filtering
 
 @test "fixup: apt on Ubuntu removes Kali-only spike" {
     source_libs --installers ubuntu apt
@@ -331,7 +331,7 @@ PY
     [[ ${#pkgs[@]} -eq 3 ]]
 }
 
-# ---------- fixup_package_names — skipped packages ---------------------------
+# fixup_package_names — skipped packages
 
 @test "fixup: dnf removes spooftooph" {
     source_libs --installers fedora dnf
@@ -377,7 +377,7 @@ PY
     [[ ${#pkgs[@]} -eq 0 ]]
 }
 
-# ---------- fixup_package_names — zypper translations ------------------------
+# fixup_package_names — zypper translations
 
 @test "fixup: zypper translates dnsutils to bind-utils" {
     source_libs --installers opensuse-tumbleweed zypper
@@ -410,7 +410,7 @@ PY
     [[ ${#pkgs[@]} -eq 0 ]]
 }
 
-# ---------- fixup preserves non-translated packages --------------------------
+# fixup preserves non-translated packages
 
 @test "fixup: unknown packages pass through unchanged on dnf" {
     source_libs --installers fedora dnf
@@ -421,7 +421,7 @@ PY
     [[ "${pkgs[2]}" == "nmap" ]]
 }
 
-# ---------- track_version ----------------------------------------------------
+# track_version
 
 @test "track_version writes correct pipe-delimited format" {
     source_libs --installers debian apt
@@ -480,9 +480,7 @@ PY
 @test "install_cargo_batch counts missing Cargo as failures" {
     source_libs --installers debian apt
     TOTAL_TOOL_FAILURES=0
-    command_exists() {
-        [[ "$1" != "cargo" ]]
-    }
+    _builder_cmd() { return 1; }
 
     local status=0
     install_cargo_batch "Cargo test" rustscan aderyn || status=$?
@@ -491,7 +489,7 @@ PY
     [[ "$TOTAL_TOOL_FAILURES" -eq 2 ]]
 }
 
-# ---------- _load_distro_compat — TSV loader ---------------------------------
+# _load_distro_compat — TSV loader
 
 @test "TSV loader populates _COMPAT_DNF array" {
     source_libs --installers fedora dnf
@@ -547,7 +545,7 @@ PY
     [[ "$joined" != *"build-essential"* ]]
 }
 
-# ---------- Go binary name extraction (_go_bin_name) -------------------------
+# Go binary name extraction (_go_bin_name)
 
 @test "Go binary name extracted from full import path" {
     source_libs debian apt
@@ -575,7 +573,7 @@ PY
     [[ "$(_go_bin_name "github.com/OJ/gobuster/v3@latest")" == "gobuster" ]]
 }
 
-# ---------- architecture-aware release assets ------------------------------
+# architecture-aware release assets
 
 @test "new forensic and blue-team releases select x64 assets on amd64" {
     source_libs debian apt
@@ -595,7 +593,7 @@ PY
     [[ "${BINARY_RELEASES_BLUETEAM[*]}" == *"hayabusa|hayabusa|lin-aarch64-gnu"* ]]
 }
 
-# ---------- Stage-1 C2 aggregation (install.sh install_modules loop) ---------
+# Stage-1 C2 aggregation (install.sh install_modules loop)
 #
 # Replicates the per-module aggregation loop from install_modules() in
 # install.sh: it appends each module's <PREFIX>_GIT / BINARY_RELEASES_<MOD>
@@ -664,4 +662,296 @@ _run_c2_aggregation() {
     _run_c2_aggregation misc
     [[ "${_ALL_BINARY[*]}" != *"gophish/gophish|gophish|linux-64bit"* ]]
     [[ "${_ALL_BINARY[*]}" != *"sliver-server"* ]]
+}
+
+# install provenance ("existing" vs installed)
+# The uninstall paths skip anything recorded as "existing". Covers all five
+# package managers via pkg_is_installed.
+
+@test "install_apt_batch marks already-installed packages as existing" {
+    source_libs --installers fedora dnf
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+
+    # curl/git are "already there"; nmap is not. Groups cannot be queried.
+    pkg_is_installed() { [[ "$1" == "curl" || "$1" == "git" ]]; }
+    pkg_install() { return 0; }
+    fixup_package_names() { :; }
+    show_progress() { :; }
+
+    install_apt_batch "test" curl git nmap @development-tools
+
+    grep -q "^curl|dnf|existing|" "$VERSION_FILE"
+    grep -q "^git|dnf|existing|" "$VERSION_FILE"
+    grep -q "^nmap|dnf|system|" "$VERSION_FILE"
+    grep -q "^@development-tools|dnf|existing|" "$VERSION_FILE"
+}
+
+@test "track_version keeps pre-existing tools out of the rollback set" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    export _SESSION_FILE="$TEST_TMPDIR/manifest"
+    : > "$_SESSION_FILE"
+
+    track_version "wireshark" "apt" "existing"
+    track_version "ffuf" "go" "latest"
+
+    # --rollback only acts on action == "installed"
+    grep -q "^wireshark|apt|existing|" "$_SESSION_FILE"
+    grep -q "^ffuf|go|installed|" "$_SESSION_FILE"
+}
+
+@test "filter_preexisting drops tools recorded as existing" {
+    source_libs --installers arch pacman
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+
+    track_version "curl" "pacman" "existing"
+    track_version "nmap" "pacman" "system"
+
+    _PREEXISTING_LOADED=false
+    _PREEXISTING_TOOLS=()
+    local -a pkgs=(curl nmap sqlmap)
+    filter_preexisting pkgs "system packages"
+
+    [[ "${pkgs[*]}" == "nmap sqlmap" ]]
+}
+
+@test "filter_preexisting empties the array when everything pre-existed" {
+    source_libs --installers opensuse zypper
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+
+    track_version "curl" "zypper" "existing"
+
+    _PREEXISTING_LOADED=false
+    _PREEXISTING_TOOLS=()
+    local -a pkgs=(curl)
+    filter_preexisting pkgs "system packages"
+
+    [[ "${#pkgs[@]}" -eq 0 ]]
+}
+
+@test "_tree_provenance flags a directory this installer never created" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    mkdir -p "$TEST_TMPDIR/opt/usertool" "$TEST_TMPDIR/opt/ourtool"
+
+    track_version "ourtool" "git" "HEAD"
+
+    [[ "$(_tree_provenance usertool "$TEST_TMPDIR/opt/usertool")" == "existing" ]]
+    [[ "$(_tree_provenance ourtool "$TEST_TMPDIR/opt/ourtool")" == "HEAD" ]]
+    [[ "$(_tree_provenance gone "$TEST_TMPDIR/opt/gone")" == "HEAD" ]]
+}
+
+# uninstall helpers
+
+@test "remove_source_build drops the build tree and its symlink" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/opt"
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$GITHUB_TOOL_DIR/AFLplusplus" "$PIPX_BIN_DIR"
+    : > "$PIPX_BIN_DIR/AFLplusplus"
+
+    run remove_source_build AFLplusplus
+    assert_success
+    [[ ! -d "$GITHUB_TOOL_DIR/AFLplusplus" ]]
+    [[ ! -e "$PIPX_BIN_DIR/AFLplusplus" ]]
+}
+
+@test "uninstall helpers report unknown names instead of guessing" {
+    source_libs --installers debian apt
+
+    run remove_special_tool definitely-not-a-tool
+    assert_failure
+    run remove_snap_tool definitely-not-a-tool
+    assert_failure
+}
+
+@test "remove_special_tool removes the patator venv and its symlink" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/opt"
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$GITHUB_TOOL_DIR/patator/venv/bin" "$PIPX_BIN_DIR"
+    : > "$PIPX_BIN_DIR/patator"
+
+    run remove_special_tool patator
+    assert_success
+    [[ ! -d "$GITHUB_TOOL_DIR/patator" ]]
+    [[ ! -e "$PIPX_BIN_DIR/patator" ]]
+}
+
+@test "a second install run does not relabel its own packages as pre-existing" {
+    # Toolkit-owned packages remain removable without belonging to later sessions.
+    source_libs --installers fedora dnf
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+
+    declare -gA FAKE_INSTALLED=([curl]=1)     # only curl predates the toolkit
+    pkg_is_installed() { [[ -n "${FAKE_INSTALLED[$1]:-}" ]]; }
+    pkg_install() { local p; for p in "$@"; do FAKE_INSTALLED["$p"]=1; done; }
+    fixup_package_names() { :; }
+    show_progress() { :; }
+
+    _SESSION_FILE=""
+    install_apt_batch "run1" curl nmap sqlmap
+    export _SESSION_FILE="$TEST_TMPDIR/run2.manifest"
+    : > "$_SESSION_FILE"
+    install_apt_batch "run2" curl nmap sqlmap
+    install_apt_batch "run3" curl nmap sqlmap
+
+    grep -q "^curl|dnf|existing|" "$VERSION_FILE"
+    grep -q "^nmap|dnf|system|" "$VERSION_FILE"
+    grep -q "^sqlmap|dnf|system|" "$VERSION_FILE"
+    grep -q "^nmap|dnf|existing|" "$_SESSION_FILE"
+    grep -q "^sqlmap|dnf|existing|" "$_SESSION_FILE"
+    ! grep -q "^nmap|dnf|installed|" "$_SESSION_FILE"
+    ! grep -q "^sqlmap|dnf|installed|" "$_SESSION_FILE"
+}
+
+@test "_tree_provenance keeps its verdict across repeated runs" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    mkdir -p "$TEST_TMPDIR/opt/usertool"       # the user's own clone
+
+    local r n v
+    for r in 1 2 3; do
+        for n in usertool ourtool; do
+            v=$(_tree_provenance "$n" "$TEST_TMPDIR/opt/$n")
+            mkdir -p "$TEST_TMPDIR/opt/$n"     # the clone happens after the check
+            track_version "$n" git "$v"
+        done
+    done
+
+    grep -q "^usertool|git|existing|" "$VERSION_FILE"
+    grep -q "^ourtool|git|HEAD|" "$VERSION_FILE"
+}
+
+@test "sequential Git rerun stays out of the new rollback session" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/opt"
+    export PARALLEL_JOBS=1
+    mkdir -p "$GITHUB_TOOL_DIR/ourtool/.git"
+
+    _SESSION_FILE=""
+    track_version "ourtool" "git" "HEAD"
+    export _SESSION_FILE="$TEST_TMPDIR/manifest"
+    : > "$_SESSION_FILE"
+    git_clone_or_pull() { return 0; }
+    setup_git_repo() { return 0; }
+    show_progress() { :; }
+
+    install_git_batch "test" "ourtool=https://internal.example/ourtool.git"
+
+    grep -q "^ourtool|git|existing|" "$_SESSION_FILE"
+    ! grep -q "^ourtool|git|installed|" "$_SESSION_FILE"
+    grep -q "^ourtool|git|HEAD|" "$VERSION_FILE"
+}
+
+@test "source rerun stays out of the new rollback session" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/opt"
+    mkdir -p "$GITHUB_TOOL_DIR/ourtool"
+
+    _SESSION_FILE=""
+    track_version "ourtool" "source" "HEAD"
+    export _SESSION_FILE="$TEST_TMPDIR/manifest"
+    : > "$_SESSION_FILE"
+    git_clone_or_pull() { return 0; }
+    _as_builder() { return 0; }
+
+    build_from_source "ourtool" \
+        "https://internal.example/ourtool.git" "make"
+
+    grep -q "^ourtool|source|existing|" "$_SESSION_FILE"
+    ! grep -q "^ourtool|source|installed|" "$_SESSION_FILE"
+    grep -q "^ourtool|source|HEAD|" "$VERSION_FILE"
+}
+
+@test "install summary counts exclude pre-existing tools" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    printf '# tool|method|version|last_updated\n' > "$VERSION_FILE"
+    printf 'curl|apt|existing|x\nnmap|apt|system|x\nffuf|go|existing|x\nsqlmap|pipx|latest|x\n' >> "$VERSION_FILE"
+
+    local installed existing
+    installed=$(awk -F'|' '!/^#/ && $3 != "existing"' "$VERSION_FILE" | wc -l)
+    existing=$(awk -F'|' '!/^#/ && $3 == "existing"' "$VERSION_FILE" | wc -l)
+    [[ "$installed" -eq 2 ]]
+    [[ "$existing" -eq 2 ]]
+}
+
+@test "a tool we installed is not relabelled pre-existing on the next run" {
+    # The "existing" label is only for tools the user already had. Deriving it from
+    # presence alone would protect our own installs from ever being removed.
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+
+    _SESSION_FILE=""
+    track_version "ours" "cargo" "latest"          # an earlier run installed it
+    export _SESSION_FILE="$TEST_TMPDIR/manifest"
+    : > "$_SESSION_FILE"
+
+    _track_already_present "theirs" "cargo"        # never installed by us
+    _track_already_present "theirs" "cargo"        # run 2 sees both present
+    _track_already_present "ours" "cargo"
+
+    grep -q "^theirs|cargo|existing|" "$VERSION_FILE"
+    grep -q "^ours|cargo|latest|" "$VERSION_FILE"
+    ! grep -q "^ours|cargo|installed|" "$_SESSION_FILE"
+    grep -q "^ours|cargo|existing|" "$_SESSION_FILE"
+}
+
+# ---------- rollback must not report success on a failed removal --------------
+
+@test "remove_source_build fails when the tree survives" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/opt"
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$GITHUB_TOOL_DIR/stubborn" "$PIPX_BIN_DIR"
+
+    # rm -rf is a no-op here, so the tree is still there afterwards.
+    rm() { :; }
+    run remove_source_build stubborn
+    assert_failure
+    [[ -d "$GITHUB_TOOL_DIR/stubborn" ]]
+}
+
+@test "remove_source_build succeeds once the tree is gone" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/opt"
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$GITHUB_TOOL_DIR/gone" "$PIPX_BIN_DIR"
+
+    run remove_source_build gone
+    assert_success
+    [[ ! -e "$GITHUB_TOOL_DIR/gone" ]]
+}
+
+@test "remove_special_tool separates unknown name from failed removal" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/opt"
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$GITHUB_TOOL_DIR/patator" "$PIPX_BIN_DIR"
+
+    run remove_special_tool definitely-not-a-tool
+    [[ "$status" -eq 1 ]]            # unknown name
+
+    rm() { :; }
+    run remove_special_tool patator
+    [[ "$status" -eq 2 ]]            # tried, but the venv survived
 }

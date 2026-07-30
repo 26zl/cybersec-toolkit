@@ -328,6 +328,12 @@ def extract_module_tools(module_name):
             "name": "steampipe", "method": "special",
             "url": "https://github.com/turbot/steampipe",
         })
+    # patator gets a dedicated venv rather than a pipx one (cx-Oracle, see cracking.sh)
+    if "_pat_dir" in clean:
+        tools.append({
+            "name": "patator", "method": "special",
+            "url": "https://pypi.org/project/patator/",
+        })
 
     # pipx install git+URL patterns (not in PIPX arrays)
     for m in re.finditer(

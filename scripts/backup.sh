@@ -5,14 +5,15 @@
 # Supports scheduling via cron. Linux and Termux only.
 
 set -uo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-# Also clean up on INT/TERM (not just the EXIT trap from common.sh) so Ctrl-C during the multi-second PBKDF2 encryption can't leave the plaintext-passphrase temp file behind.
+# Remove registered plaintext files on interruption.
 trap '_global_cleanup; exit 130' INT TERM
 
-# Resolve the REAL user's home (via getent on $SUDO_USER, falling back to /etc/passwd, else $HOME) so running under sudo/cron doesn't back up and restore /root instead of the real user; $SUDO_USER is untrusted and only ever passed to getent/awk as data.
+# Resolve the invoking user's home when running under sudo.
 if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
     HOME_DIR="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
     [[ -z "$HOME_DIR" ]] && HOME_DIR="$(awk -F: -v u="$SUDO_USER" '$1==u{print $6; exit}' /etc/passwd 2>/dev/null)"
@@ -30,22 +31,43 @@ PBKDF2_ITERATIONS=600000
 BACKUP_DIR="$HOME_DIR/cybersec_tools_backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/backup_$TIMESTAMP"
-[[ -d "$BACKUP_DIR" ]] || mkdir -p "$BACKUP_DIR"
 
-# Under sudo the dir/files are created by root inside the real user's home; hand
-# ownership back so the user can read/manage their own backups. No-op otherwise.
 _chown_backup_dir() {
     if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
-        chown -R "$SUDO_USER" "$BACKUP_DIR" 2>/dev/null || true
+        if [[ -L "$BACKUP_DIR" || ! -d "$BACKUP_DIR" ]]; then
+            log_error "Refusing to change ownership of unsafe backup path: $BACKUP_DIR"
+            return 1
+        fi
+        if ! chown -R -- "$SUDO_USER" "$BACKUP_DIR" 2>/dev/null; then
+            log_error "Failed to return backup ownership to $SUDO_USER"
+            return 1
+        fi
     fi
 }
-_chown_backup_dir
-
-_init_log_file "$BACKUP_DIR/backup.log"
 
 # Helpers
 ensure_dir() {
-    [[ -d "$1" ]] || mkdir -p "$1"
+    [[ -d "$1" ]] || mkdir -p -- "$1"
+}
+
+_BACKUP_STORAGE_READY=false
+_init_backup_storage() {
+    [[ "$_BACKUP_STORAGE_READY" == "true" ]] && return 0
+    if [[ -L "$BACKUP_DIR" || ( -e "$BACKUP_DIR" && ! -d "$BACKUP_DIR" ) ]]; then
+        log_error "Refusing unsafe backup path: $BACKUP_DIR"
+        return 1
+    fi
+    if [[ ! -e "$BACKUP_DIR" ]] && ! mkdir -m 700 -- "$BACKUP_DIR"; then
+        log_error "Failed to create private backup directory: $BACKUP_DIR"
+        return 1
+    fi
+    if [[ -L "$BACKUP_DIR" || ! -d "$BACKUP_DIR" ]] || ! chmod 700 "$BACKUP_DIR"; then
+        log_error "Failed to initialize private backup directory: $BACKUP_DIR"
+        return 1
+    fi
+    _chown_backup_dir || return 1
+    _init_log_file "$BACKUP_DIR/backup.log"
+    _BACKUP_STORAGE_READY=true
 }
 
 _prompt_passphrase() {
@@ -90,10 +112,18 @@ _prompt_passphrase() {
 # Caller must rm -f "$_PASS_FILE" when done.
 _read_passphrase_to_file() {
     local passphrase
-    read -rsp "Enter decryption passphrase: " passphrase
+    if [[ ! -t 0 ]]; then
+        log_error "No terminal available for decryption passphrase input"
+        return 1
+    fi
+    read -rsp "Enter decryption passphrase: " passphrase || return 1
     echo ""
-    _PASS_FILE=$(mktemp)
-    chmod 600 "$_PASS_FILE"
+    if ! _PASS_FILE=$(mktemp) || ! chmod 600 "$_PASS_FILE"; then
+        log_error "Failed to create secure passphrase file"
+        [[ -n "${_PASS_FILE:-}" ]] && rm -f -- "$_PASS_FILE"
+        unset passphrase
+        return 1
+    fi
     _register_cleanup "$_PASS_FILE"
     printf '%s' "$passphrase" > "$_PASS_FILE"
     unset passphrase
@@ -104,21 +134,16 @@ encrypt_archive() {
 
     _prompt_passphrase || return 1
 
-    local pass_file
-    pass_file=$(mktemp)
-    chmod 600 "$pass_file"
+    local pass_file=""
+    if ! pass_file=$(mktemp) || ! chmod 600 "$pass_file"; then
+        [[ -n "$pass_file" ]] && rm -f -- "$pass_file"
+        unset _PASSPHRASE
+        log_error "Failed to create secure passphrase file"
+        return 1
+    fi
     _register_cleanup "$pass_file"
     printf '%s' "$_PASSPHRASE" > "$pass_file"
     unset _PASSPHRASE
-
-    # The MAC key uses a SALTED, expensive KDF (PBKDF2 @ same iter count as the
-    # ciphertext) via `openssl kdf`. Guard for builds that lack it.
-    if ! _backup_kdf_available; then
-        rm -f "$pass_file"
-        log_error "This openssl build lacks 'openssl kdf' (PBKDF2) — required for salted integrity tags"
-        log_error "Upgrade to OpenSSL 3.0+ or use a build that includes the kdf command"
-        return 1
-    fi
 
     # Encrypt-then-MAC. ChaCha20 is an unauthenticated stream cipher, so the
     # ciphertext is malleable and corruption/tampering would silently decrypt
@@ -129,30 +154,21 @@ encrypt_archive() {
     # A per-backup random salt makes the .hmac sidecar useless as a cheap
     # offline brute-force oracle: without an expensive salted KDF the tag would
     # be ~PBKDF2_ITERATIONS× cheaper to attack than the ciphertext.
-    local mac_salt mac_key
+    local mac_salt
     mac_salt=$(openssl rand -hex 16)
     if [[ -z "$mac_salt" ]]; then
         rm -f "$pass_file"
         log_error "Failed to generate MAC salt"
         return 1
     fi
-    mac_key=$(_backup_mac_key "$pass_file" "$mac_salt")
-    if [[ -z "$mac_key" ]]; then
-        unset mac_key
-        rm -f "$pass_file"
-        log_error "Failed to derive MAC key"
-        return 1
-    fi
-
     local mac_tag=""
     if openssl enc -chacha20 -salt -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
         -in "$archive_path" -out "${archive_path}.enc" -pass file:"$pass_file" 2>/dev/null; then
-        mac_tag=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$mac_key" "${archive_path}.enc" 2>/dev/null | awk '{print $NF}')
+        mac_tag=$(_backup_hmac_tag "$pass_file" "${archive_path}.enc" "$mac_salt" v2)
     fi
-    unset mac_key
 
     # Sidecar format (v2): two prefixed lines — "salt:<hexsalt>" then "mac:<hexmac>".
-    # The legacy v1 format was a single bare hex line (no prefix); see _backup_mac_key.
+    # The legacy v1 format was a single bare hex line (no prefix).
     if [[ -n "$mac_tag" ]] \
         && { printf 'salt:%s\n' "$mac_salt"; printf 'mac:%s\n' "$mac_tag"; } > "${archive_path}.enc.hmac" \
         && [[ -s "${archive_path}.enc.hmac" ]]; then
@@ -168,37 +184,38 @@ encrypt_archive() {
     fi
 }
 
-# _backup_kdf_available — true if this openssl build provides the `kdf` command
-# (needed for the salted PBKDF2 MAC-key derivation). Older/minimal builds omit it.
-_backup_kdf_available() {
-    openssl kdf -help &>/dev/null
-}
-
-# _backup_mac_key — derive a hex HMAC key from the passphrase file using SALTED
-# PBKDF2 (digest SHA256, PBKDF2_ITERATIONS). Args: <pass_file> <hexsalt>.
-# The passphrase content is read from the file and hex-encoded before being
-# handed to `openssl kdf` (so the literal passphrase never appears on argv); the
-# resulting flat-hex key is what `openssl dgst -macopt hexkey:` consumes.
-# This makes the .hmac sidecar as expensive to attack as the ciphertext itself.
-_backup_mac_key() {
+# Compute the public HMAC tag without exposing passphrase-derived material in argv.
+_backup_hmac_tag() {
     local pass_file="$1"
-    local hexsalt="$2"
-    local hexpass
-    hexpass=$(od -An -v -tx1 < "$pass_file" 2>/dev/null | tr -d ' \n')
-    [[ -n "$hexpass" ]] || return 1
-    # `openssl kdf` prints colon-delimited uppercase hex; flatten to lowercase.
-    openssl kdf -keylen 32 -kdfopt digest:SHA256 \
-        -kdfopt "hexpass:$hexpass" \
-        -kdfopt "iter:$PBKDF2_ITERATIONS" \
-        -kdfopt "hexsalt:$hexsalt" PBKDF2 2>/dev/null \
-        | tr -d ':' | tr 'A-F' 'a-f'
-}
+    local encrypted_path="$2"
+    local hexsalt="$3"
+    local format="$4"
 
-# Verify v1 backup tags that use the legacy unsalted SHA256 derivation.
-_backup_mac_key_legacy() {
-    local pass_file="$1"
-    { printf 'cybersec-backup-hmac:'; cat "$pass_file"; } \
-        | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}'
+    python3 - "$pass_file" "$encrypted_path" "$hexsalt" "$format" \
+        "$PBKDF2_ITERATIONS" 2>/dev/null <<'PY'
+import hashlib
+import hmac
+import sys
+
+pass_file, encrypted_path, hexsalt, tag_format, iterations = sys.argv[1:]
+with open(pass_file, "rb") as handle:
+    password = handle.read()
+
+if tag_format == "v2":
+    key = hashlib.pbkdf2_hmac(
+        "sha256", password, bytes.fromhex(hexsalt), int(iterations), dklen=32
+    )
+elif tag_format == "v1":
+    key = hashlib.sha256(b"cybersec-backup-hmac:" + password).digest()
+else:
+    raise ValueError("unsupported backup tag format")
+
+digest = hmac.new(key, digestmod=hashlib.sha256)
+with open(encrypted_path, "rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+print(digest.hexdigest())
+PY
 }
 
 # _ct_equal — constant-time hex-string equality. Compares SHA256(nonce||a) vs
@@ -217,37 +234,35 @@ _ct_equal() {
 
 decrypt_archive() {
     local encrypted_path="$1"
-    local output_path="${encrypted_path%.enc}"
+    local output_path="${2:-${encrypted_path%.enc}}"
 
-    _read_passphrase_to_file
+    [[ ! -e "$output_path" ]] || {
+        log_error "Refusing to overwrite decrypted output: $output_path"
+        return 1
+    }
+    _read_passphrase_to_file || return 1
 
     # Verify the HMAC integrity tag before decrypting (fail closed on tamper).
     # Backups written before integrity tags have no .hmac — warn and proceed so
     # old archives still restore, but flag that integrity can't be guaranteed.
     local hmac_file="${encrypted_path}.hmac"
     if [[ -f "$hmac_file" ]]; then
-        local mac_key expected actual mac_salt
+        local expected actual mac_salt mac_format
         # Detect sidecar format. v2 = prefixed lines ("salt:<hex>" / "mac:<hex>")
         # using salted PBKDF2; v1 (legacy) = single bare hex line, weak unsalted
         # derivation. Parse v2 first; fall back to v1 for old backups.
         mac_salt=$(awk -F: '/^salt:/{print $2; exit}' "$hmac_file" 2>/dev/null | tr -d '[:space:]')
         expected=$(awk -F: '/^mac:/{print $2; exit}' "$hmac_file" 2>/dev/null | tr -d '[:space:]')
         if [[ -n "$mac_salt" && -n "$expected" ]]; then
-            # v2: salted PBKDF2 MAC key
-            if ! _backup_kdf_available; then
-                rm -f "$_PASS_FILE"
-                log_error "This openssl build lacks 'openssl kdf' (PBKDF2) — cannot verify salted integrity tag"
-                return 1
-            fi
-            mac_key=$(_backup_mac_key "$_PASS_FILE" "$mac_salt")
+            mac_format=v2
         else
             # v1 legacy: single bare hex line, weak unsalted derivation
             log_warn "Legacy (unsalted) integrity tag detected — weak integrity, re-create this backup to upgrade"
             expected=$(tr -d '[:space:]' < "$hmac_file")
-            mac_key=$(_backup_mac_key_legacy "$_PASS_FILE")
+            mac_salt=""
+            mac_format=v1
         fi
-        actual=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$mac_key" "$encrypted_path" 2>/dev/null | awk '{print $NF}')
-        unset mac_key
+        actual=$(_backup_hmac_tag "$_PASS_FILE" "$encrypted_path" "$mac_salt" "$mac_format")
         if [[ -z "$actual" ]] || ! _ct_equal "$expected" "$actual"; then
             rm -f "$_PASS_FILE"
             log_error "Integrity check FAILED — archive is corrupt, tampered, or passphrase is wrong. Refusing to decrypt."
@@ -274,23 +289,30 @@ decrypt_files_legacy() {
     local source_dir="$1"
     local target_dir="$2"
 
-    _read_passphrase_to_file
+    _read_passphrase_to_file || return 1
 
+    local failed=0
     while IFS= read -r -d '' file; do
         local relative_path="${file#"$source_dir"/}"
         local decrypted_path="$target_dir/${relative_path%.enc}"
         ensure_dir "$(dirname "$decrypted_path")"
-        openssl enc -aes-256-cbc -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" -in "$file" -out "$decrypted_path" -pass file:"$_PASS_FILE" 2>/dev/null && \
-            log_success "Decrypted: $relative_path" || \
+        if openssl enc -aes-256-cbc -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
+            -in "$file" -out "$decrypted_path" -pass file:"$_PASS_FILE" 2>/dev/null; then
+            log_success "Decrypted: $relative_path"
+        else
             log_warn "Failed to decrypt: $relative_path"
+            failed=$((failed + 1))
+        fi
     done < <(find "$source_dir" -type f -name "*.enc" -print0)
 
     rm -f "$_PASS_FILE"
+    [[ "$failed" -eq 0 ]]
 }
 
 # Backup config dirs (silently skip missing ones)
 backup_configs() {
     local dest="$1"
+    local failed=0
 
     # Category → paths mapping (one cp per path to avoid quoting issues)
     # Only existing paths are copied — missing ones are silently skipped.
@@ -337,17 +359,74 @@ backup_configs() {
         local category="${_entry%%|*}"
         local src="${_entry#*|}"
         if [[ -e "$src" ]]; then
-            ensure_dir "$dest/$category"
-            cp -r "$src" "$dest/$category/" 2>/dev/null
+            if ! ensure_dir "$dest/$category" \
+                || ! cp -r -- "$src" "$dest/$category/" 2>/dev/null; then
+                log_warn "Failed to back up: $src"
+                failed=$((failed + 1))
+            fi
         fi
     done
+    [[ "$failed" -eq 0 ]]
 }
 
-# Restore config dirs
-# Walks the category subdirectories created by backup_configs and copies
-# each item back to its original location (derived from the directory name).
+# Restore one tree atomically per target: copy into a staging sibling first, then
+# swap it in, so a failed or short copy never leaves a half-overwritten
+# destination. The old tree is kept until the swap succeeds and put back if it
+# fails. The symlink recheck shrinks — but cannot fully close — a same-privilege
+# TOCTOU race; the staging + swap files live beside the target on the same
+# filesystem so the moves are atomic renames.
+_restore_tree() {
+    local source="$1"
+    local parent="$2"
+    local label="$3"
+    local base="${source##*/}"
+    local target="$parent/$base"
+
+    ensure_dir "$parent" || return 1
+    if [[ -L "$parent" || -L "$target" ]]; then
+        log_warn "Refusing to restore through a symlinked destination: $target"
+        return 1
+    fi
+
+    local staged="$parent/.cybersec-restore.$$.new.$base"
+    local backup="$parent/.cybersec-restore.$$.bak.$base"
+    rm -rf -- "$staged" "$backup" 2>/dev/null || true
+
+    if ! cp -r -- "$source" "$staged" 2>/dev/null; then
+        log_warn "Failed to restore: $label"
+        rm -rf -- "$staged" 2>/dev/null || true
+        return 1
+    fi
+
+    local had_target=false
+    if [[ -e "$target" ]]; then
+        had_target=true
+        if ! mv -- "$target" "$backup" 2>/dev/null; then
+            log_warn "Failed to stage existing $label aside — leaving it untouched"
+            rm -rf -- "$staged" 2>/dev/null || true
+            return 1
+        fi
+    fi
+    if ! mv -- "$staged" "$target" 2>/dev/null; then
+        log_warn "Failed to move restored $label into place — rolling back"
+        [[ "$had_target" == true ]] && mv -- "$backup" "$target" 2>/dev/null || true
+        rm -rf -- "$staged" 2>/dev/null || true
+        return 1
+    fi
+    [[ "$had_target" == true ]] && rm -rf -- "$backup" 2>/dev/null || true
+
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-}" != "root" ]] \
+        && ! chown -R -- "$SUDO_USER" "$target" 2>/dev/null; then
+        log_warn "Restored $label, but failed to return its ownership to $SUDO_USER"
+        return 1
+    fi
+    return 0
+}
+
+# Restore config directories to their fixed destinations.
 restore_configs() {
     local src="$1"
+    local failed=0
 
     # Home dir configs — restore to $HOME_DIR/
     local -a _home_dirs=(
@@ -359,7 +438,9 @@ restore_configs() {
     for dir in "${_home_dirs[@]}"; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
-        [[ -n "$found" ]] && cp -r "$found" "$HOME_DIR/" 2>/dev/null
+        if [[ -n "$found" ]] && ! _restore_tree "$found" "$HOME_DIR" "$dir"; then
+            failed=$((failed + 1))
+        fi
     done
 
     # ~/.config/ subdirs — restore to $HOME_DIR/.config/
@@ -367,9 +448,9 @@ restore_configs() {
     for dir in "${_xdg_dirs[@]}"; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
-        if [[ -n "$found" ]]; then
-            ensure_dir "$HOME_DIR/.config"
-            cp -r "$found" "$HOME_DIR/.config/" 2>/dev/null
+        if [[ -n "$found" ]] \
+            && ! _restore_tree "$found" "$HOME_DIR/.config" ".config/$dir"; then
+            failed=$((failed + 1))
         fi
     done
 
@@ -377,16 +458,33 @@ restore_configs() {
     for dir in exploitdb recon-ng; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
-        [[ -n "$found" ]] && cp -r "$found" "$GITHUB_TOOL_DIR/" 2>/dev/null
+        if [[ -n "$found" ]] && ! _restore_tree "$found" "$GITHUB_TOOL_DIR" "$dir"; then
+            failed=$((failed + 1))
+        fi
     done
+    [[ "$failed" -eq 0 ]]
 }
 
 # Commands
 cmd_backup() {
+    _init_backup_storage || exit 1
     log_info "Creating backup..."
-    ensure_dir "$BACKUP_PATH"
+    if [[ -e "$BACKUP_PATH" || -e "$BACKUP_PATH.tar.gz" || -e "$BACKUP_PATH.tar.gz.enc" ]]; then
+        log_error "Backup destination already exists for timestamp $TIMESTAMP"
+        exit 1
+    fi
+    if ! ensure_dir "$BACKUP_PATH"; then
+        log_error "Failed to create backup staging directory"
+        exit 1
+    fi
+    _register_cleanup "$BACKUP_PATH"
+    _register_cleanup "$BACKUP_PATH.tar.gz"
 
-    backup_configs "$BACKUP_PATH"
+    if ! backup_configs "$BACKUP_PATH"; then
+        log_error "Backup is incomplete; no archive was created"
+        rm -rf "$BACKUP_PATH"
+        exit 1
+    fi
 
     log_info "Creating archive..."
     if ! tar -czf "$BACKUP_PATH.tar.gz" -C "$BACKUP_DIR" "backup_$TIMESTAMP"; then
@@ -394,6 +492,7 @@ cmd_backup() {
         rm -rf "$BACKUP_PATH"
         exit 1
     fi
+    chmod 600 "$BACKUP_PATH.tar.gz" 2>/dev/null || true
     rm -rf "$BACKUP_PATH"
 
     log_info "Encrypting archive..."
@@ -403,8 +502,7 @@ cmd_backup() {
         exit 1
     fi
 
-    # New .enc/.hmac were written as root under sudo — return ownership.
-    _chown_backup_dir
+    _chown_backup_dir || exit 1
 
     log_success "Backup created: $BACKUP_PATH.tar.gz.enc"
 }
@@ -416,69 +514,138 @@ cmd_restore() {
         log_error "Backup file not found: $backup_file"
         exit 1
     fi
-
-    local tar_file="$backup_file"
-
-    # New format: .tar.gz.enc — decrypt first
-    if [[ "$backup_file" == *.tar.gz.enc ]]; then
-        log_info "Encrypted backup detected — decrypting..."
-        if ! decrypt_archive "$backup_file"; then
-            exit 1
-        fi
-        tar_file="${backup_file%.enc}"
-    elif [[ "$backup_file" != *.tar.gz ]]; then
+    if [[ "$backup_file" != *.tar.gz.enc && "$backup_file" != *.tar.gz ]]; then
         log_error "Unrecognized backup format: $backup_file"
         log_info "Expected .tar.gz.enc (encrypted) or .tar.gz (legacy)"
         exit 1
     fi
+    # restore_configs locates config trees in the archive with find; without it the
+    # restore would silently place nothing and still report success. Fail closed.
+    command -v find >/dev/null 2>&1 || {
+        log_error "find (findutils) is required for restore but was not found"
+        exit 1
+    }
 
-    # Validate archive contents before extracting (block path traversal)
-    local backup_name
-    backup_name=$(tar -tzf "$tar_file" | head -1 | cut -f1 -d"/")
+    _init_backup_storage || exit 1
 
+    local tar_file="$backup_file"
+    local restore_tmpdir
+    if ! restore_tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/cybersec-restore.XXXXXX"); then
+        log_error "Failed to create restore staging directory"
+        exit 1
+    fi
+    chmod 700 "$restore_tmpdir"
+    _register_cleanup "$restore_tmpdir"
+    local extract_dir="$restore_tmpdir/extracted"
+    ensure_dir "$extract_dir" || {
+        log_error "Failed to create restore extraction directory"
+        exit 1
+    }
+
+    # New format: .tar.gz.enc — decrypt first
+    if [[ "$backup_file" == *.tar.gz.enc ]]; then
+        log_info "Encrypted backup detected — decrypting..."
+        tar_file="$restore_tmpdir/archive.tar.gz"
+        if ! decrypt_archive "$backup_file" "$tar_file"; then
+            exit 1
+        fi
+    fi
+
+    local member_list="$restore_tmpdir/members"
+    if ! tar -tzf "$tar_file" > "$member_list"; then
+        log_error "Could not read backup archive"
+        exit 1
+    fi
+
+    local backup_name=""
+    local member top
+    while IFS= read -r member; do
+        while [[ "$member" == ./* ]]; do member="${member#./}"; done
+        [[ -n "$member" ]] || continue
+        if [[ "$member" == /* || "/$member/" == */../* ]]; then
+            log_error "Archive contains an unsafe path — aborting"
+            exit 1
+        fi
+        top="${member%%/*}"
+        if [[ -z "$top" || ( -n "$backup_name" && "$top" != "$backup_name" ) ]]; then
+            log_error "Archive must contain exactly one top-level directory"
+            exit 1
+        fi
+        backup_name="$top"
+    done < "$member_list"
     if [[ -z "$backup_name" ]]; then
         log_error "Could not determine backup directory name from archive"
-        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
         exit 1
     fi
 
-    # Reject archives containing path traversal or absolute paths
-    if tar -tzf "$tar_file" | grep -qE '(^/|\.\.)'; then
-        log_error "Archive contains unsafe paths (absolute or ../) — aborting"
-        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
+    # Backups contain only regular files and directories.
+    local verbose_list="$restore_tmpdir/members.verbose"
+    if ! tar -tvzf "$tar_file" > "$verbose_list" 2>/dev/null; then
+        log_error "Could not inspect backup archive"
         exit 1
     fi
-
-    # Reject any member that isn't a regular file or directory (`-tvzf` type char in column 1), since a cleanly-named symlink to /etc could otherwise be restored outside $HOME by `cp -r` and backups only ever contain regular config files.
-    if tar -tvzf "$tar_file" 2>/dev/null | grep -qEv '^[-d]'; then
+    if grep -qEv '^[-d]' "$verbose_list"; then
         log_error "Archive contains links or special members — refusing to restore (untrusted or malformed backup)"
-        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
         exit 1
+    fi
+
+    # Archive-bomb guard: bound member count and total uncompressed size, and
+    # require the payload to fit the staging filesystem, before extracting. The
+    # verbose listing already carries per-member sizes (field 3), so this is free.
+    local _member_count _total_bytes
+    _member_count=$(wc -l < "$verbose_list")
+    _total_bytes=$(awk '{ s += $3 } END { printf "%.0f", s + 0 }' "$verbose_list")
+    local _max_members=200000
+    local _max_bytes=$((10 * 1024 * 1024 * 1024))   # 10 GiB uncompressed
+    if [[ "$_member_count" -gt "$_max_members" ]]; then
+        log_error "Archive has $_member_count members (limit $_max_members) — refusing to restore"
+        exit 1
+    fi
+    if [[ "$_total_bytes" -gt "$_max_bytes" ]]; then
+        log_error "Archive expands to $_total_bytes bytes (limit $_max_bytes) — refusing to restore"
+        exit 1
+    fi
+    local _avail_kb
+    _avail_kb=$(df -Pk "$extract_dir" 2>/dev/null | awk 'NR==2 { print $4 }')
+    if [[ "$_avail_kb" =~ ^[0-9]+$ ]]; then
+        local _need_kb=$(( (_total_bytes / 1024) + 65536 ))   # +64 MiB margin
+        if [[ "$_need_kb" -gt "$_avail_kb" ]]; then
+            log_error "Not enough free space to extract: need ~${_need_kb} KB, have ${_avail_kb} KB"
+            exit 1
+        fi
     fi
 
     log_info "Extracting backup..."
-    if ! tar -xzf "$tar_file" -C "$BACKUP_DIR"; then
+    if ! tar -xzf "$tar_file" -C "$extract_dir"; then
         log_error "Failed to extract backup archive"
-        [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
         exit 1
     fi
 
-    # Clean up decrypted tar if we created it
-    [[ "$backup_file" == *.tar.gz.enc ]] && rm -f "$tar_file"
+    local restore_root="$extract_dir/$backup_name"
+    if [[ ! -d "$restore_root" ]]; then
+        log_error "Archive root is not a directory: $backup_name"
+        exit 1
+    fi
 
     # Legacy format: check for individually encrypted files inside the archive.
     # Scan from the backup root, not a fixed encrypted/ subdir — old backups may
     # store the *.enc files elsewhere, and decrypt_files_legacy must search the
     # same directory that actually contains them or it silently decrypts nothing.
-    if find "$BACKUP_DIR/$backup_name" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
+    if find "$restore_root" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
         log_info "Legacy encrypted files found — decrypting..."
-        decrypt_files_legacy "$BACKUP_DIR/$backup_name" "$BACKUP_DIR/$backup_name"
+        decrypt_files_legacy "$restore_root" "$restore_root" || {
+            log_error "One or more legacy files could not be decrypted"
+            exit 1
+        }
     fi
 
     log_info "Restoring configurations..."
-    restore_configs "$BACKUP_DIR/$backup_name"
+    if ! restore_configs "$restore_root"; then
+        log_error "Restore was incomplete; review warnings above"
+        exit 1
+    fi
 
-    rm -rf "${BACKUP_DIR:?}/$backup_name"
+    rm -rf "$restore_tmpdir"
     log_success "Backup restored successfully"
 }
 
@@ -513,7 +680,7 @@ cmd_delete() {
         fi
         for f in "$BACKUP_DIR"/*.tar.gz.enc "$BACKUP_DIR"/*.tar.gz; do
             [[ -f "$f" ]] || continue
-            rm -f "$f"
+            rm -f -- "$f" "${f}.hmac"
             log_success "Deleted: $f"
         done
         # Remove log and empty dir if nothing left
@@ -544,7 +711,7 @@ cmd_delete() {
             log_warn "Cancelled"
             return 0
         fi
-        rm -f "$target"
+        rm -f -- "$target" "${target}.hmac"
         log_success "Deleted: $target"
     fi
 }
@@ -582,15 +749,22 @@ cmd_schedule() {
 
     if [[ -z "${BACKUP_PASSPHRASE:-}" ]]; then
         log_error "BACKUP_PASSPHRASE env var must be set for scheduled backups"
-        log_info "Example: export BACKUP_PASSPHRASE='your-passphrase-here'"
-        log_info "Store it in a root-only file: echo 'BACKUP_PASSPHRASE=...' > /etc/cybersec-backup.env && chmod 600 /etc/cybersec-backup.env"
+        log_info "Set it in the environment without placing the value in shell history"
+        exit 1
+    fi
+    if [[ ${#BACKUP_PASSPHRASE} -lt 8 ]]; then
+        log_error "BACKUP_PASSPHRASE must be at least 8 characters"
         exit 1
     fi
 
     # /etc writes and system crontab changes both need root. Fail fast instead
     # of letting the user discover a broken half-configured schedule later.
     if [[ $EUID -ne 0 ]]; then
-        log_error "Scheduling requires root: rerun with 'sudo $0 schedule $frequency $time'"
+        log_error "Scheduling requires root and a preserved BACKUP_PASSPHRASE environment"
+        exit 1
+    fi
+    if ! command_exists crontab; then
+        log_error "crontab is not installed"
         exit 1
     fi
 
@@ -626,13 +800,14 @@ cmd_schedule() {
         exit 1
     fi
 
-    # The job runs from the ROOT crontab, so $SUDO_USER is unset and $HOME=/root
-    # inside it — backup.sh would then back up /root instead of the real user's
-    # home. Export HOME=<real user home> in the cron line so backup.sh resolves
-    # the correct target. HOME_DIR was resolved from $SUDO_USER above (this path
-    # requires root, i.e. sudo). Single-quote-escape it for safe shell embedding.
     local _home_escaped; _home_escaped="$(_escape_single_quoted "$HOME_DIR")"
-    local cron_cmd="export HOME='$_home_escaped' && . $env_file && $SCRIPT_DIR/scripts/backup.sh backup"
+    local _script_escaped; _script_escaped="$(_escape_single_quoted "$SCRIPT_DIR/scripts/backup.sh")"
+    local _sudo_export=""
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-}" != "root" ]]; then
+        local _sudo_user_escaped; _sudo_user_escaped="$(_escape_single_quoted "$SUDO_USER")"
+        _sudo_export=" SUDO_USER='$_sudo_user_escaped'"
+    fi
+    local cron_cmd="export HOME='$_home_escaped'${_sudo_export} && . '$env_file' && '$_script_escaped' backup"
     local new_crontab
     new_crontab="$(crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd")"
 
@@ -647,7 +822,32 @@ cmd_schedule() {
 }
 
 cmd_unschedule() {
-    crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh" | crontab -
+    local env_file="/etc/cybersec-backup.env"
+    if [[ $EUID -ne 0 ]]; then
+        log_error "Unscheduling requires root"
+        return 1
+    fi
+    if ! command_exists crontab; then
+        log_error "crontab is not installed"
+        return 1
+    fi
+
+    local current=""
+    local filtered=""
+    if current=$(crontab -l 2>/dev/null); then
+        filtered=$(printf '%s\n' "$current" \
+            | grep -vF "$SCRIPT_DIR/scripts/backup.sh" || true)
+        if [[ "$filtered" != "$current" ]] \
+            && ! printf '%s\n' "$filtered" | crontab -; then
+            log_error "Failed to remove backup entry from crontab"
+            return 1
+        fi
+    fi
+
+    if [[ ( -e "$env_file" || -L "$env_file" ) ]] && ! rm -f -- "$env_file"; then
+        log_error "Schedule removed, but failed to delete passphrase file: $env_file"
+        return 1
+    fi
     log_success "Backup schedule removed"
 }
 
@@ -675,9 +875,6 @@ Options:
   -h, --help                       Show this help and exit
 EOF
 }
-
-# Main
-ensure_dir "$BACKUP_DIR"
 
 case "${1:-}" in
     backup)      cmd_backup ;;

@@ -1,8 +1,6 @@
 #!/bin/bash
-# =============================================================================
 # test_helper.bash — Shared setup for bats tests
 # Loaded by each .bats file via: load 'test_helper'
-# =============================================================================
 
 # Locate project root (one level up from tests/)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,7 +9,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 
-# ---------- Mock /etc/os-release for distro detection -----------------------
+# Mock /etc/os-release for distro detection
 
 # Create a temporary os-release that simulates a given distro.
 # Usage: mock_os_release debian "Debian GNU/Linux 12" 12
@@ -31,13 +29,14 @@ ID_LIKE="$id_like"
 EOF
 }
 
-# ---------- Source project libraries with mocked distro ---------------------
+# Source project libraries with mocked distro
 
 # Source common.sh (and optionally installers.sh) with distro overrides.
 # Patches /etc/os-release by temporarily redefining detect_distro.
 # Usage: source_libs [--installers] <distro_id> [pkg_manager]
 source_libs() {
     local with_installers=false
+    local previous_exit_trap
     if [[ "${1:-}" == "--installers" ]]; then
         with_installers=true
         shift
@@ -65,8 +64,14 @@ source_libs() {
     # Suppress log file writes during tests
     export LOG_FILE="/dev/null"
 
-    # Source the library
+    # common.sh installs its production cleanup trap; keep Bats' failure trap active.
+    previous_exit_trap=$(trap -p EXIT)
     source "$PROJECT_ROOT/lib/common.sh"
+    if [[ -n "$previous_exit_trap" ]]; then
+        eval "$previous_exit_trap"
+    else
+        trap - EXIT
+    fi
 
     # Now restore our overrides (common.sh auto-init may have run)
     export DISTRO_ID="$distro_id"
@@ -77,7 +82,7 @@ source_libs() {
     fi
 }
 
-# ---------- Cleanup ---------------------------------------------------------
+# Cleanup
 
 # Automatically clean up temp files after each test
 teardown() {

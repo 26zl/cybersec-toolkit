@@ -37,6 +37,8 @@ PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn n
 PWN_BUILD_NAMES=(AFLplusplus honggfuzz radamsa Donut ScareCrow Freeze QueenSono Ivy)
 # Build metadata shared by install and update.
 # AFL++ source-only excludes optional QEMU, FRIDA, and unicorn dependencies.
+# honggfuzz patch is grep-guarded: static libbfd.a on rpm distros needs an explicit
+# -lzstd after -lbfd (undefined reference to ZSTD_isError). No-op where it is shared.
 declare -A PWN_BUILD_URLS=(
     [AFLplusplus]="https://github.com/AFLplusplus/AFLplusplus.git"
     [honggfuzz]="https://github.com/google/honggfuzz.git"
@@ -49,7 +51,7 @@ declare -A PWN_BUILD_URLS=(
 )
 declare -A PWN_BUILD_CMDS=(
     [AFLplusplus]="make source-only"
-    [honggfuzz]="make"
+    [honggfuzz]="{ grep -q -- '-lbfd -lzstd' Makefile || sed -i 's/-lopcodes -lbfd/-lopcodes -lbfd -lzstd/g' Makefile; } && make"
     [radamsa]="make"
     [Donut]="make"
     [ScareCrow]="go build ScareCrow.go"

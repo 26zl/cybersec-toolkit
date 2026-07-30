@@ -1,8 +1,6 @@
 #!/usr/bin/env bats
-# =============================================================================
 # Tests for profile configs in profiles/*.conf
 # Validates structure, required variables, and module name validity
-# =============================================================================
 
 setup() {
     load 'test_helper'
@@ -10,7 +8,7 @@ setup() {
     VALID_MODULES=(misc networking recon web crypto pwn reversing forensics enterprise wireless cracking stego cloud containers blueteam mobile blockchain llm)
 }
 
-# ---------- Profile file existence -------------------------------------------
+# Profile file existence
 
 @test "all expected profile files exist" {
     local expected=(full ctf redteam web osint crackstation lightweight blueteam forensics pwn mobile cloud blockchain wireless)
@@ -27,7 +25,7 @@ setup() {
     [[ "$count" -eq 14 ]]
 }
 
-# ---------- MODULES variable -------------------------------------------------
+# MODULES variable
 
 @test "each profile defines MODULES variable" {
     for conf in "$PROFILES_DIR"/*.conf; do
@@ -53,7 +51,7 @@ setup() {
     done
 }
 
-# ---------- Module name validation -------------------------------------------
+# Module name validation
 
 @test "all module names in profiles are valid" {
     for conf in "$PROFILES_DIR"/*.conf; do
@@ -75,7 +73,7 @@ setup() {
     done
 }
 
-# ---------- full.conf includes all 19 modules --------------------------------
+# full.conf includes all 18 modules
 
 @test "full.conf includes all 18 modules" {
     local modules_line
@@ -88,7 +86,7 @@ setup() {
     done
 }
 
-# ---------- Profile-specific checks ------------------------------------------
+# Profile-specific checks
 
 @test "ctf.conf sets SKIP_HEAVY=true" {
     grep -q '^SKIP_HEAVY=true' "$PROFILES_DIR/ctf.conf"

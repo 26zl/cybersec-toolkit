@@ -174,7 +174,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
             _upd_go_gopath="$(_escape_single_quoted "$GOPATH")"
             _upd_go_gobin="$(_escape_single_quoted "$_effective_gobin")"
             _upd_go_tool="$(_escape_single_quoted "$tool")"
-            if _as_builder "GOPATH='$_upd_go_gopath' GOBIN='$_upd_go_gobin' $(command -v go) install $_upd_go_tool" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "GOPATH='$_upd_go_gopath' GOBIN='$_upd_go_gobin' $(_builder_cmd go) install $_upd_go_tool" >> "$LOG_FILE" 2>&1; then
                 # Compare checksums before moving — detect real changes
                 new_sum=""
                 if [[ -n "$_gobin_stage" ]] && [[ -f "$_gobin_stage/$tool_name" ]]; then
@@ -289,7 +289,7 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
         if [[ ${#ALL_GEMS[@]} -gt 0 ]]; then
             # Only update gems that are already installed. Query the builder's gem
             # store (install runs as $SUDO_USER), not root's, or nothing is ever found under sudo.
-            installed_gems=$(_as_builder "$(command -v gem) list --no-details" 2>/dev/null || true)
+            installed_gems=$(_as_builder "$(_builder_cmd gem) list --no-details" 2>/dev/null || true)
             GEMS_TO_UPDATE=()
             for _gem in "${ALL_GEMS[@]}"; do
                 if echo "$installed_gems" | grep -q "^${_gem} "; then
@@ -304,7 +304,7 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
                 for _g in "${GEMS_TO_UPDATE[@]}"; do
                     _gem_update_args+=" '$(_escape_single_quoted "$_g")'"
                 done
-                if _as_builder "$(command -v gem) update $_gem_update_args --no-document" >> "$LOG_FILE" 2>&1; then
+                if _as_builder "$(_builder_cmd gem) update $_gem_update_args --no-document" >> "$LOG_FILE" 2>&1; then
                     log_success "Ruby gems updated"
                     # Refresh symlinks (new version may have new binary paths).
                     # Mirror the install path (lib/installers.sh): pick the first
@@ -365,7 +365,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                 # Without --force, cargo skips if the installed version matches latest
                 cargo_output=""
                 _upd_crate_esc="$(_escape_single_quoted "$crate")"
-                if cargo_output=$(_as_builder "$(command -v cargo) install $_upd_crate_esc" 2>&1); then
+                if cargo_output=$(_as_builder "$(_builder_cmd cargo) install $_upd_crate_esc" 2>&1); then
                     if echo "$cargo_output" | grep -q "already installed"; then
                         log_debug "Already latest: $crate"
                         CARGO_LATEST=$((CARGO_LATEST + 1))
@@ -652,7 +652,7 @@ for _bmod in "${ALL_MODULES[@]}"; do
                     fi
                 elif [[ -f "$_bdir/Cargo.toml" ]]; then
                     _attempted=1
-                    if _as_builder "cd '$_bdir_escaped' && $(command -v cargo) build --release" >> "$LOG_FILE" 2>&1; then
+                    if _as_builder "cd '$_bdir_escaped' && $(_builder_cmd cargo) build --release" >> "$LOG_FILE" 2>&1; then
                         _rebuilt=1
                     fi
                 fi

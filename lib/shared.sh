@@ -21,7 +21,8 @@ SHARED_BASE_PACKAGES=(
     libpcap-dev libssl-dev libffi-dev
     zlib1g-dev libxml2-dev libxslt1-dev
     libglib2.0-dev libreadline-dev libsqlite3-dev libcurl4-openssl-dev
-    libseccomp-dev binutils-dev libedit-dev liblzma-dev
+    # libzstd-dev pairs with binutils-dev: Fedora's static libbfd.a pulls in zstd
+    libseccomp-dev binutils-dev libedit-dev liblzma-dev libzstd-dev
     libkrb5-dev libsctp-dev libnfnetlink-dev
     libcapstone-dev libgmp-dev libecm-dev
     libldap2-dev libsasl2-dev
@@ -164,17 +165,18 @@ if data:
 " < "$_go_json" 2>/dev/null)
     fi
     # Fallback to a known-good version if API fails
-    local _GO_FALLBACK_VERSION="1.26.4"
+    # 1.26.4 carries CVE-2026-39822 (os.Root symlink following), fixed in 1.26.5.
+    local _GO_FALLBACK_VERSION="1.26.5"
     GO_INSTALL_VERSION="${GO_INSTALL_VERSION:-$_GO_FALLBACK_VERSION}"
     # Embedded linux SHA256 checksums for the fallback version, so the offline
     # path (go.dev API unreachable) STILL verifies the tarball. Keyed by the
     # go.dev arch name (matches _go_arch below). MUST be bumped together with
     # _GO_FALLBACK_VERSION above — stale hashes would fail an otherwise-good DL.
     local -A _GO_FALLBACK_SHA256=(
-        [amd64]=1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f
-        [arm64]=ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768
-        [armv6l]=8db458e995f18a9427a745cefe7a3323962fa2548c4715148963311f300d3b1a
-        [386]=5ca0982791791559d11a0eba939617a94c3f37c21aa514a55c415b9167efc658
+        [amd64]=5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053
+        [arm64]=fe4789e92b1f33358680864bbe8704289e7bb5fc207d80623c308935bd696d49
+        [armv6l]=6dae9edab81c13bccf962dec15f1fd2ec26c14a6821b4d2c92dab4130c289d7a
+        [386]=88c162b204e6eefcc32499453b492e80209f4a4c78c33092636901c540fb0d05
     )
 
     # Determine install location
@@ -266,6 +268,8 @@ for rel in json.load(sys.stdin):
     # Prepend to PATH so new Go shadows the old system Go
     export GOROOT="$install_parent/go"
     export PATH="$GOROOT/bin:$PATH"
+    # Go moved — drop the memoised resolution (_builder_cmd)
+    _BUILDER_CMD_CACHE=()
 
     if command_exists go; then
         local new_ver
@@ -326,6 +330,8 @@ ensure_cargo() {
             source "$_cargo_home/env"
         fi
         export PATH="$_cargo_home/bin:$PATH"
+        # cargo moved — drop the memoised resolution (_builder_cmd)
+        _BUILDER_CMD_CACHE=()
     fi
     rm -f "$_rustup_tmp"
 

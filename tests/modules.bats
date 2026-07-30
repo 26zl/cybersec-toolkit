@@ -1,8 +1,6 @@
 #!/usr/bin/env bats
-# =============================================================================
 # Tests for module files in modules/*.sh
 # Validates install functions, array naming, git format, Go @latest suffix
-# =============================================================================
 
 setup() {
     load 'test_helper'
@@ -14,7 +12,7 @@ setup() {
     done
 }
 
-# ---------- Module files exist -----------------------------------------------
+# Module files exist
 
 @test "all 18 module files exist" {
     for mod in "${ALL_MODULES[@]}"; do
@@ -22,7 +20,7 @@ setup() {
     done
 }
 
-# ---------- install_module_* functions defined -------------------------------
+# install_module_* functions defined
 
 @test "each module defines install_module_<name> function" {
     for mod in "${ALL_MODULES[@]}"; do
@@ -31,7 +29,7 @@ setup() {
     done
 }
 
-# ---------- Array naming convention ------------------------------------------
+# Array naming convention
 
 # Map module names to their array prefixes
 _get_prefix() {
@@ -78,7 +76,7 @@ _get_prefix() {
     done
 }
 
-# ---------- Git arrays use name=url format -----------------------------------
+# Git arrays use name=url format
 
 @test "all git arrays use name=url format" {
     local git_arrays=(
@@ -102,7 +100,7 @@ _get_prefix() {
     done
 }
 
-# ---------- Go arrays end with @latest ---------------------------------------
+# Go arrays end with @latest
 
 @test "all Go tool paths end with @latest" {
     local go_arrays=(
@@ -120,7 +118,7 @@ _get_prefix() {
     done
 }
 
-# ---------- Go binary arrays match Go arrays ---------------------------------
+# Go binary arrays match Go arrays
 
 @test "Go binary arrays have entries for modules with Go tools" {
     local -A go_to_bins=(
@@ -142,7 +140,7 @@ _get_prefix() {
     done
 }
 
-# ---------- Git name arrays have entries for modules with Git repos ----------
+# Git name arrays have entries for modules with Git repos
 
 @test "Git name arrays have entries for modules with git repos" {
     local -A git_to_names=(
@@ -164,7 +162,7 @@ _get_prefix() {
     done
 }
 
-# ---------- No duplicate entries in arrays -----------------------------------
+# No duplicate entries in arrays
 
 @test "no duplicate entries in pipx arrays" {
     local pipx_arrays=(
