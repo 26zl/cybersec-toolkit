@@ -106,6 +106,20 @@ jobs:
           zypper_refresh
           zypper --non-interactive install git curl wget sudo which awk
 
+      - name: Validate package names resolve on this distro
+        # --dry-run resolves names without asking the package manager whether they
+        # exist, so distro_compat.tsv rot is invisible until someone installs. All
+        # four columns (apt/dnf/pacman/zypper) are audited against live repos and
+        # clean, so this is a blocking gate — a rename or retirement fails CI here.
+        run: bash scripts/validate_distro_packages.sh
+
+      - name: Create an unprivileged build user
+        # Containers run as root with no SUDO_USER, so _as_builder never drops
+        # privileges and that whole path goes untested. Give it a real user.
+        run: |
+          useradd -m builder 2>/dev/null || true
+          echo "SUDO_USER=builder" >> "$GITHUB_ENV"
+
       - name: Dry-run full profile
         run: bash install.sh --dry-run --profile full
 
@@ -155,6 +169,10 @@ jobs:
           - method: go
             tool: anew
             verify: anew
+          # Exercise Cargo's privilege-drop build path.
+          - method: cargo
+            tool: feroxbuster
+            verify: feroxbuster
           - method: binary
             tool: gitleaks
             verify: gitleaks
@@ -211,7 +229,7 @@ jobs:
           submodules: true
           persist-credentials: false
 
-      - name: Build production image
+      - name: Build installer image
         run: docker build --pull --tag cybersec-toolkit:ci .
 
       - name: Scan image for fixable HIGH/CRITICAL vulnerabilities (Trivy)

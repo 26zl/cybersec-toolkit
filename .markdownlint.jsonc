@@ -1,4 +1,4 @@
-// Markdownlint configuration for cybersec-tools-installer
+// Markdownlint configuration for cybersec-toolkit
 {
   // Disable line length — tool lists and tables exceed 80 chars
   "MD013": false,

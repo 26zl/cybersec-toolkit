@@ -144,7 +144,7 @@ jobs:
           python3 scripts/validate_agent_docs.py --selftest
           python3 scripts/validate_agent_docs.py
 
-      - name: Check VERSION matches mcp_server/pyproject.toml
+      - name: Check release versions match
         run: bash scripts/validate_version.sh
 
   claude-skills-validate:

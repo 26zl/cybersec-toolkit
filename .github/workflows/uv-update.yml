@@ -79,7 +79,7 @@ jobs:
           done < known-vulnerabilities.txt
           # Audit the full locked set incl. ctf extras (mirrors security.yml).
           uv export --all-extras --no-hashes --frozen > /tmp/requirements.txt
-          uvx pip-audit -r /tmp/requirements.txt "${ignore_args[@]}"
+          uvx pip-audit@2.10.1 -r /tmp/requirements.txt "${ignore_args[@]}"
           cd ..
           python3 scripts/validate_mcp_sync.py
 

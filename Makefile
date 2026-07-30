@@ -1,14 +1,17 @@
 # Cybersec toolkit — developer & contributor shortcuts.
-# Run `make` or `make help` for the list. Targets mirror the CI/validation commands
-# in CLAUDE.md so a green `make check` locally means a green pipeline.
+# Run `make` or `make help` for the list. Targets cover the core local checks;
+# GitHub also runs security, CodeQL, and integration workflows.
 
 SHELL := bash
 SH_FILES := install.sh lib/*.sh modules/*.sh scripts/*.sh
+# Pinned so a local `make lint-md` matches CI, which uses the SHA-pinned
+# DavidAnson/markdownlint-cli2-action. Bump both together.
+MARKDOWNLINT_VERSION := 0.23.2
 # Paths the CI markdown-lint job skips; applied to tracked and untracked *.md files.
-MD_EXCLUDE := ^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
+MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py \
+.PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py validate-packages check-links test-distros \
 	validate check-pins check-skills sync-skills curate check mcp docker clean
 
 help: ## Show this help
@@ -31,7 +34,7 @@ lint-py: ## ruff check on the MCP server and repo-root scripts
 		&& uv run --group dev ruff check ../scripts/
 
 lint-md: ## markdownlint on tracked and untracked docs (mirrors the CI job)
-	git ls-files --cached --others --exclude-standard '*.md' | grep -vE '$(MD_EXCLUDE)' | xargs npx --yes markdownlint-cli2
+	git ls-files --cached --others --exclude-standard '*.md' | grep -vE '$(MD_EXCLUDE)' | xargs npx --yes markdownlint-cli2@$(MARKDOWNLINT_VERSION)
 
 format: ## Auto-format the MCP server with ruff
 	cd mcp_server && uv run --group dev ruff format .
@@ -55,6 +58,15 @@ validate: ## Run every data-consistency validator (tools, MCP sync, distros, ski
 	bash scripts/validate_profiles.sh
 	bash scripts/validate_version.sh
 
+validate-packages: ## Check every mapped package name exists in this distro's repos (needs network)
+	bash scripts/validate_distro_packages.sh
+
+check-links: ## Report dead external links in tracked Markdown (needs network)
+	python3 scripts/check_doc_links.py
+
+test-distros: ## Smoke-test install across apt/dnf/pacman/zypper in containers (needs podman/docker)
+	bash scripts/test-distros.sh
+
 check-pins: ## Assert vendored-skill upstream pins agree across all sources (offline)
 	bash scripts/update-skills.sh --check-pins
 
@@ -68,7 +80,7 @@ curate: ## Regenerate skill curation + requirements (run after adding/removing a
 	python3 scripts/curate_claude_skills.py --write
 	python3 scripts/audit_skill_dependencies.py --write-requirements
 
-check: lint validate test ## Everything CI runs — go/no-go before pushing
+check: lint validate test ## Run the core local checks before pushing
 
 mcp: ## Launch the MCP server inspector (web UI)
 	cd mcp_server && uv run fastmcp dev server.py

@@ -50,7 +50,8 @@ secrets.json
 token.json
 
 # Runtime artifacts
-.versions
+# .versions* also covers its .lock/.lockdir and mktemp scratch siblings
+.versions*
 .install_sessions/
 *.bak
 *.backup
@@ -80,3 +81,6 @@ manual_scripts/*
 
 # Security workflow writeups & scripts (local only)
 /writeups/
+
+# Local output from scripts/test-distros.sh
+test-distros-logs/
