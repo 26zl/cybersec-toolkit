@@ -91,6 +91,7 @@ fixup_package_names() {
                         kismet|spooftooph|crackle|asleap|fern-wifi-cracker) continue ;;
                         smali) continue ;;
                         sentrypeer|chaosreader) continue ;;
+                        outguess|sslstrip) continue ;;
                     esac
                 fi
                 ;;

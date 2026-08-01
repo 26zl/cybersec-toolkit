@@ -203,7 +203,7 @@ ghidra				-
 sigrok-cli				-
 pulseview				-
 gtkwave				-
-ettercap-text-only	ettercap	ettercap	ettercap	-
+ettercap-text-only	ettercap	ettercap	-	-
 sslstrip	-	-	-	-
-ewf-tools	libewf-tools	libewf	libewf	-
-outguess		-	-	-
+ewf-tools	libewf-tools	libewf	-	-
+outguess	-	-	-	-
