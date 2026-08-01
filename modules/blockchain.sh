@@ -12,6 +12,7 @@ BLOCKCHAIN_PIPX=(
     halmos
     crytic-compile
     eth-ape
+    manticore
 )
 
 BLOCKCHAIN_CARGO=(
@@ -22,10 +23,13 @@ BLOCKCHAIN_GIT=()
 
 BLOCKCHAIN_GIT_NAMES=()
 
+BLOCKCHAIN_NPM=(surya solgraph)
+
 install_module_blockchain() {
     [[ ${#BLOCKCHAIN_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Blockchain - Packages" "${BLOCKCHAIN_PACKAGES[@]}"
     install_pipx_batch "Blockchain - Python" "${BLOCKCHAIN_PIPX[@]}"
     install_cargo_batch "Blockchain - Rust" "${BLOCKCHAIN_CARGO[@]}" || true
+    install_npm_batch "Blockchain - npm" "${BLOCKCHAIN_NPM[@]}"
 
     [[ ${#BLOCKCHAIN_GIT[@]} -gt 0 ]] && install_git_batch "Blockchain - Git" "${BLOCKCHAIN_GIT[@]}"
 

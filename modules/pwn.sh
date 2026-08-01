@@ -29,11 +29,13 @@ PWN_GIT=(
     "DNSExfiltrator=https://github.com/Arno0x/DNSExfiltrator.git"
     "Egress-Assess=https://github.com/FortyNorthSecurity/Egress-Assess.git"
     "Villain=https://github.com/t3l3machus/Villain.git"
+    "preeny=https://github.com/zardus/preeny.git"
+    "ropium=https://github.com/Boyan-MILANOV/ropium.git"
 )
 
-PWN_CARGO=(pwninit)
+PWN_CARGO=(pwninit ropr)
 PWN_GO_BINS=(interactsh-client)
-PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn nanodump eviltree Hoaxshell DNSExfiltrator Egress-Assess Villain)
+PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn nanodump eviltree Hoaxshell DNSExfiltrator Egress-Assess Villain preeny ropium)
 PWN_BUILD_NAMES=(AFLplusplus honggfuzz radamsa Donut ScareCrow Freeze QueenSono Ivy)
 # Build metadata shared by install and update.
 # AFL++ source-only excludes optional QEMU, FRIDA, and unicorn dependencies.

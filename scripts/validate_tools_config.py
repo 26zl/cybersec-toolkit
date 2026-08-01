@@ -50,6 +50,7 @@ VALID_METHODS = {
 NAME_ALIASES = {
     "d2j-dex2jar": "dex2jar",
     "heimdall": "heimdall-rs",
+    "osqueryi": "osquery",
 }
 
 # Bash parsing helpers
@@ -147,7 +148,7 @@ BINARY_RELEASE_MODULE = {
     "WEB": "web", "REVERSING": "reversing", "FORENSICS": "forensics",
     "ENTERPRISE": "enterprise", "BLUETEAM": "blueteam",
     "CONTAINERS": "containers", "MOBILE": "mobile", "STEGO": "stego",
-    "BLOCKCHAIN": "blockchain",
+    "BLOCKCHAIN": "blockchain", "WIRELESS": "wireless",
 }
 
 # Binary release extraction from installers.sh
@@ -217,6 +218,10 @@ def extract_module_tools(module_name):
         elif suffix == "CARGO":
             for e in entries:
                 tools.append({"name": e, "method": "cargo", "url": ""})
+
+        elif suffix == "NPM":
+            for e in entries:
+                tools.append({"name": e, "method": "npm", "url": ""})
 
         elif suffix == "GEMS":
             for e in entries:

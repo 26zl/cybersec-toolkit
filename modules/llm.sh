@@ -9,7 +9,7 @@ LLM_PACKAGES=()
 
 LLM_PIPX=(
     garak cai-framework pyrit
-    cisco-ai-mcp-scanner cisco-ai-skill-scanner
+    cisco-ai-mcp-scanner cisco-ai-skill-scanner nemoguardrails
 )
 
 LLM_GIT=(
@@ -18,9 +18,10 @@ LLM_GIT=(
     "Vigil=https://github.com/deadbits/vigil-llm.git"
     "shannon=https://github.com/KeygraphHQ/shannon.git"
     "pentagi=https://github.com/vxcontrol/pentagi.git"
+    "PurpleLlama=https://github.com/meta-llama/PurpleLlama.git"
 )
 
-LLM_GIT_NAMES=(FuzzyAI pallms Vigil shannon pentagi)
+LLM_GIT_NAMES=(FuzzyAI pallms Vigil shannon pentagi PurpleLlama)
 
 install_module_llm() {
     [[ ${#LLM_PACKAGES[@]} -gt 0 ]] && install_apt_batch "LLM - Packages" "${LLM_PACKAGES[@]}"

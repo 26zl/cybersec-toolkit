@@ -1794,6 +1794,8 @@ BINARY_RELEASES_NETWORKING=(
     "nicocha30/ligolo-ng|ligolo-agent|agent.*linux_amd64"
     "fatedier/frp|frpc|linux_amd64\\.tar\\.gz"
     "fatedier/frp|frps|linux_amd64\\.tar\\.gz"
+    "ginuerzh/gost|gost|linux_amd64\\.tar\\.gz$"
+    "erebe/wstunnel|wstunnel|linux_amd64\\.tar\\.gz$"
 )
 BINARY_RELEASES_RECON=(
     "Findomain/Findomain|findomain|findomain-linux\\.zip$"
@@ -1806,10 +1808,13 @@ BINARY_RELEASES_WEB=(
 BINARY_RELEASES_REVERSING=(
     "0vercl0k/rp|rp-lin|rp-lin"
     "java-decompiler/jd-gui|jd-gui|jd-gui.*\\.jar|${GITHUB_TOOL_DIR}/cybersec-jars"
+    "rizinorg/cutter|cutter|Linux-x86_64\\.AppImage$"
+    "horsicq/DIE-engine|detect-it-easy|Detect_It_Easy-.*-x86_64\\.AppImage$"
 )
 BINARY_RELEASES_FORENSICS=(
     "WithSecureLabs/chainsaw|chainsaw|x86_64.*linux"
     "ufrisk/MemProcFS|memprocfs|linux_${_BINARY_RELEASE_ARCH_X64}-.*\\.tar\\.gz$|${GITHUB_TOOL_DIR}/MemProcFS|memprocfs"
+    "WerWolv/ImHex|imhex|imhex-.*-x86_64\\.AppImage$"
 )
 BINARY_RELEASES_ENTERPRISE=(
     "ropnop/kerbrute|kerbrute|linux_amd64"
@@ -1821,6 +1826,7 @@ BINARY_RELEASES_BLUETEAM=(
     "mandiant/capa|capa|linux\\.zip"
     "Neo23x0/Loki-RS|loki|loki-linux-x86_64.*\\.tar\\.gz"
     "Yamato-Security/hayabusa|hayabusa|lin-${_BINARY_RELEASE_ARCH_X64}-gnu\\.zip$|${GITHUB_TOOL_DIR}/hayabusa|hayabusa-*-lin-${_BINARY_RELEASE_ARCH_X64}-gnu"
+    "osquery/osquery|osqueryi|linux_x86_64\\.tar\\.gz$"
 )
 BINARY_RELEASES_CONTAINERS=(
     "anchore/grype|grype|linux_amd64\\.tar\\.gz"
@@ -1828,6 +1834,13 @@ BINARY_RELEASES_CONTAINERS=(
     "Shopify/kubeaudit|kubeaudit|linux_amd64\\.tar\\.gz"
     "kubescape/kubescape|kubescape|linux_amd64\\.tar\\.gz"
     "cdk-team/CDK|cdk|cdk_linux_amd64"
+    "aquasecurity/trivy|trivy|Linux-64bit\\.tar\\.gz$"
+    "wagoodman/dive|dive|linux_amd64\\.tar\\.gz$"
+    "goodwithtech/dockle|dockle|Linux-64bit\\.tar\\.gz$"
+    "hadolint/hadolint|hadolint|hadolint-linux-x86_64$"
+    "controlplaneio/kubesec|kubesec|linux_amd64\\.tar\\.gz$"
+    "aquasecurity/kube-bench|kube-bench|linux_amd64\\.tar\\.gz$"
+    "tenable/terrascan|terrascan|Linux_x86_64\\.tar\\.gz$"
 )
 BINARY_RELEASES_MOBILE=(
     "skylot/jadx|jadx|jadx.*\\.zip|${GITHUB_TOOL_DIR}/jadx"
@@ -1835,6 +1848,9 @@ BINARY_RELEASES_MOBILE=(
 )
 BINARY_RELEASES_STEGO=(
     "RickdeJager/stegseek|stegseek|\\.deb"
+)
+BINARY_RELEASES_WIRELESS=(
+    "Ragnt/AngryOxide|angryoxide|linux-x86_64\\.tar\\.gz$"
 )
 BINARY_RELEASES_BLOCKCHAIN=(
     "crytic/medusa|crytic-medusa|medusa-linux-x64\\.tar\\.gz$||medusa"
@@ -1857,7 +1873,48 @@ ALL_DOCKER_IMAGES=(
     "vxcontrol/pentagi:latest|PentAGI"
     "zeek/zeek:latest|Zeek"
     "wagga40/zircolite:latest|Zircolite"
+    "checkmarx/kics:latest|KICS"
 )
+
+# install_npm_batch — install global npm packages (label + package names).
+# Node/npm is bootstrapped on demand via ensure_node (lib/shared.sh). Skipped
+# under --skip-source and on any host without a working Node toolchain.
+install_npm_batch() {
+    [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
+    local label="$1"; shift
+    local -a pkgs=("$@")
+    local total=${#pkgs[@]}
+    [[ "$total" -eq 0 ]] && return 0
+
+    if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
+        log_warn "Skipping ${label} (--skip-source)"
+        _report_method_total "npm" 0
+        return 0
+    fi
+    if ! ensure_node; then
+        log_warn "Skipping ${label} — Node.js/npm not available"
+        _report_method_total "npm" 0
+        return 0
+    fi
+
+    log_info "Installing ${label} ($total npm tools)..."
+    _report_method_total "npm" "$total"
+    local current=0
+    for pkg in "${pkgs[@]}"; do
+        current=$((current + 1))
+        show_progress "$current" "$total" "$pkg"
+        _report_tool_start "npm" "$pkg"
+        if npm install -g "$pkg" >> "$LOG_FILE" 2>&1; then
+            log_success "npm: $pkg"
+            track_version "$pkg" "npm" "latest"
+            _report_tool_done "npm" "$pkg" "ok"
+        else
+            log_error "Failed npm: $pkg"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+            _report_tool_done "npm" "$pkg" "fail"
+        fi
+    done
+}
 
 # install_binary_releases — install all binary releases from a registry array.
 # Usage: install_binary_releases "${BINARY_RELEASES_MISC[@]}"

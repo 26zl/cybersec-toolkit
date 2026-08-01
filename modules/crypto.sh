@@ -11,9 +11,10 @@ CRYPTO_GIT=(
     "RsaCtfTool=https://github.com/RsaCtfTool/RsaCtfTool.git"
     "rsatool=https://github.com/ius/rsatool.git"
     "cribdrag=https://github.com/SpiderLabs/cribdrag.git"
+    "featherduster=https://github.com/nccgroup/featherduster.git"
 )
 
-CRYPTO_GIT_NAMES=(RsaCtfTool rsatool cribdrag)
+CRYPTO_GIT_NAMES=(RsaCtfTool rsatool cribdrag featherduster)
 CRYPTO_BUILD_NAMES=(hash_extender PkCrack yafu fastcoll pemcrack)
 # Source of truth for build-from-source url + command (used by install + update).
 # yafu/pemcrack patches are idempotent (grep-guarded) so re-running on update does

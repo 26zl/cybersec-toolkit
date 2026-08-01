@@ -8,6 +8,7 @@ CLOUD_PACKAGES=()
 CLOUD_PIPX=(
     kube-hunter pacu cloudsplaining prowler scoutsuite
     roadrecon checkov cloudgoat
+    cartography principalmapper
 )
 
 CLOUD_GO=(
@@ -22,10 +23,12 @@ CLOUD_GIT=(
     "enumerate-iam=https://github.com/andresriancho/enumerate-iam.git"
     "GCPBucketBrute=https://github.com/RhinoSecurityLabs/GCPBucketBrute.git"
     "cloud_enum=https://github.com/initstring/cloud_enum.git"
+    "PurplePanda=https://github.com/carlospolop/PurplePanda.git"
+    "cloudmapper=https://github.com/duo-labs/cloudmapper.git"
 )
 
 CLOUD_GO_BINS=(cloudfox cloudlist s3scanner stratus)
-CLOUD_GIT_NAMES=(CloudBrute enumerate-iam GCPBucketBrute cloud_enum)
+CLOUD_GIT_NAMES=(CloudBrute enumerate-iam GCPBucketBrute cloud_enum PurplePanda cloudmapper)
 
 install_module_cloud() {
     [[ ${#CLOUD_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Cloud - Packages" "${CLOUD_PACKAGES[@]}"
@@ -56,5 +59,10 @@ install_module_cloud() {
         rm -f "$_sp_installer"
     elif command_exists steampipe; then
         log_success "Steampipe already installed"
+    fi
+
+    # Docker: KICS IaC scanner (optional)
+    if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
+        docker_pull "checkmarx/kics:latest" "KICS" || true
     fi
 }

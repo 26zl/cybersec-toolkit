@@ -49,6 +49,11 @@ MISC_C2_GIT=(
     "mimipenguin=https://github.com/huntergregal/mimipenguin.git"
     "PyExfil=https://github.com/ytisf/PyExfil.git"
     "usbkill=https://github.com/hephaest0s/usbkill.git"
+    # C2 frameworks (heavy; each has its own build/compose — cloned here)
+    "Mythic=https://github.com/its-a-feature/Mythic.git"
+    "Havoc=https://github.com/HavocFramework/Havoc.git"
+    "PoshC2=https://github.com/nettitude/PoshC2.git"
+    "merlin=https://github.com/Ne0nd0g/merlin.git"
 )
 
 # Git repo names for verify/remove (general). remove.sh removes both sets; verify.sh
@@ -62,6 +67,7 @@ MISC_C2_GIT_NAMES=(
     SET Zphisher EvilGoPhish SquarePhish CredMaster Modlishka
     Caldera Loki-C2
     LaZagne mimipenguin PyExfil usbkill
+    Mythic Havoc PoshC2 merlin
 )
 MISC_GO_BINS=(gf anew qsreplace notify pdtm)
 

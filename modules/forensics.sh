@@ -14,10 +14,10 @@ FORENSICS_PACKAGES=(
     rifiuti2 scrounge-ntfs ext3grep ext4magic
     poppler-utils zbar-tools
     sigrok-cli pulseview gtkwave
-    ffmpeg
+    ffmpeg hexyl ewf-tools
 )
 
-FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3 vcdvcd plaso)
+FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3 vcdvcd plaso dissect.target python-evtx)
 
 FORENSICS_GIT=(
     "RegRipper=https://github.com/keydet89/RegRipper3.0.git"

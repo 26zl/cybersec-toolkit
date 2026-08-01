@@ -9,6 +9,7 @@ WEB_PIPX=(
     sqlmap wafw00f sslyze arjun
     droopescan mitmproxy2swagger commix
     raccoon-scanner git-dumper corscanner xsrfprobe
+    dirsearch clairvoyance
 )
 
 WEB_GO=(
@@ -26,9 +27,10 @@ WEB_GO=(
     "github.com/projectdiscovery/tlsx/cmd/tlsx@latest"
     "github.com/BishopFox/jsluice/cmd/jsluice@latest"
     "github.com/OJ/gobuster/v3@latest"
+    "github.com/devploit/nomore403@latest"
 )
 
-WEB_CARGO=(feroxbuster)
+WEB_CARGO=(feroxbuster x8)
 
 WEB_GEMS=(wpscan brakeman)
 
@@ -51,11 +53,16 @@ WEB_GIT=(
     "tomcatwardeployer=https://github.com/mgeeky/tomcatwardeployer.git"
     "XXEinjector=https://github.com/enjoiz/XXEinjector.git"
     "paramspider=https://github.com/devanshbatham/ParamSpider.git"
+    "ghauri=https://github.com/r0oth3x49/ghauri.git"
+    "tplmap=https://github.com/epinna/tplmap.git"
+    "SSRFmap=https://github.com/swisskyrepo/SSRFmap.git"
+    "graphw00f=https://github.com/dolevf/graphw00f.git"
+    "Oralyzer=https://github.com/r0075h3ll/Oralyzer.git"
 )
 
 # Binary names for verify/remove
-WEB_GO_BINS=(nuclei katana ffuf crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice gobuster)
-WEB_GIT_NAMES=(nikto XSStrike Corsy jwt_tool smuggler NoSQLMap testssl.sh Gopherus CMSmap PhpSploit phpggc PadBuster h2csmuggler pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider)
+WEB_GO_BINS=(nuclei katana ffuf crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice gobuster nomore403)
+WEB_GIT_NAMES=(nikto XSStrike Corsy jwt_tool smuggler NoSQLMap testssl.sh Gopherus CMSmap PhpSploit phpggc PadBuster h2csmuggler pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider ghauri tplmap SSRFmap graphw00f Oralyzer)
 
 install_module_web() {
     install_apt_batch "Web - Packages" "${WEB_PACKAGES[@]}"

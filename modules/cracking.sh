@@ -14,6 +14,12 @@ CRACKING_PACKAGES=(
 CRACKING_PIPX=(search-that-hash name-that-hash trevorspray)
 # patator: handled via custom install below (dedicated venv, skips cx-Oracle)
 
+CRACKING_GO=(
+    "github.com/x90skysn3k/brutespray@latest"
+)
+
+CRACKING_CARGO=(legba)
+
 CRACKING_GIT=(
     "DefaultCreds-cheat-sheet=https://github.com/ihebski/DefaultCreds-cheat-sheet.git"
     "pipal=https://github.com/digininja/pipal.git"
@@ -22,9 +28,14 @@ CRACKING_GIT=(
     "OneRuleToRuleThemStill=https://github.com/stealthsploit/OneRuleToRuleThemStill.git"
     "username-anarchy=https://github.com/urbanadventurer/username-anarchy.git"
     "gpp-decrypt=https://github.com/t0thkr1s/gpp-decrypt.git"
+    "cupp=https://github.com/Mebus/cupp.git"
+    "changeme=https://github.com/ztgrace/changeme.git"
+    "crowbar=https://github.com/galkan/crowbar.git"
+    "kwprocessor=https://github.com/hashcat/kwprocessor.git"
 )
 
-CRACKING_GIT_NAMES=(DefaultCreds-cheat-sheet pipal Hob0Rules Pantagrule OneRuleToRuleThemStill username-anarchy gpp-decrypt)
+CRACKING_GIT_NAMES=(DefaultCreds-cheat-sheet pipal Hob0Rules Pantagrule OneRuleToRuleThemStill username-anarchy gpp-decrypt cupp changeme crowbar kwprocessor)
+CRACKING_GO_BINS=(brutespray)
 CRACKING_BUILD_NAMES=(duplicut)
 # Source of truth for build-from-source url + command (install + update).
 declare -A CRACKING_BUILD_URLS=(
@@ -37,6 +48,8 @@ declare -A CRACKING_BUILD_CMDS=(
 install_module_cracking() {
     install_apt_batch "Cracking - Packages" "${CRACKING_PACKAGES[@]}"
     install_pipx_batch "Cracking - Python" "${CRACKING_PIPX[@]}"
+    install_go_batch "Cracking - Go" "${CRACKING_GO[@]}"
+    install_cargo_batch "Cracking - Rust" "${CRACKING_CARGO[@]}" || true
 
     # patator hard-depends on cx-Oracle (non-redistributable Oracle headers). pipx
     # cannot skip it — `--pip-args=--no-deps` makes pipx fail reading the skipped

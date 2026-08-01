@@ -16,7 +16,7 @@ WIRELESS_PACKAGES=(
 # Heavy packages (skipped with --skip-heavy)
 WIRELESS_HEAVY_PACKAGES=(gnuradio gqrx-sdr)
 
-WIRELESS_PIPX=(sipvicious)
+WIRELESS_PIPX=(sipvicious btlejack)
 
 WIRELESS_GIT=(
     "wifite2=https://github.com/derv82/wifite2.git"
@@ -47,4 +47,7 @@ install_module_wireless() {
 
     install_pipx_batch "Wireless - Python" "${WIRELESS_PIPX[@]}"
     install_git_batch "Wireless - Git" "${WIRELESS_GIT[@]}"
+
+    # Binary releases (AngryOxide — skipped on Termux)
+    install_binary_releases "${BINARY_RELEASES_WIRELESS[@]}"
 }

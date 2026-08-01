@@ -91,6 +91,10 @@ PIPX_BIN_NAMES: dict[str, str] = {
     "pyrit": "pyrit_scan",
     "cisco-ai-mcp-scanner": "mcp-scanner",
     "cisco-ai-skill-scanner": "skill-scanner",
+    "knock-subdomains": "knockpy",
+    "principalmapper": "pmapper",
+    "dissect.target": "target-query",
+    "python-evtx": "evtx_dump",
 }
 
 # apt package name -> primary executable name, for packages whose binary differs
@@ -160,6 +164,11 @@ C2_TOOLS: frozenset[str] = frozenset(
         "mimipenguin",
         "PyExfil",
         "usbkill",
+        # C2 frameworks (git-cloned, INCLUDE_C2-gated)
+        "Mythic",
+        "Havoc",
+        "PoshC2",
+        "merlin",
     }
 )
 
@@ -199,6 +208,7 @@ DOCKER_IMAGES: dict[str, str] = {
     "PentAGI": "vxcontrol/pentagi:latest",
     "Zeek": "zeek/zeek:latest",
     "Zircolite": "wagga40/zircolite:latest",
+    "KICS": "checkmarx/kics:latest",
 }
 
 

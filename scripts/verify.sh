@@ -170,6 +170,10 @@ declare -A _PIPX_BIN_NAMES=(
     [pyrit]="pyrit_scan"
     [cisco-ai-mcp-scanner]="mcp-scanner"
     [cisco-ai-skill-scanner]="skill-scanner"
+    [knock-subdomains]="knockpy"
+    [principalmapper]="pmapper"
+    [dissect.target]="target-query"
+    [python-evtx]="evtx_dump"
 )
 
 check_pipx() {

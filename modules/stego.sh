@@ -5,12 +5,17 @@
 
 STEGO_PACKAGES=(
     steghide stegsnow pngcheck
-    sonic-visualiser exiv2 pngtools
+    sonic-visualiser exiv2 pngtools outguess
 )
 
 STEGO_PIPX=(stegoveritas)
 
 STEGO_GEMS=(zsteg)
+
+STEGO_GO=(
+    "github.com/lukechampine/jsteg@latest"
+)
+STEGO_GO_BINS=(jsteg)
 
 STEGO_GIT=(
     "stegsolve=https://github.com/Giotino/stegsolve.git"
@@ -24,6 +29,7 @@ install_module_stego() {
     install_apt_batch "Stego - Packages" "${STEGO_PACKAGES[@]}"
     install_pipx_batch "Stego - Python" "${STEGO_PIPX[@]}"
     install_gem_batch "Stego - Ruby" "${STEGO_GEMS[@]}"
+    install_go_batch "Stego - Go" "${STEGO_GO[@]}"
     install_git_batch "Stego - Git" "${STEGO_GIT[@]}"
 
     # Binary releases

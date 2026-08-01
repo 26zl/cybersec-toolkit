@@ -12,6 +12,7 @@ RECON_PIPX=(
     ssh-audit parsero
     emailharvester maryam osrframework
     censys ignorant instaloader
+    sublist3r waymore dnsgen knock-subdomains
 )
 
 RECON_GO=(
@@ -42,6 +43,9 @@ RECON_GO=(
     "github.com/alpkeskin/mosint/v3/cmd/mosint@latest"
     "github.com/hakluke/hakrevdns@latest"
     "github.com/s0md3v/smap/cmd/smap@latest"
+    "github.com/tomnomnom/assetfinder@latest"
+    "github.com/jaeles-project/gospider@latest"
+    "github.com/lc/subjs@latest"
 )
 
 RECON_GIT=(
@@ -64,11 +68,15 @@ RECON_GIT=(
     "recon-ng=https://github.com/lanmaster53/recon-ng.git"
     "vulscan=https://github.com/scipag/vulscan.git"
     "theHarvester=https://github.com/laramies/theHarvester.git"
+    "LinkFinder=https://github.com/GerbenJavado/LinkFinder.git"
+    "SecretFinder=https://github.com/m4ll0k/SecretFinder.git"
+    "FavFreak=https://github.com/devanshbatham/FavFreak.git"
+    "Photon=https://github.com/s0md3v/Photon.git"
 )
 
 # Binary names for verify/remove
-RECON_GO_BINS=(subfinder amass waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor subzy mosint hakrevdns smap)
-RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username Gato pwndb EyeWitness osmedeus recon-ng vulscan theHarvester)
+RECON_GO_BINS=(subfinder amass waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor subzy mosint hakrevdns smap assetfinder gospider subjs)
+RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username Gato pwndb EyeWitness osmedeus recon-ng vulscan theHarvester LinkFinder SecretFinder FavFreak Photon)
 RECON_BUILD_NAMES=(massdns)
 # Source of truth for build-from-source url + command (install + update).
 declare -A RECON_BUILD_URLS=(

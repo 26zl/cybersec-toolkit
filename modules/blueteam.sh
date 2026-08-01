@@ -16,9 +16,10 @@ BLUETEAM_GIT=(
     "maltrail=https://github.com/stamparm/maltrail.git"
     "MISP-docker=https://github.com/MISP/misp-docker.git"
     "wazuh-docker=https://github.com/wazuh/wazuh-docker.git"
+    "atomic-red-team=https://github.com/redcanaryco/atomic-red-team.git"
 )
 
-BLUETEAM_GIT_NAMES=(sigma-rules maltrail MISP-docker wazuh-docker)
+BLUETEAM_GIT_NAMES=(sigma-rules maltrail MISP-docker wazuh-docker atomic-red-team)
 
 install_module_blueteam() {
     install_apt_batch "Blue Team - Packages" "${BLUETEAM_PACKAGES[@]}"

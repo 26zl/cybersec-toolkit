@@ -12,12 +12,14 @@ ENTERPRISE_PIPX=(
     adidnsdump dploot bloodyad hekatomb
     certsync masky pywhisker autobloody
     krbjack roadtx pywerview pysnaffler powerview aclpwn
-    ldeep smbclientng ldapsearchad
+    ldeep smbclientng ldapsearchad manspider
 )
 
 ENTERPRISE_GO=(
     "github.com/Macmod/godap@latest"
     "github.com/RedTeamPentesting/pretender@latest"
+    "github.com/ropnop/go-windapsearch/cmd/windapsearch@latest"
+    "github.com/lkarlslund/ldapnomnom@latest"
 )
 
 ENTERPRISE_GEMS=(evil-winrm)
@@ -61,10 +63,11 @@ ENTERPRISE_GIT=(
     "keytabextract=https://github.com/sosdave/KeyTabExtract.git"
     "ldaprelayscan=https://github.com/zyn3rgy/LdapRelayScan.git"
     "LDAPWordlistHarvester=https://github.com/p0dalirius/pyLDAPWordlistHarvester.git"
+    "targetedKerberoast=https://github.com/ShutdownRepo/targetedKerberoast.git"
 )
 
-ENTERPRISE_GO_BINS=(godap pretender)
-ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx spraykatz dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester)
+ENTERPRISE_GO_BINS=(godap pretender windapsearch ldapnomnom)
+ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx spraykatz dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester targetedKerberoast)
 
 ENTERPRISE_BUILD_NAMES=(azurehound gosecretsdump GoExec GoMapEnum rusthound rusthound-ce)
 declare -A ENTERPRISE_BUILD_URLS=(
