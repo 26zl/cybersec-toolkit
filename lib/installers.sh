@@ -1880,6 +1880,10 @@ ALL_DOCKER_IMAGES=(
 # install_npm_batch — install global npm packages (label + package names).
 # Node/npm is bootstrapped on demand via ensure_node (lib/shared.sh). Skipped
 # under --skip-source and on any host without a working Node toolchain.
+# Installs are unpinned by design (same trust model as go/pipx/cargo/gem): npm
+# verifies each tarball against the registry integrity hash over TLS. OpenSSF
+# Scorecard flags every `npm install` that is not `npm ci` or a git+commit URL,
+# neither of which applies to global CLI installs.
 install_npm_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift

@@ -303,9 +303,9 @@ skills route through: `finding-triage` (finding → disposition), `security-comm
   `--require-checksums` makes missing checksums a hard failure
 - Install-method trust model (per method): binary releases are SHA256-verified only
   when the upstream release ships checksums (same-channel integrity, not authenticity);
-  apt/dnf rely on distro-signed repos; go/pipx/cargo/gem and git clones fetch the latest
+  apt/dnf rely on distro-signed repos; go/pipx/cargo/gem/npm and git clones fetch the latest
   tag/HEAD **unpinned** (integrity rests on TLS plus each ecosystem's own checksums, e.g.
-  the Go module checksum DB). By default a missing binary checksum only warns and proceeds
+  the Go module checksum DB or the npm registry's per-tarball integrity hash). By default a missing binary checksum only warns and proceeds
   — including `.deb` assets whose maintainer scripts then run as root — so use
   `--production` / `--require-checksums` for non-interactive or production installs to
   fail closed
