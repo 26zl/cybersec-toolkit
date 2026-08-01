@@ -1,4 +1,4 @@
-"""Cybersec Toolkit MCP Server — query 580+ tools, get recommendations, execute safely."""
+"""Cybersec Toolkit MCP Server — query 670+ tools, get recommendations, execute safely."""
 
 from __future__ import annotations
 

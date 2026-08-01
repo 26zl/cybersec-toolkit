@@ -118,7 +118,7 @@ def list_tools(
     method: Optional[str] = None,
     installed_only: bool = False,
 ) -> dict:
-    """List and filter tools from the 580+ cybersecurity registry.
+    """List and filter tools from the 670+ cybersecurity registry.
 
     Args:
         module: Filter by module (e.g. "web", "pwn", "forensics"). 18 modules available.
@@ -483,7 +483,7 @@ def list_profiles() -> dict:
 
     Each profile is a curated set of modules targeting a specific use case.
     Shows module count, tool count, and install command for each profile.
-    Profiles range from 'osint' (2 modules) to 'full' (18 modules, 580+ tools).
+    Profiles range from 'osint' (2 modules) to 'full' (18 modules, 670+ tools).
 
     Returns:
         All profiles with descriptions, module lists, tool counts, and install commands.
@@ -792,7 +792,7 @@ async def run_tool(
 ) -> dict:
     """Execute an installed cybersecurity tool or system utility and return its output.
 
-    Runs tools from the 580+ registry as well as ~120 standard system
+    Runs tools from the 670+ registry as well as ~120 standard system
     utilities (strings, file, curl, grep, base64, xxd, jq, etc.)
     that are allowed without being in the registry. Arguments are sanitized
     to prevent shell injection. Timeout is clamped to 1-300s. Output is

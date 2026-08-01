@@ -72,7 +72,7 @@ The MCP server's Python dependencies are not vendored; they are declared in
 
 ## Installed security tools
 
-The installer downloads 580+ third-party security tools from their official
+The installer downloads 670+ third-party security tools from their official
 upstream sources at install time. Those tools are **not** redistributed by this
 repository and remain under their respective upstream licenses; consult each
 tool's own project for terms.

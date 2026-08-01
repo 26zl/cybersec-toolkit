@@ -11,7 +11,7 @@ copying it: [`CLAUDE.md`](CLAUDE.md) adds Claude Code-specific guidance and
 
 ## Project Overview
 
-Modular bash installer for 580+ cybersecurity tools on Linux and Termux (Android).
+Modular bash installer for 670+ cybersecurity tools on Linux and Termux (Android).
 Multi-distro (Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux).
 12 install methods, 18 modules, 14 profiles. Includes an MCP server for AI-assisted
 security work that any MCP-capable client can drive.

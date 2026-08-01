@@ -19,7 +19,7 @@
 
 __Cybersecurity toolkit with built-in AI integration.__ An embedded [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets MCP-capable clients query the tool registry, check install status, recommend tools for a CTF category or bug-bounty target, and run installed tools through a governed execution path. Jump to [MCP Server (AI Integration)](#mcp-server-ai-integration).
 
-Bundled with a modular installer for Linux and Termux (Android) covering __580+ tools__, __18 modules__, __14 profiles__, and __12 install methods__.
+Bundled with a modular installer for Linux and Termux (Android) covering __670+ tools__, __18 modules__, __14 profiles__, and __12 install methods__.
 
 > __What makes it different:__ most toolkits stop at _installing_ tools. Here an AI can also _drive_ them — infer the problem type, pick the right tools from all modules/profiles, and work with you as an interactive companion. When you explicitly authorize it, the same MCP toolchain can enter an autonomous solver loop. __Companion by default; autonomous only when you ask.__
 
@@ -99,6 +99,15 @@ All required runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pi
 > ```bash
 > export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 > ```
+
+__From the latest release__ (pinned and stable — recommended):
+
+```bash
+# Newest tag is on the Releases page: https://github.com/26zl/cybersec-toolkit/releases
+git clone --depth 1 --branch v1.1.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
+```
+
+__From `main`__ (newest tools, fixes, and changes; may include unreleased work):
 
 ```bash
 git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
@@ -181,14 +190,14 @@ sudo ./install.sh -v                    # Verbose / debug output
 ```
 
 `--tool` installs only the specified tool without running the full dependency setup.
-Dry-run time estimates count install entries across methods, so the estimate can be higher than the de-duplicated 580+ tool registry.
+Dry-run time estimates count install entries across methods, so the estimate can be higher than the de-duplicated 670+ tool registry.
 
 </details>
 
 <details>
 <summary><strong>Why does a full install take 15-45 minutes?</strong></summary>
 
-The installer orchestrates 580+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
+The installer orchestrates 670+ tools across 12 different install methods. The time is spent on I/O-bound operations that no scripting language can speed up:
 
 | What takes time | Why |
 | --- | --- |
@@ -236,41 +245,41 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
-| `misc` | 37 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker + Loki) |
-| `networking` | 53 | Port scanning, packet capture, tunneling, MITM, protocol tools |
-| `recon` | 73 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
-| `web` | 51 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
-| `crypto` | 13 | RSA attacks, cipher analysis, hash attacks, constraint solving |
-| `pwn` | 33 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
-| `reversing` | 31 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | 52 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
-| `enterprise` | 76 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
-| `wireless` | 39 | WiFi cracking, Bluetooth, SDR, rogue AP |
-| `cracking` | 28 | Hash cracking (john, hashcat), brute force, wordlist generation |
-| `stego` | 13 | Image/audio steganography, detection, StegCracker |
-| `cloud` | 17 | AWS/Azure/GCP security auditing, Checkov |
-| `containers` | 8 | Docker/Kubernetes security (Grype, Syft, Kubescape, kubeaudit) |
-| `blueteam` | 34 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
-| `mobile` | 12 | Android/iOS app testing, APK analysis, MobSF (Docker) |
-| `blockchain` | 12 | Smart contract auditing (Slither, Mythril, Foundry, Aderyn), blockchain forensics, Echidna (Docker) |
-| `llm` | 12 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
+| `misc` | 41 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker + Loki) |
+| `networking` | 57 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `recon` | 84 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
+| `web` | 60 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
+| `crypto` | 14 | RSA attacks, cipher analysis, hash attacks, constraint solving |
+| `pwn` | 36 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
+| `reversing` | 33 | Disassemblers, debuggers, emulation, Java/Python reversing |
+| `forensics` | 57 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
+| `enterprise` | 80 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
+| `wireless` | 41 | WiFi cracking, Bluetooth, SDR, rogue AP |
+| `cracking` | 34 | Hash cracking (john, hashcat), brute force, wordlist generation |
+| `stego` | 15 | Image/audio steganography, detection, StegCracker |
+| `cloud` | 22 | AWS/Azure/GCP security auditing, Checkov |
+| `containers` | 15 | Docker/Kubernetes security (Grype, Syft, Kubescape, kubeaudit) |
+| `blueteam` | 36 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
+| `mobile` | 18 | Android/iOS app testing, APK analysis, MobSF (Docker) |
+| `blockchain` | 15 | Smart contract auditing (Slither, Mythril, Foundry, Aderyn), blockchain forensics, Echidna (Docker) |
+| `llm` | 14 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
 
 ## Install Methods
 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
-| Git clone | ~171 | GitHub repos with auto-setup, resources, wordlists |
-| System packages (apt/dnf/pacman/zypper) | ~161 | nmap, wireshark, john, hashcat |
-| pipx | ~121 | sqlmap, impacket, bloodhound, volatility3 |
-| Go install | ~54 | nuclei, subfinder, ffuf, httpx |
-| Binary release | ~37 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
+| Git clone | ~197 | GitHub repos with auto-setup, resources, wordlists |
+| System packages (apt/dnf/pacman/zypper) | ~166 | nmap, wireshark, john, hashcat |
+| pipx | ~137 | sqlmap, impacket, bloodhound, volatility3 |
+| Go install | ~62 | nuclei, subfinder, ffuf, httpx |
+| Binary release | ~51 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
 | Build from source | ~23 | massdns, duplicut, AFLplusplus, honggfuzz |
-| Docker | ~11 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
+| Docker | ~12 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
-| Cargo (Rust) | 5 | feroxbuster, RustScan, pwninit, yara-x-cli |
-| Special (curl-pipe) | 3 | Metasploit, Foundry, Steampipe |
+| Cargo (Rust) | 8 | feroxbuster, RustScan, pwninit, yara-x-cli |
+| Special (curl-pipe) | 4 | Metasploit, Foundry, Steampipe, patator |
 | Snap | 1 | zaproxy |
-| npm | 1 | promptfoo |
+| npm | 5 | promptfoo, apk-mitm, surya, solgraph |
 
 ---
 
@@ -290,13 +299,13 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 
 ## MCP Server (AI Integration)
 
-[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is an open standard that lets AI assistants use external tools. This project includes an MCP server that gives any MCP-capable AI (Claude Code, Claude Desktop, Cursor, etc.) full read access to the 580+ tool registry — plus the ability to check installs, recommend profiles, and execute tools. The AI becomes an interactive partner for ethical hacking: it knows every tool, which ones you have installed, and can run them for you.
+[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is an open standard that lets AI assistants use external tools. This project includes an MCP server that gives any MCP-capable AI (Claude Code, Claude Desktop, Cursor, etc.) full read access to the 670+ tool registry — plus the ability to check installs, recommend profiles, and execute tools. The AI becomes an interactive partner for ethical hacking: it knows every tool, which ones you have installed, and can run them for you.
 
 ### What the AI can do
 
 | Tool | What it does |
 | ---- | ------------ |
-| `list_tools` | List/filter all 580+ tools by module, method, or install status (includes URLs) |
+| `list_tools` | List/filter all 670+ tools by module, method, or install status (includes URLs) |
 | `check_installed` | Check if a tool is installed (5 detection strategies) |
 | `get_tool_info` | Full details: method, module, URL, install/update/remove commands |
 | `get_module_info` | Deep-dive a module: all tools, install status, which profiles use it |
@@ -675,7 +684,7 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 
 ## Distro Support
 
-__Debian/Ubuntu/Kali is the primary target__ -- the full 580+ registry is available there, and it has the strongest test coverage. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific) and are covered by the integration workflow. WSL and ARM are supported in practice, but they do not yet have dedicated CI jobs. Windows and macOS are detected and blocked with a clear error message.
+__Debian/Ubuntu/Kali is the primary target__ -- the full 670+ registry is available there, and it has the strongest test coverage. Fedora/Arch/openSUSE have ~10-20 packages auto-skipped (distro-specific) and are covered by the integration workflow. WSL and ARM are supported in practice, but they do not yet have dedicated CI jobs. Windows and macOS are detected and blocked with a clear error message.
 
 | Platform | Status |
 | -------- | ------ |

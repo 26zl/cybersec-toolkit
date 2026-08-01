@@ -63,7 +63,7 @@ jobs:
           uv run python -c "
           import sys; sys.path.insert(0, '..')
           from mcp_server.server import mcp, _db
-          assert _db.total_tools > 500, f'Expected 500+ tools, got {_db.total_tools}'
+          assert _db.total_tools > 600, f'Expected 600+ tools (registry sanity floor), got {_db.total_tools}'
           print(f'MCP server OK: {_db.total_tools} tools')
           "
           uv run --group dev ruff check .

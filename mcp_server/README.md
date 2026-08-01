@@ -1,6 +1,6 @@
 # MCP Server for Cybersec Toolkit
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that exposes the parent repo's 580+ cybersecurity registry to AI assistants. Query installed tools, get CTF recommendations, get profile/install advice, and execute tools — all from Claude Code, Claude Desktop, or any MCP-capable client.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that exposes the parent repo's 670+ cybersecurity registry to AI assistants. Query installed tools, get CTF recommendations, get profile/install advice, and execute tools — all from Claude Code, Claude Desktop, or any MCP-capable client.
 
 ## Tools Provided
 
@@ -246,7 +246,7 @@ uv run fastmcp run server.py --transport stdio --no-banner
 
 Once connected via an MCP client:
 
-- **List all tools**: `list_tools()` — returns 580+ tools with URLs
+- **List all tools**: `list_tools()` — returns 670+ tools with URLs
 - **Filter by module**: `list_tools(module="web")` — 51 web app testing tools
 - **Filter by method**: `list_tools(method="pipx")` — Python tools installed via pipx
 - **Check installed only**: `list_tools(installed_only=true)` — with version info

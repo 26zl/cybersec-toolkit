@@ -116,9 +116,9 @@ def repo_truth() -> dict[str, int]:
 
 
 def selftest() -> int:
-    truth = {"tools_floor": 594, "modules": 18, "profiles": 14, "skills": 872}
+    truth = {"tools_floor": 672, "modules": 18, "profiles": 14, "skills": 872}
     agents = (
-        "580+ cybersecurity tools ... 12 install methods, 18 modules, 14 profiles. "
+        "670+ cybersecurity tools ... 12 install methods, 18 modules, 14 profiles. "
         "872 on-demand skills.\n" + "\n".join(SHARED_SECTIONS)
     )
     wrappers = {
@@ -139,7 +139,7 @@ def selftest() -> int:
         "selftest: duplicated shared section was not caught"
     )
 
-    lie = agents.replace("580+ cybersecurity", "9000+ cybersecurity")
+    lie = agents.replace("670+ cybersecurity", "9000+ cybersecurity")
     assert any("tools floor" in error for error in check(lie, wrappers, truth)), (
         "selftest: inflated tool floor was not caught"
     )
