@@ -65,6 +65,17 @@ setup() {
     done
 }
 
+# --doctor
+
+@test "install.sh --doctor prints a readiness report" {
+    run bash "$INSTALL_SH" --doctor
+    assert_output --partial "cybersec-toolkit doctor"
+    # A readiness verdict is always the last line (ready / not ready / note).
+    assert_output --regexp "ready|not ready|note"
+    # Verdict exit code, never a crash (2 = bad args, 127 = command not found).
+    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
+}
+
 # --profile unknown
 
 @test "install.sh --profile unknown exits 1" {

@@ -42,7 +42,7 @@ Bundled with a modular installer for Linux and Termux (Android) covering __670+ 
 | Aider | — | Not applicable |
 | Open WebUI | MCP-to-OpenAPI bridge | Compatible through MCP host or bridge |
 
-See [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md) for detailed configuration per client.
+See [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md) for detailed configuration per client, and [`docs/ORCHESTRATION.md`](docs/ORCHESTRATION.md) for coordinating multiple agents across any MCP client.
 
 ---
 
@@ -123,6 +123,12 @@ sudo ./install.sh --profile redteam --enable-docker   # Red team + Docker C2
 sudo ./install.sh --module web --module recon          # Specific modules
 sudo ./install.sh --tool sqlmap --tool nmap            # Individual tools
 sudo ./install.sh --dry-run --profile ctf              # Preview without installing
+```
+
+Not sure the machine is ready? Run a read-only preflight first — it needs no root and installs nothing:
+
+```bash
+./install.sh --doctor                                  # Distro, prerequisites, MCP server, tool registry
 ```
 
 ### Try in Docker

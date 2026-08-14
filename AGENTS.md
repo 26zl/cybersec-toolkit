@@ -59,6 +59,14 @@ Default-safe environment for every client: `CYBERSEC_MCP_ALLOW_EXTERNAL=0` and
 `CYBERSEC_MCP_ALLOW_SCRIPTS=0`. Opt into scripts/external scopes only with explicit
 authorization (see [MCP environment variables](#mcp-environment-variables)).
 
+### Coordinating multiple agents
+
+The server is driven by one client per session. To run an engagement across
+several agents — or several sessions of one agent — coordinate them through
+shared-state files rather than a host-specific subagent API, so the workflow
+stays portable across every MCP client. See
+[`docs/ORCHESTRATION.md`](docs/ORCHESTRATION.md).
+
 ## Commands
 
 ### Validation (run before pushing)

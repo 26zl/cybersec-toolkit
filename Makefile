@@ -12,7 +12,7 @@ MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skil
 
 .DEFAULT_GOAL := help
 .PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py validate-packages check-links test-distros \
-	validate check-pins check-skills sync-skills curate check mcp docker clean
+	validate check-pins check-skills sync-skills curate check doctor mcp docker clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -81,6 +81,9 @@ curate: ## Regenerate skill curation + requirements (run after adding/removing a
 	python3 scripts/audit_skill_dependencies.py --write-requirements
 
 check: lint validate test ## Run the core local checks before pushing
+
+doctor: ## Report environment readiness (distro, prereqs, MCP, skills)
+	./install.sh --doctor
 
 mcp: ## Launch the MCP server inspector (web UI)
 	cd mcp_server && uv run fastmcp dev server.py

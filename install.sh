@@ -13,6 +13,7 @@
 #   sudo ./install.sh --upgrade-system        # Also upgrade system packages
 #   sudo ./install.sh --list-profiles        # Show available profiles
 #   sudo ./install.sh --list-modules         # Show available modules
+#   ./install.sh --doctor                    # Check environment readiness
 #   sudo ./install.sh --dry-run              # Show what would install
 #   sudo ./install.sh --skip-heavy           # Skip large packages
 #   sudo ./install.sh --enable-docker        # Pull Docker images for C2/etc
@@ -108,6 +109,8 @@ Options:
   -y, --yes, --force   Assume "yes" for destructive prompts (e.g. --rollback);
                          required to run --rollback non-interactively
   --version            Show installer version and exit
+  --doctor             Check environment readiness (distro, prerequisites,
+                         MCP server, skills, tool registry) and exit
   -h, --help           Show this help and exit
 
 All runtimes (Python, Go, Ruby, Rust, Java) and dev libraries are
@@ -175,6 +178,125 @@ list_modules() {
     exit 0
 }
 
+# Read-only environment readiness report. Reuses the sourced distro detection,
+# color, and command_exists helpers; points at verify.sh for the installed-tool
+# census instead of duplicating it. Exits 1 only when a required prerequisite is
+# missing on a supported host, so it is usable as a CI/preflight gate.
+run_doctor() {
+    local _req_missing=0 _warns=0
+    local _sep="  ------------------------------------------------"
+
+    _doctor_row() { # label  detail  status(ok|info|warn|missing)
+        local _c _tag
+        case "$3" in
+            ok)      _c="$GREEN";  _tag="ok" ;;
+            info)    _c="$BLUE";   _tag="info" ;;
+            warn)    _c="$YELLOW"; _tag="warn" ;;
+            missing) _c="$RED";    _tag="fail" ;;
+            *)       _c="$NC";     _tag="$3" ;;
+        esac
+        # Status tag leads so the free-form detail column can be any length
+        # without colliding with it.
+        # %b renders the color escapes on the tag only; label and detail print
+        # as literal %s so a path containing a backslash is never interpreted.
+        printf '  %b %-13s %s\n' "${_c}$(printf '%-6s' "[${_tag}]")${NC}" "$1" "$2"
+    }
+
+    _doctor_req() { # cmd  hint
+        if command_exists "$1"; then
+            _doctor_row "$1" "$(command -v "$1")" ok
+        else
+            _doctor_row "$1" "REQUIRED — $2" missing
+            _req_missing=$((_req_missing + 1))
+        fi
+    }
+
+    echo ""
+    printf '%b\n' "  ${BOLD}cybersec-toolkit doctor${NC}${INSTALLER_VERSION:+  v${INSTALLER_VERSION}}"
+    echo "$_sep"
+
+    if [[ -n "${UNSUPPORTED_HOST_OS:-}" ]]; then
+        _doctor_row "Host" "$DISTRO_NAME — installer targets Linux/Termux" warn
+        _warns=$((_warns + 1))
+    elif [[ "$PKG_MANAGER" == "unknown" ]]; then
+        _doctor_row "Host" "$DISTRO_NAME — no supported package manager" missing
+        _req_missing=$((_req_missing + 1))
+    else
+        _doctor_row "Host" "$DISTRO_NAME ($PKG_MANAGER)" ok
+    fi
+
+    echo "$_sep"
+
+    _doctor_req git "install git"
+    if command_exists curl || command_exists wget; then
+        _doctor_row "curl/wget" "$(command -v curl || command -v wget)" ok
+    else
+        _doctor_row "curl/wget" "REQUIRED — install curl or wget" missing
+        _req_missing=$((_req_missing + 1))
+    fi
+    _doctor_req python3 "install python3"
+
+    echo "$_sep"
+
+    if command_exists uv; then
+        if [[ -f "$SCRIPT_DIR/mcp_server/server.py" ]]; then
+            _doctor_row "MCP server" "ready — 'make mcp' or /mcp" ok
+        else
+            _doctor_row "MCP server" "uv ok, mcp_server/ missing" warn
+            _warns=$((_warns + 1))
+        fi
+    else
+        _doctor_row "MCP server" "install 'uv' to enable" warn
+        _warns=$((_warns + 1))
+    fi
+
+    local _rt
+    for _rt in go cargo pipx gem npm docker; do
+        if command_exists "$_rt"; then
+            _doctor_row "$_rt" "$(command -v "$_rt")" ok
+        else
+            _doctor_row "$_rt" "bootstrapped on demand" info
+        fi
+    done
+
+    echo "$_sep"
+
+    local _skills
+    _skills=$(find "$SCRIPT_DIR/.claude/skills" -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "${_skills:-0}" -gt 0 ]]; then
+        _doctor_row "Skills" "$_skills discoverable" ok
+    else
+        _doctor_row "Skills" "none found under .claude/skills" info
+    fi
+
+    local _tools=""
+    if command_exists python3 && [[ -f "$SCRIPT_DIR/tools_config.json" ]]; then
+        _tools=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(len(d) if isinstance(d,list) else len(d.get("tools",d)) if isinstance(d,dict) else 0)' "$SCRIPT_DIR/tools_config.json" 2>/dev/null)
+    fi
+    if [[ -n "$_tools" ]]; then
+        _doctor_row "Registry" "$_tools tools — installed: verify.sh --summary" ok
+    else
+        _doctor_row "Registry" "tools_config.json unreadable" warn
+        _warns=$((_warns + 1))
+    fi
+
+    echo "$_sep"
+
+    if [[ -n "${UNSUPPORTED_HOST_OS:-}" ]]; then
+        printf '%b\n' "  ${BLUE}note${NC}: the installer targets Linux/Termux; the MCP server and skills work on any OS."
+        exit 0
+    elif [[ "$_req_missing" -gt 0 ]]; then
+        printf '%b\n' "  ${RED}not ready${NC}: ${_req_missing} required prerequisite(s) missing (see REQUIRED above)."
+        exit 1
+    elif [[ "$_warns" -gt 0 ]]; then
+        printf '%b\n' "  ${YELLOW}ready with warnings${NC}: ${_warns} item(s) to review; core install will work."
+        exit 0
+    else
+        printf '%b\n' "  ${GREEN}ready${NC}: environment looks good for installation."
+        exit 0
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)         usage ;;
@@ -212,6 +334,7 @@ while [[ $# -gt 0 ]]; do
         --list-profiles)   list_profiles ;;
         --list-modules)    list_modules ;;
         --list-sessions)   _list_sessions; exit 0 ;;
+        --doctor)          run_doctor ;;
         --rollback)        [[ $# -lt 2 ]] && { log_error "--rollback requires a session ID or 'last'"; exit 1; }
                            ROLLBACK_TARGET="$2"; shift 2 ;;
         -y|--yes|--force)  FORCE_YES=true; shift ;;
