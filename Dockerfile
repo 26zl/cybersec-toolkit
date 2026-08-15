@@ -1,4 +1,4 @@
-FROM ubuntu:26.04@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb
+FROM ubuntu:24.04@sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea
 
 LABEL maintainer="26zl" \
       description="Cybersec Toolkit — 670+ security tools, one command"
@@ -24,8 +24,8 @@ RUN chmod +x install.sh scripts/*.sh
 
 # MCP server: install uv + resolve dependencies so `uv run` works offline.
 # uv is pulled from the official Astral image, pinned by SHA256 digest
-# (corresponds to uv v0.11.25) to avoid an unpinned remote installer.
-COPY --from=ghcr.io/astral-sh/uv:0.11.25@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9 /uv /usr/local/bin/uv
+# (corresponds to uv v0.12.4) to avoid an unpinned remote installer.
+COPY --from=ghcr.io/astral-sh/uv:0.12.4@sha256:d0a6eca6c669dc7e9c51218707b8438a3d30402733d739dcc00adb3e213e8f5c /uv /usr/local/bin/uv
 RUN cd mcp_server && uv sync --no-dev --frozen
 
 # uv sync ran as root; hand the resulting venv to toolkit. The rest of the tree
