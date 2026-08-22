@@ -85,6 +85,11 @@ check: lint validate test ## Run the core local checks before pushing
 doctor: ## Report environment readiness (distro, prereqs, MCP, skills)
 	./install.sh --doctor
 
+bump: ## Bump version across every release surface (usage: make bump VERSION=x.y.z)
+	@test -n "$(VERSION)" || { echo "usage: make bump VERSION=x.y.z"; exit 2; }
+	python3 scripts/bump_version.py "$(VERSION)"
+	bash scripts/validate_version.sh
+
 mcp: ## Launch the MCP server inspector (web UI)
 	cd mcp_server && uv run fastmcp dev server.py
 
