@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.26zl/cybersec-toolkit",
   "description": "Authorization-gated MCP server to discover and run 670+ security tools for CTF, pentest, and DFIR.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "repository": {
     "url": "https://github.com/26zl/cybersec-toolkit",
     "source": "github"
@@ -10,8 +10,8 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/26zl/cybersec-toolkit:1.1.0",
-      "version": "1.1.0",
+      "identifier": "ghcr.io/26zl/cybersec-toolkit:1.1.1",
+      "version": "1.1.1",
       "transport": {
         "type": "stdio"
       },

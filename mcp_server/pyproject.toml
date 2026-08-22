@@ -1,6 +1,6 @@
 [project]
 name = "cybersec-tools-mcp"
-version = "1.1.0"
+version = "1.1.1"
 description = "MCP server for the cybersec-toolkit — query 670+ tools, get recommendations, execute safely"
 readme = "README.md"
 license = "MIT"

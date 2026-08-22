@@ -12,7 +12,7 @@ authors:
 repository-code: "https://github.com/26zl/cybersec-toolkit"
 url: "https://github.com/26zl/cybersec-toolkit"
 license: MIT
-version: "1.1.0"
+version: "1.1.1"
 keywords:
   - cybersecurity
   - penetration-testing
