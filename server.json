@@ -11,7 +11,6 @@
     {
       "registryType": "oci",
       "identifier": "ghcr.io/26zl/cybersec-toolkit:1.1.1",
-      "version": "1.1.1",
       "transport": {
         "type": "stdio"
       },
