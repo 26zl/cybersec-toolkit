@@ -1,0 +1,20 @@
+title: "[Show and tell] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share a workflow, a writeup, a profile/module you built, or how you
+        drove the MCP server on a CTF, pentest, bug bounty, or DFIR task.
+        Redact credentials and private targets.
+  - type: textarea
+    id: what
+    attributes:
+      label: What did you build or solve?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How (commands, tools, MCP calls)
+    validations:
+      required: false

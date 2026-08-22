@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & workflow help
+    url: https://github.com/26zl/cybersec-toolkit/discussions/categories/q-a
+    about: Ask how to install or use a tool, profile, module, or the MCP server.
+  - name: Show and tell
+    url: https://github.com/26zl/cybersec-toolkit/discussions/categories/show-and-tell
+    about: Share a workflow, writeup, or a profile/module you built.
+  - name: Report a security vulnerability (private)
+    url: https://github.com/26zl/cybersec-toolkit/security/advisories/new
+    about: Please disclose vulnerabilities privately, not as public issues.

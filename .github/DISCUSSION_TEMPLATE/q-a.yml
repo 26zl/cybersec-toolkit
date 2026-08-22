@@ -1,0 +1,22 @@
+title: "[Q&A] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask about installs, tools, profiles, modules, or MCP/skill workflows.
+        For private security vulnerabilities use Security Advisories instead:
+        https://github.com/26zl/cybersec-toolkit/security/advisories/new
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Include distro/Termux/Docker, the exact command, and relevant output. Redact secrets and private targets.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Distro/WSL/Termux/Docker, arch, MCP client"
+    validations:
+      required: false
