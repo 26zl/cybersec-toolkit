@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.26zl/cybersec-toolkit",
+  "description": "Authorization-gated MCP server to discover and run 670+ security tools for CTF, pentest, and DFIR.",
+  "version": "1.1.0",
+  "repository": {
+    "url": "https://github.com/26zl/cybersec-toolkit",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/26zl/cybersec-toolkit:1.1.0",
+      "version": "1.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeArguments": [
+        { "type": "named", "name": "--entrypoint", "value": "uv" }
+      ],
+      "packageArguments": [
+        { "type": "positional", "value": "run" },
+        { "type": "positional", "value": "--directory" },
+        { "type": "positional", "value": "mcp_server" },
+        { "type": "positional", "value": "fastmcp" },
+        { "type": "positional", "value": "run" },
+        { "type": "positional", "value": "server.py" },
+        { "type": "positional", "value": "--transport" },
+        { "type": "positional", "value": "stdio" },
+        { "type": "positional", "value": "--no-banner" }
+      ],
+      "environmentVariables": [
+        {
+          "name": "CYBERSEC_MCP_ALLOW_EXTERNAL",
+          "description": "Set to 1 only for explicitly authorized external scopes.",
+          "default": "0"
+        },
+        {
+          "name": "CYBERSEC_MCP_ALLOW_SCRIPTS",
+          "description": "Set to 1 to enable unsandboxed run_script execution.",
+          "default": "0"
+        }
+      ]
+    }
+  ]
+}

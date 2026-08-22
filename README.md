@@ -1,8 +1,10 @@
+<!-- mcp-name: io.github.26zl/cybersec-toolkit -->
 [![CI](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/ci.yml)
 [![Integration](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/integration.yml)
 [![Security](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/security.yml)
 [![uv update](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Docker image](https://img.shields.io/badge/ghcr.io-cybersec--toolkit-2496ED?logo=docker&logoColor=white)](https://github.com/26zl/cybersec-toolkit/pkgs/container/cybersec-toolkit)
 ![Status: Under Active Development](https://img.shields.io/badge/status-under%20active%20development-blue)
 
 ```text
@@ -132,6 +134,14 @@ Not sure the machine is ready? Run a read-only preflight first — it needs no r
 ```
 
 ### Try in Docker
+
+Pull the prebuilt image (no local build):
+
+```bash
+docker run --rm ghcr.io/26zl/cybersec-toolkit --profile ctf
+```
+
+Or build it yourself:
 
 ```bash
 docker build -t cybersec-toolkit .
