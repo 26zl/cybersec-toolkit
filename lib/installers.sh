@@ -127,6 +127,9 @@ fixup_package_names() {
 # Packages already installed before the current install_apt_batch call. Reset per
 # call; read by _track_pkg, which outlives the call that defines it.
 declare -gA _APT_PREEXISTING=()
+# Same lifetime and the same `set -u` hazard: without -A the subscript is
+# evaluated arithmetically and a package name aborts the install.
+declare -gA _APT_PRIOR_TOOLKIT=()
 
 # Batch APT install with progress and distro fixup
 install_apt_batch() {
