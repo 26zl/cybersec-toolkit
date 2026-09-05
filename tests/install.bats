@@ -29,6 +29,12 @@ setup() {
     assert_output --partial "--dry-run"
 }
 
+@test "install.sh --help works with HOME unset (cron/systemd/qm guest exec)" {
+    run env -u HOME bash "$INSTALL_SH" --help
+    assert_success
+    refute_output --partial "unbound variable"
+}
+
 # --list-profiles
 
 @test "install.sh --list-profiles exits 0" {

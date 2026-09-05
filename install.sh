@@ -1237,6 +1237,7 @@ main() {
     ensure_pipx
     ensure_go
     ensure_cargo
+    ensure_uv
     echo ""
 
     # Install modules

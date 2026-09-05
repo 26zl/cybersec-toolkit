@@ -10,6 +10,16 @@ if [[ -z "${BASH_VERSION:-}" ]] || [[ "${BASH_VERSINFO[0]}" -lt 4 ]] || \
     exit 1
 fi
 
+# HOME is unset under `qm guest exec`, cron and bare systemd units, and every
+# $HOME below is read under `set -u` — resolve it before the first read.
+if [[ -z "${HOME:-}" ]]; then
+    HOME=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)
+    if [[ -z "$HOME" ]]; then
+        [[ "$(id -u)" -eq 0 ]] && HOME=/root || HOME=/tmp
+    fi
+    export HOME
+fi
+
 COLOR_ENABLED=false
 if [[ -t 1 && "${TERM:-dumb}" != "dumb" && -z "${NO_COLOR+x}" ]]; then
     RED='\033[38;5;88m'
