@@ -955,3 +955,17 @@ _run_c2_aggregation() {
     run remove_special_tool patator
     [[ "$status" -eq 2 ]]            # tried, but the venv survived
 }
+
+@test "batch provenance arrays are associative" {
+    source_libs --installers debian apt
+
+    # Without -A the subscript is evaluated arithmetically, so _track_pkg aborts
+    # on the first package name under `set -u` ("unzip: unbound variable").
+    run declare -p _APT_PREEXISTING
+    assert_success
+    assert_output --partial "declare -A"
+
+    run declare -p _APT_PRIOR_TOOLKIT
+    assert_success
+    assert_output --partial "declare -A"
+}
