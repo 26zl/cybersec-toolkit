@@ -50,6 +50,7 @@ uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banne
 | GitHub Copilot | `.mcp.json` (CLI) + `.github/copilot-instructions.md` (tracked) | Copilot CLI reads the workspace MCP definition; the instructions file supplies concise repository guidance. VS Code uses `.vscode/mcp.json`; see `docs/AI_CLIENTS.md`. |
 | Hermes Agent | `~/.hermes/config.yaml` | Native MCP client. See `docs/AI_CLIENTS.md` for example config. |
 | OpenClaw | `~/.openclaw/openclaw.json` | Native MCP client + `.agents/skills/` discovery. See `docs/AI_CLIENTS.md`. |
+| DeepSeek Harness (dsh) | `$DSH_HOME/settings.yaml` | MCP via the `@deepseek-ai/dsh-mcp-client` plugin + native `.agents/skills/` discovery. Home/profile-scoped config — no project-local layer. See `docs/AI_CLIENTS.md`. |
 | Cursor / Continue / Cline / Goose | client-specific MCP settings | Same command/args; consult the client's MCP docs. |
 | LM Studio (≥0.3.17) | `mcp.json` (Cursor notation) | Native MCP host, no bridge needed. Add the server under `mcpServers` with an absolute path (or the git-root wrapper), since LM Studio's working directory isn't the repo. Using MCP via LM Studio's API requires ≥0.4.0 and an MCP-capable endpoint such as `/api/v1/chat` or `/v1/responses`. |
 | Ollama | the MCP host/agent in front of it | Ollama is a model runtime, not an MCP host. Put an MCP-capable agent in front of it (e.g. OpenCode, Hermes, OpenClaw). |

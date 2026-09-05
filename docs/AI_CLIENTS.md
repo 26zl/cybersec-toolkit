@@ -15,6 +15,7 @@ various AI coding clients, MCP hosts, and model runtimes.
 | GitHub Copilot | Varies by surface | `.mcp.json` (CLI) + `.github/copilot-instructions.md` | `.claude/skills/` or `.agents/skills/` (native) | CLI live tested; VS Code documented |
 | Hermes Agent | Yes | User `~/.hermes/config.yaml` | External skill directory (configured) | Live tested |
 | OpenClaw | Yes | User `~/.openclaw/openclaw.json` | `.agents/skills/` (discovery) | Live tested |
+| DeepSeek Harness (dsh) | Yes | User `$DSH_HOME/settings.yaml` | `.agents/skills/` (native) | Configuration example documented |
 | Cursor | Yes | Client MCP settings UI | `.agents/skills/` (native) | Compatible through MCP |
 | Continue | Yes | Client MCP settings | Rules/prompts; no native repository skill discovery documented | Compatible through MCP |
 | Cline | Yes | Client MCP settings | `.claude/skills/` (native; feature flag) | Compatible through MCP |
@@ -308,6 +309,67 @@ and `openclaw mcp probe cybersec-tools` all completed without diagnostics and
 discovered all currently registered tools. `openclaw config validate` also
 accepted the JSON5 configuration without warnings. The test did not modify the
 user's global OpenClaw configuration or exercise ClawHub/plugin publishing.
+
+## DeepSeek Harness (dsh)
+
+DeepSeek Harness is DeepSeek's open-source agent harness, built on an
+everything-is-a-plugin architecture. MCP servers attach through the
+`@deepseek-ai/dsh-mcp-client` plugin. The project is in developer preview and
+documents compatibility-breaking changes between releases; review its
+`SAFETY.md` before running it.
+
+### dsh MCP configuration
+
+Add one plugin entry per server to `$DSH_HOME/settings.yaml`:
+
+```yaml
+- id: mcp-cybersec
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: cybersec
+    transport: stdio
+    command: bash
+    args: ['/absolute/path/to/cybersec-toolkit/scripts/mcp-launch.sh']
+    env:
+      CYBERSEC_MCP_ALLOW_EXTERNAL: '0'
+      CYBERSEC_MCP_ALLOW_SCRIPTS: '0'
+```
+
+Replace the path with the actual repository location. This is a user-edited
+example — do not copy the placeholder path into a tracked runtime
+configuration.
+
+Tools appear to the model as `mcp__cybersec__<tool>`, for example
+`mcp__cybersec__guided_assessment`. Only tools are bridged; MCP resources and
+prompts are not supported. Set `failOnStartupError: true` to abort the harness
+when the server fails to connect instead of starting without its tools.
+
+### No project-local configuration
+
+Unlike OpenCode and Codex, dsh has no tracked project-config layer. The tree
+composes each bundle's patch, then the profile's `cordis.patch.yml`, then the
+home-level `$DSH_HOME/cordis.patch.yml`, then `--patch` overlays. Repository
+configuration is therefore documented here rather than shipped as a tracked
+file. Inspect the composed tree with `dsh --dump-config`.
+
+### dsh skills discovery
+
+The `skill-filesystem` provider scans `<projectRoot>/.agents/skills` by
+default, where the project root is the nearest ancestor containing `.git`. The
+generated mirror is discovered without extra configuration:
+
+```bash
+scripts/sync-skills.sh            # generate .agents/skills/ from .claude/skills/
+scripts/sync-skills.sh --check    # verify the mirror is up to date
+```
+
+### Verification status
+
+The MCP launch command and 15-tool inventory were verified directly over
+stdio. The configuration above is derived from the upstream
+`dsh-mcp-client` and `skill-filesystem` package references; it has not been
+executed against a running harness here, so it is documented at the
+configuration-example tier rather than as live tested.
 
 ## GitHub Copilot
 
