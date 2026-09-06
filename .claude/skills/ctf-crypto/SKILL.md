@@ -7,6 +7,28 @@ description: Use when solving a CTF cryptography challenge — RSA, AES, classic
 
 Tool-first: use `suggest_for_ctf("crypto")` first, then this checklist for depth.
 
+## 0. Where the libraries live
+
+Crypto work runs out of tools and into arithmetic fast. The installer puts the
+Python side in a venv the server can hand to scripts:
+
+```python
+run_script(code, venv="crypto")   # ~/.ctf-venvs/crypto
+```
+
+Contents: `pycryptodome` (`from Crypto...`), `sympy`, `gmpy2`, `numpy`, `z3`,
+`fpylll` (+`cysignals`), `cypari2`. Install with
+`./install.sh --module crypto`; check with `check_installed("ctf-crypto-venv")`.
+
+`run_script` is gated behind `CYBERSEC_MCP_ALLOW_SCRIPTS=1` and is off by
+default. If a challenge needs solver code, say so and let the user enable it and
+restart the server — do not route around the gate with a shell.
+
+SageMath is not installed by default — it is packaged on Debian and Arch but
+not in current Ubuntu, Fedora or openSUSE, and the image is 1.4 GB.
+`--enable-docker` pulls `sagemath/sagemath:latest`. Reach for it only for what the venv cannot do:
+Coppersmith with `small_roots`, Groebner bases, generic curve arithmetic.
+
 ## 1. Identify what you have
 
 ```bash
@@ -73,13 +95,36 @@ Tools in registry: `cipey`, `ciphey` (auto-decode), `quipqiup` (substitution), `
 
 ## 6. Elliptic curve
 
-- Custom curve with smooth order → Pohlig-Hellman (sage)
+- Custom curve with smooth order → Pohlig-Hellman (`sympy.ntheory` for the
+  factorization, manual CRT recombination)
 - Singular curve → reduce to additive/multiplicative group
-- Use `sage` for any non-trivial ECC. Install if missing.
+- Unknown group order → `cypari2` for point counting: `pari.ellsea(E)` runs SEA
+  in seconds where a generic order algorithm will not finish
+- Coppersmith / `small_roots` and Groebner bases have no venv equivalent — that
+  is the case for the SageMath image
 
 ## 7. Lattice / LLL territory
 
-If you see modular linear equations, low-density knapsacks, or HNP-shaped problems — go to sage with `fpylll` or `flatter`. The pattern: small unknowns, lots of equations, modular constraint.
+If you see modular linear equations, low-density knapsacks, or HNP-shaped
+problems — build the basis and reduce with `fpylll`. The pattern: small
+unknowns, lots of equations, modular constraint.
+
+```python
+from fpylll import IntegerMatrix, LLL
+B = IntegerMatrix.from_matrix(rows)
+LLL.reduction(B)
+```
+
+Two things that cost hours if you hit them blind:
+
+- `import fpylll` raises `ModuleNotFoundError: cysignals` unless cysignals is
+  installed alongside it. fpylll declares no dependencies at all, so pip will
+  not pull it in. The `crypto` venv installs both.
+- fpylll's GSO/Babai/CVP path is double-precision. Above roughly 2^256 entries
+  it returns wrong vectors or segfaults outright (SIGSEGV on 2^768 targets is
+  the normal failure). Reduce the basis with fpylll, then do the closest-vector
+  step yourself in exact arithmetic — integer rounding or `fractions.Fraction`
+  over the Gram-Schmidt coefficients.
 
 ## Verification before claiming solve
 

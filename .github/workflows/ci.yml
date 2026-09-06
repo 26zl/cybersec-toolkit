@@ -193,9 +193,14 @@ jobs:
           uv run ruff check ../scripts/
 
   python-tests:
-    name: Python Tests (pytest)
+    name: Python Tests (pytest, ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor pyproject.toml declares (requires-python) and a current release.
+        python-version: ["3.10", "3.13"]
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
@@ -206,6 +211,8 @@ jobs:
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Run MCP server tests
         run: cd mcp_server && uv sync --group dev --quiet && uv run pytest tests/ -v

@@ -340,6 +340,12 @@ def extract_module_tools(module_name):
             "url": "https://pypi.org/project/patator/",
         })
 
+    # install_ctf_venv <name>: Python libraries with no console scripts, which
+    # pipx cannot install. Registered as one "ctf-<name>-venv" entry — the venv
+    # is what run_script(venv=<name>) consumes, not the individual packages.
+    for m in re.finditer(r"install_ctf_venv\s+\"?([\w-]+)\"?", clean):
+        tools.append({"name": f"ctf-{m.group(1)}-venv", "method": "special", "url": ""})
+
     # pipx install git+URL patterns (not in PIPX arrays)
     for m in re.finditer(
         r'pipx\s+install\s+"git\+https://github\.com/([^"]+)"', clean

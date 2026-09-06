@@ -38,6 +38,20 @@ class TestResolveTargetType:
     def test_empty_string(self) -> None:
         assert resolve_target_type("") is None
 
+    @pytest.mark.parametrize(
+        "phrase,expected",
+        [
+            ("web_app login flow", "web_app"),
+            ("api graphql", "api"),
+            ("mobile android app", "mobile_app"),
+        ],
+    )
+    def test_multi_word_input(self, phrase: str, expected: str) -> None:
+        assert resolve_target_type(phrase) == expected
+
+    def test_no_word_matches(self) -> None:
+        assert resolve_target_type("something entirely unrelated") is None
+
 
 # suggest_for_bounty
 class TestSuggestForBounty:

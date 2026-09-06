@@ -1,9 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
-# CyberSec Tools Installer — Modular, Profile-Based, Production-Grade
-#
-# The most comprehensive cybersecurity tool installer for Linux.
-# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE.
+# CyberSec Tools Installer — modular, profile-based.
+# Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux.
 #
 # Usage:
 #   sudo ./install.sh                        # Full install (default)

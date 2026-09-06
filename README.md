@@ -532,7 +532,17 @@ permissions as the MCP server process. Review generated code and scope before op
 
 #### Venv Support
 
-Some packages (e.g. pwntools) require an older Python. The `venv` parameter lets the AI choose the right interpreter per script:
+Python libraries have no console scripts, so pipx cannot install them. They go
+into named venvs under `~/.ctf-venvs/` instead, and the `venv` parameter picks
+the interpreter per script.
+
+`./install.sh --module crypto` creates `~/.ctf-venvs/crypto` with
+`pycryptodome`, `sympy`, `gmpy2`, `numpy`, `z3`, `fpylll` (+`cysignals`, which
+fpylll needs at import time but does not declare) and `cypari2` — the set CTF
+crypto actually reaches for: lattice reduction, PARI point counting, custom
+constructions. The AI then runs `run_script(code, venv="crypto")`.
+
+Some packages (e.g. pwntools) additionally require an older Python:
 
 ```bash
 # One-time setup: create a venv with pwntools

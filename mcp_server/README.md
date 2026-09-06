@@ -155,6 +155,7 @@ wsl.exe bash -lc "curl -LsSf https://astral.sh/uv/install.sh | sh"
 wsl.exe bash -lc "cd ~/cybersec-toolkit/mcp_server && ~/.local/bin/uv sync"
 
 # 4. (Optional) Create pwntools venv for run_script
+#    (the crypto venv comes from ./install.sh --module crypto)
 wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools && ~/.ctf-venvs/pwntools/bin/pip install pwntools z3-solver"
 ```
 
@@ -282,7 +283,8 @@ mcp_server/
   profiles.py          # Profile recommendation engine — 14 profiles, keyword matching
   security.py          # Execution validation, argument sanitization, network policy, rate limiting,
                        #   script execution with venv support, pipeline execution
-  sanitize.py          # Output sanitization — strips LLM markers, XML injection, Unicode evasion
+  sanitize.py          # Output sanitization — strips LLM markers, XML injection, Unicode evasion,
+                       #   marks directives aimed at an AI reader
   audit.py             # Owner-only rotating audit log in the user's state directory
   remote.py            # Remote SSH execution — host config, connection testing, input validation
   pyproject.toml       # UV config, 3-day exclude-newer for MCP runtime deps, CLI entrypoint
@@ -311,10 +313,10 @@ user or inside an isolation boundary appropriate for untrusted targets.
 - **Tool-aware parsing, not solver hardcoding**: The auto-solver chooses tools from the registry/advisors. The policy layer only knows enough CLI grammar to distinguish targets from headers, wordlists, output files, config files, and target-list flags, so legitimate commands stay usable without letting scope checks be bypassed
 - **Network policy**: Network tools and SSH remote hosts reject targets that do not resolve to private/loopback IPs by default (including single-label hostnames like `google`). This preflight check is not a network sandbox: DNS can change between validation and connection, and tools can follow redirects. Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
 - **Script execution gate**: `run_script` is disabled by default. Enabling `CYBERSEC_MCP_ALLOW_SCRIPTS=1` grants scripts the MCP process user's filesystem and network permissions; `CYBERSEC_MCP_ALLOW_EXTERNAL` does not constrain arbitrary script code
-- **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing
+- **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing. `./install.sh --module crypto` populates the `crypto` venv (pycryptodome, sympy, gmpy2, numpy, z3, fpylll+cysignals, cypari2) — Python libraries ship no console scripts, so pipx cannot install them
 - **Pipeline validation**: `run_pipeline` validates all steps (allowlist, args, policy) before executing any. Max 10 steps per pipeline; `step_results` and `had_failures` expose intermediate non-zero exits while preserving shell-like final exit semantics
 - **Rate limiting**: Max 10 concurrent executions and 60 per minute (sliding window)
-- **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion
+- **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion. Lines that address an AI reader and issue it a directive — the shape a target uses to make a client self-identify or add a header — are prefixed `[SANITIZED]` rather than removed, so the operator sees what the target attempted
 - **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`
 - **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)

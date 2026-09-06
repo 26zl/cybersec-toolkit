@@ -450,6 +450,19 @@ if should_verify "crypto"; then
     check_git_repos "${CRYPTO_GIT_NAMES[@]}"
     log_info "Crypto (Build from source):"
     check_builds "${CRYPTO_BUILD_NAMES[@]}"
+    # Libraries live in a venv outside CRYPTO_PIPX (modules/crypto.sh); the MCP
+    # server reaches them as run_script(venv="crypto").
+    log_info "Crypto (run_script venv):"
+    _crypto_venv="${CYBERSEC_MCP_VENVS_DIR:-$(_builder_home)/.ctf-venvs}/crypto"
+    check_dir "ctf-crypto-venv" "$_crypto_venv" || true
+    # Guard on the interpreter, not on check_dir's status: it also returns 0 when
+    # --installed-only skips an untracked tool, which would warn about a venv that
+    # was never installed. fpylll declares no dependencies yet imports cysignals —
+    # the one pair that half-installs without any install-time error.
+    if [[ -x "$_crypto_venv/bin/python" ]]; then
+        "$_crypto_venv/bin/python" -c "import fpylll" 2>/dev/null \
+            || log_warn "ctf-crypto-venv: 'import fpylll' fails (cysignals missing or ABI mismatch)"
+    fi
 fi
 
 if should_verify "pwn"; then

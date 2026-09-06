@@ -31,6 +31,35 @@ _INJECTION_PREFIXES = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# Instructions addressed to whatever AI is reading the output, anywhere in a line:
+# response headers, banners, HTML comments, robots.txt, challenge text. CTF and
+# bug-bounty infrastructure plants these to make a client self-identify or change
+# its requests, which both leaks the client and logs whoever complied. They carry
+# none of the prefixes above, so they need their own pass. Requires an addressee
+# and a directive on the same line — either alone is ordinary English.
+_AI_ADDRESSEE = re.compile(
+    r"\b(?:ai|llm|language model|autonomous agent|chat ?bot)s?\b"
+    r"|\b(?:chatgpt|gpt-?\d\w*|claude|gemini|copilot|codex)\b",
+    re.IGNORECASE,
+)
+_AI_DIRECTIVE = re.compile(
+    r"\b(?:must|shall|should|has to|have to|required to|needs? to|identify yourself|self-identify"
+    r"|identify your|disclose|reveal|report your|state your|declare your|respond with|reply with"
+    r"|set (?:the|your)|include (?:the|your)|add (?:the|your)|send (?:the|your)|append)\b",
+    re.IGNORECASE,
+)
+
+
+def _mark_ai_directives(text: str) -> str:
+    """Prefix lines that instruct an AI reader with ``[SANITIZED] ``."""
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("[SANITIZED] "):
+            continue
+        if _AI_ADDRESSEE.search(line) and _AI_DIRECTIVE.search(line):
+            lines[i] = "[SANITIZED] " + line
+    return "\n".join(lines)
+
 
 def truncate_output(text: str, max_bytes: int) -> tuple[str, bool]:
     """Truncate *text* so its UTF-8 encoding stays within *max_bytes*.
@@ -55,6 +84,7 @@ def sanitize_output(text: str) -> str:
     - Known LLM prompt markers are stripped.
     - XML-like role injection tags are stripped.
     - Lines starting with known injection prefixes are prefixed with ``[SANITIZED] ``.
+    - Lines instructing an AI reader are prefixed with ``[SANITIZED] ``.
     - All genuine tool output is preserved.
     """
     if not text:
@@ -74,5 +104,6 @@ def sanitize_output(text: str) -> str:
 
     # Mark suspicious lines
     text = _INJECTION_PREFIXES.sub(r"[SANITIZED] \1", text)
+    text = _mark_ai_directives(text)
 
     return text

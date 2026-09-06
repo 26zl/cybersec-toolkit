@@ -94,6 +94,48 @@ class TestFindDockerImage:
         assert tools_db._find_docker_image("nonexistent") is None
 
 
+# _docker_image_exists
+class TestDockerImageExists:
+    _LISTING = "beefproject/beef:latest\nsagemath/sagemath:10.4\nlocalhost:5000/mirror:dev\n"
+
+    def _run(self, calls: list) -> object:
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+
+            class Result:
+                stdout = TestDockerImageExists._LISTING
+
+            return Result()
+
+        return fake_run
+
+    def test_untagged_ref_matches_any_tag(self, tools_db: ToolsDatabase) -> None:
+        with patch("mcp_server.tools_db.subprocess.run", self._run([])):
+            assert tools_db._docker_image_exists("beefproject/beef") is True
+            assert tools_db._docker_image_exists("sagemath/sagemath") is True
+
+    def test_tagged_ref_is_exact(self, tools_db: ToolsDatabase) -> None:
+        with patch("mcp_server.tools_db.subprocess.run", self._run([])):
+            assert tools_db._docker_image_exists("sagemath/sagemath:10.4") is True
+            assert tools_db._docker_image_exists("sagemath/sagemath:latest") is False
+
+    def test_registry_port_is_not_a_tag(self, tools_db: ToolsDatabase) -> None:
+        with patch("mcp_server.tools_db.subprocess.run", self._run([])):
+            assert tools_db._docker_image_exists("localhost:5000/mirror") is True
+
+    def test_one_docker_call_per_scan(self, tools_db: ToolsDatabase) -> None:
+        calls: list = []
+        with patch("mcp_server.tools_db.subprocess.run", self._run(calls)):
+            for image in ("beefproject/beef", "sagemath/sagemath:10.4", "missing/image"):
+                tools_db._docker_image_exists(image)
+        assert len(calls) == 1
+        assert calls[0][:2] == ["docker", "images"]
+
+    def test_docker_missing_is_not_installed(self, tools_db: ToolsDatabase) -> None:
+        with patch("mcp_server.tools_db.subprocess.run", side_effect=FileNotFoundError):
+            assert tools_db._docker_image_exists("beefproject/beef") is False
+
+
 # check_installed
 class TestCheckInstalled:
     def test_unknown_tool(self, tools_db: ToolsDatabase) -> None:
@@ -123,6 +165,23 @@ class TestCheckInstalled:
             result = tools_db.check_installed("sherlock-project")
         assert result["installed"] is True
         assert result["method"] == "pipx_binary"
+
+    def test_ctf_venv_detected(self, tools_db: ToolsDatabase, tmp_path: Path, monkeypatch) -> None:
+        """ctf-<name>-venv resolves to the run_script venv interpreter, not PATH."""
+        venvs = tmp_path / "venvs"
+        (venvs / "crypto" / "bin").mkdir(parents=True)
+        (venvs / "crypto" / "bin" / "python").write_text("", encoding="utf-8")
+        monkeypatch.setenv("CYBERSEC_MCP_VENVS_DIR", str(venvs))
+        with patch("shutil.which", return_value=None):
+            result = tools_db.check_installed("ctf-crypto-venv")
+        assert result["installed"] is True
+        assert result["method"] == "venv"
+
+    def test_ctf_venv_missing(self, tools_db: ToolsDatabase, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("CYBERSEC_MCP_VENVS_DIR", str(tmp_path / "empty"))
+        with patch("shutil.which", return_value=None):
+            result = tools_db.check_installed("ctf-crypto-venv")
+        assert result["installed"] is False
 
     def test_special_binary_fallback(self, tmp_tools_config: Path) -> None:
         """special-method tools (metasploit->msfconsole) found via binary fallback."""

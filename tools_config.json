@@ -208,6 +208,8 @@
   {"name": "xortool", "method": "pipx", "module": "crypto", "url": "https://pypi.org/project/xortool/"},
   {"name": "factordb-python", "method": "pipx", "module": "crypto", "url": "https://pypi.org/project/factordb-python/"},
   {"name": "z3-solver", "method": "pipx", "module": "crypto", "url": "https://pypi.org/project/z3-solver/"},
+  {"name": "ctf-crypto-venv", "method": "special", "module": "crypto", "url": "https://pypi.org/project/fpylll/"},
+  {"name": "sagemath", "method": "docker", "module": "crypto", "url": "https://hub.docker.com/r/sagemath/sagemath"},
   {"name": "RsaCtfTool", "method": "git", "module": "crypto", "url": "https://github.com/RsaCtfTool/RsaCtfTool"},
   {"name": "rsatool", "method": "git", "module": "crypto", "url": "https://github.com/ius/rsatool"},
   {"name": "hash_extender", "method": "source", "module": "crypto", "url": "https://github.com/iagox86/hash_extender"},

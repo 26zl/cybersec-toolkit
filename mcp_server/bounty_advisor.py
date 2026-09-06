@@ -10,7 +10,12 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from mcp_server.advisor_utils import build_tool_status_list  # noqa: E402
+from mcp_server.advisor_utils import (  # noqa: E402
+    build_tool_status_list,
+    missing_tool_notice,
+    resolve_with_aliases,
+    script_execution_notice,
+)
 from mcp_server.tools_db import ToolsDatabase  # noqa: E402
 
 # Maps target type -> description, relevant modules, top tools, methodology,
@@ -413,10 +418,7 @@ TARGET_ALIASES: dict[str, str] = {
 
 def resolve_target_type(target_type: str) -> Optional[str]:
     """Resolve a target type string to a canonical target type name."""
-    normalized = target_type.lower().strip()
-    if normalized in BOUNTY_TARGET_MAP:
-        return normalized
-    return TARGET_ALIASES.get(normalized)
+    return resolve_with_aliases(target_type, BOUNTY_TARGET_MAP, TARGET_ALIASES)
 
 
 def suggest_for_bounty(target_type: str, tools_db: ToolsDatabase) -> dict:
@@ -458,4 +460,10 @@ def suggest_for_bounty(target_type: str, tools_db: ToolsDatabase) -> dict:
     }
     if "notable_cves" in target_info:
         result["notable_cves"] = target_info["notable_cves"]
+    notice = missing_tool_notice(tools_with_status, target_info["modules"], tools_db)
+    if notice:
+        result["missing_tools"] = notice
+    scripts = script_execution_notice()
+    if scripts:
+        result["script_execution"] = scripts
     return result

@@ -913,7 +913,7 @@ _run_c2_aggregation() {
     grep -q "^ours|cargo|existing|" "$_SESSION_FILE"
 }
 
-# ---------- rollback must not report success on a failed removal --------------
+# Rollback must not report success on a failed removal.
 
 @test "remove_source_build fails when the tree survives" {
     source_libs --installers debian apt
@@ -954,6 +954,118 @@ _run_c2_aggregation() {
     rm() { :; }
     run remove_special_tool patator
     [[ "$status" -eq 2 ]]            # tried, but the venv survived
+}
+
+@test "install_ctf_venv installs one package per pip call under the venvs dir" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export CYBERSEC_MCP_VENVS_DIR="$TEST_TMPDIR/venvs"
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    _as_builder() { echo "$1" >> "$TEST_TMPDIR/cmds"; }
+
+    run install_ctf_venv crypto sympy fpylll
+    assert_success
+
+    run cat "$TEST_TMPDIR/cmds"
+    assert_output --partial "python3 -m venv '$TEST_TMPDIR/venvs/crypto'"
+    assert_output --partial "venvs/crypto/bin/pip' install -q 'sympy'"
+    assert_output --partial "venvs/crypto/bin/pip' install -q 'fpylll'"
+    # A venv we created is ours, so remove.sh may uninstall it.
+    grep -q "^ctf-crypto-venv|special|latest|" "$VERSION_FILE"
+}
+
+@test "install_ctf_venv records a hand-built venv as pre-existing" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export CYBERSEC_MCP_VENVS_DIR="$TEST_TMPDIR/venvs"
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    # ~/.ctf-venvs/<name> is a documented manual pattern — adding libraries to a
+    # venv the user built must not make remove.sh delete it.
+    mkdir -p "$CYBERSEC_MCP_VENVS_DIR/crypto/bin"
+    : > "$CYBERSEC_MCP_VENVS_DIR/crypto/bin/python"
+    chmod +x "$CYBERSEC_MCP_VENVS_DIR/crypto/bin/python"
+    _as_builder() { echo "$1" >> "$TEST_TMPDIR/cmds"; }
+
+    run install_ctf_venv crypto sympy
+    assert_success
+
+    grep -q "^ctf-crypto-venv|special|existing|" "$VERSION_FILE"
+    run cat "$TEST_TMPDIR/cmds"
+    refute_output --partial "python3 -m venv"
+    _is_preexisting ctf-crypto-venv
+}
+
+@test "install_ctf_venv keeps its own venv ours across a re-run" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export CYBERSEC_MCP_VENVS_DIR="$TEST_TMPDIR/venvs"
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    _as_builder() { return 0; }
+
+    run install_ctf_venv crypto sympy
+    assert_success
+    # First run created it; simulate the interpreter it would have left behind.
+    mkdir -p "$CYBERSEC_MCP_VENVS_DIR/crypto/bin"
+    : > "$CYBERSEC_MCP_VENVS_DIR/crypto/bin/python"
+    chmod +x "$CYBERSEC_MCP_VENVS_DIR/crypto/bin/python"
+
+    run install_ctf_venv crypto sympy
+    assert_success
+    grep -q "^ctf-crypto-venv|special|latest|" "$VERSION_FILE"
+    [[ "$(grep -c '^ctf-crypto-venv|' "$VERSION_FILE")" -eq 1 ]]
+}
+
+@test "install_ctf_venv reports the package that failed without tracking the venv" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export CYBERSEC_MCP_VENVS_DIR="$TEST_TMPDIR/venvs"
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    mkdir -p "$CYBERSEC_MCP_VENVS_DIR/crypto/bin"
+    : > "$CYBERSEC_MCP_VENVS_DIR/crypto/bin/python"
+    chmod +x "$CYBERSEC_MCP_VENVS_DIR/crypto/bin/python"
+    # cypari2 has no wheel for every Python/arch — the rest must still install.
+    _as_builder() { [[ "$1" == *"'cypari2'"* ]] && return 1; return 0; }
+
+    run install_ctf_venv crypto sympy cypari2
+    assert_failure
+    assert_output --partial "cypari2 failed"
+    assert_output --partial "1/2 libraries installed"
+    [[ ! -f "$VERSION_FILE" ]]
+}
+
+@test "install_ctf_venv honours --skip-pipx" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export CYBERSEC_MCP_VENVS_DIR="$TEST_TMPDIR/venvs"
+    export SKIP_PIPX=true
+
+    run install_ctf_venv crypto sympy
+    assert_success
+    assert_output --partial "Skipping crypto venv"
+    [[ ! -d "$CYBERSEC_MCP_VENVS_DIR" ]]
+}
+
+@test "remove_special_tool removes a ctf venv from the venvs dir" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export CYBERSEC_MCP_VENVS_DIR="$TEST_TMPDIR/venvs"
+    mkdir -p "$CYBERSEC_MCP_VENVS_DIR/crypto/bin"
+
+    run remove_special_tool ctf-crypto-venv
+    assert_success
+    [[ ! -e "$CYBERSEC_MCP_VENVS_DIR/crypto" ]]
+}
+
+@test "remove_special_tool refuses a ctf venv with an empty name" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export CYBERSEC_MCP_VENVS_DIR="$TEST_TMPDIR/venvs"
+    mkdir -p "$CYBERSEC_MCP_VENVS_DIR/crypto/bin"
+
+    # "ctf--venv" would otherwise resolve to the venvs root itself.
+    run remove_special_tool ctf--venv
+    assert_failure
+    [[ -d "$CYBERSEC_MCP_VENVS_DIR/crypto" ]]
 }
 
 @test "batch provenance arrays are associative" {

@@ -479,6 +479,21 @@ if should_remove "enterprise" && command_exists pipx; then
     fi
 fi
 
+# ctf-crypto venv (Python libraries pipx cannot install, modules/crypto.sh)
+if should_remove "crypto"; then
+    _crypto_venv="${CYBERSEC_MCP_VENVS_DIR:-$(_builder_home)/.ctf-venvs}/crypto"
+    if [[ -d "$_crypto_venv" ]]; then
+        # A venv the user built themselves was only added to, never installed by
+        # us — removing it would take their other packages with it.
+        if _is_preexisting ctf-crypto-venv; then
+            log_info "Preserving pre-existing venv: ctf-crypto-venv"
+        else
+            log_info "Removing ctf-crypto venv..."
+            remove_special_tool ctf-crypto-venv && log_success "Removed venv: ctf-crypto-venv"
+        fi
+    fi
+fi
+
 # patator (dedicated venv — installed outside CRACKING_PIPX, modules/cracking.sh)
 if should_remove "cracking"; then
     if [[ -d "$GITHUB_TOOL_DIR/patator" ]]; then

@@ -999,6 +999,11 @@ async def manage_remote_hosts(
         tool_allowlist: Comma-separated list of allowed tool names
             (e.g. "nmap,gobuster,sqlmap"). None means all tools allowed.
 
+    Host keys: connections use StrictHostKeyChecking=accept-new, so the key
+    presented on the first connection is pinned in ~/.ssh/known_hosts and any
+    later change is rejected. Verify that first fingerprint out-of-band for a
+    host you do not control, or add the key to known_hosts before "test".
+
     Returns:
         Action result with host details or error message.
     """

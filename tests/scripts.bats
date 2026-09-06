@@ -5,6 +5,11 @@ setup() {
     make_test_tmpdir
 }
 
+# Octal mode of a path; `stat -c` is GNU, `stat -f` is BSD/macOS.
+_file_mode() {
+    stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
+}
+
 _guard_fixture() {
     export XDG_STATE_HOME="$TEST_TMPDIR/state"
     export CYBERSEC_MCP_AUDIT_LOG="$TEST_TMPDIR/audit.log"
@@ -90,12 +95,12 @@ _run_guarded_nmap() {
         bash "$PROJECT_ROOT/scripts/backup.sh" backup
 
     assert_success
-    [[ "$(stat -c '%a' "$backup_dir")" == "700" ]]
+    [[ "$(_file_mode "$backup_dir")" == "700" ]]
     local -a encrypted=("$backup_dir"/backup_*.tar.gz.enc)
     [[ -f "${encrypted[0]}" ]]
     [[ -f "${encrypted[0]}.hmac" ]]
-    [[ "$(stat -c '%a' "${encrypted[0]}")" == "600" ]]
-    [[ "$(stat -c '%a' "${encrypted[0]}.hmac")" == "600" ]]
+    [[ "$(_file_mode "${encrypted[0]}")" == "600" ]]
+    [[ "$(_file_mode "${encrypted[0]}.hmac")" == "600" ]]
     [[ -z "$(find "$backup_dir" -maxdepth 1 -type f -name '*.tar.gz' -print -quit)" ]]
     [[ -z "$(find "$backup_dir" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]
 }
@@ -227,7 +232,7 @@ _run_guarded_nmap() {
     assert_output --partial "Missing value for --module"
 }
 
-# ---------- backup restore: transactional per-target (points 8/9/10) ----------
+# Backup restore is transactional per target.
 # Load just _restore_tree with stub loggers so we can exercise it in isolation.
 _load_restore_tree() {
     log_warn() { :; }

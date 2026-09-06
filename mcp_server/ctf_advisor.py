@@ -10,7 +10,12 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
-from mcp_server.advisor_utils import build_tool_status_list  # noqa: E402
+from mcp_server.advisor_utils import (  # noqa: E402
+    build_tool_status_list,
+    missing_tool_notice,
+    resolve_with_aliases,
+    script_execution_notice,
+)
 from mcp_server.tools_db import ToolsDatabase  # noqa: E402
 
 # Maps challenge type → description, relevant modules, and top tools with descriptions.
@@ -84,19 +89,26 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("hashid", "Hash type identification"),
             ("name-that-hash", "Hash identification tool"),
             ("lascar", "Side-channel analysis framework (CPA, DPA, template attacks)"),
+            ("pycryptodome", 'Crypto.* primitives for custom crypto — run_script(venv="crypto")'),
+            ("sympy", 'Symbolic math, number theory, polynomial roots — run_script(venv="crypto")'),
+            ("fpylll", 'LLL/BKZ lattice reduction — run_script(venv="crypto")'),
+            ("cypari2", 'PARI/GP: point counting (SEA), factoring, class groups — run_script(venv="crypto")'),
+            ("sagemath", "Coppersmith/Groebner/generic curve math (Docker image, --enable-docker)"),
         ],
         "methodology": [
             "1. IDENTIFY: Use hashid/name-that-hash, check encoding (base64, hex, rot13)",
             "2. ANALYZE: Find key length (xortool), RSA parameters (n, e, c), cipher type",
             "3. CLASSICAL: RSA (RsaCtfTool, factordb), XOR (xortool), hash (hashcat/john)",
-            "4. MODERN: Lattice attacks (LLL/BKZ via SageMath/fpylll) for knapsack, hidden number, "
+            "4. MODERN: Lattice attacks (LLL/BKZ via fpylll) for knapsack, hidden number, "
             "ECDSA nonce reuse/bias. Padding oracle (byte-at-a-time decrypt). "
             "Elliptic curve: invalid curve, small subgroup, twist attacks",
             "5. SIDE-CHANNEL: Load power traces as numpy arrays, identify POI (sample with highest "
             "variance across key guesses), use correlation (CPA) or difference-of-means (DPA) "
             "to recover secret",
-            "6. SOLVE: Use run_script with z3 for constraints, PyCryptodome for custom crypto, "
-            "SageMath for number theory (lattice reduction, polynomial rings, ECC math)",
+            '6. SOLVE: run_script(venv="crypto") — the ctf-crypto venv carries pycryptodome, '
+            "sympy, gmpy2, numpy, z3, fpylll (+cysignals) and cypari2. Reach for SageMath only "
+            "for what those cannot do (Coppersmith, Groebner bases, generic curve arithmetic); "
+            "it is a 1.4 GB Docker image, not installed by default",
             "7. VERIFY: Decrypt and validate output, check for nested encoding",
         ],
         "quick_wins": [
@@ -109,6 +121,9 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "ECDSA: if two signatures share nonce (same r value), recover private key instantly",
             "Padding oracle: if server leaks padding validity, decrypt ciphertext byte-by-byte",
             "Side-channel: correlate power traces with Hamming weight of intermediate values per key guess",
+            "fpylll's GSO/Babai/CVP path is double-precision: above ~2^256 entries it returns "
+            "garbage or segfaults. Reduce with fpylll, then do the closest-vector step in exact "
+            "arithmetic (fractions.Fraction / integer rounding)",
         ],
     },
     "pwn": {
@@ -674,10 +689,7 @@ CATEGORY_ALIASES: dict[str, str] = {
 
 def resolve_category(challenge_type: str) -> Optional[str]:
     """Resolve a challenge type string to a canonical category name."""
-    normalized = challenge_type.lower().strip()
-    if normalized in CTF_CATEGORY_MAP:
-        return normalized
-    return CATEGORY_ALIASES.get(normalized)
+    return resolve_with_aliases(challenge_type, CTF_CATEGORY_MAP, CATEGORY_ALIASES)
 
 
 def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
@@ -709,4 +721,10 @@ def suggest_for_ctf(challenge_type: str, tools_db: ToolsDatabase) -> dict:
     }
     if "notable_cves" in cat_info:
         result["notable_cves"] = cat_info["notable_cves"]
+    notice = missing_tool_notice(tools_with_status, cat_info["modules"], tools_db)
+    if notice:
+        result["missing_tools"] = notice
+    scripts = script_execution_notice()
+    if scripts:
+        result["script_execution"] = scripts
     return result

@@ -553,6 +553,18 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
         fi
     fi
 
+    # ctf-crypto venv (CRYPTO_VENV_LIBS, modules/crypto.sh) — pip is the only
+    # thing that knows these are installed; nothing else updates them.
+    _crypto_venv="${CYBERSEC_MCP_VENVS_DIR:-$(_builder_home)/.ctf-venvs}/crypto"
+    if [[ -x "$_crypto_venv/bin/pip" ]] && [[ ${#CRYPTO_VENV_LIBS[@]} -gt 0 ]]; then
+        log_info "Updating ctf-crypto venv libraries..."
+        if _as_builder "'$(_escape_single_quoted "$_crypto_venv")/bin/pip' install -q --upgrade ${CRYPTO_VENV_LIBS[*]}" >> "$LOG_FILE" 2>&1; then
+            log_success "ctf-crypto venv updated"
+        else
+            log_warn "ctf-crypto venv update failed"
+        fi
+    fi
+
     # Steampipe (re-install = self-update) — verify script content before executing
     if command_exists steampipe; then
         log_info "Updating Steampipe..."

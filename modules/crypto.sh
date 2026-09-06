@@ -7,6 +7,15 @@ CRYPTO_PACKAGES=()
 
 CRYPTO_PIPX=(codext xortool factordb-python z3-solver lascar)
 
+# Python crypto libraries, installed into ~/.ctf-venvs/crypto rather than pipx:
+# none of them ship console scripts, so `pipx install` refuses them outright.
+# The MCP server exposes that venv as run_script(venv="crypto").
+# cysignals is listed explicitly because fpylll imports it at runtime but
+# declares no dependencies at all — without it `import fpylll` raises
+# ModuleNotFoundError. z3-solver is duplicated from CRYPTO_PIPX on purpose:
+# pipx provides the z3 binary, the venv copy provides the importable module.
+CRYPTO_VENV_LIBS=(pycryptodome sympy gmpy2 numpy z3-solver cysignals fpylll cypari2)
+
 CRYPTO_GIT=(
     "RsaCtfTool=https://github.com/RsaCtfTool/RsaCtfTool.git"
     "rsatool=https://github.com/ius/rsatool.git"
@@ -46,4 +55,16 @@ install_module_crypto() {
     # Build from source (url + command from CRYPTO_BUILD_URLS / CRYPTO_BUILD_CMDS)
     log_info "Building crypto tools from source..."
     build_module_from_source CRYPTO
+
+    install_ctf_venv crypto "${CRYPTO_VENV_LIBS[@]}" || true
+
+    # SageMath is packaged on Debian and Arch but not in current Ubuntu, Fedora
+    # or openSUSE's default repos, so an apt/dnf/pacman/zypper entry would fail
+    # for most users; the 1.4 GB image is the only cross-distro route and stays
+    # behind --enable-docker. fpylll + cypari2 in the venv above cover lattice
+    # reduction and PARI; Sage is for what they cannot do (Coppersmith,
+    # Groebner bases, generic curve arithmetic).
+    if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
+        docker_pull "sagemath/sagemath:latest" "SageMath" || true
+    fi
 }

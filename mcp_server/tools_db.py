@@ -209,6 +209,7 @@ DOCKER_IMAGES: dict[str, str] = {
     "Zeek": "zeek/zeek:latest",
     "Zircolite": "wagga40/zircolite:latest",
     "KICS": "checkmarx/kics:latest",
+    "SageMath": "sagemath/sagemath:latest",
 }
 
 
@@ -221,6 +222,8 @@ class ToolsDatabase:
         self.tools_by_name: dict[str, dict] = {}
         self._versions: dict[str, dict] = {}
         self._versions_ts: float = 0.0  # last reload timestamp
+        self._docker_refs: set[str] = set()
+        self._docker_refs_ts: float = 0.0
         self._load_tools()
 
     def _load_tools(self) -> None:
@@ -321,7 +324,22 @@ class ToolsDatabase:
                         "details": f"Git clone found at {git_path}",
                     }
 
-        # 5. Docker image check
+        # 5. run_script venv check: "ctf-<name>-venv" is the venv the server hands
+        # to run_script(venv="<name>"), so its interpreter is the install proof.
+        # Checked directly rather than through .versions so a manually created
+        # venv — the documented fallback — also reports honestly.
+        if tool["method"] == "special" and tool_name.startswith("ctf-") and tool_name.endswith("-venv"):
+            venvs_dir = os.environ.get("CYBERSEC_MCP_VENVS_DIR", "").strip()
+            venv_root = Path(venvs_dir) if venvs_dir else Path.home() / ".ctf-venvs"
+            venv_python = venv_root / tool_name[len("ctf-") : -len("-venv")] / "bin" / "python"
+            if venv_python.is_file():
+                return {
+                    "installed": True,
+                    "method": "venv",
+                    "details": f"Venv interpreter: {venv_python}",
+                }
+
+        # 6. Docker image check
         if tool["method"] == "docker":
             image = self._find_docker_image(tool_name)
             if image and self._docker_image_exists(image):
@@ -351,18 +369,40 @@ class ToolsDatabase:
                 return image
         return None
 
-    def _docker_image_exists(self, image: str) -> bool:
-        """Check if a docker image exists locally."""
+    def _docker_refs_cached(self, ttl: float = 2.0) -> set[str]:
+        """Local image refs as ``repo:tag``, cached briefly.
+
+        A registry-wide scan checks every docker tool; one ``docker images`` call
+        per scan replaces one per tool, and a hung daemon costs one timeout
+        instead of one per image.
+        """
+        now = time.monotonic()
+        if self._docker_refs_ts > 0 and (now - self._docker_refs_ts) < ttl:
+            return self._docker_refs
         try:
             result = subprocess.run(
-                ["docker", "images", "-q", image],
+                ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            return bool(result.stdout.strip())
+            refs = {line.strip() for line in result.stdout.splitlines() if line.strip()}
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            return False
+            refs = set()
+        self._docker_refs = refs
+        self._docker_refs_ts = now
+        return refs
+
+    def _docker_image_exists(self, image: str) -> bool:
+        """Check if a docker image exists locally (any tag when *image* names none)."""
+        repo, sep, tag = image.rpartition(":")
+        if not sep or "/" in tag:
+            # No tag, or the colon belonged to a registry port ("host:5000/repo").
+            repo, tag = image, ""
+        refs = self._docker_refs_cached()
+        if tag:
+            return f"{repo}:{tag}" in refs
+        return any(ref.rsplit(":", 1)[0] == repo for ref in refs)
 
     def list_tools(
         self,

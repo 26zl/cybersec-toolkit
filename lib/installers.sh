@@ -378,6 +378,75 @@ install_pipx_batch() {
     return 0
 }
 
+# install_ctf_venv — create/populate a named venv under CYBERSEC_MCP_VENVS_DIR
+# (default ~/.ctf-venvs) so the MCP server can hand it to run_script(venv=NAME).
+# Python libraries without console scripts cannot go through pipx at all
+# ("No apps associated with package pycryptodome"), and installing them
+# system-wide fights PEP 668 — a venv is the only path that serves both.
+# One pip call per package: a single library with no wheel for the host
+# Python/arch then fails alone instead of taking the whole set with it.
+install_ctf_venv() {
+    local name="$1"; shift
+    local -a libs=("$@")
+    [[ ${#libs[@]} -eq 0 ]] && return 0
+
+    if [[ "${SKIP_PIPX:-false}" == "true" ]]; then
+        log_warn "Skipping ${name} venv (--skip-pipx)"
+        return 0
+    fi
+
+    # $HOME is root's under sudo; the venv has to land in the invoking user's home.
+    local venvs_dir="${CYBERSEC_MCP_VENVS_DIR:-$(_builder_home)/.ctf-venvs}"
+    local venv_dir="$venvs_dir/$name"
+    local venv_esc; venv_esc="$(_escape_single_quoted "$venv_dir")"
+
+    # ~/.ctf-venvs is a directory users populate by hand too (mcp_server/README.md
+    # documents it for pwntools). Decide provenance before we touch the tree so a
+    # venv we only added libraries to is never uninstalled by remove.sh.
+    local venv_provenance="latest"
+    [[ "$(_tree_provenance "ctf-${name}-venv" "$venv_dir")" == "existing" ]] && venv_provenance="existing"
+
+    if ! mkdir -p "$venvs_dir" 2>/dev/null; then
+        log_error "Cannot create venv directory: $venvs_dir"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        return 1
+    fi
+    _chown_for_builder "$venvs_dir"
+
+    if [[ ! -x "$venv_dir/bin/python" ]]; then
+        log_info "Creating ${name} venv at $venv_dir..."
+        if ! _as_builder "python3 -m venv '$venv_esc'" >> "$LOG_FILE" 2>&1; then
+            log_error "Failed to create ${name} venv"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+            return 1
+        fi
+    fi
+
+    local lib lib_esc current=0 failed=0
+    local total=${#libs[@]}
+    log_info "Installing ${name} venv libraries ($total packages)..."
+    for lib in "${libs[@]}"; do
+        current=$((current + 1))
+        show_progress "$current" "$total" "$lib"
+        lib_esc="$(_escape_single_quoted "$lib")"
+        if ! _as_builder "'$venv_esc/bin/pip' install -q '$lib_esc'" >> "$LOG_FILE" 2>&1; then
+            log_warn "${name} venv: $lib failed (no wheel for this Python/arch?)"
+            failed=$((failed + 1))
+        fi
+    done
+    echo ""
+
+    if [[ "$failed" -gt 0 ]]; then
+        log_warn "${name} venv: $((total - failed))/$total libraries installed"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + failed))
+        return 1
+    fi
+
+    log_success "${name} venv ready — run_script(venv=\"${name}\") can import ${libs[*]}"
+    track_version "ctf-${name}-venv" "special" "$venv_provenance"
+    return 0
+}
+
 # Batch Go install
 install_go_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
@@ -1878,6 +1947,7 @@ ALL_DOCKER_IMAGES=(
     "zeek/zeek:latest|Zeek"
     "wagga40/zircolite:latest|Zircolite"
     "checkmarx/kics:latest|KICS"
+    "sagemath/sagemath:latest|SageMath"
 )
 
 # install_npm_batch — install global npm packages (label + package names).
@@ -2255,7 +2325,7 @@ remove_snap_tool() {
 # Returns 0 when the tool is gone, 1 for a name it does not know, and 2 when it
 # tried and something survived — callers must not record 2 as removed.
 remove_special_tool() {
-    local _bin _dir
+    local _bin _dir _vname
     case "$1" in
         foundry)
             # Installs under the invoking user's home ($HOME is /root under sudo).
@@ -2275,6 +2345,15 @@ remove_special_tool() {
             rm -f "$PIPX_BIN_DIR/patator" 2>/dev/null || true
             _dir="$GITHUB_TOOL_DIR/patator"
             [[ -d "$_dir" ]] && rm -rf "${GITHUB_TOOL_DIR:?}/patator"
+            ;;
+        ctf-*-venv)
+            # ctf-<name>-venv → the run_script venv at <venvs dir>/<name>. An
+            # empty <name> would resolve to the venvs root itself, so refuse it
+            # rather than rm -rf every venv the user has.
+            _vname="${1#ctf-}"; _vname="${_vname%-venv}"
+            [[ -z "$_vname" ]] && return 1
+            _dir="${CYBERSEC_MCP_VENVS_DIR:-$(_builder_home)/.ctf-venvs}/$_vname"
+            [[ -d "$_dir" ]] && rm -rf "${_dir:?}"
             ;;
         *) return 1 ;;
     esac

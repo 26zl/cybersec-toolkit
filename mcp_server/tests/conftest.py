@@ -71,6 +71,7 @@ SAMPLE_TOOLS = [
     {"name": "garak", "method": "pipx", "module": "llm", "url": ""},
     {"name": "libimage-exiftool-perl", "method": "apt", "module": "forensics", "url": ""},
     {"name": "metasploit", "method": "special", "module": "pwn", "url": ""},
+    {"name": "ctf-crypto-venv", "method": "special", "module": "crypto", "url": ""},
 ]
 
 

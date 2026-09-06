@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -37,6 +38,92 @@ class TestResolveCategory:
 
     def test_empty_string(self) -> None:
         assert resolve_category("") is None
+
+    @pytest.mark.parametrize(
+        "phrase,expected",
+        [
+            ("crypto rsa", "crypto"),
+            ("rsa crypto", "crypto"),
+            ("web sqli", "web"),
+            ("reversing / crypto", "reversing"),
+            ("pwn (heap)", "pwn"),
+        ],
+    )
+    def test_multi_word_input(self, phrase: str, expected: str) -> None:
+        assert resolve_category(phrase) == expected
+
+    def test_multi_word_alias_still_exact(self) -> None:
+        # "prompt injection" is itself an alias — the whole string wins over its words
+        assert resolve_category("prompt injection") == "llm"
+
+    def test_no_word_matches(self) -> None:
+        assert resolve_category("something entirely unrelated") is None
+
+
+# advisor notices
+class TestAdvisorNotices:
+    def test_missing_tools_listed_with_install_commands(self, tools_db: ToolsDatabase) -> None:
+        with patch("shutil.which", return_value=None):
+            result = suggest_for_ctf("crypto", tools_db)
+        notice = result["missing_tools"]
+        assert notice["missing"], "nothing installed in the test env — everything should be listed"
+        assert notice["install_modules"].startswith("./install.sh --module crypto")
+        # z3 is the first curated crypto tool the sample registry knows by an
+        # install.sh --tool-resolvable method (pipx, under its registry name).
+        assert notice["install_single_tool"] == "./install.sh --tool z3-solver"
+        assert "agent_action" in notice
+
+    def test_no_single_tool_command_when_only_venv_libraries_are_missing(
+        self, tools_db: ToolsDatabase, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`--tool ctf-crypto-venv` is not a thing install.sh can do — don't print it.
+
+        This is the state of anyone who installed the crypto module before the
+        venv existed: everything on PATH, nothing in the venv.
+        """
+        (tmp_path / "crypto" / "bin").mkdir(parents=True)
+        (tmp_path / "crypto" / "bin" / "python").write_text("", encoding="utf-8")
+        monkeypatch.setenv("CYBERSEC_MCP_VENVS_DIR", str(tmp_path))
+        with patch("shutil.which", return_value="/usr/bin/anything"):
+            result = suggest_for_ctf("crypto", tools_db)
+        notice = result["missing_tools"]
+        assert notice["missing"] == ["pycryptodome", "sympy", "fpylll", "cypari2"]
+        assert "install_single_tool" not in notice
+        assert "plan_install" not in notice
+        assert notice["install_modules"].startswith("./install.sh --module crypto")
+
+    def test_no_missing_notice_when_all_installed(self, tools_db: ToolsDatabase) -> None:
+        # "web" has no venv-backed entries, so PATH alone can satisfy every tool
+        with patch("shutil.which", return_value="/usr/bin/anything"):
+            result = suggest_for_ctf("web", tools_db)
+        assert "missing_tools" not in result
+
+    def test_venv_library_needs_the_library_not_just_the_venv(
+        self, tools_db: ToolsDatabase, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A half-built crypto venv must not report every library it stands for."""
+        site = tmp_path / "crypto" / "lib" / "python3.13" / "site-packages"
+        (site / "sympy").mkdir(parents=True)
+        (tmp_path / "crypto" / "bin").mkdir(parents=True)
+        (tmp_path / "crypto" / "bin" / "python").write_text("", encoding="utf-8")
+        monkeypatch.setenv("CYBERSEC_MCP_VENVS_DIR", str(tmp_path))
+        with patch("shutil.which", return_value=None):
+            result = suggest_for_ctf("crypto", tools_db)
+        status = {tool["name"]: tool["installed"] for tool in result["tools"]}
+        assert status["sympy"] is True
+        assert status["fpylll"] is False
+
+    def test_script_gate_surfaced_when_disabled(self, tools_db: ToolsDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_SCRIPTS", raising=False)
+        with patch("shutil.which", return_value=None):
+            result = suggest_for_ctf("crypto", tools_db)
+        assert result["script_execution"]["enable_with"] == "CYBERSEC_MCP_ALLOW_SCRIPTS=1"
+
+    def test_script_gate_silent_when_enabled(self, tools_db: ToolsDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_SCRIPTS", "1")
+        with patch("shutil.which", return_value=None):
+            result = suggest_for_ctf("crypto", tools_db)
+        assert "script_execution" not in result
 
 
 # suggest_for_ctf
