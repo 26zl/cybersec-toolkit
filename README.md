@@ -5,6 +5,7 @@
 [![uv update](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml/badge.svg)](https://github.com/26zl/cybersec-toolkit/actions/workflows/uv-update.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docker image](https://img.shields.io/badge/ghcr.io-cybersec--toolkit-2496ED?logo=docker&logoColor=white)](https://github.com/26zl/cybersec-toolkit/pkgs/container/cybersec-toolkit)
+[![Glama score](https://glama.ai/mcp/servers/26zl/cybersec-toolkit/badges/score.svg)](https://glama.ai/mcp/servers/26zl/cybersec-toolkit)
 ![Status: Under Active Development](https://img.shields.io/badge/status-under%20active%20development-blue)
 
 ```text
