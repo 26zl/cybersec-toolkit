@@ -6,7 +6,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastmcp import FastMCP
 
@@ -115,18 +115,42 @@ def _cmd(script: str, args: str = "") -> str:
 @mcp.tool
 def list_tools(
     module: Optional[str] = None,
-    method: Optional[str] = None,
+    method: Optional[
+        Literal[
+            "apt",
+            "pipx",
+            "go",
+            "cargo",
+            "gem",
+            "git",
+            "binary",
+            "docker",
+            "snap",
+            "special",
+            "source",
+            "npm",
+        ]
+    ] = None,
     installed_only: bool = False,
 ) -> dict:
-    """List and filter tools from the 670+ cybersecurity registry.
+    """List and filter the 670+ cybersecurity tools in the registry.
+
+    Returns the tools drawn from tools_config.json — the same registry the
+    installer and the advisors share — with the total count, the filters still
+    available to narrow the results, and one entry per tool. Combine the filters
+    to scope the list: module="web" for web tools, method="pipx" for
+    Python-packaged tools, installed_only=True for only what is on this host.
+    Start here to discover what exists before check_installed or get_tool_info.
 
     Args:
         module: Filter by module (e.g. "web", "pwn", "forensics"). 18 modules available.
-        method: Filter by install method (apt, pipx, go, cargo, gem, git, binary, docker, snap, special, source, npm).
+        method: Filter by install method. One of apt, pipx, go, cargo, gem, git,
+            binary, docker, snap, special, source, npm.
         installed_only: If true, only return tools that are currently installed.
 
     Returns:
-        Tool list with count, available filters, and tool entries (name, method, module, url).
+        A dict with the tool count, the filters still available, and the matching
+        tool entries (each with name, method, module, and url).
     """
     call_id = log_tool_call("list_tools", {"module": module, "method": method, "installed_only": installed_only})
     t0 = time.monotonic()
@@ -971,7 +995,7 @@ async def run_script(
 
 @mcp.tool
 async def manage_remote_hosts(
-    action: str,
+    action: Literal["list", "add", "remove", "test"],
     name: Optional[str] = None,
     hostname: Optional[str] = None,
     user: str = "kali",
@@ -980,16 +1004,23 @@ async def manage_remote_hosts(
     description: str = "",
     tool_allowlist: Optional[str] = None,
 ) -> dict:
-    """Manage SSH remote hosts for running tools on remote Kali/Linux boxes.
+    """Add, list, test, or remove the SSH hosts that run_tool can target remotely.
 
-    Actions:
-        list  — List all configured remote hosts.
-        add   — Add or update a remote host (requires name and hostname).
-        remove — Remove a remote host by name.
-        test  — Test SSH connectivity to a remote host.
+    Manages the remote-host registry that lets run_tool (and check_installed) run
+    a tool on a remote Kali/Linux box over SSH instead of locally, so the tool
+    only has to be installed on the remote. The action selects the operation:
+    "list" shows every configured host; "add" registers or updates a host (needs
+    name and hostname, plus optional user, port, ssh_key, and a tool_allowlist
+    that restricts which tools may run there); "remove" deletes a host by name;
+    "test" opens an SSH connection to confirm the host is reachable.
+
+    Connections use StrictHostKeyChecking=accept-new, so the key presented on the
+    first connection is pinned in ~/.ssh/known_hosts and any later change is
+    rejected. Verify that first fingerprint out-of-band for a host you do not
+    control, or add the key to known_hosts before "test".
 
     Args:
-        action: One of "list", "add", "remove", "test".
+        action: Operation to perform: "list", "add", "remove", or "test".
         name: Host name (required for add/remove/test).
         hostname: IP address or hostname of the remote machine (required for add).
         user: SSH username (default "kali").
@@ -999,13 +1030,9 @@ async def manage_remote_hosts(
         tool_allowlist: Comma-separated list of allowed tool names
             (e.g. "nmap,gobuster,sqlmap"). None means all tools allowed.
 
-    Host keys: connections use StrictHostKeyChecking=accept-new, so the key
-    presented on the first connection is pinned in ~/.ssh/known_hosts and any
-    later change is rejected. Verify that first fingerprint out-of-band for a
-    host you do not control, or add the key to known_hosts before "test".
-
     Returns:
-        Action result with host details or error message.
+        A dict with the action result — the host list, the affected host's
+        details, or an error message.
     """
     action = action.lower().strip()
     call_id = log_tool_call("manage_remote_hosts", {"action": action, "name": name, "hostname": hostname})
