@@ -10,6 +10,7 @@ on:
       - "assets/**"
       - ".github/**"
       - "*.md"
+      - "glama.json"
   workflow_dispatch:
 
 permissions:
