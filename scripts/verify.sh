@@ -119,6 +119,30 @@ check_cmd() {
     fi
 }
 
+check_npm() {
+    local pkg="$1"
+    _is_tracked "$pkg" || return 0
+    TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+
+    # Global npm packages often expose a binary under a different name, so the
+    # global package list is authoritative and PATH is only a fallback.
+    if command_exists npm && npm ls -g --depth=0 "$pkg" >/dev/null 2>&1; then
+        TOTAL_FOUND=$((TOTAL_FOUND + 1))
+        vlog_success "$pkg — installed (npm -g)"
+        return 0
+    fi
+
+    if command_exists "$pkg"; then
+        TOTAL_FOUND=$((TOTAL_FOUND + 1))
+        vlog_success "$pkg — installed (PATH)"
+        return 0
+    fi
+
+    TOTAL_MISSING=$((TOTAL_MISSING + 1))
+    vlog_error "$pkg — NOT installed"
+    return 1
+}
+
 check_dir() {
     local name="$1"
     local path="$2"
@@ -308,6 +332,7 @@ check_module_cargo() {
 check_cmds()      { for t in "$@"; do check_cmd "$t" || true; done; }
 check_pipx_arr()  { for t in "$@"; do check_pipx "$t" || true; done; }
 check_git_repos() { for n in "$@"; do check_dir "$n" "$GITHUB_TOOL_DIR/$n" || true; done; }
+check_npm_arr()   { for t in "$@"; do check_npm "$t" || true; done; }
 
 # shellcheck disable=SC2076  # Intentional literal match, not regex
 should_verify() { [[ " ${VERIFY_MODULES[*]} " =~ " $1 " ]]; }
@@ -627,6 +652,8 @@ if should_verify "mobile"; then
     check_pipx_arr "${MOBILE_PIPX[@]}"
     log_info "Mobile (Git):"
     check_git_repos "${MOBILE_GIT_NAMES[@]}"
+    log_info "Mobile (npm):"
+    check_npm_arr "${MOBILE_NPM[@]}"
     log_info "Mobile (Binary):"
     check_cmd "jadx" || true
     check_cmd "d2j-dex2jar" || true
@@ -663,6 +690,8 @@ if should_verify "blockchain"; then
     log_info "Blockchain (Git):"
     check_git_repos "${BLOCKCHAIN_GIT_NAMES[@]}"
     check_module_cargo "blockchain"
+    log_info "Blockchain (npm):"
+    check_npm_arr "${BLOCKCHAIN_NPM[@]}"
     log_info "Blockchain (Special):"
     check_cmd "foundryup" || true
     check_cmd "forge" || true

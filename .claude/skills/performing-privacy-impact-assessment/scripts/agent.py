@@ -14,9 +14,7 @@ from datetime import datetime, timedelta
 from copy import deepcopy
 
 
-# ---------------------------------------------------------------------------
 # Data sensitivity classification
-# ---------------------------------------------------------------------------
 DATA_SENSITIVITY = {
     # Special category / sensitive (GDPR Art. 9)
     "health_data": {"sensitivity": "special_category", "weight": 5},
@@ -668,9 +666,7 @@ class PrivacyImpactAssessmentEngine:
         self.gdpr_reports = {}
         self.ccpa_reports = {}
 
-    # ------------------------------------------------------------------
     # Processing activity registration
-    # ------------------------------------------------------------------
     def register_processing_activity(self, name, description="",
                                      data_controller="", data_processor="",
                                      data_categories=None, data_subjects=None,
@@ -723,9 +719,7 @@ class PrivacyImpactAssessmentEngine:
         self.activities[activity_id] = activity
         return activity
 
-    # ------------------------------------------------------------------
     # Data flow mapping
-    # ------------------------------------------------------------------
     def map_data_flows(self, activity_id, flows):
         """Map data flows for a processing activity."""
         if activity_id not in self.activities:
@@ -822,9 +816,7 @@ class PrivacyImpactAssessmentEngine:
 
         print(f"\n{'='*70}\n")
 
-    # ------------------------------------------------------------------
     # Risk assessment
-    # ------------------------------------------------------------------
     def assess_privacy_risks(self, activity_id, assessment_type="full_dpia"):
         """Assess privacy risks for a processing activity."""
         if activity_id not in self.activities:
@@ -901,9 +893,7 @@ class PrivacyImpactAssessmentEngine:
 
         return report
 
-    # ------------------------------------------------------------------
     # ICO DPIA screening checklist
-    # ------------------------------------------------------------------
     def run_screening_checklist(self, uses_special_category_data=False,
                                 large_scale_processing=False,
                                 systematic_monitoring=False,
@@ -951,9 +941,7 @@ class PrivacyImpactAssessmentEngine:
             "ico_reference": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/accountability-and-governance/data-protection-impact-assessments-dpias/",
         }
 
-    # ------------------------------------------------------------------
     # GDPR compliance check
-    # ------------------------------------------------------------------
     def check_gdpr_compliance(self, activity_id):
         """Run GDPR article-level compliance checks against a processing activity."""
         if activity_id not in self.activities:
@@ -1038,9 +1026,7 @@ class PrivacyImpactAssessmentEngine:
         self.gdpr_reports[activity_id] = report
         return report
 
-    # ------------------------------------------------------------------
     # CCPA/CPRA compliance check
-    # ------------------------------------------------------------------
     def check_ccpa_compliance(self, activity_id):
         """Run CCPA/CPRA section-level compliance checks."""
         if activity_id not in self.activities:
@@ -1130,9 +1116,7 @@ class PrivacyImpactAssessmentEngine:
         self.ccpa_reports[activity_id] = report
         return report
 
-    # ------------------------------------------------------------------
     # NIST Privacy Framework profile
-    # ------------------------------------------------------------------
     def generate_nist_privacy_profile(self, activity_id, target_tier="tier_2"):
         """Generate NIST Privacy Framework profile for an activity."""
         if activity_id not in self.activities:
@@ -1178,9 +1162,7 @@ class PrivacyImpactAssessmentEngine:
 
         return profile
 
-    # ------------------------------------------------------------------
     # Remediation plan
-    # ------------------------------------------------------------------
     def generate_remediation_plan(self, activity_id, risk_report=None,
                                    gdpr_report=None, ccpa_report=None):
         """Generate a prioritized remediation plan from assessment results."""
@@ -1250,9 +1232,7 @@ class PrivacyImpactAssessmentEngine:
             "action_items": action_items,
         }
 
-    # ------------------------------------------------------------------
     # Report generation
-    # ------------------------------------------------------------------
     def generate_dpia_report(self, activity_id, output_path="dpia_report.json",
                               format="json"):
         """Generate the formal DPIA report document."""

@@ -1,0 +1,12 @@
+{
+  "name": "cybersec-toolkit-sandbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "mcp": "node mcp.mjs",
+    "smoke": "node smoke.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": { "@ai-hero/sandcastle": "0.12.0" }
+}

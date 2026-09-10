@@ -26,9 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Default content policy
-# ---------------------------------------------------------------------------
 DEFAULT_POLICY = {
     "allowed_topics": [],
     "blocked_topics": ["violence", "illegal_activities", "weapons", "drugs", "exploitation"],

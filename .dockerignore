@@ -22,3 +22,5 @@ manual_scripts/
 remote_hosts.json
 *.corrupt.*
 .DS_Store
+**/node_modules/
+.sandcastle/

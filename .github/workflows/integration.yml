@@ -13,6 +13,8 @@ on:
       - "scripts/**"
       - "Dockerfile"
       - ".dockerignore"
+      - "sandbox/**"
+      - "mcp_server/**"
       - "tests/**"
       - ".github/workflows/integration.yml"
   workflow_dispatch:
@@ -213,6 +215,48 @@ jobs:
           else
             command -v "$VERIFY"
           fi
+
+  sandbox-smoke:
+    name: Sandbox image smoke test
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build sandbox image
+        run: docker build --pull -f sandbox/Dockerfile --tag cybersec-toolkit-sandbox:latest .
+
+      - name: Scan image for fixable HIGH/CRITICAL vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cybersec-toolkit-sandbox:latest
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Install sandbox dependencies
+        run: npm --prefix sandbox ci --ignore-scripts
+
+      - name: Drive an MCP handshake through the sandbox
+        env:
+          CYBERSEC_MCP_AUDIT_LOG: ${{ runner.temp }}/sandbox-audit.log
+          # Hosted runners have no KVM, so the plumbing runs under runc: this
+          # proves the image, the stdio bridge and the audit mirror, not the VM
+          # boundary. Kata itself still needs a manual run on a KVM host.
+          CYBERSEC_SANDBOX_RUNTIME: runc
+          CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME: "1"
+        run: node sandbox/smoke.mjs
+
+      - name: Verify the audit chain that crossed the boundary
+        run: python3 scripts/verify_audit_chain.py "${{ runner.temp }}/sandbox-audit.log"
 
   docker-build:
     name: Docker image build

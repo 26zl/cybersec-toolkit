@@ -11,16 +11,18 @@ MARKDOWNLINT_VERSION := 0.23.2
 MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py validate-packages check-links test-distros \
-	validate check-pins check-skills sync-skills curate check doctor mcp docker clean
+.PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py test-sandbox validate-packages check-links test-distros \
+	validate check-pins check-skills sync-skills curate check doctor mcp docker sandbox-image audit-verify clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-setup: ## One-time dev setup: submodules, MCP deps, skill mirror (Codex-ready)
+setup: ## One-time dev setup: submodules, MCP deps, sandbox deps, skill mirror (Codex-ready)
 	git submodule update --init --recursive
 	cd mcp_server && uv sync --group dev
+	@command -v npm >/dev/null 2>&1 && npm --prefix sandbox ci --ignore-scripts \
+		|| echo "npm not found — skipping sandbox deps (see docs/SANDBOX.md)"
 	scripts/sync-skills.sh
 
 lint: lint-sh lint-py lint-md ## Run all linters
@@ -39,13 +41,17 @@ lint-md: ## markdownlint on tracked and untracked docs (mirrors the CI job)
 format: ## Auto-format the MCP server with ruff
 	cd mcp_server && uv run --group dev ruff format .
 
-test: test-bats test-py ## Run all tests
+test: test-bats test-py test-sandbox ## Run all tests
 
 test-bats: ## Bash unit tests (bats)
 	./tests/bats/bin/bats tests/*.bats
 
 test-py: ## MCP server tests (pytest)
 	cd mcp_server && uv run --group dev pytest tests/ -q
+
+test-sandbox: ## Kata sandbox provider tests (node --test; needs sandbox deps)
+	@if [ -d sandbox/node_modules ]; then node --test sandbox/*.test.mjs; \
+	else echo "sandbox deps missing — run 'npm --prefix sandbox ci --ignore-scripts'"; fi
 
 validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles, version, agent docs)
 	python3 scripts/validate_tools_config.py
@@ -55,6 +61,7 @@ validate: ## Run every data-consistency validator (tools, MCP sync, distros, ski
 	python3 scripts/audit_skill_dependencies.py --check-declared
 	bash scripts/update-skills.sh --check-pins
 	python3 scripts/validate_agent_docs.py
+	python3 scripts/verify_audit_chain.py --selftest
 	bash scripts/validate_profiles.sh
 	bash scripts/validate_version.sh
 
@@ -95,6 +102,12 @@ mcp: ## Launch the MCP server inspector (web UI)
 
 docker: ## Build the Docker image
 	docker build -t cybersec-toolkit .
+
+sandbox-image: ## Build the Kata sandbox image used by scripts/mcp-launch.sh
+	docker build -f sandbox/Dockerfile -t cybersec-toolkit-sandbox:latest .
+
+audit-verify: ## Check the audit log's hash chain (usage: make audit-verify [LOG=path])
+	python3 scripts/verify_audit_chain.py $(LOG)
 
 clean: ## Remove Python caches and test artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true

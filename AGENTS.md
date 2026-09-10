@@ -34,10 +34,19 @@ The integration surface is split into two layers:
 
 ### Connecting a client to the MCP server
 
-The server is launched the same way everywhere — over stdio with `uv`:
+The server is launched the same way everywhere — over stdio through the
+root-aware launcher, which starts it inside a Kata Containers VM:
 
 ```bash
-uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner
+bash scripts/mcp-launch.sh
+```
+
+`--local` (or `CYBERSEC_SANDBOX_MODE=local`) skips the VM and runs the server as
+the host user. That is the right mode for developing this repository, and the
+only mode available on hosts without KVM:
+
+```bash
+bash scripts/mcp-launch.sh --local
 ```
 
 | Client | Config file | Notes |
@@ -59,6 +68,35 @@ uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banne
 Default-safe environment for every client: `CYBERSEC_MCP_ALLOW_EXTERNAL=0` and
 `CYBERSEC_MCP_ALLOW_SCRIPTS=0`. Opt into scripts/external scopes only with explicit
 authorization (see [MCP environment variables](#mcp-environment-variables)).
+
+### Execution sandbox
+
+Tools run one layer below the client, inside a disposable VM:
+
+```text
+Sandcastle            agent orchestration (optional layer)
+  └─ Kata Container   strong execution isolation (own kernel, own VM)
+       └─ cybersec-toolkit MCP
+            └─ nmap / nuclei / semgrep / binwalk / ...
+```
+
+`sandbox/kata.mjs` is a Sandcastle isolated-sandbox provider that pins a Kata
+runtime; `sandbox/mcp.mjs` uses it to boot the VM and bridge the client's stdio
+to the server inside. The VM sees no host filesystem unless
+`CYBERSEC_SANDBOX_WORKSPACE` names a directory, and is destroyed on disconnect.
+Startup fails closed — a missing runtime or image stops the server rather than
+falling back to the host.
+
+Audit records leave the VM over stderr and are appended to the host log, which
+is both the operator's durable trail and the clearance source
+`scripts/agent-guard.sh` reads; records are hash-chained so tampering is
+detectable (`make audit-verify`).
+
+The boundary covers execution, not authorization or network scope: the
+`CYBERSEC_MCP_ALLOW_EXTERNAL` preflight and the operator's engagement scope
+still apply inside the VM. Repository work is unaffected — editing this
+checkout is ordinary development on the host. Setup, tuning, and limitations
+are documented in [`docs/SANDBOX.md`](docs/SANDBOX.md).
 
 ### Coordinating multiple agents
 
@@ -97,6 +135,9 @@ python3 scripts/audit_skill_dependencies.py --check-declared
 
 # Check AGENTS.md claims and the Claude/Gemini import contracts
 python3 scripts/validate_agent_docs.py
+
+# Verify the audit log's hash chain (--selftest runs in `make validate`)
+python3 scripts/verify_audit_chain.py --selftest
 
 # Regenerate skill curation index after adding/removing/renaming a skill dir
 # (validate_claude_skills.py checks curation freshness)
@@ -190,7 +231,17 @@ such as `curl` remain normal `run_tool` calls.
   `mcp_server/remote_hosts.json` still takes precedence)
 - `CYBERSEC_MCP_AUDIT_REQUIRED=1` — fail startup instead of falling back to stderr
   when file audit logging is unavailable
+- `CYBERSEC_MCP_AUDIT_STREAM=1` — additionally mirror each audit record to stderr
+  behind the `@cybersec-audit@` sentinel. Set inside the sandbox image so the host
+  launcher can keep the durable copy; unnecessary for host-local runs
 - `CYBERSEC_INSTALLER_ROOT` — override project root for `tools_config.json` lookup
+- `CYBERSEC_SANDBOX_MODE` — `kata` (default) or `local`; `local` runs the server on
+  the host with no VM boundary
+- `CYBERSEC_SANDBOX_WORKSPACE` — absolute host directory mounted at `/workspace` in
+  the VM; the only host path the sandbox can reach
+- `CYBERSEC_SANDBOX_ENGINE` — `docker` or `podman`; defaults to whichever is on PATH.
+  Remaining `CYBERSEC_SANDBOX_*` knobs, including the deliberate non-Kata runtime
+  opt-in, are documented in [`docs/SANDBOX.md`](docs/SANDBOX.md)
 
 ## Architecture
 

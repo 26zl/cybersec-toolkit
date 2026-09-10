@@ -248,6 +248,28 @@ run_doctor() {
         _warns=$((_warns + 1))
     fi
 
+    # The MCP server launches inside a Kata VM by default; --local is the opt-out.
+    local _sandbox_detail
+    if [[ ! -f "$SCRIPT_DIR/sandbox/mcp.mjs" ]]; then
+        _sandbox_detail="sandbox/ not present in this checkout"
+    elif ! command_exists node; then
+        _sandbox_detail="install Node.js 22+ — docs/SANDBOX.md"
+    elif [[ ! -d "$SCRIPT_DIR/sandbox/node_modules" ]]; then
+        _sandbox_detail="run: npm --prefix sandbox ci --ignore-scripts"
+    elif ! command_exists docker; then
+        _sandbox_detail="install Docker + Kata Containers — docs/SANDBOX.md"
+    elif ! docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -qi kata; then
+        _sandbox_detail="no Kata runtime registered — mcp-launch.sh --local runs on the host"
+    else
+        _sandbox_detail=""
+    fi
+    if [[ -z "$_sandbox_detail" ]]; then
+        _doctor_row "Sandbox" "Kata runtime ready" ok
+    else
+        _doctor_row "Sandbox" "$_sandbox_detail" warn
+        _warns=$((_warns + 1))
+    fi
+
     local _rt
     for _rt in go cargo pipx gem npm docker; do
         if command_exists "$_rt"; then
@@ -585,7 +607,33 @@ install_single_tool() {
         done
     done
 
-    # npm tools (promptfoo)
+    # npm packages declared by modules.
+    local npm_arrs=(); _module_array_names NPM npm_arrs
+    for a in "${npm_arrs[@]}"; do
+        declare -p "$a" &>/dev/null || continue
+        local -n _npmref="$a"
+        [[ ${#_npmref[@]} -eq 0 ]] && continue
+        for _npm_pkg in "${_npmref[@]}"; do
+            # Scoped packages keep their trailing segment; _NPM_BIN_NAMES covers
+            # the packages whose executable does not match the package name.
+            local _npm_bin="${_NPM_BIN_NAMES[$_npm_pkg]:-${_npm_pkg##*/}}"
+            if [[ "$tool" == "$_npm_pkg" || "$tool" == "$_npm_bin" ]]; then
+                ensure_node || { log_error "Node.js/npm not available — cannot install $tool"; return 1; }
+                log_info "Installing $_npm_pkg via npm..."
+                if npm install -g "${_npm_pkg}@latest" >> "$LOG_FILE" 2>&1; then
+                    local _npm_ver; _npm_ver=$("$_npm_bin" --version 2>/dev/null || echo "latest")
+                    log_success "Installed: $tool ($_npm_ver)"
+                    _track_single "npm" "$_npm_ver"
+                else
+                    log_error "Failed: $tool"
+                    return 1
+                fi
+                return 0
+            fi
+        done
+    done
+
+    # promptfoo has a dedicated installer rather than an npm registry array.
     if [[ "$tool" == "promptfoo" ]]; then
         ensure_node || { log_error "Node.js/npm not available — cannot install $tool"; return 1; }
         log_info "Installing $tool via npm..."
@@ -1317,7 +1365,7 @@ install_modules() {
     log_info "Stage 1/4: Aggregating tool lists from ${#MODULES_TO_INSTALL[@]} modules..."
 
     local -a _ALL_APT=() _ALL_PIPX=() _ALL_GO=() _ALL_CARGO=() _ALL_GEMS=()
-    local -a _ALL_GIT=() _ALL_BINARY=()
+    local -a _ALL_GIT=() _ALL_BINARY=() _ALL_NPM=()
 
     for _mod in "${MODULES_TO_INSTALL[@]}"; do
         local _pfx
@@ -1335,6 +1383,7 @@ install_modules() {
         _append_module_array _ALL_GO    "${_pfx}_GO"
         _append_module_array _ALL_CARGO "${_pfx}_CARGO"
         _append_module_array _ALL_GEMS  "${_pfx}_GEMS"
+        _append_module_array _ALL_NPM   "${_pfx}_NPM"
         _append_module_array _ALL_GIT   "${_pfx}_GIT"
 
         # Binary releases (BINARY_RELEASES_<MODULE_UPPER> in installers.sh)
@@ -1347,7 +1396,7 @@ install_modules() {
         fi
     done
 
-    log_info "  APT: ${#_ALL_APT[@]}, pipx: ${#_ALL_PIPX[@]}, Go: ${#_ALL_GO[@]}, Cargo: ${#_ALL_CARGO[@]}, Gems: ${#_ALL_GEMS[@]}, Git: ${#_ALL_GIT[@]}, Binary: ${#_ALL_BINARY[@]}"
+    log_info "  APT: ${#_ALL_APT[@]}, pipx: ${#_ALL_PIPX[@]}, Go: ${#_ALL_GO[@]}, Cargo: ${#_ALL_CARGO[@]}, Gems: ${#_ALL_GEMS[@]}, npm: ${#_ALL_NPM[@]}, Git: ${#_ALL_GIT[@]}, Binary: ${#_ALL_BINARY[@]}"
     # Stage 2/4: Single APT transaction for ALL packages ──
     echo ""
     log_info "Stage 2/4: Installing all system packages in one transaction..."
@@ -1363,7 +1412,7 @@ install_modules() {
 
     if [[ "$PARALLEL_JOBS" -gt 1 ]]; then
         # Parallel: launch all batches as concurrent subshells
-        log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, Git, Binary)..."
+        log_info "Stage 3/4: Installing non-APT tools in parallel (pipx, Go, Cargo, Gems, npm, Git, Binary)..."
         local _fail_dir
         _fail_dir=$(mktemp -d); _register_cleanup "$_fail_dir"
 
@@ -1386,6 +1435,7 @@ install_modules() {
         if [[ ${#_ALL_GO[@]} -gt 0 ]];     then _method_names+=("Go");     _report_method_total "Go"     "${#_ALL_GO[@]}";     fi
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]];  then _method_names+=("Cargo");  _report_method_total "Cargo"  "${#_ALL_CARGO[@]}";  fi
         if [[ ${#_ALL_GEMS[@]} -gt 0 ]];   then _method_names+=("Gems");   _report_method_total "Gems"   "${#_ALL_GEMS[@]}";   fi
+        if [[ ${#_ALL_NPM[@]} -gt 0 ]];    then _method_names+=("npm");    _report_method_total "npm"    "${#_ALL_NPM[@]}";    fi
         if [[ ${#_ALL_GIT[@]} -gt 0 ]];    then _method_names+=("Git");    _report_method_total "Git"    "${#_ALL_GIT[@]}";    fi
         if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then _method_names+=("Binary"); _report_method_total "Binary" "${#_ALL_BINARY[@]}"; fi
 
@@ -1429,6 +1479,17 @@ install_modules() {
                 TOTAL_TOOL_FAILURES=0
                 install_gem_batch "All modules - Ruby" "${_ALL_GEMS[@]}"
                 echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/gems.cnt"
+            ) > /dev/null 2>>"$LOG_FILE" &
+            _job_pids+=($!)
+        fi
+
+        # npm (sequential within — one global prefix, and ensure_node may install Node)
+        if [[ ${#_ALL_NPM[@]} -gt 0 ]]; then
+            (
+                trap '[[ -f "$_fail_dir/npm.cnt" ]] || echo 1 > "$_fail_dir/npm.cnt"' EXIT
+                TOTAL_TOOL_FAILURES=0
+                install_npm_batch "All modules - npm" "${_ALL_NPM[@]}"
+                echo "$TOTAL_TOOL_FAILURES" > "$_fail_dir/npm.cnt"
             ) > /dev/null 2>>"$LOG_FILE" &
             _job_pids+=($!)
         fi
@@ -1493,11 +1554,12 @@ install_modules() {
         fi
     else
         # Sequential: PARALLEL_JOBS=1, run each batch inline
-        log_info "Stage 3/4: Installing non-APT tools sequentially (pipx, Go, Cargo, Gems, Git, Binary)..."
+        log_info "Stage 3/4: Installing non-APT tools sequentially (pipx, Go, Cargo, Gems, npm, Git, Binary)..."
         [[ ${#_ALL_PIPX[@]}   -gt 0 ]] && install_pipx_batch    "All modules - Python" "${_ALL_PIPX[@]}"
         [[ ${#_ALL_GO[@]}     -gt 0 ]] && install_go_batch      "All modules - Go"     "${_ALL_GO[@]}"
         [[ ${#_ALL_CARGO[@]}  -gt 0 ]] && install_cargo_batch   "All modules - Rust"   "${_ALL_CARGO[@]}"
         [[ ${#_ALL_GEMS[@]}   -gt 0 ]] && install_gem_batch     "All modules - Ruby"   "${_ALL_GEMS[@]}"
+        [[ ${#_ALL_NPM[@]}    -gt 0 ]] && install_npm_batch     "All modules - npm"    "${_ALL_NPM[@]}"
         [[ ${#_ALL_GIT[@]}    -gt 0 ]] && install_git_batch     "All modules - Git"    "${_ALL_GIT[@]}"
         [[ ${#_ALL_BINARY[@]} -gt 0 ]] && install_binary_releases "${_ALL_BINARY[@]}"
     fi

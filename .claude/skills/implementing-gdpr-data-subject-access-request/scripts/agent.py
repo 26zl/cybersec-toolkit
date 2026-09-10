@@ -24,10 +24,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
 # PII Regex Patterns -- sourced from Netwrix, PII Crawler, and Varonis
 # guidance for EU/UK personal data discovery
-# ---------------------------------------------------------------------------
 
 PII_PATTERNS = {
     "email": {
@@ -113,9 +111,7 @@ COMPILED_PATTERNS = {
     for name, info in PII_PATTERNS.items()
 }
 
-# ---------------------------------------------------------------------------
 # Article 15 response categories -- information that MUST be provided
-# ---------------------------------------------------------------------------
 
 ARTICLE_15_CATEGORIES = {
     "processing_purposes": {
@@ -160,9 +156,7 @@ ARTICLE_15_CATEGORIES = {
     },
 }
 
-# ---------------------------------------------------------------------------
 # DSAR exemption types per GDPR/UK GDPR
-# ---------------------------------------------------------------------------
 
 EXEMPTION_TYPES = {
     "third_party_data": {
@@ -210,9 +204,7 @@ EXEMPTION_TYPES = {
 }
 
 
-# ===========================================================================
 # PII Pattern Matcher
-# ===========================================================================
 
 class PIIPatternMatcher:
     """Scans text for PII using compiled regex patterns with confidence scoring."""
@@ -287,9 +279,7 @@ class PIIPatternMatcher:
         }
 
 
-# ===========================================================================
 # PII Discovery Engine
-# ===========================================================================
 
 class PIIDiscoveryEngine:
     """Discovers PII across structured (database) and unstructured (files) data sources."""
@@ -599,9 +589,7 @@ class PIIDiscoveryEngine:
         return self.consolidate_results(*results)
 
 
-# ===========================================================================
 # Data Mapper -- maps PII to Article 15 categories
-# ===========================================================================
 
 class DataMapper:
     """Maps discovered PII to GDPR Article 15 disclosure categories."""
@@ -726,9 +714,7 @@ class DataMapper:
         }
 
 
-# ===========================================================================
 # Exemption Reviewer
-# ===========================================================================
 
 class ExemptionReviewer:
     """Reviews DSAR data against applicable GDPR/UK GDPR exemptions."""
@@ -789,9 +775,7 @@ class ExemptionReviewer:
         return redacted
 
 
-# ===========================================================================
 # DSAR Response Generator
-# ===========================================================================
 
 class DSARResponseGenerator:
     """Generates compliant DSAR response packages per GDPR Article 15."""
@@ -1046,9 +1030,7 @@ Data Protection Officer
         return saved
 
 
-# ===========================================================================
 # DSAR Workflow Engine -- orchestrates the full lifecycle
-# ===========================================================================
 
 class DSARWorkflowEngine:
     """Manages the complete DSAR lifecycle: intake, tracking, and compliance."""
@@ -1206,9 +1188,7 @@ class DSARWorkflowEngine:
         }
 
 
-# ===========================================================================
 # DSAR Audit Logger
-# ===========================================================================
 
 class DSARAuditLogger:
     """Maintains audit trails for DSAR processing lifecycle."""
@@ -1296,9 +1276,7 @@ class DSARAuditLogger:
         return report
 
 
-# ===========================================================================
 # Utility functions
-# ===========================================================================
 
 def _redact_connection_string(conn_str: str) -> str:
     """Redact passwords from connection strings for logging."""
@@ -1324,9 +1302,7 @@ def _map_pii_type_to_ner(pii_type: str) -> str:
     return mapping.get(pii_type, "UNKNOWN")
 
 
-# ===========================================================================
 # CLI Entry Point
-# ===========================================================================
 
 def main():
     parser = argparse.ArgumentParser(

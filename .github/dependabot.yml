@@ -32,6 +32,17 @@ updates:
     # which this limit does not restrict, to avoid duplicate/conflicting lock PRs.
     open-pull-requests-limit: 0
 
+  - package-ecosystem: "npm"
+    directory: "/sandbox"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+
   - package-ecosystem: "docker"
     directory: "/"
     schedule:

@@ -25,16 +25,12 @@ from collections import defaultdict
 
 import requests
 
-# ---------------------------------------------------------------------------
 # Logging
-# ---------------------------------------------------------------------------
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger("pqc-migration-agent")
 
-# ---------------------------------------------------------------------------
 # Constants: Quantum-vulnerable algorithm classification
-# ---------------------------------------------------------------------------
 
 QUANTUM_VULNERABLE_KEY_EXCHANGE = {
     "RSA",
@@ -164,9 +160,7 @@ SLHDSA_PARAMS = {
 }
 
 
-# ---------------------------------------------------------------------------
 # TLS Endpoint Scanning
-# ---------------------------------------------------------------------------
 
 def scan_tls_endpoint(host, port=443, timeout=10):
     """
@@ -467,9 +461,7 @@ def scan_multiple_endpoints(targets_file, port=443):
     return results
 
 
-# ---------------------------------------------------------------------------
 # Crypto-Agility Assessment
-# ---------------------------------------------------------------------------
 
 def assess_crypto_agility(scan_results):
     """
@@ -616,9 +608,7 @@ def assess_crypto_agility(scan_results):
     return assessment
 
 
-# ---------------------------------------------------------------------------
 # Hybrid TLS Testing
-# ---------------------------------------------------------------------------
 
 def test_hybrid_tls_support(host, port=443):
     """
@@ -727,9 +717,7 @@ def _test_tls_group(host, port, group):
     return test
 
 
-# ---------------------------------------------------------------------------
 # ML-KEM (FIPS 203) Validation
-# ---------------------------------------------------------------------------
 
 def test_mlkem_support():
     """
@@ -895,9 +883,7 @@ def _test_mlkem_openssl(level_name, params):
     return result
 
 
-# ---------------------------------------------------------------------------
 # ML-DSA (FIPS 204) Validation
-# ---------------------------------------------------------------------------
 
 def test_mldsa_support():
     """
@@ -1024,9 +1010,7 @@ def _test_mldsa_openssl(level_name, algo, params):
     return result
 
 
-# ---------------------------------------------------------------------------
 # Migration Roadmap Generation
-# ---------------------------------------------------------------------------
 
 def generate_migration_roadmap(scan_results, agility_assessment=None):
     """
@@ -1231,9 +1215,7 @@ def generate_migration_roadmap(scan_results, agility_assessment=None):
     return roadmap
 
 
-# ---------------------------------------------------------------------------
 # OpenSSL and oqs-provider Configuration
-# ---------------------------------------------------------------------------
 
 def check_openssl_pqc_support():
     """
@@ -1358,9 +1340,7 @@ MinProtocol = TLSv1.2
     return config
 
 
-# ---------------------------------------------------------------------------
 # Main CLI
-# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(

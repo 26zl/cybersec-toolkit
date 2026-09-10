@@ -26,9 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Regex patterns for known prompt injection signatures
-# ---------------------------------------------------------------------------
 INJECTION_PATTERNS: list[tuple[str, str]] = [
     ("system_prompt_override", r"(?i)\b(ignore|disregard|forget|override|bypass)\b.{0,30}\b(previous|above|prior|all|system|initial)\b.{0,20}\b(instructions?|prompts?|rules?|directives?|context)\b"),
     ("role_play_escape", r"(?i)\b(you\s+are\s+now|act\s+as|pretend\s+(to\s+be|you\s+are)|simulate\s+being|switch\s+to|enter\s+.{0,10}mode)\b"),
@@ -52,9 +50,7 @@ INJECTION_PATTERNS: list[tuple[str, str]] = [
     ("base64_payload", r"[A-Za-z0-9+/]{40,}={0,2}"),
 ]
 
-# ---------------------------------------------------------------------------
 # Suspicious keyword sets for heuristic analysis
-# ---------------------------------------------------------------------------
 INSTRUCTION_KEYWORDS = {
     "ignore", "disregard", "forget", "override", "bypass", "instead",
     "pretend", "simulate", "act", "roleplay", "imagine", "hypothetically",

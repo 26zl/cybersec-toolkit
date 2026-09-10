@@ -25,18 +25,14 @@ from urllib.parse import urlparse
 
 import requests
 
-# ---------------------------------------------------------------------------
 # Logging
-# ---------------------------------------------------------------------------
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger("canary-token-agent")
 
 _SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9_.\-]+$")
 
-# ---------------------------------------------------------------------------
 # Canarytokens.org API integration
-# ---------------------------------------------------------------------------
 
 CANARYTOKENS_API_URL = os.getenv(
     "CANARYTOKENS_API_URL", "https://canarytokens.org/generate"
@@ -148,9 +144,7 @@ def create_web_image_token(email, memo, webhook_url=None):
     }
 
 
-# ---------------------------------------------------------------------------
 # Thinkst Canary Enterprise API integration
-# ---------------------------------------------------------------------------
 
 def thinkst_create_token(console_domain, auth_token, kind, memo, flock_id=None):
     """
@@ -197,9 +191,7 @@ def thinkst_get_alerts(console_domain, auth_token):
     return resp.json().get("alerts", [])
 
 
-# ---------------------------------------------------------------------------
 # Token deployment helpers
-# ---------------------------------------------------------------------------
 
 def deploy_aws_credentials_file(target_path, access_key_id, secret_access_key,
                                 profile="default", region="us-east-1"):
@@ -345,9 +337,7 @@ def deploy_env_file_token(env_path, access_key_id, secret_access_key,
     }
 
 
-# ---------------------------------------------------------------------------
 # Webhook alert processing and forwarding
-# ---------------------------------------------------------------------------
 
 def send_slack_alert(webhook_url, alert_data):
     """
@@ -517,9 +507,7 @@ def forward_to_siem(siem_url, alert_data, api_key=None):
     logger.info("SIEM event forwarded for: %s", alert_data.get("memo", ""))
 
 
-# ---------------------------------------------------------------------------
 # Token inventory and monitoring
-# ---------------------------------------------------------------------------
 
 def create_deployment_plan(environment, zones=None):
     """
@@ -715,9 +703,7 @@ def test_token_connectivity(token_hostname=None, token_url=None):
     return results
 
 
-# ---------------------------------------------------------------------------
 # Main CLI
-# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(

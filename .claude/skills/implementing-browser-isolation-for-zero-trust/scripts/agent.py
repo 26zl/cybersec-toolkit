@@ -17,9 +17,7 @@ from datetime import datetime, timedelta
 from copy import deepcopy
 
 
-# ---------------------------------------------------------------------------
 # URL categorization database
-# ---------------------------------------------------------------------------
 URL_CATEGORIES = {
     # Trusted business categories
     "cloud_productivity": {
@@ -320,9 +318,7 @@ class BrowserIsolationPolicyEngine:
         self.zt_integration = None
         self._threat_intel_domains = set()
 
-    # ------------------------------------------------------------------
     # URL Classification
-    # ------------------------------------------------------------------
     def classify_url(self, url, referrer=None):
         """Classify a URL by category and risk level."""
         domain = _extract_domain(url)
@@ -409,9 +405,7 @@ class BrowserIsolationPolicyEngine:
         self._threat_intel_domains.update(d.lower().strip() for d in domains)
         return {"added": len(domains), "total": len(self._threat_intel_domains)}
 
-    # ------------------------------------------------------------------
     # Policy Management
-    # ------------------------------------------------------------------
     def add_isolation_policy(self, name, description="", match_criteria=None,
                               isolation_mode="full_isolation", dlp_controls=None,
                               cdr_config=None, priority=None):
@@ -519,9 +513,7 @@ class BrowserIsolationPolicyEngine:
 
         return None
 
-    # ------------------------------------------------------------------
     # CDR Processing
-    # ------------------------------------------------------------------
     def process_file_cdr(self, file_path, source_url="", cdr_profile="standard"):
         """Process a file through Content Disarm and Reconstruction."""
         filename = os.path.basename(file_path)
@@ -649,9 +641,7 @@ class BrowserIsolationPolicyEngine:
             "processed_at": datetime.utcnow().isoformat(),
         }
 
-    # ------------------------------------------------------------------
     # Session Management
-    # ------------------------------------------------------------------
     def create_isolation_session(self, user_id, target_url,
                                   user_groups=None, device_posture=None,
                                   user_risk_level="low"):
@@ -795,9 +785,7 @@ class BrowserIsolationPolicyEngine:
             "generated_at": datetime.utcnow().isoformat(),
         }
 
-    # ------------------------------------------------------------------
     # Zero Trust Integration
-    # ------------------------------------------------------------------
     def create_zero_trust_integration(self, identity_provider="",
                                        conditional_access_rules=None,
                                        swg_integration=None):
@@ -841,9 +829,7 @@ class BrowserIsolationPolicyEngine:
             "isolation_details": session["isolation_details"],
         }
 
-    # ------------------------------------------------------------------
     # Compliance Reporting
-    # ------------------------------------------------------------------
     def generate_compliance_report(self, date_range=None, include_metrics=True):
         """Generate a compliance report for browser isolation deployment."""
         total_sessions = len(self.sessions)

@@ -302,8 +302,13 @@ Simple recon/HTTP commands such as `curl` should remain `run_tool` calls.
 `run_tool` and `run_pipeline` enforce the governed execution policy below.
 The policy is not an OS sandbox: allowed tools retain the MCP process user's
 permissions, and some can launch child processes or load plugins. Disabling
-`run_script` only disables that endpoint. Run the server as a least-privileged
-user or inside an isolation boundary appropriate for untrusted targets.
+`run_script` only disables that endpoint.
+
+That OS boundary is provided one layer down instead: `scripts/mcp-launch.sh`
+starts this server inside a Kata Containers VM by default, so the process user
+whose permissions the policy cannot contain is a guest user in a disposable VM
+rather than the operator. With `--local` there is no such boundary — run the
+server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md).
 
 - **Registry check**: Only tools listed in `tools_config.json` (plus 128 system utilities) can be executed
 - **Install check**: Tool must be installed and in PATH
@@ -317,7 +322,7 @@ user or inside an isolation boundary appropriate for untrusted targets.
 - **Pipeline validation**: `run_pipeline` validates all steps (allowlist, args, policy) before executing any. Max 10 steps per pipeline; `step_results` and `had_failures` expose intermediate non-zero exits while preserving shell-like final exit semantics
 - **Rate limiting**: Max 10 concurrent executions and 60 per minute (sliding window)
 - **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion. Lines that address an AI reader and issue it a directive — the shape a target uses to make a client self-identify or add a header — are prefixed `[SANITIZED]` rather than removed, so the operator sees what the target attempted
-- **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`
+- **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`. Under the Kata sandbox the in-VM log would die with the VM, so `CYBERSEC_MCP_AUDIT_STREAM=1` mirrors each record to stderr and the host launcher appends it to the host log ([`../docs/SANDBOX.md`](../docs/SANDBOX.md))
 - **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)
 - **Async DNS**: Network target validation runs in a worker thread to avoid blocking the event loop

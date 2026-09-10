@@ -48,9 +48,7 @@ except ImportError:
     HAS_SKLEARN = False
 
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
 
 VOWELS = set("aeiou")
 CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
@@ -122,9 +120,7 @@ WHITELIST_PATTERNS = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Core Functions
-# ---------------------------------------------------------------------------
 
 def shannon_entropy(data):
     """Calculate Shannon entropy of a string in bits per character."""
@@ -178,9 +174,7 @@ def parse_timestamp(ts_str):
         return None
 
 
-# ---------------------------------------------------------------------------
 # Log Parsers
-# ---------------------------------------------------------------------------
 
 def parse_zeek_dns_log(filepath):
     """Parse Zeek dns.log (tab-separated format)."""
@@ -300,9 +294,7 @@ def load_dns_queries(filepath, fmt="zeek"):
     return parser(filepath)
 
 
-# ---------------------------------------------------------------------------
 # Entropy Analysis
-# ---------------------------------------------------------------------------
 
 def analyze_entropy(queries, entropy_threshold=3.5, length_threshold=30):
     """Analyze DNS queries for tunneling indicators via entropy and subdomain length."""
@@ -390,9 +382,7 @@ def analyze_entropy(queries, entropy_threshold=3.5, length_threshold=30):
     return results
 
 
-# ---------------------------------------------------------------------------
 # Beaconing Detection
-# ---------------------------------------------------------------------------
 
 def detect_beaconing(queries, min_queries=10, max_jitter_pct=25,
                      min_interval=10, max_interval=7200):
@@ -494,9 +484,7 @@ def detect_beaconing(queries, min_queries=10, max_jitter_pct=25,
     return beacons
 
 
-# ---------------------------------------------------------------------------
 # TXT Record Analysis
-# ---------------------------------------------------------------------------
 
 def analyze_txt_records(queries):
     """Analyze TXT record queries and responses for C2 payload indicators."""
@@ -625,9 +613,7 @@ def analyze_txt_records(queries):
     return findings
 
 
-# ---------------------------------------------------------------------------
 # DGA Classification
-# ---------------------------------------------------------------------------
 
 DGA_FEATURE_COLUMNS = [
     "length", "entropy", "digit_ratio", "vowel_ratio", "consonant_ratio",
@@ -815,9 +801,7 @@ def classify_domains_dga(domains, model, scaler, threshold=0.65):
     return results
 
 
-# ---------------------------------------------------------------------------
 # Reporting
-# ---------------------------------------------------------------------------
 
 def print_report(entropy_results, beacons, txt_findings, dga_results,
                  total_queries, unique_domains):
@@ -947,9 +931,7 @@ def print_report(entropy_results, beacons, txt_findings, dga_results,
     print()
 
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(

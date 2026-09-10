@@ -29,7 +29,9 @@ various AI coding clients, MCP hosts, and model runtimes.
 
 All clients use the same MCP server. The canonical launcher is
 `scripts/mcp-launch.sh`. It determines the repository root from its own
-location and starts the FastMCP server over stdio via `uv`.
+location and starts the FastMCP server over stdio inside a Kata Containers
+VM, so tools execute behind a hardware-virtualized boundary rather than as
+the host user. See [`SANDBOX.md`](SANDBOX.md) for host prerequisites.
 
 **From the repository root:**
 
@@ -51,11 +53,19 @@ bash /absolute/path/to/cybersec-toolkit/scripts/mcp-launch.sh
 
 Safe defaults are applied automatically:
 
+- `CYBERSEC_SANDBOX_MODE=kata` (the server runs inside a disposable VM)
 - `CYBERSEC_MCP_ALLOW_EXTERNAL=0` (network tools restricted to private/loopback)
-- `CYBERSEC_MCP_ALLOW_SCRIPTS=0` (unsandboxed script execution disabled)
+- `CYBERSEC_MCP_ALLOW_SCRIPTS=0` (script execution disabled)
 
 To enable external targets or scripts, set the corresponding environment
 variable to `1` in the client's MCP configuration and restart the client.
+
+**Host execution** is an explicit opt-out, for developing the toolkit itself
+and for hosts without KVM:
+
+```bash
+bash scripts/mcp-launch.sh --local
+```
 
 ## Model provider vs model runtime vs MCP client
 
@@ -499,7 +509,15 @@ restart. Ensure you have explicit authorization for the target scope.
 ### Scripts disabled
 
 Set `CYBERSEC_MCP_ALLOW_SCRIPTS=1` in the client's MCP configuration and
-restart. This is an unsandboxed code-execution opt-in.
+restart. This is a code-execution opt-in; the code runs inside the sandbox
+VM by default, and as the host user in `--local` mode.
+
+### Sandbox will not start
+
+The launcher reports the reason — no Kata runtime registered, missing image,
+unreachable Docker daemon, or Node.js older than 22. See
+[`SANDBOX.md`](SANDBOX.md#troubleshooting), or use `--local` to run on the
+host without the VM boundary.
 
 ### Generated `.agents/skills` missing
 

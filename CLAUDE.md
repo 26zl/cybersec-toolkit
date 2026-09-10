@@ -35,7 +35,9 @@ contribution rules there. This file contains only Claude Code-specific behavior.
 injects the scoped MCP contract, and `PreToolUse` on `Bash` denies a security-tool
 invocation until the MCP server has been called this session. Clearance is read from
 the server's own audit log, so it cannot be satisfied by an agent asserting compliance;
-one `guided_assessment` call clears the session. Repository work is never gated.
+one `guided_assessment` call clears the session. A sandboxed server mirrors its records
+out to that same host log (`docs/SANDBOX.md`), so the gate behaves identically in both
+launch modes. Repository work is never gated.
 Denials land in `~/.local/state/cybersec-tools-mcp/guard-denials.log`.
 Disable with `CYBERSEC_AGENT_GUARD=0`. Other clients can call the same two modes from
 whatever pre-execution hook they provide — the logic is not Claude Code-specific.

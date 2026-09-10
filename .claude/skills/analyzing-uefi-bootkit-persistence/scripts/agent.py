@@ -25,9 +25,7 @@ DISCLAIMER = """
 """
 
 
-# ---------------------------------------------------------------------------
 # Known Bootkit Signatures and IOCs
-# ---------------------------------------------------------------------------
 
 KNOWN_BOOTKITS = {
     "BlackLotus": {
@@ -103,9 +101,7 @@ KNOWN_FV_GUIDS = {
 }
 
 
-# ---------------------------------------------------------------------------
 # ESP Partition Analysis
-# ---------------------------------------------------------------------------
 
 def scan_esp_partition(esp_mount_path):
     """Scan a mounted EFI System Partition for bootkit indicators."""
@@ -178,9 +174,7 @@ def hash_file(file_path):
     return sha256.hexdigest()
 
 
-# ---------------------------------------------------------------------------
 # Firmware Analysis
-# ---------------------------------------------------------------------------
 
 EFI_FV_HEADER_MAGIC = b"_FVH"
 PE_MAGIC = b"MZ"
@@ -283,9 +277,7 @@ def format_guid(guid_bytes):
             f"{part2[5]:02X}{part2[6]:02X}{part2[7]:02X}")
 
 
-# ---------------------------------------------------------------------------
 # Secure Boot Verification
-# ---------------------------------------------------------------------------
 
 def check_secure_boot_status():
     """Check Secure Boot status on the local system (Linux)."""
@@ -321,9 +313,7 @@ def check_secure_boot_status():
     return results
 
 
-# ---------------------------------------------------------------------------
 # Chipsec Subprocess Interface
-# ---------------------------------------------------------------------------
 
 def run_chipsec_module(module_name, args=None):
     """Run a chipsec module via subprocess and return output."""
@@ -378,9 +368,7 @@ def run_firmware_security_audit():
     return results
 
 
-# ---------------------------------------------------------------------------
 # Entropy Analysis for Firmware Regions
-# ---------------------------------------------------------------------------
 
 def firmware_entropy_map(firmware_path, block_size=4096):
     """Generate block-level entropy map to detect encrypted/compressed firmware regions."""
@@ -412,9 +400,7 @@ def firmware_entropy_map(firmware_path, block_size=4096):
     return results
 
 
-# ---------------------------------------------------------------------------
 # Main Entry Point
-# ---------------------------------------------------------------------------
 
 def analyze_uefi_bootkit(target_path, target_type="firmware"):
     """Perform UEFI bootkit persistence analysis on a firmware dump or ESP mount point."""

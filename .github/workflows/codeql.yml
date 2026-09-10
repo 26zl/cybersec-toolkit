@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [python, actions]
+        language: [python, actions, javascript-typescript]
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
@@ -50,6 +50,7 @@ jobs:
               - .agents/skills
               - tests/bats
               - tests/test_helper
+              - sandbox/node_modules
 
       - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:

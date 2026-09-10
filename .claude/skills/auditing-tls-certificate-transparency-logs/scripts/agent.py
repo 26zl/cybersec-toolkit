@@ -37,9 +37,7 @@ MAX_RETRIES = 3
 RETRY_BACKOFF = 2
 
 
-# ---------------------------------------------------------------------------
 # Database layer
-# ---------------------------------------------------------------------------
 
 def init_database(db_path: str) -> sqlite3.Connection:
     """Initialize SQLite database for certificate tracking."""
@@ -101,9 +99,7 @@ def init_database(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-# ---------------------------------------------------------------------------
 # crt.sh API interaction
-# ---------------------------------------------------------------------------
 
 def query_crtsh(domain: str, exclude_expired: bool = True, timeout: int = DEFAULT_TIMEOUT) -> list[dict]:
     """Query crt.sh JSON API for certificates matching domain pattern.
@@ -163,9 +159,7 @@ def get_certificate_detail(crtsh_id: int, timeout: int = DEFAULT_TIMEOUT) -> dic
         return None
 
 
-# ---------------------------------------------------------------------------
 # Certificate processing
-# ---------------------------------------------------------------------------
 
 def extract_subdomains_from_names(name_value: str) -> list[str]:
     """Extract individual subdomain entries from a crt.sh name_value field.
@@ -249,9 +243,7 @@ def discover_subdomains(conn: sqlite3.Connection, certs: list[dict], parent_doma
     return new_subdomains
 
 
-# ---------------------------------------------------------------------------
 # DNS resolution
-# ---------------------------------------------------------------------------
 
 def resolve_subdomain(subdomain: str, timeout: float = 5.0) -> dict:
     """Resolve a subdomain to IP addresses and CNAME targets."""
@@ -312,9 +304,7 @@ def resolve_all_subdomains(conn: sqlite3.Connection, parent_domain: str) -> list
     return results
 
 
-# ---------------------------------------------------------------------------
 # Alerting engine
-# ---------------------------------------------------------------------------
 
 def check_unauthorized_ca(conn: sqlite3.Connection, new_certs: list[dict]) -> list[dict]:
     """Check if any new certificates were issued by unauthorized CAs."""
@@ -498,9 +488,7 @@ def check_expiring_certs(conn: sqlite3.Connection, domain: str, days_warning: li
     return alerts
 
 
-# ---------------------------------------------------------------------------
 # Typosquat detection
-# ---------------------------------------------------------------------------
 
 def generate_typosquat_candidates(domain: str) -> list[str]:
     """Generate domain permutations for typosquat detection.
@@ -579,9 +567,7 @@ def scan_typosquats(domain: str, timeout: int = DEFAULT_TIMEOUT) -> list[dict]:
     return found
 
 
-# ---------------------------------------------------------------------------
 # Notification delivery
-# ---------------------------------------------------------------------------
 
 def send_email_alert(
     alerts: list[dict],
@@ -686,9 +672,7 @@ def send_webhook_alert(alerts: list[dict], webhook_url: str, timeout: int = DEFA
         return False
 
 
-# ---------------------------------------------------------------------------
 # Reporting
-# ---------------------------------------------------------------------------
 
 def generate_report(conn: sqlite3.Connection, domain: str, output_path: str = None) -> dict:
     """Generate a comprehensive CT monitoring report."""
@@ -782,9 +766,7 @@ def generate_report(conn: sqlite3.Connection, domain: str, output_path: str = No
     return report
 
 
-# ---------------------------------------------------------------------------
 # Authorized CA management
-# ---------------------------------------------------------------------------
 
 def add_authorized_ca(conn: sqlite3.Connection, ca_name: str, ca_id: int = None):
     """Add a CA to the authorized issuers list."""
@@ -810,9 +792,7 @@ def auto_populate_authorized_cas(conn: sqlite3.Connection, domain: str):
     logger.info("Auto-populated authorized CAs from baseline for %s", domain)
 
 
-# ---------------------------------------------------------------------------
 # Main monitoring loop
-# ---------------------------------------------------------------------------
 
 def run_monitor_cycle(
     conn: sqlite3.Connection,

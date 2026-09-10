@@ -29,9 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
 
 # Windows Security Event IDs relevant to honeytoken detection
 EVENT_IDS = {
@@ -87,9 +85,7 @@ SPN_SERVICE_CLASSES = [
 GPP_AES_KEY_B64 = "4e9906e8fcb66cc9faf49310620ffee8f496e806cc057990209b09a433b66c1b"
 
 
-# ===========================================================================
 # PowerShell Script Generator
-# ===========================================================================
 
 class PowerShellGenerator:
     """Generates PowerShell scripts for AD honeytoken deployment."""
@@ -510,9 +506,7 @@ if ($FailCount -eq 0) {{
 '''
 
 
-# ===========================================================================
 # SIEM Detection Rule Generator
-# ===========================================================================
 
 class SIEMRuleGenerator:
     """Generates detection rules for SIEM platforms targeting honeytoken activity."""
@@ -810,9 +804,7 @@ SecurityEvent
         return saved
 
 
-# ===========================================================================
 # AD Honeytoken Monitor (Python-based log analysis)
-# ===========================================================================
 
 class ADHoneytokenMonitor:
     """Monitors Windows Event Logs for honeytoken interactions."""
@@ -968,9 +960,7 @@ class ADHoneytokenMonitor:
         return summary
 
 
-# ===========================================================================
 # Deployment Orchestrator
-# ===========================================================================
 
 class HoneytokenDeployer:
     """Orchestrates full honeytoken deployment and generates all artifacts."""
@@ -1159,9 +1149,7 @@ class HoneytokenDeployer:
         return saved
 
 
-# ===========================================================================
 # CLI Entry Point
-# ===========================================================================
 
 def main():
     parser = argparse.ArgumentParser(
