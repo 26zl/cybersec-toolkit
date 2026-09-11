@@ -15,7 +15,7 @@
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
 
@@ -51,6 +51,43 @@ const assertKataRuntime = (name, allowUnsafe) => {
     `Runtime '${name}' is not a Kata runtime: tools would share the host kernel with no VM boundary. ` +
       'Set CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME=1 to accept that deliberately (a CI smoke test, say).',
   );
+};
+
+// Per-boot random UUID; not namespaced, so a container that shares the host
+// kernel reads the host's value, while a VM has its own.
+export const BOOT_ID_PATH = '/proc/sys/kernel/random/boot_id';
+
+const readHostBootId = () => {
+  try {
+    return readFileSync(BOOT_ID_PATH, 'utf8').trim();
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * Assert the started sandbox is a VM, not a namespace container.
+ *
+ * The runtime name is chosen by whoever configured Docker, so a non-Kata
+ * runtime registered under a kata-ish name passes the name check while sharing
+ * the host kernel. An identical boot id proves that sharing; a real VM boots
+ * its own kernel and gets its own id. Boot ids are random per boot, so a match
+ * is not coincidence. Fails closed when either id is unreadable.
+ */
+export const assertVmBoundary = (guestBootId, hostBootId, runtime) => {
+  if (!hostBootId || !guestBootId) {
+    throw new Error(
+      `Runtime '${runtime}': could not confirm a VM boundary (boot id unavailable). ` +
+        'Set CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME=1 to run without one deliberately.',
+    );
+  }
+  if (guestBootId === hostBootId) {
+    throw new Error(
+      `Runtime '${runtime}' shares the host kernel (identical boot id): no VM boundary. ` +
+        'It is named like Kata but does not isolate the guest. ' +
+        'Set CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME=1 to accept a non-VM runtime deliberately.',
+    );
+  }
 };
 
 /** Resolve the container engine, preferring an explicit choice over discovery. */
@@ -310,6 +347,29 @@ export const kata = (options = {}) => {
         }
       };
       const unregisterShutdown = registerShutdown(removeSync);
+
+      // Prove the boundary before handing the sandbox out. The name check and
+      // the warning above can be satisfied by a runtime that only calls itself
+      // Kata; this catches one that shares the host kernel. The explicit unsafe
+      // opt-in (already warned about) skips it.
+      if (!resolved.allowUnsafeRuntime) {
+        const teardownAndThrow = (error) => {
+          removeSync();
+          unregisterShutdown();
+          throw error;
+        };
+        let guestBootId;
+        try {
+          guestBootId = (await engineExec(engine, ['exec', containerName, 'cat', BOOT_ID_PATH])).trim();
+        } catch (error) {
+          teardownAndThrow(new Error(`Could not verify the sandbox is a VM: ${error.message}`));
+        }
+        try {
+          assertVmBoundary(guestBootId, readHostBootId(), runtime);
+        } catch (error) {
+          teardownAndThrow(error);
+        }
+      }
 
       return {
         worktreePath: WORKTREE_PATH,

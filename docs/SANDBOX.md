@@ -47,36 +47,53 @@ What it is not:
 | Linux host | Kata needs KVM. macOS and Windows hosts cannot run it directly; use a Linux host, a VM with nested virtualization, or `--local`. |
 | Hardware virtualization | `/dev/kvm` present. In a cloud VM this requires nested virtualization. |
 | Docker Engine or Podman | The provider drives whichever CLI is on PATH; set `CYBERSEC_SANDBOX_ENGINE` to pin one. |
-| Kata Containers 3.x | Registered as a Docker runtime (see below). |
+| Kata Containers 4.x (runtime-rs) | Registered as a Docker runtime (see below). The 3.x Go runtime still works with the older `path`-based registration. |
 | Node.js 22+ | Runs the launcher and the sandbox provider. |
+
+On a Linux host with native KVM this is the intended path. Nested virtualization
+works for Linux-on-Linux (a cloud VM with nesting enabled), but on **Apple silicon
+under Virtualization.framework** a nested Linux VM boots the Kata guest kernel yet
+does not complete a sandbox: the QEMU runtime's host→guest `AF_VSOCK` handshake to
+the agent times out, and the dragonball runtime hits a `virtio-mmio` region conflict.
+These are limitations of that nesting layer, not of Kata. On macOS, prefer `--local`
+(no VM boundary) or a remote Linux host.
 
 ## Setup
 
-1. Install Kata Containers and verify the host supports it:
+1. Install Kata Containers (a `kata-static` release tarball unpacks under
+   `/opt/kata`) and confirm the host supports KVM:
 
    ```bash
-   kata-runtime check
+   ls -l /dev/kvm
+   kata-ctl check all   # if the kata-tools package is installed
    ```
 
-2. Register Kata as a Docker runtime in `/etc/docker/daemon.json` — use the
-   path that `command -v kata-runtime` reports (`/usr/bin/kata-runtime` for
-   distro packages, `/opt/kata/bin/kata-runtime` for `kata-static`):
+2. Register Kata as a Docker runtime in `/etc/docker/daemon.json`. Since 4.0
+   the default is `runtime-rs`, a containerd shim v2 — register it with
+   `runtimeType` (the shim binary) and select a `runtime-rs` config with
+   `ConfigPath`, not the `path` field the deprecated Go runtime used:
 
    ```json
    {
      "runtimes": {
        "kata": {
-         "path": "/usr/bin/kata-runtime"
+         "runtimeType": "/opt/kata/runtime-rs/bin/containerd-shim-kata-v2",
+         "options": {
+           "ConfigPath": "/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml"
+         }
        }
      }
    }
    ```
 
-   Then restart Docker and confirm the runtime is registered:
+   Then restart Docker, confirm the runtime is registered, and prove it boots a
+   VM — the guest kernel must differ from the host's:
 
    ```bash
    sudo systemctl restart docker
    docker info --format '{{json .Runtimes}}'
+   uname -r                                              # host kernel
+   docker run --runtime kata --rm ubuntu:24.04 uname -r  # guest kernel
    ```
 
    Under Podman the runtime comes from `[engine.runtimes]` in

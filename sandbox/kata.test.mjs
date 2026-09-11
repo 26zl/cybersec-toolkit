@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   appendTail,
+  assertVmBoundary,
   buildRunArgs,
   isKataRuntime,
   resolveEngine,
@@ -46,6 +47,20 @@ test('isKataRuntime recognises the names Kata registers under', () => {
   for (const name of ['runc', 'crun', 'io.containerd.runc.v2', undefined]) {
     assert.equal(isKataRuntime(name), false, String(name));
   }
+});
+
+test('assertVmBoundary rejects a runtime that shares the host kernel', () => {
+  // A kata-named runc runtime yields a container with the host's boot id.
+  assert.throws(() => assertVmBoundary('bootid-xyz', 'bootid-xyz', 'kata-impostor'), /no VM boundary/);
+});
+
+test('assertVmBoundary accepts a guest that booted its own kernel', () => {
+  assert.doesNotThrow(() => assertVmBoundary('guest-bootid', 'host-bootid', 'kata'));
+});
+
+test('assertVmBoundary fails closed when a boot id is unreadable', () => {
+  assert.throws(() => assertVmBoundary('', 'host-bootid', 'kata'), /could not confirm a VM boundary/);
+  assert.throws(() => assertVmBoundary('guest-bootid', '', 'kata'), /could not confirm a VM boundary/);
 });
 
 test('resolveEngine prefers an explicit engine, then what is on PATH', async () => {
