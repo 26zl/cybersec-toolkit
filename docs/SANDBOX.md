@@ -109,8 +109,9 @@ These are limitations of that nesting layer, not of Kata. On macOS, prefer `--lo
    make sandbox-image
    ```
 
-   The image carries the MCP server plus a minimal tool set. To bake in a full
-   profile, pass it as a build argument:
+   The image carries a copy of the MCP server, so rebuild it after pulling
+   server changes — the VM otherwise keeps running the old code. It ships a
+   minimal tool set; to bake in a full profile, pass it as a build argument:
 
    ```bash
    docker build -f sandbox/Dockerfile --build-arg TOOLKIT_PROFILE=ctf \
