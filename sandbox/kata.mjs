@@ -247,21 +247,28 @@ const assertWorkspaceUsable = (workspace) => {
  *
  * A container that outlives its launcher keeps a VM — and any target access it
  * was granted — alive, so teardown also runs from the exit and signal paths.
+ * A signal that lands while `pending()` is still booting the VM waits for it:
+ * removing a container that does not exist yet would leave it orphaned.
  */
-const registerShutdown = (cleanup) => {
+export const registerShutdown = (cleanup, pending = () => undefined, proc = process) => {
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
   const onExit = () => cleanup();
   const onSignal = (signal) => {
-    cleanup();
-    process.exit(signal === 'SIGINT' ? 130 : 143);
+    const finish = () => {
+      cleanup();
+      proc.exit(signal === 'SIGINT' ? 130 : 143);
+    };
+    const booting = pending();
+    if (booting) booting.then(finish, finish);
+    else finish();
   };
 
-  process.on('exit', onExit);
-  for (const signal of signals) process.on(signal, onSignal);
+  proc.on('exit', onExit);
+  for (const signal of signals) proc.on(signal, onSignal);
 
   return () => {
-    process.off('exit', onExit);
-    for (const signal of signals) process.off(signal, onSignal);
+    proc.off('exit', onExit);
+    for (const signal of signals) proc.off(signal, onSignal);
   };
 };
 
@@ -288,15 +295,6 @@ export const kata = (options = {}) => {
       await assertImagePresent(resolved.image);
 
       const containerName = `cybersec-kata-${randomUUID()}`;
-      await dockerExec(
-        buildRunArgs({
-          name: containerName,
-          runtime,
-          options: resolved,
-          env: { ...options.env, ...createOptions.env },
-        }),
-      );
-
       let removed = false;
       const removeSync = () => {
         if (removed) return;
@@ -307,7 +305,27 @@ export const kata = (options = {}) => {
           // Teardown is best-effort; the label allows a manual sweep.
         }
       };
-      const unregisterShutdown = registerShutdown(removeSync);
+
+      // Registered before `docker run`, which is where the VM boots: a signal
+      // in that window must still remove it.
+      let booting;
+      const unregisterShutdown = registerShutdown(removeSync, () => booting);
+      booting = dockerExec(
+        buildRunArgs({
+          name: containerName,
+          runtime,
+          options: resolved,
+          env: { ...options.env, ...createOptions.env },
+        }),
+      );
+      try {
+        await booting;
+      } catch (error) {
+        removeSync();
+        unregisterShutdown();
+        throw error;
+      }
+      booting = undefined;
 
       // Prove the boundary before handing the sandbox out. The name check and
       // the warning above can be satisfied by a runtime that only calls itself

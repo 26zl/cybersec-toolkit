@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 
 import {
@@ -6,6 +7,7 @@ import {
   assertVmBoundary,
   buildRunArgs,
   isKataRuntime,
+  registerShutdown,
   resolveOptions,
   selectRuntime,
   WORKTREE_PATH,
@@ -149,6 +151,38 @@ test('buildRunArgs adds requested capabilities and a network only when set', () 
   const args = buildRunArgs({ name: 'sbx', runtime: 'kata', options: tuned, env: {} });
   assert.deepEqual(flagValues(args, '--cap-add'), ['NET_RAW']);
   assert.deepEqual(flagValues(args, '--network'), ['none']);
+});
+
+const fakeProcess = (calls) => Object.assign(new EventEmitter(), { exit: (code) => calls.push(`exit ${code}`) });
+
+test('registerShutdown waits for a booting VM before removing it on a signal', async () => {
+  const calls = [];
+  const proc = fakeProcess(calls);
+  let finishBoot;
+  const booting = new Promise((resolve) => {
+    finishBoot = resolve;
+  });
+  registerShutdown(() => calls.push('cleanup'), () => booting, proc);
+
+  proc.emit('SIGTERM', 'SIGTERM');
+  await new Promise(setImmediate);
+  assert.deepEqual(calls, [], 'the container may not exist yet, so nothing is removed');
+
+  finishBoot();
+  await new Promise(setImmediate);
+  assert.deepEqual(calls, ['cleanup', 'exit 143']);
+});
+
+test('registerShutdown tears down at once when nothing is booting, and unregisters cleanly', () => {
+  const calls = [];
+  const proc = fakeProcess(calls);
+  const unregister = registerShutdown(() => calls.push('cleanup'), undefined, proc);
+
+  proc.emit('SIGINT', 'SIGINT');
+  assert.deepEqual(calls, ['cleanup', 'exit 130']);
+
+  unregister();
+  assert.equal(proc.listenerCount('SIGTERM') + proc.listenerCount('exit'), 0);
 });
 
 test('appendTail keeps the trailing window of streamed output', () => {
