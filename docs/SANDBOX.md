@@ -60,10 +60,13 @@ These are limitations of that nesting layer, not of Kata. On macOS, prefer `--lo
 
 ## Setup
 
-1. Install Kata Containers (a `kata-static` release tarball unpacks under
-   `/opt/kata`) and confirm the host supports KVM:
+1. Install Kata Containers from a `kata-static` release tarball, checking it
+   against the SHA256 digest on the release page, and confirm the host
+   supports KVM. Extracting in place gives the files their default SELinux
+   labels; if you unpack elsewhere and move them, run `restorecon -R /opt/kata`:
 
    ```bash
+   sudo tar --zstd -xf kata-static-<version>-amd64.tar.zst -C /   # → /opt/kata
    ls -l /dev/kvm
    kata-ctl check all   # if the kata-tools package is installed
    ```
