@@ -29,7 +29,9 @@ except ImportError:
     CensysCerts = None
 
 
+# --------------------------------------------------------------------------- #
 #  Port risk weights based on OWASP attack surface analysis methodology
+# --------------------------------------------------------------------------- #
 PORT_RISK_WEIGHTS = {
     # Management / remote access (highest risk)
     22: 8.0,    # SSH

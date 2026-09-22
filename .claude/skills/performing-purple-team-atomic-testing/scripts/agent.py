@@ -33,7 +33,9 @@ except ImportError:
     HAS_YAML = False
 
 
+# ---------------------------------------------------------------------------
 # MITRE ATT&CK Tactic Metadata
+# ---------------------------------------------------------------------------
 
 TACTIC_ORDER = [
     "reconnaissance",
@@ -121,7 +123,9 @@ TOP_TECHNIQUES_BY_TACTIC = {
 }
 
 
+# ---------------------------------------------------------------------------
 # Atomics Parsing
+# ---------------------------------------------------------------------------
 
 def load_atomics_inventory(atomics_path):
     """Parse all Atomic Red Team YAML files into a technique inventory."""
@@ -273,7 +277,9 @@ def load_detection_results(detection_file):
     return detections
 
 
+# ---------------------------------------------------------------------------
 # Coverage Analysis
+# ---------------------------------------------------------------------------
 
 def compute_coverage_report(inventory, execution_logs, detection_results):
     """Generate a comprehensive coverage gap analysis report."""
@@ -423,7 +429,9 @@ def compute_coverage_report(inventory, execution_logs, detection_results):
     return report
 
 
+# ---------------------------------------------------------------------------
 # ATT&CK Navigator Layer Generation
+# ---------------------------------------------------------------------------
 
 def generate_navigator_layer(inventory, execution_logs, detection_results,
                              layer_name="Purple Team Coverage"):
@@ -527,7 +535,9 @@ def generate_navigator_layer(inventory, execution_logs, detection_results,
     return layer
 
 
+# ---------------------------------------------------------------------------
 # Sigma Rule Suggestion
+# ---------------------------------------------------------------------------
 
 SIGMA_TEMPLATES = {
     "T1059.001": {
@@ -641,7 +651,9 @@ def suggest_sigma_rules(blind_spots):
     return suggestions
 
 
+# ---------------------------------------------------------------------------
 # Reporting
+# ---------------------------------------------------------------------------
 
 def print_coverage_report(report):
     """Print formatted coverage report to stdout."""
@@ -779,7 +791,9 @@ def generate_powershell_test_script(blind_spots, output_path):
     return output_path
 
 
+# ---------------------------------------------------------------------------
 # Main
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(

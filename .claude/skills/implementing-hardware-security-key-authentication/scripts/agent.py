@@ -43,7 +43,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
 # Database layer
+# ---------------------------------------------------------------------------
 
 def init_database(db_path: str) -> sqlite3.Connection:
     """Initialize SQLite database for credential and user storage."""
@@ -106,7 +108,9 @@ def init_database(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+# ---------------------------------------------------------------------------
 # User management
+# ---------------------------------------------------------------------------
 
 def create_user(conn: sqlite3.Connection, username: str, display_name: str) -> dict:
     """Create a new user with a random user handle."""
@@ -166,7 +170,9 @@ def get_user_by_handle(conn: sqlite3.Connection, user_handle: bytes) -> dict | N
     }
 
 
+# ---------------------------------------------------------------------------
 # Credential management
+# ---------------------------------------------------------------------------
 
 def store_credential(
     conn: sqlite3.Connection,
@@ -264,7 +270,9 @@ def update_sign_count(conn: sqlite3.Connection, credential_id: bytes, new_count:
     conn.commit()
 
 
+# ---------------------------------------------------------------------------
 # Recovery codes
+# ---------------------------------------------------------------------------
 
 def generate_recovery_codes(conn: sqlite3.Connection, user_id: int, count: int = 8) -> list[str]:
     """Generate one-time recovery codes for account recovery."""
@@ -298,7 +306,9 @@ def verify_recovery_code(conn: sqlite3.Connection, user_id: int, code: str) -> b
     return True
 
 
+# ---------------------------------------------------------------------------
 # Auth event logging
+# ---------------------------------------------------------------------------
 
 def log_auth_event(
     conn: sqlite3.Connection,
@@ -321,7 +331,9 @@ def log_auth_event(
     conn.commit()
 
 
+# ---------------------------------------------------------------------------
 # Credential data helpers for python-fido2
+# ---------------------------------------------------------------------------
 
 def build_credential_descriptors(creds: list[dict]) -> list:
     """Build PublicKeyCredentialDescriptor list from stored credentials."""
@@ -354,7 +366,9 @@ def reconstruct_credential_data(creds: list[dict]):
     return result
 
 
+# ---------------------------------------------------------------------------
 # Flask application factory
+# ---------------------------------------------------------------------------
 
 INDEX_HTML = """<!DOCTYPE html>
 <html>
@@ -925,7 +939,9 @@ def create_app(
     return app
 
 
+# ---------------------------------------------------------------------------
 # CLI entry point
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(

@@ -25,7 +25,9 @@ DISCLAIMER = """
 """
 
 
+# ---------------------------------------------------------------------------
 # Entropy Analysis
+# ---------------------------------------------------------------------------
 
 def calculate_entropy(data):
     """Calculate Shannon entropy of a byte sequence (0.0 = uniform, 8.0 = max random)."""
@@ -98,7 +100,9 @@ def detect_entropy_regions(entropy_data, threshold_high=7.0, threshold_low=1.0):
     return regions
 
 
+# ---------------------------------------------------------------------------
 # Firmware Header Parsing
+# ---------------------------------------------------------------------------
 
 MAGIC_SIGNATURES = {
     b"\x27\x05\x19\x56": "U-Boot image header (uImage)",
@@ -197,7 +201,9 @@ def parse_uboot_header(file_path, offset=0):
     }
 
 
+# ---------------------------------------------------------------------------
 # String Analysis
+# ---------------------------------------------------------------------------
 
 SENSITIVE_PATTERNS = [
     (re.compile(rb"password\s*[:=]\s*\S+", re.IGNORECASE), "Hardcoded password"),
@@ -237,7 +243,9 @@ def scan_strings(file_path, min_length=8):
     return findings
 
 
+# ---------------------------------------------------------------------------
 # Binwalk Subprocess Interface
+# ---------------------------------------------------------------------------
 
 def run_binwalk_scan(firmware_path):
     """Run binwalk signature scan via subprocess and return parsed output."""
@@ -284,7 +292,9 @@ def run_binwalk_entropy(firmware_path):
         return {"stdout": "", "stderr": "binwalk entropy analysis timed out", "rc": -2}
 
 
+# ---------------------------------------------------------------------------
 # Firmware Metadata
+# ---------------------------------------------------------------------------
 
 def get_firmware_metadata(file_path):
     """Compute basic metadata for a firmware image file."""
@@ -309,7 +319,9 @@ def get_firmware_metadata(file_path):
     }
 
 
+# ---------------------------------------------------------------------------
 # Main Entry Point
+# ---------------------------------------------------------------------------
 
 def analyze_firmware(firmware_path):
     """Perform a complete firmware analysis pipeline."""
