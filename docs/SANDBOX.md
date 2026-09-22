@@ -46,8 +46,8 @@ What it is not:
 | ----------- | ----- |
 | Linux host | Kata needs KVM. macOS and Windows hosts cannot run it directly; use a Linux host, a VM with nested virtualization, or `--local`. |
 | Hardware virtualization | `/dev/kvm` present. In a cloud VM this requires nested virtualization. |
-| Docker Engine or Podman | The provider drives whichever CLI is on PATH; set `CYBERSEC_SANDBOX_ENGINE` to pin one. |
-| Kata Containers 4.x (runtime-rs) | Registered as a Docker runtime (see below). The 3.x Go runtime still works with the older `path`-based registration. |
+| Docker Engine 23+ | Kata 2.x and later ship only a containerd shim v2, which Docker registers through `runtimeType`. Podman cannot run it: Podman drives OCI CLI runtimes. The launcher's user needs access to the Docker daemon, which is root-equivalent on the host. |
+| Kata Containers 4.x (runtime-rs) | Registered as a Docker runtime (see below). The deprecated Go runtime (`kata-go-static`) also works. |
 | Node.js 22+ | Runs the launcher and the sandbox provider. |
 
 On a Linux host with native KVM this is the intended path. Nested virtualization
@@ -96,10 +96,9 @@ These are limitations of that nesting layer, not of Kata. On macOS, prefer `--lo
    docker run --runtime kata --rm ubuntu:24.04 uname -r  # guest kernel
    ```
 
-   Under Podman the runtime comes from `[engine.runtimes]` in
-   `containers.conf`, and Podman does not list it back, so name it explicitly
-   with `CYBERSEC_SANDBOX_RUNTIME=kata`. Rootless Podman additionally needs the
-   image's uid (10001) to fall inside your `/etc/subuid` range.
+   The deprecated Go runtime from a `kata-go-static` tarball registers the
+   same way, with `"runtimeType": "/opt/kata/bin/containerd-shim-kata-v2"` and
+   no `options`.
 
 3. Build the sandbox image from the repository root:
 
@@ -159,8 +158,7 @@ to `kata()`.
 | -------- | ------- | ------- |
 | `CYBERSEC_SANDBOX_MODE` | `kata` | `kata` or `local`. Read by the launcher. |
 | `CYBERSEC_SANDBOX_IMAGE` | `cybersec-toolkit-sandbox:latest` | Image to boot. |
-| `CYBERSEC_SANDBOX_ENGINE` | first of docker, podman on PATH | `docker` or `podman`. |
-| `CYBERSEC_SANDBOX_RUNTIME` | auto-detected (docker) | Pin a runtime name. Required under Podman, which does not advertise its configured runtimes. |
+| `CYBERSEC_SANDBOX_RUNTIME` | auto-detected | Pin a runtime name registered with Docker. |
 | `CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME` | `0` | `1` accepts a non-Kata runtime. Startup refuses one otherwise, and warns loudly when accepted: there is no VM boundary. |
 | `CYBERSEC_SANDBOX_NETWORK` | Docker default bridge | `none` for an offline VM, or a named Docker network. |
 | `CYBERSEC_SANDBOX_WORKSPACE` | unset | Absolute host directory to mount at `/workspace`. The only host path the VM can see. |
@@ -245,6 +243,8 @@ at runtime:
   image was built with a profile that populates it, so
   `run_script(venv="crypto")` needs `--build-arg TOOLKIT_PROFILE=ctf` or a
   derived image.
+- Remote execution (`manage_remote_hosts`) does not work from the VM: it has no
+  SSH client, no keys, and no persistent host list. Use `--local` for it.
 - Audit records leave the VM automatically; see [Audit trail](#audit-trail).
 
 ## Audit trail

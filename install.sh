@@ -249,7 +249,7 @@ run_doctor() {
     fi
 
     # The MCP server launches inside a Kata VM by default; --local is the opt-out.
-    local _sandbox_detail
+    local _sandbox_detail _docker_runtimes
     if [[ ! -f "$SCRIPT_DIR/sandbox/mcp.mjs" ]]; then
         _sandbox_detail="sandbox/ not present in this checkout"
     elif ! command_exists node; then
@@ -258,7 +258,9 @@ run_doctor() {
         _sandbox_detail="run: npm --prefix sandbox ci --ignore-scripts"
     elif ! command_exists docker; then
         _sandbox_detail="install Docker + Kata Containers — docs/SANDBOX.md"
-    elif ! docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -qi kata; then
+    elif ! _docker_runtimes=$(docker info --format '{{json .Runtimes}}' 2>/dev/null); then
+        _sandbox_detail="Docker daemon unreachable (not running, or no socket access) — docs/SANDBOX.md"
+    elif ! grep -qi kata <<<"$_docker_runtimes"; then
         _sandbox_detail="no Kata runtime registered — mcp-launch.sh --local runs on the host"
     else
         _sandbox_detail=""

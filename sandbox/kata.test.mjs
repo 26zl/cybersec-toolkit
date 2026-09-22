@@ -6,9 +6,7 @@ import {
   assertVmBoundary,
   buildRunArgs,
   isKataRuntime,
-  resolveEngine,
   resolveOptions,
-  selectPodmanRuntime,
   selectRuntime,
   WORKTREE_PATH,
 } from './kata.mjs';
@@ -61,24 +59,6 @@ test('assertVmBoundary accepts a guest that booted its own kernel', () => {
 test('assertVmBoundary fails closed when a boot id is unreadable', () => {
   assert.throws(() => assertVmBoundary('', 'host-bootid', 'kata'), /could not confirm a VM boundary/);
   assert.throws(() => assertVmBoundary('guest-bootid', '', 'kata'), /could not confirm a VM boundary/);
-});
-
-test('resolveEngine prefers an explicit engine, then what is on PATH', async () => {
-  const onPath = (present) => async (name) => present.includes(name);
-
-  assert.equal(await resolveEngine('podman', onPath(['docker', 'podman'])), 'podman');
-  assert.equal(await resolveEngine(undefined, onPath(['podman'])), 'podman');
-  assert.equal(await resolveEngine(undefined, onPath(['docker', 'podman'])), 'docker');
-  await assert.rejects(() => resolveEngine('nerdctl', onPath(['nerdctl'])), /Unknown container engine/);
-  await assert.rejects(() => resolveEngine('docker', onPath(['podman'])), /not found on PATH/);
-  await assert.rejects(() => resolveEngine(undefined, onPath([])), /Neither docker nor podman/);
-});
-
-test('selectPodmanRuntime needs an explicit Kata runtime name', () => {
-  assert.throws(() => selectPodmanRuntime(undefined), /set CYBERSEC_SANDBOX_RUNTIME/);
-  assert.throws(() => selectPodmanRuntime('crun'), /not a Kata runtime/);
-  assert.equal(selectPodmanRuntime('kata'), 'kata');
-  assert.equal(selectPodmanRuntime('crun', { allowUnsafe: true }), 'crun');
 });
 
 test('resolveOptions keeps the unsafe-runtime opt-in off unless set to 1', () => {

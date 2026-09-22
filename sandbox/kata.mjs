@@ -2,9 +2,10 @@
  * kata.mjs — Kata Containers sandbox provider for Sandcastle.
  *
  * Sandcastle's bundled Docker provider cannot select an alternative OCI runtime,
- * so its containers share the host kernel. This provider drives the docker or
- * podman CLI but pins a Kata runtime, which puts a hardware-virtualized
- * boundary between security tooling and the host.
+ * so its containers share the host kernel. This provider drives the docker CLI
+ * but pins a Kata runtime, which puts a hardware-virtualized boundary between
+ * security tooling and the host. Podman cannot host Kata 2.x+: Kata ships only
+ * a containerd shim v2, and Podman drives OCI CLI runtimes.
  *
  * The returned provider satisfies Sandcastle's isolated-provider contract, so it
  * can be handed to run()/createSandbox() for agent orchestration or driven
@@ -40,8 +41,6 @@ const asString = (value) => (value === undefined || value === null ? undefined :
 
 /** Whether a runtime name denotes Kata, i.e. an actual VM boundary. */
 export const isKataRuntime = (name) => /kata/i.test(name ?? '');
-
-export const ENGINES = ['docker', 'podman'];
 
 const assertKataRuntime = (name, allowUnsafe) => {
   // A non-Kata runtime is a namespace container sharing the host kernel — the
@@ -90,35 +89,6 @@ export const assertVmBoundary = (guestBootId, hostBootId, runtime) => {
   }
 };
 
-/** Resolve the container engine, preferring an explicit choice over discovery. */
-export const resolveEngine = async (configured, onPath = binaryOnPath) => {
-  if (configured) {
-    if (!ENGINES.includes(configured)) {
-      throw new Error(`Unknown container engine '${configured}' (expected: ${ENGINES.join(' or ')}).`);
-    }
-    if (!(await onPath(configured))) throw new Error(`${configured} not found on PATH; see docs/SANDBOX.md.`);
-    return configured;
-  }
-  for (const candidate of ENGINES) {
-    if (await onPath(candidate)) return candidate;
-  }
-  throw new Error(`Neither ${ENGINES.join(' nor ')} found on PATH; see docs/SANDBOX.md.`);
-};
-
-/**
- * Pick the runtime for podman, which does not advertise its configured
- * runtimes the way `docker info` does, so the name has to be given.
- */
-export const selectPodmanRuntime = (requested, { allowUnsafe = false } = {}) => {
-  if (!requested) {
-    throw new Error(
-      'Podman does not advertise its configured runtimes; set CYBERSEC_SANDBOX_RUNTIME ' +
-        '(the name from containers.conf, usually "kata"). See docs/SANDBOX.md.',
-    );
-  }
-  return assertKataRuntime(requested, allowUnsafe);
-};
-
 const parseCapabilities = (raw) => {
   if (raw === undefined) return [];
   const caps = (Array.isArray(raw) ? raw : String(raw).split(',')).map((c) => c.trim()).filter(Boolean);
@@ -149,7 +119,6 @@ export const resolveOptions = (options = {}, env = process.env) => {
     pidsLimit: pick(options.pidsLimit, 'CYBERSEC_SANDBOX_PIDS_LIMIT') ?? DEFAULT_PIDS_LIMIT,
     capAdd: parseCapabilities(options.capAdd ?? env.CYBERSEC_SANDBOX_CAP_ADD),
     allowUnsafeRuntime: (pick(options.allowUnsafeRuntime, 'CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME') ?? '0') === '1',
-    engine: pick(options.engine, 'CYBERSEC_SANDBOX_ENGINE'),
     workspace,
     workspaceReadonly: (pick(options.workspaceReadonly, 'CYBERSEC_SANDBOX_WORKSPACE_RO') ?? '0') === '1',
   };
@@ -230,28 +199,23 @@ export const appendTail = (tail, chunk, limit = MAX_TAIL_CHARS) => {
   return next.length > limit ? next.slice(next.length - limit) : next;
 };
 
-const binaryOnPath = (name) =>
-  new Promise((resolve) => {
-    execFile(name, ['--version'], (error) => resolve(!error || error.code !== 'ENOENT'));
-  });
-
-const engineExec = (engine, args, { maxBuffer = 10 * 1024 * 1024 } = {}) =>
+const dockerExec = (args, { maxBuffer = 10 * 1024 * 1024 } = {}) =>
   new Promise((resolve, reject) => {
-    execFile(engine, args, { maxBuffer }, (error, stdout, stderr) => {
+    execFile('docker', args, { maxBuffer }, (error, stdout, stderr) => {
       if (!error) {
         resolve(stdout.toString());
         return;
       }
       if (error.code === 'ENOENT') {
-        reject(new Error(`${engine} CLI not found on PATH; see docs/SANDBOX.md for host prerequisites.`));
+        reject(new Error('docker CLI not found on PATH; see docs/SANDBOX.md for host prerequisites.'));
         return;
       }
-      reject(new Error(`${engine} ${args[0]} failed: ${stderr?.toString().trim() || error.message}`));
+      reject(new Error(`docker ${args[0]} failed: ${stderr?.toString().trim() || error.message}`));
     });
   });
 
-const readRuntimes = async (engine) => {
-  const raw = await engineExec(engine, ['info', '--format', '{{json .Runtimes}}']);
+const readRuntimes = async () => {
+  const raw = await dockerExec(['info', '--format', '{{json .Runtimes}}']);
   try {
     return JSON.parse(raw.trim() || '{}');
   } catch {
@@ -259,9 +223,9 @@ const readRuntimes = async (engine) => {
   }
 };
 
-const assertImagePresent = async (engine, image) => {
+const assertImagePresent = async (image) => {
   try {
-    await engineExec(engine, ['image', 'inspect', image, '--format', '{{.Id}}']);
+    await dockerExec(['image', 'inspect', image, '--format', '{{.Id}}']);
   } catch {
     throw new Error(`Sandbox image '${image}' not found. Build it with: ${BUILD_HINT}`);
   }
@@ -315,19 +279,16 @@ export const kata = (options = {}) => {
     env: options.env,
     create: async (createOptions) => {
       assertWorkspaceUsable(resolved.workspace);
-      const engine = await resolveEngine(resolved.engine);
-      const runtime =
-        engine === 'podman'
-          ? selectPodmanRuntime(resolved.runtime, { allowUnsafe: resolved.allowUnsafeRuntime })
-          : selectRuntime(await readRuntimes(engine), resolved.runtime, { allowUnsafe: resolved.allowUnsafeRuntime });
+      const runtime = selectRuntime(await readRuntimes(), resolved.runtime, {
+        allowUnsafe: resolved.allowUnsafeRuntime,
+      });
       if (!isKataRuntime(runtime)) {
         process.stderr.write(`WARNING: sandbox runtime '${runtime}' is not Kata — tools share the host kernel.\n`);
       }
-      await assertImagePresent(engine, resolved.image);
+      await assertImagePresent(resolved.image);
 
       const containerName = `cybersec-kata-${randomUUID()}`;
-      await engineExec(
-        engine,
+      await dockerExec(
         buildRunArgs({
           name: containerName,
           runtime,
@@ -341,7 +302,7 @@ export const kata = (options = {}) => {
         if (removed) return;
         removed = true;
         try {
-          execFileSync(engine, ['rm', '--force', containerName], { stdio: 'ignore' });
+          execFileSync('docker', ['rm', '--force', containerName], { stdio: 'ignore' });
         } catch {
           // Teardown is best-effort; the label allows a manual sweep.
         }
@@ -360,7 +321,7 @@ export const kata = (options = {}) => {
         };
         let guestBootId;
         try {
-          guestBootId = (await engineExec(engine, ['exec', containerName, 'cat', BOOT_ID_PATH])).trim();
+          guestBootId = (await dockerExec(['exec', containerName, 'cat', BOOT_ID_PATH])).trim();
         } catch (error) {
           teardownAndThrow(new Error(`Could not verify the sandbox is a VM: ${error.message}`));
         }
@@ -383,10 +344,10 @@ export const kata = (options = {}) => {
             if (opts.cwd) args.push('--workdir', opts.cwd);
             args.push(containerName, 'sh', '-c', command);
 
-            const child = spawn(engine, args, {
+            const child = spawn('docker', args, {
               stdio: [opts.stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
             });
-            child.on('error', (error) => reject(new Error(`${engine} exec failed: ${error.message}`)));
+            child.on('error', (error) => reject(new Error(`docker exec failed: ${error.message}`)));
             if (opts.stdin !== undefined) {
               child.stdin.write(opts.stdin);
               child.stdin.end();
@@ -421,20 +382,20 @@ export const kata = (options = {}) => {
             // A stream without a file descriptor (an audit tee, say) cannot be
             // handed to spawn; pipe that one and keep the rest on direct fds.
             const stderrHasFd = typeof opts.stderr?.fd === 'number';
-            const child = spawn(engine, execArgs, {
+            const child = spawn('docker', execArgs, {
               stdio: [opts.stdin, opts.stdout, stderrHasFd ? opts.stderr : 'pipe'],
             });
             if (!stderrHasFd) child.stderr.pipe(opts.stderr);
-            child.on('error', (error) => reject(new Error(`${engine} exec failed: ${error.message}`)));
+            child.on('error', (error) => reject(new Error(`docker exec failed: ${error.message}`)));
             child.on('close', (code) => resolve({ exitCode: code ?? 0 }));
           }),
 
         copyIn: async (hostPath, sandboxPath) => {
-          await engineExec(engine, ['cp', hostPath, `${containerName}:${sandboxPath}`]);
+          await dockerExec(['cp', hostPath, `${containerName}:${sandboxPath}`]);
         },
 
         copyFileOut: async (sandboxPath, hostPath) => {
-          await engineExec(engine, ['cp', `${containerName}:${sandboxPath}`, hostPath]);
+          await dockerExec(['cp', `${containerName}:${sandboxPath}`, hostPath]);
         },
 
         close: async () => {

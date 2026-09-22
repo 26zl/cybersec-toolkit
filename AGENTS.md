@@ -239,8 +239,7 @@ such as `curl` remain normal `run_tool` calls.
   the host with no VM boundary
 - `CYBERSEC_SANDBOX_WORKSPACE` — absolute host directory mounted at `/workspace` in
   the VM; the only host path the sandbox can reach
-- `CYBERSEC_SANDBOX_ENGINE` — `docker` or `podman`; defaults to whichever is on PATH.
-  Remaining `CYBERSEC_SANDBOX_*` knobs, including the deliberate non-Kata runtime
+- Remaining `CYBERSEC_SANDBOX_*` knobs, including the deliberate non-Kata runtime
   opt-in, are documented in [`docs/SANDBOX.md`](docs/SANDBOX.md)
 
 ## Architecture
