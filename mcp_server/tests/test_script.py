@@ -44,7 +44,6 @@ def _patch_exec(proc: AsyncMock):
     return patch("asyncio.create_subprocess_exec", side_effect=_fake_exec)
 
 
-# Env gate
 class TestScriptEnvGate:
     @pytest.mark.asyncio
     async def test_scripts_disabled_returns_error(self) -> None:
@@ -71,7 +70,6 @@ class TestScriptEnvGate:
         mock_log.assert_not_called()
 
 
-# Language validation
 class TestScriptLanguageValidation:
     @pytest.mark.asyncio
     async def test_ruby_rejected(self) -> None:
@@ -115,7 +113,6 @@ class TestScriptLanguageValidation:
         assert result["language"] == "python"
 
 
-# Empty code
 class TestScriptEmptyCode:
     @pytest.mark.asyncio
     async def test_empty_string(self) -> None:
@@ -132,7 +129,6 @@ class TestScriptEmptyCode:
         assert "empty" in result["stderr"].lower()
 
 
-# Script execution
 class TestScriptExecution:
     @pytest.mark.asyncio
     async def test_python_success(self) -> None:
@@ -205,7 +201,6 @@ class TestScriptExecution:
         assert result["exit_code"] == 0
 
 
-# Output handling
 class TestScriptOutputHandling:
     @pytest.mark.asyncio
     async def test_stdout_truncation(self) -> None:
@@ -252,7 +247,6 @@ class TestScriptOutputHandling:
         assert "hello" in result["stdout"]
 
 
-# Rate limiter
 class TestScriptRateLimiter:
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded(self) -> None:
@@ -272,7 +266,6 @@ class TestScriptRateLimiter:
         assert "Rate limit" in result["stderr"]
 
 
-# Audit logging
 class TestScriptAuditLogging:
     @pytest.mark.asyncio
     async def test_script_content_logged_before_execution(self) -> None:
@@ -303,7 +296,6 @@ class TestScriptAuditLogging:
         assert args[0][1] == 0  # exit_code
 
 
-# Working directory
 class TestScriptWorkingDir:
     @pytest.mark.asyncio
     async def test_default_tempdir(self) -> None:
@@ -333,7 +325,6 @@ class TestScriptWorkingDir:
         assert "does not exist" in result["stderr"]
 
 
-# Interpreter not found
 class TestScriptInterpreterNotFound:
     @pytest.mark.asyncio
     async def test_python_uses_sys_executable(self) -> None:
@@ -383,7 +374,6 @@ class TestScriptPythonInterpreter:
         assert mock_exec.call_args.kwargs["stdin"] == asyncio.subprocess.DEVNULL
 
 
-# Temp file cleanup
 class TestScriptTempFileCleanup:
     @pytest.mark.asyncio
     async def test_temp_file_deleted_after_success(self) -> None:
@@ -406,7 +396,6 @@ class TestScriptTempFileCleanup:
         assert not os.path.exists(result["script_file"])
 
 
-# Error handling
 class TestScriptErrors:
     @pytest.mark.asyncio
     async def test_file_not_found_error(self) -> None:
@@ -429,7 +418,6 @@ class TestScriptErrors:
         assert "permission denied" in result["stderr"].lower()
 
 
-# _resolve_venv_interpreter
 class TestResolveVenvInterpreter:
     def test_valid_venv(self, tmp_path) -> None:
         venv_dir = tmp_path / "myvenv" / "bin"
@@ -482,7 +470,6 @@ class TestResolveVenvInterpreter:
             assert _resolve_venv_interpreter("foo/bar") is None
 
 
-# Venv parameter on execute_script
 class TestScriptVenvParam:
     @pytest.mark.asyncio
     async def test_valid_venv_used(self, tmp_path) -> None:
@@ -537,7 +524,7 @@ class TestScriptVenvParam:
 
     @pytest.mark.asyncio
     async def test_venv_none_uses_sys_executable(self) -> None:
-        """venv=None falls back to sys.executable (existing behaviour)."""
+        """venv=None falls back to sys.executable."""
         proc = _make_proc(b"ok\n")
         with (
             patch("mcp_server.security._allow_scripts", return_value=True),

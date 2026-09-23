@@ -69,14 +69,12 @@ install_module_pwn() {
     install_gem_batch "Pwn - Ruby" "${PWN_GEMS[@]}"
     install_git_batch "Pwn - Git" "${PWN_GIT[@]}"
 
-    # Rust tools
     install_cargo_batch "Pwn - Rust" "${PWN_CARGO[@]}" || true
 
     # Build from source (url + command from PWN_BUILD_URLS / PWN_BUILD_CMDS)
     log_info "Building pwn tools from source..."
     build_module_from_source PWN
 
-    # Searchsploit symlink
     install_searchsploit_symlink
 
     # Metasploit (Linux only — Rapid7 installer requires root/apt)

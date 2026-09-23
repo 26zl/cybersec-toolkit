@@ -245,14 +245,19 @@ def get_audit_logger() -> logging.Logger:
     _logger.propagate = False
 
     try:
-        _AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        try:
-            os.chmod(_AUDIT_LOG_PATH.parent, 0o700)
-        except OSError:
-            pass
+        parent = _AUDIT_LOG_PATH.parent
+        created = not parent.exists()
+        parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # A configured log may live in a shared directory such as $HOME; tighten only
+        # a directory this logger created or the default state directory.
+        if created or not os.environ.get("CYBERSEC_MCP_AUDIT_LOG", "").strip():
+            try:
+                os.chmod(parent, 0o700)
+            except OSError:
+                pass
         handler: logging.Handler = _SecureRotatingFileHandler(
             _AUDIT_LOG_PATH,
-            maxBytes=5 * 1024 * 1024,  # 5 MB
+            maxBytes=5 * 1024 * 1024,
             backupCount=3,
             encoding="utf-8",
         )
@@ -306,7 +311,8 @@ def _log(level: int, entry: dict[str, Any]) -> None:
             entry["chain"] = _chain_id
             entry["seq"] = _chain_seq
             entry["prev"] = _chain_prev
-            line = json.dumps(entry, ensure_ascii=False)
+            # ASCII escapes: a lone surrogate from client input cannot be UTF-8 encoded.
+            line = json.dumps(entry)
             _chain_prev = chain_link(entry["prev"], line)
             get_audit_logger().log(level, line)
     except OSError:
@@ -316,9 +322,6 @@ def _log(level: int, entry: dict[str, Any]) -> None:
 def _ts() -> str:
     """ISO 8601 UTC timestamp."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
-# Server lifecycle
 
 
 def log_server_start() -> None:
@@ -420,9 +423,6 @@ def log_tool_result(
     if summary:
         entry["summary"] = _redact_script_code(summary)
     _log(logging.INFO, entry)
-
-
-# Validation steps (granular)
 
 
 def log_validation(
@@ -629,9 +629,6 @@ def log_pipeline_result(
     )
 
 
-# Rate limiting
-
-
 def log_rate_limit(action: str, current: int, max_val: int) -> None:
     """Log rate limiter events (acquire, exceeded)."""
     _log(
@@ -644,9 +641,6 @@ def log_rate_limit(action: str, current: int, max_val: int) -> None:
             "max": max_val,
         },
     )
-
-
-# DNS resolution
 
 
 def log_dns(

@@ -222,6 +222,14 @@ echo ""
 if [[ "$SKIP_GIT" == "false" ]]; then
     log_info "Updating GitHub repositories in $GITHUB_TOOL_DIR..."
     if [[ -d "$GITHUB_TOOL_DIR" ]]; then
+        # Only repos this toolkit clones are touched: a hard reset on an unrelated
+        # repo under $GITHUB_TOOL_DIR would drop the owner's unpushed commits.
+        declare -A _TOOLKIT_GIT_NAMES=()
+        _upd_git_names=(); _collect_module_arrays "GIT_NAMES" _upd_git_names
+        _collect_module_arrays "C2_GIT_NAMES" _upd_git_names
+        _collect_module_arrays "BUILD_NAMES" _upd_git_names
+        for _gn in "${_upd_git_names[@]}"; do _TOOLKIT_GIT_NAMES["$_gn"]=1; done
+
         GIT_TOTAL=0
         GIT_UPDATED=0
         GIT_SKIPPED=0
@@ -229,6 +237,15 @@ if [[ "$SKIP_GIT" == "false" ]]; then
         for dir in "$GITHUB_TOOL_DIR"/*/; do
             [[ -d "$dir/.git" ]] || continue
             name="$(basename "$dir")"
+            # Skip repos the toolkit did not clone, and ones present beforehand.
+            if [[ -z "${_TOOLKIT_GIT_NAMES[$name]:-}" ]] && ! _version_known "$name"; then
+                log_debug "Skipping $name (not a toolkit repo)"
+                continue
+            fi
+            if _is_preexisting "$name"; then
+                log_debug "Skipping $name (present before install)"
+                continue
+            fi
             GIT_TOTAL=$((GIT_TOTAL + 1))
 
             pull_output=""
@@ -271,6 +288,7 @@ if [[ "$SKIP_GIT" == "false" ]]; then
             fi
         done
         log_success "Git repos: $GIT_UPDATED updated, $GIT_SKIPPED already latest, $GIT_FAILED failed ($GIT_TOTAL total)"
+        UPDATE_FAILURES=$((UPDATE_FAILURES + GIT_FAILED))
     else
         log_warn "$GITHUB_TOOL_DIR not found — skipping"
     fi
@@ -693,7 +711,7 @@ if [[ "$BUILD_UPDATED" -gt 0 || "$BUILD_FAILED" -gt 0 || "$BUILD_SKIPPED" -gt 0 
 fi
 echo ""
 
-# 10) npm packages
+# 11) npm packages
 if command_exists npm; then
     ALL_NPM=()
     _collect_module_arrays "NPM" ALL_NPM
@@ -743,7 +761,6 @@ _print_completion_banner "$START_TIME" "$UPDATE_FAILURES" \
 log_info "Log file: $LOG_FILE"
 log_info "Run ./scripts/verify.sh to confirm all tools are working"
 
-# Clean up GitHub API cache
 _gh_api_cache_cleanup 2>/dev/null || true
 
 [[ "$UPDATE_FAILURES" -gt 0 ]] && exit 1

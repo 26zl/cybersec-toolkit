@@ -18,7 +18,6 @@ from mcp_server.profiles import (
 from mcp_server.tools_db import C2_TOOLS, ToolsDatabase
 
 
-# _score_profiles
 class TestScoreProfiles:
     def test_ctf_keyword(self) -> None:
         scores = _score_profiles("I'm doing a CTF competition")
@@ -50,7 +49,6 @@ class TestScoreProfiles:
             assert name in scores
 
 
-# recommend_install
 class TestRecommendInstall:
     def test_empty_task(self, tools_db: ToolsDatabase) -> None:
         result = recommend_install("", tools_db)
@@ -89,7 +87,6 @@ class TestRecommendInstall:
         assert "available_profiles" in result
 
 
-# _match_individual_tools word-boundary matching
 class TestMatchIndividualTools:
     def _db(self, tmp_path: Path) -> ToolsDatabase:
         """ToolsDatabase with a short tool name, an English-word tool, and a normal one."""
@@ -128,7 +125,6 @@ class TestMatchIndividualTools:
         assert "crunch" in names
 
 
-# list_profiles
 class TestListProfiles:
     def test_returns_all_profiles(self, tools_db: ToolsDatabase) -> None:
         result = list_profiles(tools_db)
@@ -157,7 +153,6 @@ class TestListProfiles:
             assert profile["tool_count"] >= 0
 
 
-# C2 gating in tool counts
 class TestC2ToolCounting:
     def _db_with_c2(self, tmp_path: Path) -> ToolsDatabase:
         """Build a ToolsDatabase whose misc module contains one C2 tool + one normal tool."""

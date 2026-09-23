@@ -72,8 +72,10 @@ _first_words() {
 _advised_since() {
     local since="$1"
     if command -v jq >/dev/null 2>&1; then
-        jq -e --arg since "$since" '
-            select(
+        # -R + fromjson?: a torn line from a killed server is skipped, as in the
+        # python3 fallback, instead of failing the whole scan.
+        jq -R -e --arg since "$since" '
+            fromjson? | select(
                 .event == "tool_call"
                 and (
                     .tool == "guided_assessment"

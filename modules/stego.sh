@@ -32,6 +32,5 @@ install_module_stego() {
     install_go_batch "Stego - Go" "${STEGO_GO[@]}"
     install_git_batch "Stego - Git" "${STEGO_GIT[@]}"
 
-    # Binary releases
     install_binary_releases "${BINARY_RELEASES_STEGO[@]}"
 }

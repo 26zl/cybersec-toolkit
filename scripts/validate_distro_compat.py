@@ -51,7 +51,6 @@ def validate():
         print(f"ERROR: {TSV_PATH} not found")
         return 1
 
-    # Parse TSV
     entries = {}  # debian_name -> {dnf, pacman, zypper, pkg}
     line_count = 0
 
@@ -74,13 +73,11 @@ def validate():
 
         debian = fields[0]
 
-        # Duplicate check
         if debian in entries:
             print(f"ERROR: line {lineno}: duplicate Debian name '{debian}'")
             errors += 1
             continue
 
-        # Validate each cell value
         for col_idx, value in enumerate(fields):
             if not value:
                 continue  # empty = passthrough
@@ -98,7 +95,6 @@ def validate():
             "pkg": fields[4],
         }
 
-    # Summary
     print(f"\ndistro_compat.tsv: {line_count} entries")
     print(f"Errors: {errors}")
 

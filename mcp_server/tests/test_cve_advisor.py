@@ -21,7 +21,6 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 SKILLS_DIR = ROOT / ".claude" / "skills"
 
 
-# resolve_cve
 class TestResolveCve:
     @pytest.mark.parametrize("cve", list(KNOWN_CVES.keys()))
     def test_canonical_ids(self, cve: str) -> None:
@@ -52,7 +51,6 @@ class TestResolveCve:
         assert primary in KNOWN_CVES
 
 
-# get_cve_info
 class TestGetCveInfo:
     def test_known_cve(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):

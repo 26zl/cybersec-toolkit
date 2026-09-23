@@ -95,6 +95,7 @@ doctor: ## Report environment readiness (distro, prereqs, MCP, skills)
 bump: ## Bump version across every release surface (usage: make bump VERSION=x.y.z)
 	@test -n "$(VERSION)" || { echo "usage: make bump VERSION=x.y.z"; exit 2; }
 	python3 scripts/bump_version.py "$(VERSION)"
+	cd mcp_server && uv lock
 	bash scripts/validate_version.sh
 
 mcp: ## Launch the MCP server inspector (web UI)

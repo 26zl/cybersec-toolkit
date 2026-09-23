@@ -30,7 +30,12 @@ def _reset_audit_logger(tmp_path: Path):
     """Reset the module-level logger so each test gets a fresh one writing to tmp."""
     import mcp_server.audit as mod
 
-    # Reset cached logger
+    # Reset cached logger. getLogger() hands back the same object, so drop handlers
+    # left by an earlier import or the new logger keeps writing to their files too.
+    stale = logging.getLogger("cybersec_mcp.audit")
+    for h in list(stale.handlers):
+        h.close()
+        stale.removeHandler(h)
     mod._logger = None
     log_file = tmp_path / "audit.log"
     mod._AUDIT_LOG_PATH = log_file
@@ -96,6 +101,22 @@ class TestHashChain:
         assert verifier.CHAIN_GENESIS == mod.CHAIN_GENESIS
         for previous, line in ((mod.CHAIN_GENESIS, '{"a": 1}'), ("ab" * 32, '{"b": "æ"}')):
             assert verifier.chain_link(previous, line) == mod.chain_link(previous, line)
+
+    def test_unencodable_client_input_keeps_the_chain_intact(self, tmp_path: Path) -> None:
+        """A lone surrogate is valid JSON from a client but cannot be UTF-8 encoded."""
+        import importlib.util
+
+        import mcp_server.audit as mod
+
+        log_tool_call("run_tool", {"args": "\ud800"})
+        log_tool_call("run_tool", {"args": "ok"})
+
+        script = Path(__file__).resolve().parents[2] / "scripts" / "verify_audit_chain.py"
+        spec = importlib.util.spec_from_file_location("verify_audit_chain", script)
+        verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(verifier)
+        problems, stats = verifier.verify(mod._AUDIT_LOG_PATH.read_text().splitlines())
+        assert problems == [] and stats["records"] == 2
 
 
 class TestGetAuditLogger:
@@ -331,6 +352,19 @@ class TestAuditCrashSafety:
         handlers = [h for h in logger.handlers if isinstance(h, logging.handlers.RotatingFileHandler)]
         assert len(handlers) == 1
         assert mod._AUDIT_LOG_PATH.parent.is_dir()
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes not applicable on Windows")
+    def test_configured_log_leaves_an_existing_directory_alone(self, tmp_path: Path, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        os.chmod(shared, 0o755)
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_LOG", str(shared / "audit.log"))
+        mod._logger = None
+        mod._AUDIT_LOG_PATH = shared / "audit.log"
+        get_audit_logger()
+        assert stat.S_IMODE(os.stat(shared).st_mode) == 0o755
 
     def test_unwritable_log_warns_and_uses_stderr(self, tmp_path: Path, monkeypatch) -> None:
         import mcp_server.audit as mod

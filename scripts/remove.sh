@@ -366,7 +366,7 @@ fi
 # 6b) Build-from-source tools (*_BUILD_NAMES) are NOT installed to /usr/local/bin —
 # build_from_source() builds in place under $GITHUB_TOOL_DIR/<name> and leaves the
 # binary there. Their directories are removed above via GIT_NAMES_TO_REMOVE, which
-# has *_BUILD_NAMES appended to it (see lines 155-156). No extra cleanup needed here.
+# has *_BUILD_NAMES appended to it. No extra cleanup needed here.
 
 # 7) Binary releases
 log_info "Removing binary releases from $PIPX_BIN_DIR..."
@@ -386,6 +386,7 @@ for _br_mod in "${REMOVE_MODULES[@]}"; do
         _extract_binary_names "$_br_arr"
     done
 done
+filter_preexisting BINARY_TOOLS "binary releases"
 bin_removed=0
 bin_skipped=0
 for bin in "${BINARY_TOOLS[@]}"; do
@@ -450,27 +451,31 @@ log_info "Removing special tools..."
 [[ -L "$PIPX_BIN_DIR/searchsploit" ]] && rm -f "$PIPX_BIN_DIR/searchsploit" 2>/dev/null && \
     log_success "Removed searchsploit symlink"
 
+# Special tools are removed only when this toolkit recorded installing them and
+# they were not present beforehand, so a user's own copy is never uninstalled.
+_toolkit_installed() { _version_known "$1" && ! _is_preexisting "$1"; }
+
 # Metasploit (snap or system package)
-if should_remove "pwn" && command_exists msfconsole; then
+if should_remove "pwn" && command_exists msfconsole && _toolkit_installed metasploit; then
     log_info "Removing Metasploit..."
     remove_snap_tool metasploit
     log_success "Metasploit removed"
 fi
 
 # OWASP ZAP (snap)
-if should_remove "web" && snap_available && snap list zaproxy &>/dev/null; then
+if should_remove "web" && snap_available && snap list zaproxy &>/dev/null && _toolkit_installed zaproxy; then
     log_info "Removing OWASP ZAP..."
     remove_snap_tool zaproxy
     log_success "OWASP ZAP removed"
 fi
 
 # Foundry (forge, cast, anvil, chisel — installed by blockchain module)
-if should_remove "blockchain"; then
+if should_remove "blockchain" && _toolkit_installed foundry; then
     remove_special_tool foundry && log_success "Removed Foundry"
 fi
 
 # Steampipe (curl-pipe installer — installed by cloud module)
-if should_remove "cloud" && command_exists steampipe; then
+if should_remove "cloud" && command_exists steampipe && _toolkit_installed steampipe; then
     log_info "Removing Steampipe..."
     remove_special_tool steampipe && log_success "Steampipe removed"
 fi
@@ -673,8 +678,12 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     fi
 
     # pipx / pip caches
-    # pipx remaining venvs (orphaned after tool removal)
-    if [[ -d "$PIPX_HOME/venvs" ]]; then
+    # pipx remaining venvs (orphaned after tool removal). On Linux PIPX_HOME is
+    # /opt/pipx (toolkit-owned), but on Termux it is the user's own pipx home, so
+    # wiping the whole venvs dir there would delete the user's unrelated tools.
+    if [[ "$PKG_MANAGER" == "pkg" ]]; then
+        log_info "Skipping pipx venvs purge on Termux (shared user pipx home)"
+    elif [[ -d "$PIPX_HOME/venvs" ]]; then
         _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
         if [[ "$_remaining" -gt 0 ]]; then
             _sz=$(du -sm "$PIPX_HOME/venvs" 2>/dev/null | cut -f1 || echo 0)

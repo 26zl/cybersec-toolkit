@@ -23,8 +23,10 @@ and independent of normal repository work.
 `.github/workflows/publish-image.yml` builds the image, scans it with Trivy
 (fails on fixable HIGH/CRITICAL CVEs), and pushes it to
 `ghcr.io/26zl/cybersec-toolkit` on pushes to `main` and `v*.*.*` tags. Doc-,
-writeup-, and CI-only commits are skipped via `paths-ignore`. Tags produced:
-`latest`, the `VERSION` value (e.g. `1.1.1`), and `sha-<short>`.
+writeup-, and CI-only commits are skipped via `paths-ignore`. A push to `main`
+produces `latest` and `sha-<short>`; the numeric version tag (e.g. `1.2.1`) comes
+only from the `v*.*.*` tag build, so a later main push cannot re-point a released
+version tag.
 
 The image must carry `LABEL io.modelcontextprotocol.server.name=` (set in the
 `Dockerfile`) — the registry checks this annotation before accepting the OCI
@@ -34,6 +36,18 @@ One-time: the first push creates a **private** package. Make it public so
 `docker run ghcr.io/26zl/cybersec-toolkit` and the MCP-registry reference resolve
 for everyone: Repo → Packages → `cybersec-toolkit` → Package settings → Change
 visibility → Public.
+
+### Rolling back a bad image
+
+Tags are mutable, so a rollback re-points them at the last good digest (listed
+under the package's versions, or in that build's workflow log) without a rebuild:
+
+```bash
+docker buildx imagetools create \
+    -t ghcr.io/26zl/cybersec-toolkit:latest \
+    -t ghcr.io/26zl/cybersec-toolkit:x.y.z \
+    ghcr.io/26zl/cybersec-toolkit@sha256:<good-digest>
+```
 
 ## MCP Registry — one manual publish per release
 

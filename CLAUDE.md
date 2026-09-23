@@ -34,8 +34,10 @@ contribution rules there. This file contains only Claude Code-specific behavior.
 `.claude/settings.json` wires `scripts/agent-guard.sh` into two hooks: `SessionStart`
 injects the scoped MCP contract, and `PreToolUse` on `Bash` denies a security-tool
 invocation until the MCP server has been called this session. Clearance is read from
-the server's own audit log, so it cannot be satisfied by an agent asserting compliance;
-one `guided_assessment` call clears the session. A sandboxed server mirrors its records
+the server's audit log rather than from anything the agent says; one `guided_assessment`
+call clears the session. The guard is a routing aid, not a security boundary: anything
+running as the user can write that log, and the MCP policy layer is what enforces
+execution rules. A sandboxed server mirrors its records
 out to that same host log (`docs/SANDBOX.md`), so the gate behaves identically in both
 launch modes. Repository work is never gated.
 Denials land in `~/.local/state/cybersec-tools-mcp/guard-denials.log`.

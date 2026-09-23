@@ -59,6 +59,7 @@ install_module_cloud() {
         rm -f "$_sp_installer"
     elif command_exists steampipe; then
         log_success "Steampipe already installed"
+        _track_already_present "steampipe" "special"
     fi
 
     # Docker: KICS IaC scanner (optional)

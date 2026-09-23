@@ -399,12 +399,10 @@ setup() {
     local rdir="$TEST_TMPDIR/results"
     mkdir -p "$rdir"
 
-    # Create result files
     printf 'ok\nlatest\n' > "$rdir/tool-a"
     printf 'skip\nexisting\n' > "$rdir/tool-b"
     printf 'fail\n\n' > "$rdir/tool-c"
 
-    # Set up version file
     VERSION_FILE="$TEST_TMPDIR/.versions"
 
     _collect_parallel_results "$rdir" "test"

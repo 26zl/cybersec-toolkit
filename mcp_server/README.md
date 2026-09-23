@@ -45,14 +45,19 @@ available through `--extra ctf-extra` or a named venv.
 
 ### Claude Code
 
-The repository already includes a project `.mcp.json` for Claude Code:
+The repository already includes a project `.mcp.json` for Claude Code. It starts
+the server through the launcher, inside a Kata Containers VM
+([`../docs/SANDBOX.md`](../docs/SANDBOX.md)):
 
 ```json
 {
   "mcpServers": {
     "cybersec-tools": {
-      "command": "uv",
-      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py", "--transport", "stdio", "--no-banner"],
+      "command": "bash",
+      "args": [
+        "-lc",
+        "cd \"$(git rev-parse --show-toplevel)\" && exec bash scripts/mcp-launch.sh"
+      ],
       "env": {
         "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
         "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
@@ -62,7 +67,9 @@ The repository already includes a project `.mcp.json` for Claude Code:
 }
 ```
 
-Then restart Claude Code. The tools will appear in the `/mcp` command.
+Then restart Claude Code. The tools will appear in the `/mcp` command. On a host
+without Kata, append `--local` to the launcher command to run the server as the
+host user instead.
 
 ### Claude Desktop
 
@@ -83,7 +90,10 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-Replace `/path/to/cybersec-toolkit` with the actual path.
+Replace `/path/to/cybersec-toolkit` with the actual path. This runs the server
+directly on the host, without the Kata VM: Claude Desktop runs on macOS and
+Windows, where Kata is unavailable. On a Linux host with Kata, use `bash` with
+`/path/to/cybersec-toolkit/scripts/mcp-launch.sh` as the argument instead.
 
 ### Codex and other MCP clients
 
@@ -248,12 +258,12 @@ uv run fastmcp run server.py --transport stdio --no-banner
 Once connected via an MCP client:
 
 - **List all tools**: `list_tools()` — returns 670+ tools with URLs
-- **Filter by module**: `list_tools(module="web")` — 51 web app testing tools
+- **Filter by module**: `list_tools(module="web")` — 60 web app testing tools
 - **Filter by method**: `list_tools(method="pipx")` — Python tools installed via pipx
 - **Check installed only**: `list_tools(installed_only=true)` — with version info
 - **Check a tool**: `check_installed("nmap")` — detailed install status
 - **Tool details**: `get_tool_info("sqlmap")` — method, module, URL, install/update/remove commands
-- **Full module view**: `get_module_info("web")` — all 51 tools, install status, which profiles include it
+- **Full module view**: `get_module_info("web")` — all 60 tools, install status, which profiles include it
 - **Profile contents**: `get_profile_tools("ctf")` — the current profile tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
 - **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning

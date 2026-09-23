@@ -49,8 +49,6 @@ UNSUPPORTED_HOST_OS="${UNSUPPORTED_HOST_OS:-}"
 # Installer version (read from VERSION file at repo root)
 INSTALLER_VERSION=""
 if [[ -f "${SCRIPT_DIR:-.}/VERSION" ]]; then
-    # read -r trims leading/trailing IFS whitespace and stops at the first
-    # newline, so the version comes out clean without an extglob trim dance.
     read -r INSTALLER_VERSION < "${SCRIPT_DIR:-.}/VERSION" || true
 fi
 # Validate PARALLEL_JOBS: must be a positive integer, clamped to 1-16
@@ -78,7 +76,7 @@ _global_cleanup() {
 # Catch-all EXIT cleanup so an early return/exit can't leave registered temp paths behind (e.g. the mode-600 gh-netrc holding GITHUB_TOKEN); subshells reset traps, so it won't fire inside flock/parallel jobs.
 trap '_global_cleanup' EXIT
 
-# ── Session tracking for rollback ──
+# Session tracking for rollback
 # Each install run creates a manifest in .install_sessions/<id>.manifest
 # Used by --rollback and --list-sessions.
 _SESSION_FILE=""
@@ -209,7 +207,6 @@ _init_log_file() {
 }
 
 # _setup_verbose — common verbose mode setup (log environment + enable trace).
-# Usage: _setup_verbose
 _setup_verbose() {
     [[ "$VERBOSE" == "true" ]] || return 0
     log_info "Verbose mode enabled"
@@ -352,7 +349,6 @@ check_disk_space() {
     local required_mb=$(( base_gb * 1024 + num_modules * per_module_mb ))
     local required_gb=$(( (required_mb + 1023) / 1024 ))
 
-    # Add extra for Docker images if enabled
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
         required_mb=$(( required_mb + 5120 ))  # ~5GB for Docker images
         required_gb=$(( (required_mb + 1023) / 1024 ))
@@ -368,7 +364,6 @@ check_disk_space() {
         log_warn "  Tip: Use --profile lightweight or --skip-heavy to reduce disk usage"
         echo ""
 
-        # Critical: less than half the estimated requirement
         local half_required=$(( required_mb / 2 ))
         if [[ "$avail_mb" -lt "$half_required" ]]; then
             log_error "Critically low disk space — installation will likely fail"
@@ -386,8 +381,6 @@ check_disk_space() {
         fi
     fi
 }
-
-# Go binary name helper
 
 # _go_bin_name — extract the actual binary name from a `go install` path.
 # Handles /v2, /v3 module versions and /... wildcard suffixes.
@@ -691,7 +684,6 @@ pkg_cleanup() {
     esac
 }
 
-# Package installed check
 pkg_is_installed() {
     local pkg="$1"
     case "$PKG_MANAGER" in
@@ -840,7 +832,6 @@ _builder_home() {
 }
 
 # _check_pkg_manager — fail early if the distro/package manager is unsupported.
-# Usage: _check_pkg_manager
 _check_pkg_manager() {
     if [[ -n "${UNSUPPORTED_HOST_OS:-}" ]]; then
         echo ""
@@ -1129,7 +1120,7 @@ _stop_spinner() {
     _SPINNER_PID=""
 }
 
-# ── Live progress display for parallel Stage 3/4 ──
+# Live progress display for parallel Stage 3/4
 # IPC via temp files in PROGRESS_DIR: <method>.total, <method>.done, <method>.current
 # Each parallel subshell writes status; a background display loop reads and renders.
 
@@ -1364,7 +1355,6 @@ _stop_progress_display() {
     _cleanup_progress_dir
 }
 
-# Banner
 print_banner() {
     echo -e "${RED}${BOLD}"
     cat << 'BANNER'
@@ -1489,7 +1479,6 @@ _source_all_modules() {
     done
 }
 
-# Architecture detection
 detect_arch() {
     local machine
     machine=$(uname -m)
@@ -1549,6 +1538,8 @@ else
     export PIPX_BIN_DIR="/usr/local/bin"
     # Cargo: rustup installs to $SUDO_USER's home via _as_builder, but $HOME is root's.
     # Include both so command_exists cargo works regardless of who installed rustup.
+    # The builder's dir goes last: it is user-writable, and root must not resolve
+    # tar/sha256sum/etc. from it.
     _BUILDER_CARGO="$(_builder_home)/.cargo/bin"
-    export PATH="/usr/local/bin:$HOME/.cargo/bin:${_BUILDER_CARGO}:$PATH"
+    export PATH="/usr/local/bin:$HOME/.cargo/bin:$PATH:${_BUILDER_CARGO}"
 fi

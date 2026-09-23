@@ -16,7 +16,6 @@ from mcp_server.ctf_advisor import (
 from mcp_server.tools_db import ToolsDatabase
 
 
-# resolve_category
 class TestResolveCategory:
     @pytest.mark.parametrize("cat", list(CTF_CATEGORY_MAP.keys()))
     def test_canonical_names(self, cat: str) -> None:
@@ -60,7 +59,6 @@ class TestResolveCategory:
         assert resolve_category("something entirely unrelated") is None
 
 
-# advisor notices
 class TestAdvisorNotices:
     def test_missing_tools_listed_with_install_commands(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):
@@ -78,8 +76,7 @@ class TestAdvisorNotices:
     ) -> None:
         """`--tool ctf-crypto-venv` is not a thing install.sh can do — don't print it.
 
-        This is the state of anyone who installed the crypto module before the
-        venv existed: everything on PATH, nothing in the venv.
+        Crypto tools on PATH, venv libraries missing.
         """
         (tmp_path / "crypto" / "bin").mkdir(parents=True)
         (tmp_path / "crypto" / "bin" / "python").write_text("", encoding="utf-8")
@@ -126,7 +123,6 @@ class TestAdvisorNotices:
         assert "script_execution" not in result
 
 
-# suggest_for_ctf
 class TestSuggestForCtf:
     def test_valid_category(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):
@@ -176,7 +172,6 @@ class TestSuggestForCtf:
             assert nmap_entry["installed"] is True
 
 
-# Methodology and quick_wins
 class TestMethodology:
     @pytest.mark.parametrize("cat", list(CTF_CATEGORY_MAP.keys()))
     def test_methodology_exists(self, cat: str) -> None:

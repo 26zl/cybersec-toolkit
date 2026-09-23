@@ -38,6 +38,7 @@ Bundled with a modular installer for Linux and Termux (Android) covering __670+ 
 | GitHub Copilot | `.mcp.json` (CLI) + `.github/copilot-instructions.md` | CLI live tested; VS Code documented |
 | Hermes Agent | User `~/.hermes/config.yaml` | Live tested |
 | OpenClaw | User `~/.openclaw/openclaw.json` + `.agents/skills/` | Live tested |
+| DeepSeek Harness (dsh) | `$DSH_HOME/settings.yaml` + `.agents/skills/` | Configuration example documented |
 | Cursor / Cline / Goose | Client MCP settings + Agent Skills | Compatible through MCP; skills supported |
 | Continue | Client MCP settings; rules/prompts for context | Compatible through MCP |
 | LM Studio (>=0.3.17) | `mcp.json`; manual or MCP-provided context | Compatible through MCP |
@@ -108,7 +109,7 @@ __From the latest release__ (pinned and stable — recommended):
 
 ```bash
 # Newest tag is on the Releases page: https://github.com/26zl/cybersec-toolkit/releases
-git clone --depth 1 --branch v1.1.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
+git clone --depth 1 --branch v1.2.1 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
 ```
 
 __From `main`__ (newest tools, fixes, and changes; may include unreleased work):
@@ -267,7 +268,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | `networking` | 57 | Port scanning, packet capture, tunneling, MITM, protocol tools |
 | `recon` | 84 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | 60 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
-| `crypto` | 14 | RSA attacks, cipher analysis, hash attacks, constraint solving |
+| `crypto` | 16 | RSA attacks, cipher analysis, hash attacks, constraint solving |
 | `pwn` | 36 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | 33 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | 57 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
@@ -292,7 +293,7 @@ The installer already parallelizes where possible (`-j 4` by default). Methods w
 | Go install | ~62 | nuclei, subfinder, ffuf, httpx |
 | Binary release | ~51 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
 | Build from source | ~23 | massdns, duplicut, AFLplusplus, honggfuzz |
-| Docker | ~12 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
+| Docker | ~13 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
 | Cargo (Rust) | 8 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Special (curl-pipe) | 4 | Metasploit, Foundry, Steampipe, patator |
@@ -324,7 +325,7 @@ All scripts require root on Linux (`sudo`) and support `--help`. On Termux, no r
 | Tool | What it does |
 | ---- | ------------ |
 | `list_tools` | List/filter all 670+ tools by module, method, or install status (includes URLs) |
-| `check_installed` | Check if a tool is installed (5 detection strategies) |
+| `check_installed` | Check if a tool is installed (6 detection strategies) |
 | `get_tool_info` | Full details: method, module, URL, install/update/remove commands |
 | `get_module_info` | Deep-dive a module: all tools, install status, which profiles use it |
 | `get_profile_tools` | See every tool a profile installs, grouped by module |
@@ -712,6 +713,8 @@ Only used with `--enable-docker`. If Docker is not installed and `--enable-docke
 | `opensecurity/mobile-security-framework-mobsf` | mobile | `--enable-docker` | MobSF |
 | `specterops/bloodhound` | enterprise | `--enable-docker` | BloodHound CE |
 | `trailofbits/echidna` | blockchain | `--enable-docker` | Echidna smart contract fuzzer |
+| `checkmarx/kics:latest` | cloud | `--enable-docker` | KICS infrastructure-as-code scanner |
+| `sagemath/sagemath:latest` | crypto | `--enable-docker` | SageMath (Coppersmith, Groebner bases, curve arithmetic) |
 | `strangebee/thehive:latest` | blueteam | `--enable-docker` | TheHive IR platform |
 | `thehiveproject/cortex:latest` | blueteam | `--enable-docker` | Cortex analysis |
 | `zeek/zeek:latest` | blueteam | `--enable-docker` | Zeek network analysis |

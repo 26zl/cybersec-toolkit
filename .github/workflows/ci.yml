@@ -186,7 +186,7 @@ jobs:
 
       - name: Lint and format check
         run: |
-          cd mcp_server && uv sync --group dev --quiet
+          cd mcp_server && uv sync --locked --group dev --quiet
           uv run ruff check .
           uv run ruff format --check .
           # Also lint the repo-root helper scripts (own ruff.toml at repo root).
@@ -215,7 +215,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Run MCP server tests
-        run: cd mcp_server && uv sync --group dev --quiet && uv run pytest tests/ -v
+        run: cd mcp_server && uv sync --locked --group dev --quiet && uv run pytest tests/ -v
 
   sandbox-tests:
     name: Sandbox Provider Tests (node)
@@ -283,7 +283,7 @@ jobs:
 
       - name: Verify MCP server imports and tool count
         run: |
-          cd mcp_server && uv sync --quiet
+          cd mcp_server && uv sync --locked --quiet
           uv run python -c "
           import sys; sys.path.insert(0, '..')
           from mcp_server.server import mcp, _db
@@ -293,7 +293,7 @@ jobs:
 
       - name: Verify cybersec-mcp console script
         run: |
-          cd mcp_server && uv sync --no-editable --quiet
+          cd mcp_server && uv sync --locked --no-editable --quiet
           uv run python - <<'PY'
           import subprocess
           import sys

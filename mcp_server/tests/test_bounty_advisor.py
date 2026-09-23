@@ -15,7 +15,6 @@ from mcp_server.bounty_advisor import (
 from mcp_server.tools_db import ToolsDatabase
 
 
-# resolve_target_type
 class TestResolveTargetType:
     @pytest.mark.parametrize("target", list(BOUNTY_TARGET_MAP.keys()))
     def test_canonical_names(self, target: str) -> None:
@@ -53,7 +52,6 @@ class TestResolveTargetType:
         assert resolve_target_type("something entirely unrelated") is None
 
 
-# suggest_for_bounty
 class TestSuggestForBounty:
     def test_valid_target(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):
@@ -108,7 +106,6 @@ class TestSuggestForBounty:
             assert nmap_entry["installed"] is True
 
 
-# Methodology, quick_wins, and common_vulns
 class TestMethodologyAndVulns:
     @pytest.mark.parametrize("target", list(BOUNTY_TARGET_MAP.keys()))
     def test_methodology_exists(self, target: str) -> None:

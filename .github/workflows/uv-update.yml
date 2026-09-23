@@ -3,7 +3,7 @@ name: Update uv dependencies
 on:
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -31,6 +31,9 @@ jobs:
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          # This job runs freshly upgraded packages; keep them out of the shared cache.
+          enable-cache: false
 
       - name: Upgrade all packages in uv.lock
         id: upgrade

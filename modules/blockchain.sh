@@ -41,6 +41,7 @@ install_module_blockchain() {
         log_warn "Skipping Foundry (--skip-source)"
     elif command_exists foundryup; then
         log_success "Foundry already installed"
+        _track_already_present "foundry" "special"
     else
         log_warn "Installing Foundry from https://foundry.paradigm.xyz (downloaded, size/keyword-validated, run as the invoking user — review upstream)"
         local _foundry_tmp _foundry_home

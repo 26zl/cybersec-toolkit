@@ -57,7 +57,7 @@ def _discover_project_root() -> Path:
 
 PROJECT_ROOT = _discover_project_root()
 
-# Pipx package name → binary name mapping (from scripts/verify.sh:130-155).
+# Pipx package name → binary name mapping (from _PIPX_BIN_NAMES in scripts/verify.sh).
 # Most pipx packages install a binary with the same name — these are the exceptions.
 PIPX_BIN_NAMES: dict[str, str] = {
     "arsenal-cli": "arsenal",
@@ -172,7 +172,7 @@ C2_TOOLS: frozenset[str] = frozenset(
     }
 )
 
-# Module descriptions (from lib/common.sh:1212-1231).
+# Module descriptions (from MODULE_DESCRIPTIONS in lib/common.sh).
 MODULE_DESCRIPTIONS: dict[str, str] = {
     "misc": "Security tools, utilities, resources, C2, social engineering",
     "networking": "Port scanning, packet capture, tunneling, MITM",
@@ -194,7 +194,7 @@ MODULE_DESCRIPTIONS: dict[str, str] = {
     "llm": "LLM red teaming, prompt injection, AI security",
 }
 
-# Docker image registry (from lib/installers.sh:1611-1621).
+# Docker image registry (from ALL_DOCKER_IMAGES in lib/installers.sh).
 # Maps tool label → docker image.
 DOCKER_IMAGES: dict[str, str] = {
     "BeEF": "beefproject/beef",
@@ -243,11 +243,10 @@ class ToolsDatabase:
         if self._versions_ts > 0 and (now - self._versions_ts) < ttl:
             return self._versions
 
-        self._versions = {}
+        # Built aside and swapped in whole: sync tools run in a threadpool, and a
+        # reader must never see a half-filled dict.
+        versions: dict[str, dict] = {}
         versions_path = self.root / ".versions"
-        if not versions_path.exists():
-            self._versions_ts = now
-            return self._versions
         try:
             with open(versions_path, "r", encoding="utf-8", errors="replace") as f:
                 for line in f:
@@ -256,18 +255,18 @@ class ToolsDatabase:
                         continue
                     parts = line.split("|")
                     if len(parts) >= 4:
-                        self._versions[parts[0]] = {
+                        versions[parts[0]] = {
                             "method": parts[1],
                             "version": parts[2],
                             "timestamp": parts[3],
                         }
         except (OSError, ValueError):
-            # Degrade gracefully on unreadable/corrupt/non-UTF-8 .versions
-            # (PermissionError is an OSError; a torn/garbage read can raise
-            # ValueError) — reset and fall through to PATH/pipx/docker checks.
-            self._versions = {}
+            # Missing, unreadable, corrupt or non-UTF-8 .versions: fall through to
+            # the PATH/pipx/docker checks.
+            versions = {}
+        self._versions = versions
         self._versions_ts = now
-        return self._versions
+        return versions
 
     def check_installed(self, tool_name: str) -> dict:
         """Multi-strategy install check for a tool.
@@ -283,9 +282,9 @@ class ToolsDatabase:
             }
 
         # 1. Check .versions tracking
-        self.reload_versions()
-        if tool_name in self._versions:
-            v = self._versions[tool_name]
+        versions = self.reload_versions()
+        if tool_name in versions:
+            v = versions[tool_name]
             return {
                 "installed": True,
                 "method": "versions_tracked",

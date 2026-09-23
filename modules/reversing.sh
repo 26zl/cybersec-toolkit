@@ -49,10 +49,8 @@ install_module_reversing() {
         build_from_source "rappel" "${RE_BUILD_URLS[rappel]}" "${RE_BUILD_CMDS[rappel]}" || true
     fi
 
-    # Binary releases
     install_binary_releases "${BINARY_RELEASES_REVERSING[@]}"
 
-    # Setup pwndbg (if cloned)
     if [[ -d "$GITHUB_TOOL_DIR/pwndbg" && -f "$GITHUB_TOOL_DIR/pwndbg/setup.sh" ]]; then
         _start_spinner "Setting up pwndbg..."
         if (cd "$GITHUB_TOOL_DIR/pwndbg" && ./setup.sh >> "$LOG_FILE" 2>&1); then

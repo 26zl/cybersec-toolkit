@@ -1,6 +1,5 @@
 #!/usr/bin/env bats
 # Tests for lib/installers.sh
-# fixup_package_names, track_version, Go binary name extraction
 
 setup() {
     load 'test_helper'
@@ -108,6 +107,37 @@ PY
 
     run verify_github_checksum "$rel" "$bin" "tool"
     assert_success
+}
+
+@test "verify_github_checksum accepts a per-file .sha256 holding a bare hash" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local url="https://example.com/tool.sha256"
+    local key; key=$(echo "$url" | sed 's|[/:?&=]|_|g')
+    local bin="$TEST_TMPDIR/tool"
+    printf 'binary-contents\n' > "$bin"
+    local hash; hash=$(sha256sum "$bin" | awk '{print $1}')
+    printf '%s\n' "$hash" > "$_GH_API_CACHE_DIR/checksum_${key}"
+    # Selection must prefer the per-file .sha256 and skip the signature asset.
+    local rel='{"assets":[{"name":"tool.sha256","browser_download_url":"'"$url"'"},{"name":"tool.sig","browser_download_url":"https://example.com/tool.sig"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool"
+    assert_success
+}
+
+@test "verify_github_checksum ignores a signature-only release (no false verify)" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local bin="$TEST_TMPDIR/tool"
+    printf 'binary-contents\n' > "$bin"
+    # Only a .sig asset — no hash anywhere, so verification must report "no checksum".
+    local rel='{"assets":[{"name":"tool.sig","browser_download_url":"https://example.com/tool.sig"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool"
+    assert_failure
+    [ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]
 }
 
 @test "verify_github_checksum rejects a mismatch and writes the .checksum_mismatch marker" {
@@ -272,8 +302,7 @@ PY
     [[ "${pkgs[0]}" == "base-devel" ]]
 }
 
-# openbsd-netcat is the Arch [extra] package; gnu-netcat (the old mapping) is
-# AUR-only, so the container audit corrected it.
+# openbsd-netcat is the Arch [extra] package; gnu-netcat is AUR-only.
 @test "fixup: pacman translates netcat-openbsd to openbsd-netcat" {
     source_libs --installers arch pacman
     local -a pkgs=(netcat-openbsd)
@@ -308,8 +337,6 @@ PY
     fixup_package_names pkgs
     [[ "${pkgs[0]}" == "go" ]]
 }
-
-# fixup_package_names — skipped packages
 
 # fixup_package_names — apt Kali-only filtering
 
@@ -683,11 +710,6 @@ PY
 }
 
 # Stage-1 C2 aggregation (install.sh install_modules loop)
-#
-# Replicates the per-module aggregation loop from install_modules() in
-# install.sh: it appends each module's <PREFIX>_GIT / BINARY_RELEASES_<MOD>
-# arrays, and — only when INCLUDE_C2=true — the <PREFIX>_C2_GIT /
-# BINARY_RELEASES_<MOD>_C2 arrays.
 
 # Source common.sh + installers.sh (BINARY_RELEASES_MISC_C2) + misc module
 # (MISC_C2_GIT), then run the aggregation loop for the given modules.

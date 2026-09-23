@@ -20,7 +20,6 @@ class TestProjectRootDiscovery:
         assert _discover_project_root() == tmp_tools_config.resolve()
 
 
-# _load_tools
 class TestLoadTools:
     def test_loads_all_tools(self, tools_db: ToolsDatabase) -> None:
         assert tools_db.total_tools == len(SAMPLE_TOOLS)
@@ -39,7 +38,6 @@ class TestLoadTools:
         assert tool["module"] == "networking"
 
 
-# list_tools
 class TestListTools:
     def test_list_all(self, tools_db: ToolsDatabase) -> None:
         assert len(tools_db.list_tools()) == len(SAMPLE_TOOLS)
@@ -78,7 +76,6 @@ class TestListTools:
         assert "pipx" in methods
 
 
-# _find_docker_image
 class TestFindDockerImage:
     def test_exact_label_match(self, tools_db: ToolsDatabase) -> None:
         assert tools_db._find_docker_image("BeEF") == "beefproject/beef"
@@ -94,7 +91,6 @@ class TestFindDockerImage:
         assert tools_db._find_docker_image("nonexistent") is None
 
 
-# _docker_image_exists
 class TestDockerImageExists:
     _LISTING = "beefproject/beef:latest\nsagemath/sagemath:10.4\nlocalhost:5000/mirror:dev\n"
 
@@ -136,7 +132,6 @@ class TestDockerImageExists:
             assert tools_db._docker_image_exists("beefproject/beef") is False
 
 
-# check_installed
 class TestCheckInstalled:
     def test_unknown_tool(self, tools_db: ToolsDatabase) -> None:
         result = tools_db.check_installed("nonexistent")
@@ -223,7 +218,6 @@ class TestCheckInstalled:
         assert result["installed"] is False
 
 
-# reload_versions
 class TestReloadVersions:
     def test_parse_versions_file(self, tmp_tools_config: Path) -> None:
         versions = tmp_tools_config / ".versions"

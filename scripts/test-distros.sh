@@ -15,8 +15,7 @@
 #   scripts/test-distros.sh ubuntu arch      # a subset of distros
 #
 # Exit status is non-zero if any hard check failed. The package-name audit is
-# reported but non-fatal unless --strict (the pacman/zypper columns are still
-# being brought up to parity; this mirrors the non-blocking CI gate).
+# reported but non-fatal unless --strict.
 set -uo pipefail
 
 # in-container mode: run the actual checks against the copied repo.

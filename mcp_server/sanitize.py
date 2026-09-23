@@ -93,16 +93,12 @@ def sanitize_output(text: str) -> str:
     # Normalize Unicode to catch full-width character evasion
     text = unicodedata.normalize("NFKC", text)
 
-    # Strip ANSI escapes
     text = _ANSI_RE.sub("", text)
 
-    # Strip LLM markers
     text = _LLM_MARKERS.sub("", text)
 
-    # Strip XML injection tags
     text = _XML_INJECTION_RE.sub("", text)
 
-    # Mark suspicious lines
     text = _INJECTION_PREFIXES.sub(r"[SANITIZED] \1", text)
     text = _mark_ai_directives(text)
 

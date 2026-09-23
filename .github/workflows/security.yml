@@ -172,7 +172,7 @@ jobs:
       - name: Audit MCP server dependencies
         run: |
           cd mcp_server
-          uv sync --quiet
+          uv sync --locked --quiet
           # --all-extras so ctf-core/ctf-extra deps (pillow, requests, paramiko, ...) are audited too
           uv export --all-extras --no-hashes --frozen > /tmp/requirements.txt
           # Ignore IDs listed in known-vulnerabilities.txt (no fix available yet)
@@ -203,13 +203,13 @@ jobs:
           errors=0
           echo "=== Checking GitHub Actions are SHA-pinned ==="
 
-          for wf in .github/workflows/*.yml; do
+          for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [[ -f "$wf" ]] || continue
             # Extract 'uses:' lines, skip local actions (./), docker://, and comment lines
             while IFS= read -r line; do
               # Extract the action reference (after 'uses:')
               ref=$(echo "$line" | grep -oP 'uses:\s*\K\S+')
 
-              # Skip local actions and docker references
               if echo "$ref" | grep -qE '^\./|^docker://'; then
                 continue
               fi

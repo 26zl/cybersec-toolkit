@@ -110,7 +110,6 @@ install_module_enterprise() {
     log_info "Building enterprise tools from source..."
     build_module_from_source ENTERPRISE
 
-    # Binary releases
     install_binary_releases "${BINARY_RELEASES_ENTERPRISE[@]}"
 
     # Docker: BloodHound (optional)
