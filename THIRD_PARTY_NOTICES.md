@@ -70,6 +70,11 @@ The MCP server's Python dependencies are not vendored; they are declared in
 [`mcp_server/pyproject.toml`](mcp_server/pyproject.toml) and pinned in
 [`mcp_server/uv.lock`](mcp_server/uv.lock), each under its own upstream license.
 
+The sandbox launcher's Node dependencies are likewise not vendored; they are
+declared in [`sandbox/package.json`](sandbox/package.json) and pinned in
+[`sandbox/package-lock.json`](sandbox/package-lock.json). Its direct dependency
+is [`@ai-hero/sandcastle`](https://github.com/mattpocock/sandcastle) (MIT).
+
 ## Installed security tools
 
 The installer downloads 670+ third-party security tools from their official

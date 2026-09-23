@@ -45,7 +45,7 @@ Bundled with a modular installer for Linux and Termux (Android) covering __670+ 
 | Aider | — | Not applicable |
 | Open WebUI | MCP-to-OpenAPI bridge | Compatible through MCP host or bridge |
 
-See [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md) for detailed configuration per client, and [`docs/ORCHESTRATION.md`](docs/ORCHESTRATION.md) for coordinating multiple agents across any MCP client.
+See [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md) for detailed configuration per client, [`docs/SANDBOX.md`](docs/SANDBOX.md) for the Kata VM the MCP server runs in, and [`docs/ORCHESTRATION.md`](docs/ORCHESTRATION.md) for coordinating multiple agents across any MCP client.
 
 ---
 
@@ -76,9 +76,10 @@ Security users should be paranoid — here's exactly what runs and what's gated:
 
 - __Default-safe MCP.__ Out of the box `CYBERSEC_MCP_ALLOW_EXTERNAL=0` rejects network targets that do not resolve to private/loopback ranges, and `CYBERSEC_MCP_ALLOW_SCRIPTS=0` disables `run_script`. You opt into external scopes / scripting explicitly.
 - __Governed tool execution passes one gate__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list/target-injection flags), target/network policy, rate limiting, output caps, and timeouts.
-- __The execution policy is not an OS sandbox.__ Allowed tools run with the MCP process user's permissions, and some security tools can launch child processes or load plugins. Disabling `run_script` only disables that endpoint; run the MCP server as a least-privileged user or inside an isolation boundary appropriate for untrusted targets.
+- __Tools execute in a VM, not on your host.__ `scripts/mcp-launch.sh` starts the MCP server inside a [Kata Containers](docs/SANDBOX.md) VM: its own kernel, no host filesystem beyond an optional `CYBERSEC_SANDBOX_WORKSPACE` mount, no Docker socket, destroyed when the client disconnects. Startup fails closed instead of quietly running on the host; `--local` is the explicit opt-out for repository development and for hosts without KVM.
+- __The execution policy itself is not an OS sandbox.__ Inside the VM, allowed tools still run with the server user's permissions, and some security tools launch child processes or load plugins. In `--local` mode that user is you — run it least-privileged.
 - __Tool-aware policy is not solver hardcoding.__ The solver chooses tools from the registry/advisors; the policy layer only understands enough CLI grammar to tell a real target from a header, wordlist, output path, config file, or target-list flag. That keeps normal commands usable without letting file-list/config flags bypass scope checks.
-- __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never persisted — only an irreversible SHA256 + length is logged for correlation — and credential-shaped strings are redacted from tool arguments.
+- __Audit trail, not leaks.__ Actions are logged as JSON to an owner-only (`0600`) rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never persisted — only an irreversible SHA256 + length is logged for correlation — and credential-shaped strings are redacted from tool arguments. A sandboxed server mirrors its records out to that same host log, so the trail outlives the VM. Records are hash-chained, so an edited or deleted entry is detectable with `make audit-verify`.
 - __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds and `pip`/`cargo`/`gem` installs; binary releases are SHA256-verified when checksums are published.
 - __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam`/`full` profiles); the MCP layer reflects this and never auto-runs them.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [Supply Chain Model](#supply-chain-model), and the [Disclaimer](#disclaimer).
@@ -395,22 +396,26 @@ the output, and pivot on what it finds. Script execution requires a separate opt
 
 `run_tool` and `run_pipeline` are argument-sanitized, network-policed, rate-limited, and
 audit-logged. `run_script` is off by default because enabling it is a full-code-execution
-opt-in with the MCP server user's filesystem and network permissions; the external-target
-policy does not sandbox scripts. Destructive flags (`--os-shell`, `-rf`, `--exploit`, …)
+opt-in with the MCP server user's filesystem and network permissions — inside the sandbox
+VM by default, on your host with `--local`; the external-target policy does not constrain
+scripts. Destructive flags (`--os-shell`, `-rf`, `--exploit`, …)
 are blocked in the governed tool path. Use only against systems you are authorized to test.
 
 </details>
 
 ### Quick Start
 
-Requires [uv](https://docs.astral.sh/uv/). Claude Code can use the tracked project `.mcp.json` directly. It runs the MCP server over stdio with scripts and external network targets disabled by default:
+Requires [uv](https://docs.astral.sh/uv/), plus Node.js 22+ and a Kata-capable Docker host for the default sandbox ([`docs/SANDBOX.md`](docs/SANDBOX.md)). Claude Code uses the tracked project `.mcp.json` directly. It starts the MCP server inside a Kata VM over stdio, with scripts and external network targets disabled by default:
 
 ```json
 {
   "mcpServers": {
     "cybersec-tools": {
-      "command": "uv",
-      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py", "--transport", "stdio", "--no-banner"],
+      "command": "bash",
+      "args": [
+        "-lc",
+        "cd \"$(git rev-parse --show-toplevel)\" && exec bash scripts/mcp-launch.sh"
+      ],
       "env": {
         "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
         "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
@@ -420,7 +425,7 @@ Requires [uv](https://docs.astral.sh/uv/). Claude Code can use the tracked proje
 }
 ```
 
-Restart Claude Code. The 15 tools appear in `/mcp`.
+Restart Claude Code. The 15 tools appear in `/mcp`. Without a Kata runtime, append `--local` to the launcher command in `args` to run the server on the host instead.
 
 ### Other MCP clients (Codex, Cursor, local LLMs)
 
@@ -428,20 +433,20 @@ MCP is an open standard, so the same stdio server works with any MCP-capable cli
 the repo root the launch command is:
 
 ```bash
-uv run --directory mcp_server fastmcp run server.py --transport stdio --no-banner
-```
-
-`--directory mcp_server` is relative to the working directory. If a client may start
-the server from a subdirectory, use the root-aware launcher from the repo root:
-
-```bash
 bash scripts/mcp-launch.sh
 ```
 
-From outside the repository, use the launcher's absolute path:
+The launcher resolves the repository from its own location and starts the server in the
+Kata sandbox, so an absolute path works from any working directory:
 
 ```bash
 bash /path/to/cybersec-toolkit/scripts/mcp-launch.sh
+```
+
+Add `--local` to run the server directly on the host, without the VM boundary:
+
+```bash
+bash /path/to/cybersec-toolkit/scripts/mcp-launch.sh --local
 ```
 
 - __Codex__ — a project `.codex/config.toml` is included (resolves the Git root
@@ -512,16 +517,20 @@ The MCP server runs over stdio, so it works from any environment that Claude Cod
 ### Script Execution
 
 `run_script` lets the AI write and execute Python or Bash scripts. It requires
-`CYBERSEC_MCP_ALLOW_SCRIPTS=1`, is not OS-sandboxed, and is not constrained by
-`CYBERSEC_MCP_ALLOW_EXTERNAL`. Enabling it grants scripts the same filesystem and network
-permissions as the MCP server process. Review generated code and scope before opting in:
+`CYBERSEC_MCP_ALLOW_SCRIPTS=1` and is not constrained by `CYBERSEC_MCP_ALLOW_EXTERNAL`.
+Enabling it grants scripts the same filesystem and network permissions as the MCP server
+process — the sandbox VM by default, your host user in `--local` mode. Review generated
+code and scope before opting in:
 
 ```json
 {
   "mcpServers": {
     "cybersec-tools": {
-      "command": "uv",
-      "args": ["run", "--directory", "mcp_server", "fastmcp", "run", "server.py", "--transport", "stdio", "--no-banner"],
+      "command": "bash",
+      "args": [
+        "-lc",
+        "cd \"$(git rev-parse --show-toplevel)\" && exec bash scripts/mcp-launch.sh"
+      ],
       "env": {
         "CYBERSEC_MCP_ALLOW_SCRIPTS": "1",
         "CYBERSEC_MCP_ALLOW_EXTERNAL": "0"

@@ -14,7 +14,9 @@ import logging.handlers
 import os
 import re
 import sys
+import threading
 import time
+import uuid
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -200,7 +202,15 @@ def _default_audit_log_path() -> Path:
 
 _AUDIT_LOG_PATH = _default_audit_log_path()
 
+# Sentinel that lets a host process pick audit records out of ordinary stderr.
+AUDIT_STREAM_PREFIX = "@cybersec-audit@ "
+
 _logger: logging.Logger | None = None
+
+
+def _stream_audit_enabled() -> bool:
+    """Whether audit records are mirrored to stderr in addition to the file sink."""
+    return os.environ.get("CYBERSEC_MCP_AUDIT_STREAM", "").strip().lower() in ("1", "true", "yes")
 
 
 class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -257,13 +267,48 @@ def get_audit_logger() -> logging.Logger:
     handler.setFormatter(logging.Formatter("%(message)s"))
     _logger.addHandler(handler)
 
+    # A sandboxed server's file sink lives inside the VM and dies with it. The
+    # prefixed stderr mirror is how the host launcher keeps the durable copy.
+    # FileHandler, not StreamHandler: the rotating file handler subclasses
+    # StreamHandler, while the stderr fallback must not be mirrored onto itself.
+    if _stream_audit_enabled() and isinstance(handler, logging.FileHandler):
+        mirror = logging.StreamHandler(sys.stderr)
+        mirror.setFormatter(logging.Formatter(AUDIT_STREAM_PREFIX + "%(message)s"))
+        _logger.addHandler(mirror)
+
     return _logger
+
+
+# Hash chain. Each record carries the SHA256 of this process's previous record,
+# so editing or dropping a record inside a chain is detectable
+# (scripts/verify_audit_chain.py). Chains are per process because several
+# sessions may append to one log; truncating a chain's tail is not detected.
+CHAIN_GENESIS = "0" * 64
+
+_chain_id = uuid.uuid4().hex
+_chain_prev = CHAIN_GENESIS
+_chain_seq = 0
+_chain_lock = threading.Lock()
+
+
+def chain_link(previous: str, line: str) -> str:
+    """Return the chain value a record's serialized line hands to the next one."""
+    return hashlib.sha256(f"{previous}{line}".encode()).hexdigest()
 
 
 def _log(level: int, entry: dict[str, Any]) -> None:
     """Write a JSON audit entry; fail only when required audit setup fails."""
+    global _chain_prev, _chain_seq
     try:
-        get_audit_logger().log(level, json.dumps(entry, ensure_ascii=False))
+        # The lock keeps the emitted order and the chain order identical.
+        with _chain_lock:
+            _chain_seq += 1
+            entry["chain"] = _chain_id
+            entry["seq"] = _chain_seq
+            entry["prev"] = _chain_prev
+            line = json.dumps(entry, ensure_ascii=False)
+            _chain_prev = chain_link(entry["prev"], line)
+            get_audit_logger().log(level, line)
     except OSError:
         pass
 

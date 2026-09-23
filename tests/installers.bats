@@ -593,6 +593,95 @@ PY
     [[ "${BINARY_RELEASES_BLUETEAM[*]}" == *"hayabusa|hayabusa|lin-aarch64-gnu"* ]]
 }
 
+# remove_npm_packages — the destructive npm path. It must never uninstall a
+# package the host already had (remove.sh filters those out first) and must not
+# treat an absent package as a failure.
+
+@test "remove_npm_packages uninstalls only globally installed packages" {
+    run bash -lc '
+        source_libs() { :; }
+        source "'"$PROJECT_ROOT"'/lib/common.sh" >/dev/null 2>&1
+        source "'"$PROJECT_ROOT"'/lib/installers.sh" >/dev/null 2>&1
+        _log=$(mktemp); export LOG_FILE="$_log"
+        REMOVAL_FAILURES=0
+        npm() {
+            case "$1 $2" in
+                "ls -g")  [[ "$4" == "surya" ]] ;;
+                "uninstall -g") echo "UNINSTALL:$3" ;;
+                *) return 1 ;;
+            esac
+        }
+        remove_npm_packages surya solgraph
+        cat "$_log"; rm -f "$_log"
+        echo "failures=$REMOVAL_FAILURES"
+    '
+    assert_success
+    assert_output --partial "UNINSTALL:surya"
+    refute_output --partial "UNINSTALL:solgraph"
+    assert_output --partial "npm packages: 1 removed, 1 already removed"
+    assert_output --partial "failures=0"
+}
+
+@test "remove_npm_packages counts a failed uninstall and keeps going" {
+    run bash -lc '
+        source "'"$PROJECT_ROOT"'/lib/common.sh" >/dev/null 2>&1
+        source "'"$PROJECT_ROOT"'/lib/installers.sh" >/dev/null 2>&1
+        export LOG_FILE=/dev/null
+        REMOVAL_FAILURES=0
+        npm() { [[ "$1 $2" == "ls -g" ]] && return 0; return 1; }
+        remove_npm_packages apk-mitm surya
+        echo "failures=$REMOVAL_FAILURES"
+    '
+    assert_success
+    assert_output --partial "failures=2"
+    assert_output --partial "npm packages: 0 removed, 0 already removed"
+}
+
+@test "remove_npm_packages is a no-op without npm or without packages" {
+    run bash -lc '
+        source "'"$PROJECT_ROOT"'/lib/common.sh" >/dev/null 2>&1
+        source "'"$PROJECT_ROOT"'/lib/installers.sh" >/dev/null 2>&1
+        export LOG_FILE=/dev/null
+        command_exists() { [[ "$1" != "npm" ]]; }
+        remove_npm_packages surya || exit 1
+        remove_npm_packages || exit 1
+    '
+    assert_success
+    assert_output --partial "npm not found"
+}
+
+# npm aggregation — install.sh, update.sh and remove.sh all reach module _NPM
+# arrays through the shared collectors, so one broken prefix silently drops the
+# tools from install, update and rollback at once.
+
+@test "npm aggregation: _collect_module_arrays picks up every module _NPM array" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/mobile.sh"
+    source "$PROJECT_ROOT/modules/blockchain.sh"
+
+    declare -a _ALL_NPM=()
+    _collect_module_arrays "NPM" _ALL_NPM
+
+    [[ "${_ALL_NPM[*]}" == *"apk-mitm"* ]]
+    [[ "${_ALL_NPM[*]}" == *"rms-runtime-mobile-security"* ]]
+    [[ "${_ALL_NPM[*]}" == *"surya"* ]]
+    [[ "${_ALL_NPM[*]}" == *"solgraph"* ]]
+}
+
+@test "npm aggregation: _append_module_array and _module_array_names cover _NPM" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/mobile.sh"
+
+    declare -a _appended=()
+    _append_module_array _appended "MOBILE_NPM"
+    [[ "${_appended[*]}" == *"apk-mitm"* ]]
+
+    declare -a _names=()
+    _module_array_names NPM _names
+    [[ "${_names[*]}" == *"MOBILE_NPM"* ]]
+    [[ "${_names[*]}" == *"BLOCKCHAIN_NPM"* ]]
+}
+
 # Stage-1 C2 aggregation (install.sh install_modules loop)
 #
 # Replicates the per-module aggregation loop from install_modules() in

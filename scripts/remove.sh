@@ -137,6 +137,7 @@ GO_BINS_TO_REMOVE=()
 GIT_NAMES_TO_REMOVE=()
 GEMS_TO_REMOVE=()
 CARGO_TO_REMOVE=()
+NPM_TO_REMOVE=()
 
 # Shared base deps: only remove with --remove-deps
 if [[ "$REMOVE_DEPS" == "true" ]]; then
@@ -159,6 +160,7 @@ for _mod in "${REMOVE_MODULES[@]}"; do
     _append_module_array GIT_NAMES_TO_REMOVE "${_pfx}_BUILD_NAMES"
     _append_module_array GEMS_TO_REMOVE      "${_pfx}_GEMS"
     _append_module_array CARGO_TO_REMOVE     "${_pfx}_CARGO"
+    _append_module_array NPM_TO_REMOVE       "${_pfx}_NPM"
 done
 
 # Never remove a tool the installer found already on the system. PKGS_TO_REMOVE is
@@ -169,6 +171,7 @@ filter_preexisting GO_BINS_TO_REMOVE   "Go binaries"
 filter_preexisting GIT_NAMES_TO_REMOVE "Git/source trees"
 filter_preexisting GEMS_TO_REMOVE      "gems"
 filter_preexisting CARGO_TO_REMOVE     "cargo crates"
+filter_preexisting NPM_TO_REMOVE       "npm packages"
 
 # Execute removal
 # ORDER: Tools that need runtime commands (pipx, gem, cargo) are removed FIRST,
@@ -249,6 +252,12 @@ if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
     log_info "Gems: $gems_removed removed, $gems_skipped already removed"
 elif [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]]; then
     log_warn "gem not found — skipping Ruby gem removal"
+fi
+echo ""
+
+# 2b) npm packages — must run BEFORE system packages remove nodejs
+if [[ ${#NPM_TO_REMOVE[@]} -gt 0 ]]; then
+    remove_npm_packages "${NPM_TO_REMOVE[@]}"
 fi
 echo ""
 

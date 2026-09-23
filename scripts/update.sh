@@ -693,6 +693,48 @@ if [[ "$BUILD_UPDATED" -gt 0 || "$BUILD_FAILED" -gt 0 || "$BUILD_SKIPPED" -gt 0 
 fi
 echo ""
 
+# 10) npm packages
+if command_exists npm; then
+    ALL_NPM=()
+    _collect_module_arrays "NPM" ALL_NPM
+
+    if [[ ${#ALL_NPM[@]} -gt 0 ]]; then
+        NPM_TO_UPDATE=()
+        for _npm_pkg in "${ALL_NPM[@]}"; do
+            # The global package list is authoritative; many packages install a
+            # binary under a name that does not match the package.
+            if npm ls -g --depth=0 "$_npm_pkg" >/dev/null 2>&1; then
+                NPM_TO_UPDATE+=("$_npm_pkg")
+            else
+                log_debug "Skipping npm package $_npm_pkg (not installed)"
+            fi
+        done
+
+        if [[ ${#NPM_TO_UPDATE[@]} -gt 0 ]]; then
+            log_info "Updating npm packages (${NPM_TO_UPDATE[*]})..."
+            NPM_FAILED=0
+            for _npm_pkg in "${NPM_TO_UPDATE[@]}"; do
+                if npm install -g "${_npm_pkg}@latest" >> "$LOG_FILE" 2>&1; then
+                    track_version "$_npm_pkg" "npm" "latest"
+                else
+                    log_warn "npm update failed: $_npm_pkg"
+                    NPM_FAILED=$((NPM_FAILED + 1))
+                fi
+            done
+            if [[ "$NPM_FAILED" -gt 0 ]]; then
+                UPDATE_FAILURES=$((UPDATE_FAILURES + NPM_FAILED))
+            else
+                log_success "npm packages updated"
+            fi
+        else
+            log_info "No installed npm packages to update"
+        fi
+    fi
+else
+    log_warn "npm not found — skipping npm package updates"
+fi
+echo ""
+
 # Done
 disable_debug_trace
 

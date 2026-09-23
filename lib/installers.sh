@@ -577,6 +577,13 @@ declare -gA _CARGO_BIN_NAMES=(
     [yara-x-cli]="yr"
 )
 
+# npm package name → installed binary name, for the packages where they differ.
+# Verified against `npm view <pkg> bin`; most global packages install a binary of
+# the same name, so only exceptions belong here.
+declare -gA _NPM_BIN_NAMES=(
+    [rms-runtime-mobile-security]="rms"
+)
+
 # Batch cargo install
 install_cargo_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
@@ -1992,6 +1999,36 @@ install_npm_batch() {
             _report_tool_done "npm" "$pkg" "fail"
         fi
     done
+}
+
+# remove_npm_packages — uninstall global npm packages, skipping absent ones.
+# The global package list is authoritative because a package's executable name
+# does not always match the package name (see _NPM_BIN_NAMES). Increments
+# REMOVAL_FAILURES for each failed uninstall, mirroring the other remove paths.
+remove_npm_packages() {
+    local -a pkgs=("$@")
+    [[ ${#pkgs[@]} -eq 0 ]] && return 0
+    if ! command_exists npm; then
+        log_warn "npm not found — skipping npm package removal"
+        return 0
+    fi
+
+    local removed=0 skipped=0 pkg
+    for pkg in "${pkgs[@]}"; do
+        if npm ls -g --depth=0 "$pkg" >/dev/null 2>&1; then
+            if npm uninstall -g "$pkg" >> "$LOG_FILE" 2>&1; then
+                removed=$((removed + 1))
+            else
+                log_warn "Failed to remove npm package: $pkg"
+                REMOVAL_FAILURES=$((${REMOVAL_FAILURES:-0} + 1))
+            fi
+        else
+            log_debug "Skipping npm package $pkg (not installed)"
+            skipped=$((skipped + 1))
+        fi
+    done
+    log_info "npm packages: $removed removed, $skipped already removed"
+    return 0
 }
 
 # install_binary_releases — install all binary releases from a registry array.

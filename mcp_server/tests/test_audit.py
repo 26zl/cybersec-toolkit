@@ -34,6 +34,9 @@ def _reset_audit_logger(tmp_path: Path):
     mod._logger = None
     log_file = tmp_path / "audit.log"
     mod._AUDIT_LOG_PATH = log_file
+    # The hash chain is process-global; reset it so each test starts at genesis.
+    mod._chain_prev = mod.CHAIN_GENESIS
+    mod._chain_seq = 0
     yield
     # Clean up handlers to avoid ResourceWarning
     if mod._logger is not None:
@@ -41,6 +44,58 @@ def _reset_audit_logger(tmp_path: Path):
             h.close()
             mod._logger.removeHandler(h)
     mod._logger = None
+
+
+class TestHashChain:
+    """Records are chained so an edited or dropped record is detectable."""
+
+    def test_records_carry_chain_fields(self, tmp_path: Path) -> None:
+        import mcp_server.audit as mod
+
+        log_tool_call("guided_assessment", {"target": "10.0.0.1"})
+        record = json.loads(mod._AUDIT_LOG_PATH.read_text().strip())
+        assert isinstance(record["chain"], str) and len(record["chain"]) == 32
+        assert isinstance(record["seq"], int)
+        assert isinstance(record["prev"], str) and len(record["prev"]) == 64
+
+    def test_each_record_links_to_the_previous_one(self, tmp_path: Path) -> None:
+        import mcp_server.audit as mod
+
+        for tool in ("guided_assessment", "run_tool", "run_pipeline"):
+            log_tool_call(tool, {"tool": tool})
+
+        lines = mod._AUDIT_LOG_PATH.read_text().splitlines()
+        assert len(lines) == 3
+        expected_prev = mod.CHAIN_GENESIS
+        for index, line in enumerate(lines):
+            record = json.loads(line)
+            assert record["seq"] == index + 1
+            assert record["prev"] == expected_prev
+            # Each link folds the record's own prev into its serialized line.
+            expected_prev = mod.chain_link(record["prev"], line)
+
+    def test_one_chain_id_per_process(self, tmp_path: Path) -> None:
+        import mcp_server.audit as mod
+
+        log_tool_call("run_tool", {})
+        log_tool_call("run_tool", {})
+        chains = {json.loads(line)["chain"] for line in mod._AUDIT_LOG_PATH.read_text().splitlines()}
+        assert len(chains) == 1
+
+    def test_verifier_script_shares_the_chain_computation(self) -> None:
+        """scripts/verify_audit_chain.py keeps a stdlib-only copy; drift breaks verification."""
+        import importlib.util
+
+        import mcp_server.audit as mod
+
+        script = Path(__file__).resolve().parents[2] / "scripts" / "verify_audit_chain.py"
+        spec = importlib.util.spec_from_file_location("verify_audit_chain", script)
+        verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(verifier)
+
+        assert verifier.CHAIN_GENESIS == mod.CHAIN_GENESIS
+        for previous, line in ((mod.CHAIN_GENESIS, '{"a": 1}'), ("ab" * 32, '{"b": "æ"}')):
+            assert verifier.chain_link(previous, line) == mod.chain_link(previous, line)
 
 
 class TestGetAuditLogger:
@@ -69,6 +124,42 @@ class TestGetAuditLogger:
         assert len(handlers) == 1
         assert handlers[0].maxBytes == 5 * 1024 * 1024
         assert handlers[0].backupCount == 3
+
+    @staticmethod
+    def _mirror_handlers(logger: logging.Logger) -> list[logging.Handler]:
+        import mcp_server.audit as mod
+
+        return [h for h in logger.handlers if getattr(h.formatter, "_fmt", "").startswith(mod.AUDIT_STREAM_PREFIX)]
+
+    def test_no_stderr_mirror_by_default(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.delenv("CYBERSEC_MCP_AUDIT_STREAM", raising=False)
+        assert self._mirror_handlers(get_audit_logger()) == []
+
+    def test_audit_stream_mirrors_records_to_stderr(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        """A sandboxed server's file sink dies with the VM; the host reads this mirror."""
+        import mcp_server.audit as mod
+
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_STREAM", "1")
+        log_tool_call("guided_assessment", {"target": "10.0.0.1"})
+
+        mirrored = [line for line in capsys.readouterr().err.splitlines() if line.startswith(mod.AUDIT_STREAM_PREFIX)]
+        assert len(mirrored) == 1
+        record = json.loads(mirrored[0][len(mod.AUDIT_STREAM_PREFIX) :])
+        assert record["event"] == "tool_call"
+        assert record["tool"] == "guided_assessment"
+        # The file sink keeps its own copy inside the sandbox.
+        assert json.loads(mod._AUDIT_LOG_PATH.read_text().strip())["tool"] == "guided_assessment"
+
+    def test_audit_stream_does_not_double_write_on_stderr_fallback(self, tmp_path: Path, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_STREAM", "1")
+        mod._AUDIT_LOG_PATH = tmp_path / "unwritable" / "audit.log"
+        (tmp_path / "unwritable").write_text("not a directory")
+
+        with pytest.warns(RuntimeWarning):
+            logger = get_audit_logger()
+        assert self._mirror_handlers(logger) == []
 
     def test_singleton(self, tmp_path: Path) -> None:
         a = get_audit_logger()

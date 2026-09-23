@@ -297,6 +297,28 @@ setup() {
     assert_output --partial "SOURCE=massdns|https://github.com/blechschmidt/massdns.git|make"
 }
 
+@test "install_single_tool finds module npm packages and promptfoo" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        ensure_node() { return 0; }
+        track_version() { :; }
+        npm() { [[ "$*" == "install -g ${expected}@latest" ]]; }
+        for expected in apk-mitm surya promptfoo; do
+            install_single_tool "$expected" || exit 1
+        done
+        npm() { return 1; }
+        ! install_single_tool surya
+    '
+    assert_success
+    assert_output --partial "Installed: apk-mitm"
+    assert_output --partial "Installed: surya"
+    assert_output --partial "Installed: promptfoo"
+    assert_output --partial "Failed: surya"
+}
+
 # platform module filtering shared with dry-run
 
 @test "_apply_platform_module_filters drops wireless module under WSL" {

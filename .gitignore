@@ -50,6 +50,9 @@ secrets.json
 token.json
 
 # Runtime artifacts
+node_modules/
+.sandcastle/logs/
+.sandcastle/worktrees/
 # .versions* also covers its .lock/.lockdir and mktemp scratch siblings
 .versions*
 .install_sessions/
