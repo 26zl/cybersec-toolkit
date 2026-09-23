@@ -47,10 +47,8 @@ install_module_blockchain() {
         local _foundry_tmp _foundry_home
         _foundry_home="$(_builder_home)"
         _foundry_tmp=$(mktemp); _register_cleanup "$_foundry_tmp"
-        # Mirror the privilege-drop + validation discipline used by every other
-        # curl-pipe bootstrap (rustup/uv/nodesource): download to a temp file,
-        # validate size + keywords, then run as $SUDO_USER (not root).
-        if curl -L --proto '=https' --tlsv1.2 -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE" \
+        # Same curl-pipe discipline as rustup/uv: validate the download, run it as $SUDO_USER.
+        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE" \
                 && _validate_curl_pipe "$_foundry_tmp" 'foundry' 'foundryup' \
                 && chmod +r "$_foundry_tmp" \
                 && _as_builder "bash '$(_escape_single_quoted "$_foundry_tmp")'" >> "$LOG_FILE" 2>&1; then
@@ -74,11 +72,7 @@ install_module_blockchain() {
         fi
     fi
 
-    # Symlink Foundry binaries to $PIPX_BIN_DIR for PATH access
-    # NOTE: 'chisel' is skipped — it collides with jpillora/chisel (TCP tunnel)
-    # from the networking module.  Access Foundry's chisel via ~/.foundry/bin/chisel.
-    # foundryup installs under $SUDO_USER's home when privilege-dropping; resolve
-    # the builder's home so the symlinks point at the real install location.
+    # Foundry's chisel stays off PATH: it collides with jpillora/chisel (networking).
     local _foundry_dir; _foundry_dir="$(_builder_home)/.foundry/bin"
     if [[ -d "$_foundry_dir" ]]; then
         local _linked=0

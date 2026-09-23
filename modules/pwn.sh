@@ -25,23 +25,30 @@ PWN_GIT=(
     # Windows/BOF source; not a host binary
     "nanodump=https://github.com/fortra/nanodump.git"
     "eviltree=https://github.com/t3l3machus/eviltree.git"
-    "Hoaxshell=https://github.com/t3l3machus/hoaxshell.git"
     "DNSExfiltrator=https://github.com/Arno0x/DNSExfiltrator.git"
-    "Egress-Assess=https://github.com/FortyNorthSecurity/Egress-Assess.git"
-    "Villain=https://github.com/t3l3machus/Villain.git"
+    "Egress-Assess=https://github.com/RedSiege/Egress-Assess.git"
     "preeny=https://github.com/zardus/preeny.git"
     "ropium=https://github.com/Boyan-MILANOV/ropium.git"
 )
 
+# C2 / reverse-shell frameworks — gated behind INCLUDE_C2 (redteam/full profiles
+# or --include-c2), consistent with the C2 gating in modules/misc.sh.
+PWN_C2_GIT=(
+    "Hoaxshell=https://github.com/t3l3machus/hoaxshell.git"
+    "Villain=https://github.com/t3l3machus/Villain.git"
+)
+
 PWN_CARGO=(pwninit ropr)
 PWN_GO_BINS=(interactsh-client)
-PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn nanodump eviltree Hoaxshell DNSExfiltrator Egress-Assess Villain preeny ropium)
+PWN_GIT_NAMES=(exploitdb RouterSploit libc-database Penelope ShellNoob unicorn nanodump eviltree DNSExfiltrator Egress-Assess preeny ropium)
+PWN_C2_GIT_NAMES=(Hoaxshell Villain)
 PWN_BUILD_NAMES=(AFLplusplus honggfuzz radamsa Donut ScareCrow Freeze QueenSono Ivy)
 # Build metadata shared by install and update.
 # AFL++ source-only excludes optional QEMU, FRIDA, and unicorn dependencies.
 # honggfuzz patch is grep-guarded: static libbfd.a on rpm distros needs an explicit
 # -lzstd after -lbfd (undefined reference to ZSTD_isError). No-op where it is shared.
-declare -A PWN_BUILD_URLS=(
+# -g: verify/update/remove source modules from inside a function.
+declare -gA PWN_BUILD_URLS=(
     [AFLplusplus]="https://github.com/AFLplusplus/AFLplusplus.git"
     [honggfuzz]="https://github.com/google/honggfuzz.git"
     [radamsa]="https://gitlab.com/akihe/radamsa.git"
@@ -51,7 +58,7 @@ declare -A PWN_BUILD_URLS=(
     [QueenSono]="https://github.com/ariary/QueenSono.git"
     [Ivy]="https://github.com/optiv/Ivy.git"
 )
-declare -A PWN_BUILD_CMDS=(
+declare -gA PWN_BUILD_CMDS=(
     [AFLplusplus]="make source-only"
     [honggfuzz]="{ grep -q -- '-lbfd -lzstd' Makefile || sed -i 's/-lopcodes -lbfd/-lopcodes -lbfd -lzstd/g' Makefile; } && make"
     [radamsa]="make"
@@ -68,6 +75,14 @@ install_module_pwn() {
     install_go_batch "Pwn - Go" "${PWN_GO[@]}"
     install_gem_batch "Pwn - Ruby" "${PWN_GEMS[@]}"
     install_git_batch "Pwn - Git" "${PWN_GIT[@]}"
+
+    # C2 / reverse-shell frameworks — only with INCLUDE_C2 (see modules/misc.sh).
+    if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+        log_info "Installing pwn C2 frameworks (INCLUDE_C2 enabled)..."
+        install_git_batch "Pwn - C2 (Git)" "${PWN_C2_GIT[@]}"
+    else
+        log_info "Skipping pwn C2 frameworks (INCLUDE_C2 disabled — use --include-c2 or the redteam/full profile)"
+    fi
 
     install_cargo_batch "Pwn - Rust" "${PWN_CARGO[@]}" || true
 

@@ -30,7 +30,7 @@ WIRELESS_GIT=(
     "proxmark3=https://github.com/RfidResearchGroup/proxmark3.git"
     "mousejack=https://github.com/BastilleResearch/mousejack.git"
     "mfdread=https://github.com/zhovner/mfdread.git"
-    "libnfc-crypto1-crack=https://github.com/droidnewbie2/acr122uNFC.git"
+    "libnfc-crypto1-crack=https://github.com/SnoopyTools/acr122uNFC.git"
 )
 
 WIRELESS_GIT_NAMES=(wifite2 fluxion airgeddon hostapd-mana wifiphisher PSKracker eaphammer wifipumpkin3 proxmark3 mousejack mfdread libnfc-crypto1-crack)

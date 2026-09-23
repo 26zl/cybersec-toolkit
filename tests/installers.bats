@@ -91,6 +91,36 @@ PY
     assert_output --partial "unsafe archive member path"
 }
 
+@test "tar release assets install without archive group/world-write bits" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions" FAST_MODE=true SYS_ARCH=amd64
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$TEST_TMPDIR/src" "$PIPX_BIN_DIR"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/src/zz-fake-tool"
+    chmod 0777 "$TEST_TMPDIR/src" "$TEST_TMPDIR/src/zz-fake-tool"
+    tar -czf "$TEST_TMPDIR/fixture.tar.gz" -C "$TEST_TMPDIR/src" .
+    _gh_api_get() {
+        printf '{"tag_name":"v1","assets":[{"name":"zz-fake-tool_linux_amd64.tar.gz","browser_download_url":"https://example.invalid/zz-fake-tool_linux_amd64.tar.gz"}]}'
+    }
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        cp "$TEST_TMPDIR/fixture.tar.gz" "$out"
+    }
+
+    # run: the GNU-only `find -perm /6000` step errors on BSD find hosts.
+    run download_github_release "example/zz-fake-tool" "zz-fake-tool" "linux_amd64\\.tar\\.gz$" \
+        "$TEST_TMPDIR/opt/zz-fake-tool"
+    assert_success
+
+    local f="$TEST_TMPDIR/opt/zz-fake-tool/zz-fake-tool"
+    [[ -x "$f" ]]
+    [[ -L "$PIPX_BIN_DIR/zz-fake-tool" ]]
+    [[ -z "$(find "$TEST_TMPDIR/opt/zz-fake-tool" -perm -o+w)" ]]
+    grep -q "^zz-fake-tool|binary|v1|" "$VERSION_FILE"
+}
+
 # GitHub release checksum enforcement (offline)
 
 @test "verify_github_checksum accepts a matching checksum" {
@@ -192,6 +222,19 @@ PY
     [[ "$opts" == *"--netrc-file"* ]]
     [[ "$opts" != *"faketoken123"* ]]
     [[ "$opts" != *" -H "* ]]
+}
+
+@test "_setup_curl_opts falls back to the invoking user's gh login under sudo" {
+    source_libs --installers debian apt
+    unset GITHUB_TOKEN
+    export SUDO_USER=builder
+    gh() { return 1; }
+    _as_builder() { [[ "$1" == "gh auth token" ]] && printf 'usertoken456\n'; }
+
+    _setup_curl_opts
+
+    [ "$GITHUB_TOKEN" = "usertoken456" ]
+    grep -q "password usertoken456" "$_GH_NETRC_FILE"
 }
 
 # curl-pipe content validation gate
@@ -675,6 +718,57 @@ PY
     '
     assert_success
     assert_output --partial "npm not found"
+}
+
+@test "install_npm_batch records a globally pre-installed package as existing" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    ensure_node() { return 0; }
+    show_progress() { :; }
+    npm() {
+        case "$1 $2" in
+            "ls -g")      [[ "$4" == "surya" ]] ;;
+            "install -g") echo "$3" >> "$TEST_TMPDIR/npm_installs" ;;
+            *)            return 1 ;;
+        esac
+    }
+
+    install_npm_batch "npm test" surya solgraph
+
+    grep -q "^surya|npm|existing|" "$VERSION_FILE"
+    grep -q "^solgraph|npm|latest|" "$VERSION_FILE"
+    [[ "$(cat "$TEST_TMPDIR/npm_installs")" == "solgraph" ]]
+}
+
+# ligolo-ng publishes separate agent/proxy tarballs whose binaries are named
+# agent and proxy; assets are listed alphabetically, agent first.
+@test "ligolo-ng entries select their own tarball and in-archive binary" {
+    source_libs debian apt
+    export SYS_ARCH=amd64
+    source "$PROJECT_ROOT/lib/installers.sh"
+    local assets='{"assets":[
+        {"name":"ligolo-ng_0.9.1_checksums.txt"},
+        {"name":"ligolo-ng_agent_0.9.1_linux_amd64.tar.gz"},
+        {"name":"ligolo-ng_agent_0.9.1_windows_amd64.zip"},
+        {"name":"ligolo-ng_proxy_0.9.1_linux_amd64.tar.gz"}]}'
+    local entry repo binary pattern dest archive picked checked=0
+    for entry in "${BINARY_RELEASES_NETWORKING[@]}"; do
+        IFS='|' read -r repo binary pattern dest archive <<< "$entry"
+        [[ "$repo" == "nicocha30/ligolo-ng" ]] || continue
+        checked=$((checked + 1))
+        picked=$(printf '%s' "$assets" | python3 -c '
+import json, re, sys
+for a in json.load(sys.stdin)["assets"]:
+    if re.search(sys.argv[1], a["name"]):
+        print(a["name"]); break' "$pattern")
+        case "$binary" in
+            ligolo-proxy) [[ "$picked" == "ligolo-ng_proxy_0.9.1_linux_amd64.tar.gz" && "$archive" == "proxy" ]] ;;
+            ligolo-agent) [[ "$picked" == "ligolo-ng_agent_0.9.1_linux_amd64.tar.gz" && "$archive" == "agent" ]] ;;
+            *) false ;;
+        esac
+    done
+    [[ "$checked" -eq 2 ]]
 }
 
 # npm aggregation — install.sh, update.sh and remove.sh all reach module _NPM

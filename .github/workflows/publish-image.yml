@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: publish-image-${{ github.ref }}
-  # Never cancel a release build midway (a main push must not abort a v* tag build).
+  # Queue instead of cancelling: a build aborted mid-push leaves its tags half-updated.
   cancel-in-progress: false
 
 jobs:
@@ -29,6 +29,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Sign build provenance and the SBOM with a short-lived OIDC identity.
+      id-token: write
+      attestations: write
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
@@ -38,9 +41,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read version
-        id: ver
-        run: echo "value=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      # server.json points the MCP registry at the image tag that equals VERSION.
+      - name: Check the release tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [[ "$tag" != "$version" && "$tag" != "$version"-* ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match VERSION ${version}"
+            exit 1
+          fi
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -50,6 +60,9 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}
+          # Only default-branch builds move latest; the default flavor would also add it on v* tags.
+          flavor: |
+            latest=false
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
@@ -81,5 +94,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push all tags to GHCR
-        run: docker push --all-tags ghcr.io/${{ github.repository }}
+      # Rebuild from the buildx cache and push (near-instant; layers are cached from
+      # the scanned build). Emits the manifest digest the attestations bind to.
+      - name: Push to GHCR
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          pull: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      # SBOM the locally-loaded image (no registry pull); attest it to the pushed digest.
+      - name: Generate SBOM (SPDX)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          scan-type: image
+          format: spdx-json
+          output: sbom.spdx.json
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true

@@ -16,6 +16,25 @@ def test_main_disables_banner_and_update_check() -> None:
 
 
 @pytest.mark.asyncio
+async def test_every_tool_has_behavior_annotations() -> None:
+    # A new @mcp.tool without annotations would leave clients unable to reason
+    # about its side effects; every registered tool must carry a readOnly hint.
+    tools = await server.mcp._list_tools()
+    assert tools, "no MCP tools registered"
+    missing = [t.name for t in tools if t.annotations is None or t.annotations.readOnlyHint is None]
+    assert not missing, f"tools missing behavior annotations: {missing}"
+
+
+@pytest.mark.asyncio
+async def test_executors_marked_not_read_only() -> None:
+    tools = {t.name: t.annotations for t in await server.mcp._list_tools()}
+    for name in ("run_tool", "run_pipeline", "run_script"):
+        assert tools[name].readOnlyHint is False and tools[name].destructiveHint is True, name
+    for name in ("list_tools", "get_tool_info", "list_profiles"):
+        assert tools[name].readOnlyHint is True, name
+
+
+@pytest.mark.asyncio
 async def test_manage_remote_hosts_test_logs_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """A successful SSH test returns ``success`` and must log success too."""
     remote = Mock()
@@ -77,16 +96,18 @@ def test_get_tool_info_non_c2_tool_not_gated() -> None:
     assert "--include-c2" not in info["commands"]["install"]
 
 
-def test_get_profile_tools_excludes_c2_when_disabled() -> None:
+@pytest.mark.asyncio
+async def test_get_profile_tools_excludes_c2_when_disabled() -> None:
     from mcp_server.tools_db import C2_TOOLS
 
-    result = server.get_profile_tools("web")  # include_c2 = false
+    result = await server.get_profile_tools("web")  # include_c2 = false
     listed = {t["name"] for m in result["modules"] for t in m["tools"]}
     assert not (listed & C2_TOOLS), f"C2 tools leaked into web profile: {listed & C2_TOOLS}"
 
 
-def test_get_profile_tools_includes_c2_for_redteam() -> None:
-    result = server.get_profile_tools("redteam")  # include_c2 = true
+@pytest.mark.asyncio
+async def test_get_profile_tools_includes_c2_for_redteam() -> None:
+    result = await server.get_profile_tools("redteam")  # include_c2 = true
     listed = {t["name"] for m in result["modules"] for t in m["tools"]}
     assert "gophish" in listed and "Caldera" in listed
 

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import logging.handlers
 import os
 import stat
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -19,6 +23,7 @@ from mcp_server.audit import (
     log_execution,
     log_pipeline_start,
     log_script_execution,
+    log_server_start,
     log_tool_call,
     log_tool_result,
     log_validation,
@@ -150,30 +155,46 @@ class TestGetAuditLogger:
     def _mirror_handlers(logger: logging.Logger) -> list[logging.Handler]:
         import mcp_server.audit as mod
 
-        return [h for h in logger.handlers if getattr(h.formatter, "_fmt", "").startswith(mod.AUDIT_STREAM_PREFIX)]
+        return [h for h in logger.handlers if isinstance(h.formatter, mod._TaggedMirrorFormatter)]
 
     def test_no_stderr_mirror_by_default(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.delenv("CYBERSEC_MCP_AUDIT_STREAM", raising=False)
         assert self._mirror_handlers(get_audit_logger()) == []
 
-    def test_audit_stream_mirrors_records_to_stderr(self, tmp_path: Path, monkeypatch, capsys) -> None:
+    def test_audit_stream_mirrors_tagged_records_to_stderr(self, tmp_path: Path, monkeypatch, capsys) -> None:
         """A sandboxed server's file sink dies with the VM; the host reads this mirror."""
         import mcp_server.audit as mod
 
+        key = bytes(range(32))
+        monkeypatch.setattr(mod, "_STREAM_KEY", key)
         monkeypatch.setenv("CYBERSEC_MCP_AUDIT_STREAM", "1")
         log_tool_call("guided_assessment", {"target": "10.0.0.1"})
 
         mirrored = [line for line in capsys.readouterr().err.splitlines() if line.startswith(mod.AUDIT_STREAM_PREFIX)]
         assert len(mirrored) == 1
-        record = json.loads(mirrored[0][len(mod.AUDIT_STREAM_PREFIX) :])
+        tag, _, line = mirrored[0][len(mod.AUDIT_STREAM_PREFIX) :].partition(" ")
+        # The host launcher persists the record only when this tag verifies under its session key.
+        assert tag == hmac.new(key, line.encode(), hashlib.sha256).hexdigest()
+        record = json.loads(line)
         assert record["event"] == "tool_call"
         assert record["tool"] == "guided_assessment"
-        # The file sink keeps its own copy inside the sandbox.
-        assert json.loads(mod._AUDIT_LOG_PATH.read_text().strip())["tool"] == "guided_assessment"
+        # The mirrored record is the in-sandbox file line verbatim, so the hash chain survives the trip.
+        assert line == mod._AUDIT_LOG_PATH.read_text().strip()
+
+    def test_audit_stream_needs_the_session_key(self, tmp_path: Path, monkeypatch) -> None:
+        """The host refuses untagged records, so without a key nothing is mirrored."""
+        import mcp_server.audit as mod
+
+        monkeypatch.setattr(mod, "_STREAM_KEY", None)
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_STREAM", "1")
+        with pytest.warns(RuntimeWarning, match=mod.AUDIT_KEY_ENV):
+            logger = get_audit_logger()
+        assert self._mirror_handlers(logger) == []
 
     def test_audit_stream_does_not_double_write_on_stderr_fallback(self, tmp_path: Path, monkeypatch) -> None:
         import mcp_server.audit as mod
 
+        monkeypatch.setattr(mod, "_STREAM_KEY", bytes(32))
         monkeypatch.setenv("CYBERSEC_MCP_AUDIT_STREAM", "1")
         mod._AUDIT_LOG_PATH = tmp_path / "unwritable" / "audit.log"
         (tmp_path / "unwritable").write_text("not a directory")
@@ -186,6 +207,62 @@ class TestGetAuditLogger:
         a = get_audit_logger()
         b = get_audit_logger()
         assert a is b
+
+
+class TestStreamKey:
+    """The mirror key reaches the server process alone: not its children, not /proc."""
+
+    def test_key_is_consumed_from_the_environment(self, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setattr(mod, "_make_undumpable", lambda: None)
+        monkeypatch.setenv(mod.AUDIT_KEY_ENV, "ab" * 32)
+        assert mod._take_stream_key() == bytes.fromhex("ab" * 32)
+        assert mod.AUDIT_KEY_ENV not in os.environ
+
+    @pytest.mark.parametrize("raw", ["", "not-hex", "ab" * 16])
+    def test_unusable_key_is_refused_and_still_consumed(self, monkeypatch, raw: str) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setattr(mod, "_make_undumpable", lambda: None)
+        monkeypatch.setenv(mod.AUDIT_KEY_ENV, raw)
+        assert mod._take_stream_key() is None
+        assert mod.AUDIT_KEY_ENV not in os.environ
+
+    def test_children_of_the_server_cannot_recover_the_key(self, tmp_path: Path) -> None:
+        """A fresh interpreter, because the key is taken at import and prctl is process-wide."""
+        probe = textwrap.dedent(
+            """
+            import ctypes, os, subprocess, sys
+            from mcp_server import audit
+            from mcp_server.security import _child_env
+
+            assert audit._STREAM_KEY == bytes.fromhex("ab" * 32)
+            assert audit.AUDIT_KEY_ENV not in os.environ
+            assert audit.AUDIT_KEY_ENV not in _child_env()
+            inherited = subprocess.run(["env"], capture_output=True, text=True, check=True).stdout
+            assert audit.AUDIT_KEY_ENV not in inherited
+            if sys.platform.startswith("linux"):
+                assert ctypes.CDLL(None).prctl(3, 0, 0, 0, 0) == 0  # PR_GET_DUMPABLE
+                if os.geteuid() != 0:
+                    leaked = subprocess.run(["cat", f"/proc/{os.getpid()}/environ"], capture_output=True)
+                    assert leaked.returncode != 0 and b"ab" * 32 not in leaked.stdout
+            """
+        )
+        env = {
+            **os.environ,
+            "CYBERSEC_MCP_AUDIT_KEY": "ab" * 32,
+            "CYBERSEC_MCP_AUDIT_LOG": str(tmp_path / "audit.log"),
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=Path(__file__).resolve().parents[2],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
 
 
 class TestLogExecution:
@@ -229,6 +306,21 @@ class TestLogExecution:
         log_file = tmp_path / "audit.log"
         lines = log_file.read_text(encoding="utf-8").strip().splitlines()
         assert len(lines) == 3
+
+
+class TestLogServerStart:
+    def test_records_sandbox_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CYBERSEC_SANDBOX_MODE", "kata")
+        log_server_start()
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert entry["event"] == "server_start"
+        assert entry["sandbox"] == "kata"
+
+    def test_sandbox_mode_defaults_to_unknown(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CYBERSEC_SANDBOX_MODE", raising=False)
+        log_server_start()
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert entry["sandbox"] == "unknown"
 
 
 class TestLogToolResult:

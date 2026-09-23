@@ -65,6 +65,8 @@ _CLEANUP_PATHS=()
 _register_cleanup() { _CLEANUP_PATHS+=("$1"); }
 
 _global_cleanup() {
+    # Background jobs ignore SIGINT in a non-interactive shell, so the spinner must be killed explicitly.
+    _stop_spinner 2>/dev/null || true
     for p in "${_CLEANUP_PATHS[@]+"${_CLEANUP_PATHS[@]}"}"; do
         [[ -e "$p" ]] && { rm -rf "$p" 2>/dev/null || true; }
     done

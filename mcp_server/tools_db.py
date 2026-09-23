@@ -139,13 +139,17 @@ def resolve_binary_name(method: str, tool_name: str) -> str:
 
 
 # Registry tools installed ONLY when INCLUDE_C2=true (the redteam/full profiles, or
-# --include-c2). The installer gates these in modules/misc.sh; mirror that here so MCP
-# tool/profile output reflects the gating. Synced from bash by validate_mcp_sync.py:
-#   git    -> modules/misc.sh MISC_C2_GIT_NAMES
+# --include-c2). The installer gates these in modules/misc.sh and modules/pwn.sh;
+# mirror that here so MCP tool/profile output reflects the gating. Synced from bash
+# by validate_mcp_sync.py:
+#   git    -> modules/misc.sh MISC_C2_GIT_NAMES + modules/pwn.sh PWN_C2_GIT_NAMES
 #   binary -> lib/installers.sh BINARY_RELEASES_MISC_C2 (2nd |-field)
 #   docker -> empire (bcsecurity/empire), gated in install_module_misc
 C2_TOOLS: frozenset[str] = frozenset(
     {
+        # Pwn-module C2 / reverse-shell frameworks (PWN_C2_GIT_NAMES)
+        "Hoaxshell",
+        "Villain",
         "SET",
         "Zphisher",
         "EvilGoPhish",

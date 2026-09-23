@@ -6,8 +6,9 @@ and independent of normal repository work.
 ## Cutting a release
 
 1. `make bump VERSION=x.y.z` — updates every version surface at once (VERSION,
-   pyproject, plugin.json, marketplace.json, CITATION.cff, and server.json's
-   version + image tag) and runs the version validator.
+   pyproject, plugin.json, marketplace.json, CITATION.cff, server.json's
+   version + image tag, and the README's pinned `--branch` tag), refreshes
+   `mcp_server/uv.lock`, and runs the version validator.
 2. Commit, push, tag, and publish notes:
 
    ```bash
@@ -15,8 +16,10 @@ and independent of normal repository work.
    gh release create vx.y.z --generate-notes
    ```
 
-   The push rebuilds and pushes the GHCR image (below). Then publish to the MCP
-   registry (below).
+   The push rebuilds `latest`; the `vx.y.z` tag that the release creates builds
+   the `x.y.z` image (below) and fails if the tag does not match `VERSION`. Wait
+   for that tag build to finish, then publish to the MCP registry (below): the
+   registry inspects the `x.y.z` image, so it has to exist first.
 
 ## Container image (GHCR) — automated
 
@@ -26,7 +29,12 @@ and independent of normal repository work.
 writeup-, and CI-only commits are skipped via `paths-ignore`. A push to `main`
 produces `latest` and `sha-<short>`; the numeric version tag (e.g. `1.2.1`) comes
 only from the `v*.*.*` tag build, so a later main push cannot re-point a released
-version tag.
+version tag, and a tag build never moves `latest`.
+
+Merges that the `uv-update` workflow auto-merges are pushed with `GITHUB_TOKEN`,
+which does not trigger other workflows, so they are not published until the next
+push to `main`. To ship a dependency fix sooner, run **Publish image** manually
+from `main` (Actions → Publish image → Run workflow).
 
 The image must carry `LABEL io.modelcontextprotocol.server.name=` (set in the
 `Dockerfile`) — the registry checks this annotation before accepting the OCI
@@ -78,10 +86,11 @@ Verify:
 curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=cybersec-toolkit' | jq '.servers[]'
 ```
 
-Optionally confirm the OCI launch works before publishing (image must be public):
+Optionally confirm the OCI launch works before publishing (image must be public).
+Test the `x.y.z` tag that `server.json` references, not `latest`:
 
 ```bash
-docker run -i --rm --entrypoint uv ghcr.io/26zl/cybersec-toolkit:latest \
+docker run -i --rm --entrypoint uv ghcr.io/26zl/cybersec-toolkit:x.y.z \
   run --directory mcp_server fastmcp run server.py --transport stdio --no-banner
 ```
 

@@ -2,11 +2,13 @@
 """Bump the project version across every release surface in one step.
 
 Usage: python3 scripts/bump_version.py X.Y.Z
+Prefer ``make bump VERSION=X.Y.Z``: it also runs ``uv lock``, without which
+mcp_server/uv.lock keeps the old project version and ``uv sync --locked`` fails.
 
 Surfaces kept in sync (enforced by scripts/validate_version.sh):
 VERSION, mcp_server/pyproject.toml, .claude-plugin/plugin.json,
 .claude-plugin/marketplace.json, CITATION.cff, server.json
-(top version, package version, and the OCI image tag), and the release
+(top-level version and the OCI image tag), and the release
 tag in README.md's install command.
 """
 

@@ -213,7 +213,8 @@ _DANGEROUS_PATTERNS = re.compile(r"[|`]|\$[({]")
 # the environment (e.g. awk's ENVIRON) would otherwise disclose them. A denylist
 # keeps PATH/HOME/LANG/proxy and other benign variables that tools rely on.
 _SENSITIVE_ENV_RE = re.compile(
-    r"(TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|APIKEY"
+    r"(TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|APIKEY|DSN"
+    r"|CONNECTION[_-]?STRING"
     r"|(?:API|ACCESS|PRIVATE|SECRET|SESSION)[_-]?KEY)",
     re.IGNORECASE,
 )
@@ -222,14 +223,27 @@ _SENSITIVE_ENV_PREFIX_RE = re.compile(
     r"|DIGITALOCEAN|HEROKU|NPM|PYPI|DOCKER|TF_VAR)_",
     re.IGNORECASE,
 )
+# Credential-bearing values under a neutral name (DATABASE_URL, REDIS_URL, a DSN):
+# a URL whose userinfo carries a password (scheme://user:pass@host). Matched on the
+# value, not the name, so a URL without embedded credentials is still inherited.
+_CREDENTIAL_URL_VALUE_RE = re.compile(r"://[^/\s:@]*:[^/\s@]+@")
+# Proxy settings are kept even with credentials: tools cannot reach the network without them.
+_PROXY_ENV_RE = re.compile(r"(?:HTTPS?|FTP|ALL|NO)_PROXY", re.IGNORECASE)
 
 
 def _child_env() -> dict[str, str]:
-    """A copy of the process environment with credential-shaped variables removed."""
+    """A copy of the process environment with credential-shaped variables removed.
+
+    Drops variables named like a credential and, name-agnostically, any whose
+    value embeds URL userinfo credentials (e.g. ``DATABASE_URL=postgres://u:p@h``),
+    except the standard proxy variables.
+    """
     return {
         key: value
         for key, value in os.environ.items()
-        if not _SENSITIVE_ENV_RE.search(key) and not _SENSITIVE_ENV_PREFIX_RE.match(key)
+        if not _SENSITIVE_ENV_RE.search(key)
+        and not _SENSITIVE_ENV_PREFIX_RE.match(key)
+        and (_PROXY_ENV_RE.fullmatch(key) or not _CREDENTIAL_URL_VALUE_RE.search(value))
     }
 
 

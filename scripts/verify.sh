@@ -56,6 +56,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+export VERBOSE
+
 if [[ ${#VERIFY_MODULES[@]} -eq 0 ]]; then
     VERIFY_MODULES=("${ALL_MODULES[@]}")
 else
@@ -330,6 +332,17 @@ check_module_cargo() {
     done
 }
 
+# Verify every binary a BINARY_RELEASES_* registry array (lib/installers.sh) installs.
+check_binary_array() {
+    local _arr_name="$1" _entry _bin
+    declare -p "$_arr_name" &>/dev/null || return 0
+    local -n _cba_arr="$_arr_name"
+    for _entry in "${_cba_arr[@]}"; do
+        IFS='|' read -r _ _bin _ <<< "$_entry"
+        check_cmd "$_bin" || true
+    done
+}
+
 # Batch check helpers
 check_cmds()      { for t in "$@"; do check_cmd "$t" || true; done; }
 check_pipx_arr()  { for t in "$@"; do check_pipx "$t" || true; done; }
@@ -392,18 +405,13 @@ if should_verify "misc"; then
     check_cmds "${MISC_GO_BINS[@]}"
     log_info "Misc (Git repos):"
     check_git_repos "${MISC_GIT_NAMES[@]}"
-    log_info "Misc (Special):"
-    check_cmd "pspy" || true
-    check_cmd "trufflehog" || true
-    check_cmd "gitleaks" || true
+    log_info "Misc (Binary):"
+    check_binary_array BINARY_RELEASES_MISC
     # C2 + phishing frameworks install only with INCLUDE_C2 (redteam/full), so check them only when INCLUDE_C2=true to avoid false "missing" elsewhere.
     if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
         log_info "Misc (C2/Phishing — INCLUDE_C2):"
         check_git_repos "${MISC_C2_GIT_NAMES[@]}"
-        check_cmd "gophish" || true
-        check_cmd "sliver-server" || true
-        check_cmd "sliver-client" || true
-        check_cmd "evilginx" || true
+        check_binary_array BINARY_RELEASES_MISC_C2
     fi
 fi
 
@@ -423,10 +431,7 @@ if should_verify "networking"; then
     check_git_repos "${NET_GIT_NAMES[@]}"
     check_module_cargo "networking"
     log_info "Networking (Binary):"
-    check_cmd "ligolo-proxy" || true
-    check_cmd "ligolo-agent" || true
-    check_cmd "frpc" || true
-    check_cmd "frps" || true
+    check_binary_array BINARY_RELEASES_NETWORKING
 fi
 
 if should_verify "recon"; then
@@ -443,8 +448,7 @@ if should_verify "recon"; then
     log_info "Recon (Build from source):"
     check_builds "${RECON_BUILD_NAMES[@]}"
     log_info "Recon (Binary):"
-    check_cmd "findomain" || true
-    check_cmd "phoneinfoga" || true
+    check_binary_array BINARY_RELEASES_RECON
 fi
 
 if should_verify "web"; then
@@ -462,8 +466,7 @@ if should_verify "web"; then
     log_info "Web (Git):"
     check_git_repos "${WEB_GIT_NAMES[@]}"
     log_info "Web (Binary):"
-    check_cmd "ysoserial" || true
-    check_cmd "kr" || true
+    check_binary_array BINARY_RELEASES_WEB
     log_info "Web (Special):"
     check_cmd "zaproxy" || true
 fi
@@ -506,6 +509,11 @@ if should_verify "pwn"; then
     check_module_cargo "pwn"
     log_info "Pwn (Git):"
     check_git_repos "${PWN_GIT_NAMES[@]}"
+    # C2 frameworks install only with INCLUDE_C2 (redteam/full), so check them only when INCLUDE_C2=true to avoid false "missing" elsewhere.
+    if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+        log_info "Pwn (C2 — INCLUDE_C2):"
+        check_git_repos "${PWN_C2_GIT_NAMES[@]}"
+    fi
     log_info "Pwn (Build from source):"
     check_builds "${PWN_BUILD_NAMES[@]}"
     log_info "Pwn (Special):"
@@ -530,22 +538,21 @@ if should_verify "reversing"; then
     log_info "RE (Build from source):"
     check_builds "${RE_BUILD_NAMES[@]}"
     log_info "RE (Binary):"
-    check_cmd "rp-lin" || true
-    check_cmd "jd-gui" || true
+    check_binary_array BINARY_RELEASES_REVERSING
 fi
 
 if should_verify "forensics"; then
     echo ""
     log_info "━━━━━ Module: forensics ━━━━━"
     log_info "Forensics (packages):"
-    check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk exiftool clamscan pdftotext zbarimg
+    check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk exiftool pdftotext zbarimg
     [[ "$_is_kali" == "true" ]] && { check_cmd "bulk_extractor" || true; }
     log_info "Forensics (pipx):"
     check_pipx_arr "${FORENSICS_PIPX[@]}"
     log_info "Forensics (Git):"
     check_git_repos "${FORENSICS_GIT_NAMES[@]}"
     log_info "Forensics (Binary):"
-    check_cmd "chainsaw" || true
+    check_binary_array BINARY_RELEASES_FORENSICS
 fi
 
 if should_verify "enterprise"; then
@@ -562,7 +569,7 @@ if should_verify "enterprise"; then
     log_info "Enterprise (Build):"
     check_builds "${ENTERPRISE_BUILD_NAMES[@]}"
     log_info "Enterprise (Binary):"
-    check_cmd "kerbrute" || true
+    check_binary_array BINARY_RELEASES_ENTERPRISE
     log_info "Enterprise (Special):"
     check_cmd "nxc" || true
 fi
@@ -586,6 +593,8 @@ if should_verify "wireless"; then
         check_pipx_arr "${WIRELESS_PIPX[@]}"
         log_info "Wireless (Git):"
         check_git_repos "${WIRELESS_GIT_NAMES[@]}"
+        log_info "Wireless (Binary):"
+        check_binary_array BINARY_RELEASES_WIRELESS
     fi
 fi
 
@@ -597,6 +606,9 @@ if should_verify "cracking"; then
     [[ "$_is_kali" == "true" ]] && { check_cmds cewl hashid || true; }
     log_info "Cracking (pipx):"
     check_pipx_arr "${CRACKING_PIPX[@]}"
+    log_info "Cracking (Go):"
+    check_cmds "${CRACKING_GO_BINS[@]}"
+    check_module_cargo "cracking"
     log_info "Cracking (Git):"
     check_git_repos "${CRACKING_GIT_NAMES[@]}"
     log_info "Cracking (Build from source):"
@@ -616,10 +628,12 @@ if should_verify "stego"; then
     check_pipx_arr "${STEGO_PIPX[@]}"
     log_info "Stego (Gems):"
     check_cmds "${STEGO_GEMS[@]}"
+    log_info "Stego (Go):"
+    check_cmds "${STEGO_GO_BINS[@]}"
     log_info "Stego (Git):"
     check_git_repos "${STEGO_GIT_NAMES[@]}"
     log_info "Stego (Binary):"
-    check_cmd "stegseek" || true
+    check_binary_array BINARY_RELEASES_STEGO
 fi
 
 if should_verify "cloud"; then
@@ -641,7 +655,7 @@ if should_verify "containers"; then
     log_info "Containers (Git):"
     check_git_repos "${CONTAINER_GIT_NAMES[@]}"
     log_info "Containers (Binary):"
-    check_cmds grype kubeaudit cdk syft kubescape
+    check_binary_array BINARY_RELEASES_CONTAINERS
 fi
 
 if should_verify "mobile"; then
@@ -657,8 +671,7 @@ if should_verify "mobile"; then
     log_info "Mobile (npm):"
     check_npm_arr "${MOBILE_NPM[@]}"
     log_info "Mobile (Binary):"
-    check_cmd "jadx" || true
-    check_cmd "d2j-dex2jar" || true
+    check_binary_array BINARY_RELEASES_MOBILE
 fi
 
 if should_verify "blueteam"; then
@@ -677,11 +690,7 @@ if should_verify "blueteam"; then
     log_info "Blue Team (Git):"
     check_git_repos "${BLUETEAM_GIT_NAMES[@]}"
     log_info "Blue Team (Binary):"
-    check_cmd "velociraptor" || true
-    check_cmd "laurel" || true
-    check_cmd "floss" || true
-    check_cmd "capa" || true
-    check_cmd "loki" || true
+    check_binary_array BINARY_RELEASES_BLUETEAM
 fi
 
 if should_verify "blockchain"; then
@@ -701,20 +710,20 @@ if should_verify "blockchain"; then
     check_cmd "anvil" || true
     # Foundry chisel is NOT symlinked (collides with jpillora/chisel TCP tunnel)
     # Check at its native path instead
-    TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
-    # Foundry installs under the invoking user's home; $HOME is /root under sudo.
-    _chisel="$(_builder_home)/.foundry/bin/chisel"
-    if [[ -x "$_chisel" ]]; then
-        TOTAL_FOUND=$((TOTAL_FOUND + 1))
-        vlog_success "chisel (foundry) — $_chisel"
-    else
-        TOTAL_MISSING=$((TOTAL_MISSING + 1))
-        vlog_error "chisel (foundry) — NOT found at $_chisel"
+    if _is_tracked "foundry"; then
+        TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+        # Foundry installs under the invoking user's home; $HOME is /root under sudo.
+        _chisel="$(_builder_home)/.foundry/bin/chisel"
+        if [[ -x "$_chisel" ]]; then
+            TOTAL_FOUND=$((TOTAL_FOUND + 1))
+            vlog_success "chisel (foundry) — $_chisel"
+        else
+            TOTAL_MISSING=$((TOTAL_MISSING + 1))
+            vlog_error "chisel (foundry) — NOT found at $_chisel"
+        fi
     fi
     log_info "Blockchain (Binary):"
-    check_cmd "crytic-medusa" || true
-    check_cmd "heimdall" || true
-    check_cmd "ityfuzz" || true
+    check_binary_array BINARY_RELEASES_BLOCKCHAIN
 fi
 
 if should_verify "llm"; then

@@ -27,6 +27,13 @@ def balanced_array_body(text: str, open_idx: int) -> str | None:
         if quote is not None:
             if ch == quote:
                 quote = None
+        elif ch == "#" and text[i - 1] in " \t\n(":
+            # Bash starts a comment only at a word boundary; skip it to end of line.
+            newline = text.find("\n", i)
+            if newline == -1:
+                return None
+            i = newline
+            continue
         elif ch in ("'", '"'):
             quote = ch
         elif ch == "(":

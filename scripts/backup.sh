@@ -326,8 +326,9 @@ backup_configs() {
         "web|$HOME_DIR/.config/nuclei"
         "web|$HOME_DIR/.wpscan"
         "web|$HOME_DIR/.mitmproxy"
-        # Recon / OSINT
+        # Recon / OSINT (recon-ng keeps keys and workspaces in ~/.recon-ng)
         "osint|$GITHUB_TOOL_DIR/recon-ng"
+        "osint|$HOME_DIR/.recon-ng"
         "osint|$HOME_DIR/.config/subfinder"
         "osint|$HOME_DIR/.config/amass"
         # Wireless
@@ -360,12 +361,20 @@ backup_configs() {
         local src="${_entry#*|}"
         if [[ -e "$src" ]]; then
             if ! ensure_dir "$dest/$category" \
-                || ! cp -r -- "$src" "$dest/$category/" 2>/dev/null; then
+                || ! cp -rH -- "$src" "$dest/$category/" 2>/dev/null; then
                 log_warn "Failed to back up: $src"
                 failed=$((failed + 1))
             fi
         fi
     done
+
+    # Restore refuses archives holding links or special files, so leave them out.
+    local special
+    special=$(find "$dest" ! -type f ! -type d 2>/dev/null | wc -l)
+    if [[ "$special" -gt 0 ]]; then
+        find "$dest" ! -type f ! -type d -delete 2>/dev/null
+        log_warn "Left out $((special)) symlink(s) or special file(s): restore accepts only regular files and directories"
+    fi
     [[ "$failed" -eq 0 ]]
 }
 
@@ -433,7 +442,7 @@ restore_configs() {
         .nmap .wireshark .ZAP .sqlmap .aircrack-ng .kismet
         .john .hashcat .msf4 .autopsy .wpscan .mitmproxy
         .netexec .volatility3 .steampipe .pacu .radare2
-        .foundry .promptfoo
+        .foundry .promptfoo .recon-ng
     )
     for dir in "${_home_dirs[@]}"; do
         local found
@@ -627,10 +636,8 @@ cmd_restore() {
         exit 1
     fi
 
-    # Legacy format: check for individually encrypted files inside the archive.
-    # Scan from the backup root, not a fixed encrypted/ subdir — old backups may
-    # store the *.enc files elsewhere, and decrypt_files_legacy must search the
-    # same directory that actually contains them or it silently decrypts nothing.
+    # Legacy format: individually encrypted files. Search the whole backup root —
+    # old backups did not always keep them under encrypted/.
     if find "$restore_root" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
         log_info "Legacy encrypted files found — decrypting..."
         decrypt_files_legacy "$restore_root" "$restore_root" || {
@@ -807,7 +814,8 @@ cmd_schedule() {
         local _sudo_user_escaped; _sudo_user_escaped="$(_escape_single_quoted "$SUDO_USER")"
         _sudo_export=" SUDO_USER='$_sudo_user_escaped'"
     fi
-    local cron_cmd="export HOME='$_home_escaped'${_sudo_export} && . '$env_file' && '$_script_escaped' backup"
+    # Sourcing only sets a shell variable; export it or the backup child never sees it.
+    local cron_cmd="export HOME='$_home_escaped'${_sudo_export} && . '$env_file' && export BACKUP_PASSPHRASE && '$_script_escaped' backup"
     local new_crontab
     new_crontab="$(crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd")"
 

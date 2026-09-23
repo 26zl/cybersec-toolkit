@@ -5,8 +5,29 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# ANSI escape codes (e.g. \x1b[31m, \033[0m)
-_ANSI_RE = re.compile(r"(\x1b|\033)\[[0-9;]*[A-Za-z]")
+# Zero-width and bidi format controls, stripped first so they cannot split a keyword
+# or reorder text past the checks below.
+_ZERO_WIDTH_BIDI_RE = re.compile(
+    r"[\u200b-\u200f"  # ZWSP, ZWNJ, ZWJ, LRM, RLM
+    r"\u202a-\u202e"  # LRE, RLE, PDF, LRO, RLO
+    r"\u2060-\u2064"  # word joiner + invisible operators
+    r"\u2066-\u2069"  # LRI, RLI, FSI, PDI
+    r"\u061c"  # Arabic letter mark
+    r"\u180e"  # Mongolian vowel separator
+    r"\ufeff]"  # BOM / zero-width no-break space
+)
+
+# ANSI/VT escape sequences and C1 controls, stripped so a leading sequence cannot hide an
+# injection line from the start-anchored prefix checks; negated classes keep matching linear.
+_ANSI_RE = re.compile(
+    r"\x1b\][^\x07\x1b\x9c\n]*(?:\x07|\x1b\\|\x9c)?"  # OSC ... BEL / ST, else to end of line
+    r"|\x1b[P^_X][^\x1b\x9c\n]*(?:\x1b\\|\x9c)?"  # DCS / PM / APC / SOS ... ST, else to end of line
+    r"|\x9b[0-?]*[ -/]*[@-~]"  # 8-bit CSI ... final byte
+    r"|\x1b\[[0-?]*[ -/]*[@-~]?"  # CSI ... final byte (optional -> also incomplete)
+    r"|\x1b[ -/]*[0-~]"  # other nF / simple ESC sequences
+    r"|\x1b"  # lone ESC
+    r"|[\x80-\x9f]"  # remaining 8-bit C1 controls
+)
 
 # Known LLM prompt markers
 _LLM_MARKERS = re.compile(
@@ -80,7 +101,8 @@ def truncate_output(text: str, max_bytes: int) -> tuple[str, bool]:
 def sanitize_output(text: str) -> str:
     """Remove or mark prompt-injection patterns in tool output.
 
-    - ANSI escape codes are stripped entirely.
+    - Zero-width and bidirectional format controls are stripped entirely.
+    - ANSI/VT escape sequences (CSI, OSC, DCS) and C1 controls are stripped entirely.
     - Known LLM prompt markers are stripped.
     - XML-like role injection tags are stripped.
     - Lines starting with known injection prefixes are prefixed with ``[SANITIZED] ``.
@@ -89,6 +111,10 @@ def sanitize_output(text: str) -> str:
     """
     if not text:
         return text
+
+    # Strip invisible reordering/hiding controls before pattern checks so they
+    # cannot split a keyword or reorder a directive past the matchers below.
+    text = _ZERO_WIDTH_BIDI_RE.sub("", text)
 
     # Normalize Unicode to catch full-width character evasion
     text = unicodedata.normalize("NFKC", text)

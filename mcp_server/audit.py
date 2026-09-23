@@ -8,6 +8,7 @@ Format: one JSON object per line, always with ``ts`` and ``event`` fields.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import logging.handlers
@@ -205,12 +206,73 @@ _AUDIT_LOG_PATH = _default_audit_log_path()
 # Sentinel that lets a host process pick audit records out of ordinary stderr.
 AUDIT_STREAM_PREFIX = "@cybersec-audit@ "
 
+# Per-session key (hex) the sandbox launcher hands this process alone. Guest
+# stderr is not a trusted channel, so the host persists only mirrored records
+# tagged with it (sandbox/audit-sink.mjs).
+AUDIT_KEY_ENV = "CYBERSEC_MCP_AUDIT_KEY"
+_AUDIT_KEY_MIN_BYTES = 32
+_PR_SET_DUMPABLE = 4
+
+
+def _make_undumpable() -> None:
+    """Keep same-user processes out of this process's /proc environ, fd and memory.
+
+    Popping the key from os.environ leaves the initial environment block intact,
+    and a run_script child runs as the same user.
+    """
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        import ctypes
+
+        prctl = ctypes.CDLL(None, use_errno=True).prctl
+        prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+        prctl.restype = ctypes.c_int
+        if prctl(_PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), "prctl(PR_SET_DUMPABLE) failed")
+    except (ImportError, AttributeError, OSError) as exc:
+        warnings.warn(f"Audit key stays readable to same-user processes: {exc}", RuntimeWarning, stacklevel=2)
+
+
+def _take_stream_key() -> bytes | None:
+    """Consume the mirror key so no tool or script this process spawns inherits it."""
+    raw = os.environ.pop(AUDIT_KEY_ENV, "").strip()
+    try:
+        key = bytes.fromhex(raw)
+    except ValueError:
+        return None
+    if len(key) < _AUDIT_KEY_MIN_BYTES:
+        return None
+    _make_undumpable()
+    return key
+
+
+# Taken at import, before anything this server runs can be spawned.
+_STREAM_KEY = _take_stream_key()
+
 _logger: logging.Logger | None = None
 
 
 def _stream_audit_enabled() -> bool:
     """Whether audit records are mirrored to stderr in addition to the file sink."""
     return os.environ.get("CYBERSEC_MCP_AUDIT_STREAM", "").strip().lower() in ("1", "true", "yes")
+
+
+def audit_record_tag(key: bytes, line: str) -> str:
+    """HMAC-SHA256 tag the host launcher verifies before persisting a mirrored record."""
+    return hmac.new(key, line.encode(), hashlib.sha256).hexdigest()
+
+
+class _TaggedMirrorFormatter(logging.Formatter):
+    """Format a mirrored record as ``<sentinel><tag> <record>``."""
+
+    def __init__(self, key: bytes) -> None:
+        super().__init__("%(message)s")
+        self._key = key
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = super().format(record)
+        return f"{AUDIT_STREAM_PREFIX}{audit_record_tag(self._key, line)} {line}"
 
 
 class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -277,9 +339,18 @@ def get_audit_logger() -> logging.Logger:
     # FileHandler, not StreamHandler: the rotating file handler subclasses
     # StreamHandler, while the stderr fallback must not be mirrored onto itself.
     if _stream_audit_enabled() and isinstance(handler, logging.FileHandler):
-        mirror = logging.StreamHandler(sys.stderr)
-        mirror.setFormatter(logging.Formatter(AUDIT_STREAM_PREFIX + "%(message)s"))
-        _logger.addHandler(mirror)
+        if _STREAM_KEY is None:
+            # The host refuses untagged records, so mirroring them would only add noise.
+            warnings.warn(
+                f"CYBERSEC_MCP_AUDIT_STREAM is set but {AUDIT_KEY_ENV} is missing or invalid; "
+                "audit records are not mirrored to stderr",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            mirror = logging.StreamHandler(sys.stderr)
+            mirror.setFormatter(_TaggedMirrorFormatter(_STREAM_KEY))
+            _logger.addHandler(mirror)
 
     return _logger
 
@@ -333,6 +404,9 @@ def log_server_start() -> None:
             "event": "server_start",
             "allow_scripts": os.environ.get("CYBERSEC_MCP_ALLOW_SCRIPTS", "0").strip(),
             "allow_external": os.environ.get("CYBERSEC_MCP_ALLOW_EXTERNAL", "0").strip(),
+            # Which isolation the launcher reported: 'kata' (VM), 'local' (host),
+            # or 'unknown' when started without scripts/mcp-launch.sh.
+            "sandbox": os.environ.get("CYBERSEC_SANDBOX_MODE", "").strip() or "unknown",
             "venvs_dir": os.environ.get("CYBERSEC_MCP_VENVS_DIR", "~/.ctf-venvs"),
             "pid": os.getpid(),
         },

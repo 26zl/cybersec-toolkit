@@ -392,6 +392,15 @@ setup() {
     assert_success
 }
 
+@test "_global_cleanup stops a running spinner (Ctrl+C must not orphan it)" {
+    sleep 30 &
+    _SPINNER_PID=$!
+    local pid=$_SPINNER_PID
+    _global_cleanup
+    ! kill -0 "$pid" 2>/dev/null
+    [[ -z "$_SPINNER_PID" ]]
+}
+
 @test "_collect_parallel_results processes ok/skip/fail files" {
     make_test_tmpdir
     source_libs --installers debian apt

@@ -2277,6 +2277,27 @@ class TestChildEnv:
         assert env.get("PATH") == "/usr/bin"
         assert env.get("HTTP_PROXY") == "http://127.0.0.1:8080"
 
+    def test_neutral_name_with_embedded_credentials_removed(self, monkeypatch):
+        # Neutral names whose value embeds URL userinfo credentials must be dropped.
+        monkeypatch.setenv("DATABASE_URL", "postgres://app:s3cr3t@db.internal:5432/prod")
+        monkeypatch.setenv("REDIS_URL", "redis://:hunter2@cache.internal:6379/0")
+        monkeypatch.setenv("APP_DSN", "user:pw@tcp(db:3306)/app")
+        # A URL without embedded credentials stays inherited.
+        monkeypatch.setenv("SERVICE_URL", "https://api.internal/v1")
+        env = _child_env()
+        assert "DATABASE_URL" not in env
+        assert "REDIS_URL" not in env
+        assert "APP_DSN" not in env
+        assert env.get("SERVICE_URL") == "https://api.internal/v1"
+
+    def test_authenticated_proxy_is_inherited(self, monkeypatch):
+        # Tools behind an authenticated proxy need its credentials to reach the network.
+        monkeypatch.setenv("HTTPS_PROXY", "http://alice:s3cret@proxy.internal:3128")
+        monkeypatch.setenv("all_proxy", "socks5://bob:pw@proxy.internal:1080")
+        env = _child_env()
+        assert env.get("HTTPS_PROXY") == "http://alice:s3cret@proxy.internal:3128"
+        assert env.get("all_proxy") == "socks5://bob:pw@proxy.internal:1080"
+
 
 class TestPipelineStepTypes:
     """Malformed pipeline steps must return a structured error, not a raw exception."""

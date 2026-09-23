@@ -68,7 +68,7 @@ Append an entry:
 ## 4. Run validators (REQUIRED — must show 0 errors)
 
 ```bash
-python3 scripts/validate_tools_config.py
+python3 scripts/validate_tools_config.py --strict
 ```
 
 If URLs are missing, populate them automatically:
@@ -95,7 +95,7 @@ python3 scripts/validate_mcp_sync.py
 
 ```bash
 shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
-bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
+for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done
 ```
 
 `scripts/verify.sh`, `scripts/update.sh`, `scripts/remove.sh` all source modules and pick up array changes automatically — no edits needed there.

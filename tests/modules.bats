@@ -93,9 +93,8 @@ _get_prefix() {
 }
 
 @test "all Go tool paths end with @latest" {
-    local go_arrays=(
-        MISC_GO NET_GO RECON_GO WEB_GO PWN_GO ENTERPRISE_GO CLOUD_GO
-    )
+    local go_arrays=() mod
+    for mod in "${ALL_MODULES[@]}"; do go_arrays+=("$(_module_prefix "$mod")_GO"); done
 
     for arr_name in "${go_arrays[@]}"; do
         declare -p "$arr_name" &>/dev/null || continue
@@ -149,11 +148,8 @@ _get_prefix() {
 }
 
 @test "no duplicate entries in pipx arrays" {
-    local pipx_arrays=(
-        MISC_PIPX NET_PIPX RECON_PIPX WEB_PIPX CRYPTO_PIPX PWN_PIPX RE_PIPX
-        FORENSICS_PIPX ENTERPRISE_PIPX WIRELESS_PIPX CRACKING_PIPX
-        STEGO_PIPX CLOUD_PIPX BLUETEAM_PIPX MOBILE_PIPX LLM_PIPX
-    )
+    local pipx_arrays=() mod
+    for mod in "${ALL_MODULES[@]}"; do pipx_arrays+=("$(_module_prefix "$mod")_PIPX"); done
 
     for arr_name in "${pipx_arrays[@]}"; do
         declare -p "$arr_name" &>/dev/null || continue
@@ -166,5 +162,66 @@ _get_prefix() {
         local unique
         unique=$(printf '%s\n' "${arr[@]}" | sort -u)
         [[ "$sorted" == "$unique" ]] || { echo "$arr_name has duplicate entries"; return 1; }
+    done
+}
+
+# verify.sh and remove.sh work from the name arrays, so they must list exactly
+# what the install arrays install, in the same order.
+@test "name arrays match the git and Go install arrays of every module" {
+    local mod prefix pair entry
+    for mod in "${ALL_MODULES[@]}"; do
+        prefix=$(_module_prefix "$mod")
+        for pair in GIT:GIT_NAMES C2_GIT:C2_GIT_NAMES GO:GO_BINS; do
+            local src="${prefix}_${pair%%:*}" names="${prefix}_${pair##*:}"
+            declare -p "$src" &>/dev/null || continue
+            local -n src_ref="$src"
+            local -a derived=()
+            for entry in "${src_ref[@]}"; do
+                if [[ "$pair" == GO:* ]]; then
+                    derived+=("$(_go_bin_name "$entry")")
+                else
+                    derived+=("${entry%%=*}")
+                fi
+            done
+            [[ ${#derived[@]} -eq 0 ]] && continue
+            declare -p "$names" &>/dev/null || { echo "Missing $names for $src"; return 1; }
+            local -n names_ref="$names"
+            [[ "$(printf '%s\n' "${derived[@]}")" == "$(printf '%s\n' "${names_ref[@]}")" ]] \
+                || { echo "$names does not match $src"; return 1; }
+        done
+    done
+}
+
+@test "every build-from-source name has a URL and a build command" {
+    local mod prefix name
+    for mod in "${ALL_MODULES[@]}"; do
+        prefix=$(_module_prefix "$mod")
+        declare -p "${prefix}_BUILD_NAMES" &>/dev/null || continue
+        local -n build_names="${prefix}_BUILD_NAMES"
+        local -n build_urls="${prefix}_BUILD_URLS"
+        local -n build_cmds="${prefix}_BUILD_CMDS"
+        for name in "${build_names[@]}"; do
+            [[ -n "${build_urls[$name]:-}" && -n "${build_cmds[$name]:-}" ]] \
+                || { echo "${prefix}_BUILD_NAMES: $name lacks a URL or command"; return 1; }
+        done
+    done
+}
+
+@test "verify.sh checks every module's Go, Cargo and binary release arrays" {
+    local verify="$PROJECT_ROOT/scripts/verify.sh" mod prefix
+    for mod in "${ALL_MODULES[@]}"; do
+        prefix=$(_module_prefix "$mod")
+        if declare -p "${prefix}_GO_BINS" &>/dev/null; then
+            grep -qF "\"\${${prefix}_GO_BINS[@]}\"" "$verify" \
+                || { echo "verify.sh never checks ${prefix}_GO_BINS"; return 1; }
+        fi
+        if declare -p "${prefix}_CARGO" &>/dev/null; then
+            grep -qF "check_module_cargo \"$mod\"" "$verify" \
+                || { echo "verify.sh never checks ${prefix}_CARGO"; return 1; }
+        fi
+        if declare -p "BINARY_RELEASES_${mod^^}" &>/dev/null; then
+            grep -qw "check_binary_array BINARY_RELEASES_${mod^^}" "$verify" \
+                || { echo "verify.sh never checks BINARY_RELEASES_${mod^^}"; return 1; }
+        fi
     done
 }

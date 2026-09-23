@@ -1,3 +1,6 @@
+# A named stage (not COPY --from=<image>) so Dependabot tracks the uv image.
+FROM ghcr.io/astral-sh/uv:0.12.17@sha256:10787c682e4184e4f290de1171fd4703dc63de99221f10fe1c99002ce7fa9acc AS uv
+
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
 LABEL maintainer="26zl" \
@@ -23,10 +26,8 @@ WORKDIR /opt/cybersec-toolkit
 COPY --chown=toolkit:toolkit . .
 RUN chmod +x install.sh scripts/*.sh
 
-# MCP server: install uv + resolve dependencies so `uv run` works offline.
-# uv is pulled from the official Astral image, pinned by SHA256 digest
-# to avoid an unpinned remote installer.
-COPY --from=ghcr.io/astral-sh/uv:0.12.4@sha256:d0a6eca6c669dc7e9c51218707b8438a3d30402733d739dcc00adb3e213e8f5c /uv /usr/local/bin/uv
+# MCP server: uv from the digest-pinned stage above; deps resolved now so `uv run` works offline.
+COPY --from=uv /uv /usr/local/bin/uv
 RUN cd mcp_server && uv sync --no-dev --frozen
 
 # uv sync ran as root; hand the resulting venv to toolkit. The rest of the tree

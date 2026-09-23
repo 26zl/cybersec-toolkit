@@ -128,7 +128,7 @@ IMPORT_TO_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "pycti": ("pycti",),
     "pymisp": ("pymisp",),
     "pymodbus": ("pymodbus",),
-    "pypff": ("pypff",),
+    "pypff": ("libpff-python",),
     "pyrad": ("pyrad",),
     "pyshark": ("pyshark",),
     "pysnmp": ("pysnmp",),

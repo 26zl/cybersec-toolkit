@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -22,6 +21,9 @@ jobs:
     name: Check vendored skills for upstream updates
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
@@ -58,9 +60,10 @@ jobs:
             echo "Weekly check found vendored skill sources that advanced past their pin"
             echo "(past the 3-day cooldown) or upstream skills not yet vendored."
             echo
-            echo "Re-vendoring is manual and reviewed (see CLAUDE.md \"Skill Library\"). After"
-            echo "re-vendoring, bump the pin in SKILLS.md, THIRD_PARTY_NOTICES.md, and"
-            echo "scripts/update-skills.sh, then run \`scripts/update-skills.sh --check-pins\`."
+            echo "Re-vendoring is manual and reviewed (see AGENTS.md \"Skills (portable via sync)\")."
+            echo "After re-vendoring, bump the pin in SKILLS.md, THIRD_PARTY_NOTICES.md,"
+            echo "scripts/update-skills.sh, and the re-vendored skills' upstream_commit frontmatter, then run"
+            echo "\`scripts/update-skills.sh --check-pins\`."
             echo
             echo "<details><summary>Full report</summary>"
             echo

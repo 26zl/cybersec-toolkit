@@ -25,7 +25,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Keyed by event: a push to main must not cancel the weekly run, the only main run of the
+  # canary, sandbox-smoke and Docker jobs.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -109,15 +111,12 @@ jobs:
           zypper --non-interactive install git curl wget sudo which awk
 
       - name: Validate package names resolve on this distro
-        # --dry-run resolves names without asking the package manager whether they
-        # exist, so distro_compat.tsv rot is invisible until someone installs. All
-        # four columns (apt/dnf/pacman/zypper) are audited against live repos and
-        # clean, so this is a blocking gate — a rename or retirement fails CI here.
+        # --dry-run never asks the package manager whether a name exists; this
+        # blocking gate fails on package names the distro no longer ships.
         run: bash scripts/validate_distro_packages.sh
 
       - name: Create an unprivileged build user
-        # Containers run as root with no SUDO_USER, so _as_builder never drops
-        # privileges and that whole path goes untested. Give it a real user.
+        # Containers run as root without SUDO_USER; a real user exercises the _as_builder privilege drop.
         run: |
           useradd -m builder 2>/dev/null || true
           echo "SUDO_USER=builder" >> "$GITHUB_ENV"
@@ -130,15 +129,17 @@ jobs:
           # Install a few fast, universally-available packages to test the real
           # install path including fixup_package_names and pkg_install.
           bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois
-          # Show install log on failure for debugging
+
+      - name: Show install log
+        # Separate step: the default `bash -e` shell stops at a failed install before any later line runs.
+        if: failure()
+        run: |
           if [ -f cybersec_install.log ]; then
-            echo "=== Install log ==="
             cat cybersec_install.log
           fi
 
       - name: Verify installed tools
         run: |
-          # Verify the specific tools we installed are present
           for tool in nmap curl tcpdump socat whois; do
             if command -v "$tool" >/dev/null 2>&1; then
               echo "OK: $tool"
@@ -149,8 +150,7 @@ jobs:
           done
 
       - name: Run verify script (smoke test)
-        # Smoke test: verify.sh runs without crashing. Exit code reflects
-        # missing tools (expected — we only installed 5 of 71).
+        # Smoke test only: verify.sh exits non-zero for the module tools this job did not install.
         run: bash scripts/verify.sh --module networking --summary || true
 
       - name: Remove networking module
@@ -256,7 +256,7 @@ jobs:
         run: node sandbox/smoke.mjs
 
       - name: Verify the audit chain that crossed the boundary
-        run: python3 scripts/verify_audit_chain.py "${{ runner.temp }}/sandbox-audit.log"
+        run: python3 scripts/verify_audit_chain.py "$RUNNER_TEMP/sandbox-audit.log"
 
   docker-build:
     name: Docker image build

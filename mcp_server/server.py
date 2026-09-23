@@ -94,6 +94,20 @@ except (ValueError, OSError) as e:
 log_server_start()
 
 
+# Tool behavior hints (MCP ToolAnnotations). Advisory metadata a client can use to
+# reason about a tool before calling it; they do not change server-side policy.
+#   _ADVISORY       — reads local registry data only.
+#   _ADVISORY_LIVE  — reads, but may reach a remote host (openWorld).
+#   _STATEFUL       — changes state or can act on a target, non-destructively.
+#   _CONFIG         — overwrites or deletes stored configuration (destructive).
+#   _EXEC           — runs governed tools/scripts that may modify a target (destructive).
+_ADVISORY = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}
+_ADVISORY_LIVE = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True}
+_STATEFUL = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True}
+_CONFIG = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}
+_EXEC = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}
+
+
 def _remote_unavailable_error() -> str:
     """Human-readable error for when remote config failed to load at startup."""
     return (
@@ -112,7 +126,7 @@ def _cmd(script: str, args: str = "") -> str:
     return f"{_SUDO}{script}{' ' + args if args else ''}"
 
 
-@mcp.tool
+@mcp.tool(annotations=_ADVISORY)
 def list_tools(
     module: Optional[str] = None,
     method: Optional[
@@ -182,7 +196,7 @@ def list_tools(
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_ADVISORY_LIVE)
 async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
     """Check if a specific cybersecurity tool is installed on the system.
 
@@ -309,7 +323,8 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
             "host": host,
         }
 
-    status = _db.check_installed(tool_name)
+    # May shell out to `docker images`, so it runs off the event loop.
+    status = await asyncio.to_thread(_db.check_installed, tool_name)
     result = {
         "tool": tool_name,
         "in_registry": True,
@@ -328,7 +343,7 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_ADVISORY)
 def get_tool_info(tool_name: str) -> dict:
     """Get detailed information about a cybersecurity tool.
 
@@ -388,8 +403,8 @@ def get_tool_info(tool_name: str) -> dict:
     return result
 
 
-@mcp.tool
-def suggest_for_ctf(challenge_type: str) -> dict:
+@mcp.tool(annotations=_ADVISORY)
+async def suggest_for_ctf(challenge_type: str) -> dict:
     """Suggest cybersecurity tools for a CTF challenge category.
 
     Provides curated tool recommendations with installation status for
@@ -407,15 +422,16 @@ def suggest_for_ctf(challenge_type: str) -> dict:
     """
     call_id = log_tool_call("suggest_for_ctf", {"challenge_type": challenge_type})
     t0 = time.monotonic()
-    result = _suggest_for_ctf(challenge_type, _db)
+    # Advisor install checks can shell out to `docker images`; keep them off the event loop.
+    result = await asyncio.to_thread(_suggest_for_ctf, challenge_type, _db)
     log_tool_result(
         "suggest_for_ctf", call_id, "error" not in result, (time.monotonic() - t0) * 1000, summary=challenge_type
     )
     return result
 
 
-@mcp.tool
-def suggest_for_bounty(target_type: str) -> dict:
+@mcp.tool(annotations=_ADVISORY)
+async def suggest_for_bounty(target_type: str) -> dict:
     """Suggest cybersecurity tools for a bug bounty target type.
 
     Provides curated tool recommendations with installation status,
@@ -435,14 +451,14 @@ def suggest_for_bounty(target_type: str) -> dict:
     """
     call_id = log_tool_call("suggest_for_bounty", {"target_type": target_type})
     t0 = time.monotonic()
-    result = _suggest_for_bounty(target_type, _db)
+    result = await asyncio.to_thread(_suggest_for_bounty, target_type, _db)
     log_tool_result(
         "suggest_for_bounty", call_id, "error" not in result, (time.monotonic() - t0) * 1000, summary=target_type
     )
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_ADVISORY)
 def get_cve_info(cve: str) -> dict:
     """Map a CVE to the toolkit's tools, skills, and modules, plus live-lookup commands.
 
@@ -469,8 +485,8 @@ def get_cve_info(cve: str) -> dict:
     return result
 
 
-@mcp.tool
-def recommend_install(task: str) -> dict:
+@mcp.tool(annotations=_ADVISORY)
+async def recommend_install(task: str) -> dict:
     """Recommend which profile, modules, or individual tools to install.
 
     Analyzes a natural-language description of what the user wants to do and
@@ -495,12 +511,12 @@ def recommend_install(task: str) -> dict:
     """
     call_id = log_tool_call("recommend_install", {"task": task})
     t0 = time.monotonic()
-    result = _recommend_install(task, _db)
+    result = await asyncio.to_thread(_recommend_install, task, _db)
     log_tool_result("recommend_install", call_id, "error" not in result, (time.monotonic() - t0) * 1000)
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_ADVISORY)
 def list_profiles() -> dict:
     """List all 14 available installation profiles with details.
 
@@ -518,8 +534,8 @@ def list_profiles() -> dict:
     return result
 
 
-@mcp.tool
-def get_profile_tools(profile: str) -> dict:
+@mcp.tool(annotations=_ADVISORY)
+async def get_profile_tools(profile: str) -> dict:
     """List every tool that a specific profile would install.
 
     Given a profile name, returns the complete list of tools grouped by
@@ -547,38 +563,41 @@ def get_profile_tools(profile: str) -> dict:
     modules = profile_data["modules"]
     profile_c2 = bool(profile_data.get("include_c2", False))
 
-    by_module: list[dict] = []
-    total = 0
-    installed = 0
-
-    for mod in modules:
-        mod_tools = [t for t in _db._tools if t["module"] == mod]
-        tool_entries = []
-        for t in mod_tools:
-            # C2/phishing tools install only when the profile sets INCLUDE_C2.
-            if t["name"] in C2_TOOLS and not profile_c2:
-                continue
-            status = _db.check_installed(t["name"])
-            tool_entries.append(
+    # Install checks can shell out to `docker images`; build the listing off the event loop.
+    def _collect() -> tuple[list[dict], int, int]:
+        _by_module: list[dict] = []
+        _total = 0
+        _installed = 0
+        for mod in modules:
+            mod_tools = [t for t in _db._tools if t["module"] == mod]
+            tool_entries = []
+            for t in mod_tools:
+                # C2/phishing tools install only when the profile sets INCLUDE_C2.
+                if t["name"] in C2_TOOLS and not profile_c2:
+                    continue
+                status = _db.check_installed(t["name"])
+                tool_entries.append(
+                    {
+                        "name": t["name"],
+                        "method": t["method"],
+                        "url": t.get("url", ""),
+                        "installed": status["installed"],
+                    }
+                )
+                _total += 1
+                if status["installed"]:
+                    _installed += 1
+            _by_module.append(
                 {
-                    "name": t["name"],
-                    "method": t["method"],
-                    "url": t.get("url", ""),
-                    "installed": status["installed"],
+                    "module": mod,
+                    "description": MODULE_DESCRIPTIONS.get(mod, ""),
+                    "tool_count": len(tool_entries),
+                    "tools": tool_entries,
                 }
             )
-            total += 1
-            if status["installed"]:
-                installed += 1
+        return _by_module, _total, _installed
 
-        by_module.append(
-            {
-                "module": mod,
-                "description": MODULE_DESCRIPTIONS.get(mod, ""),
-                "tool_count": len(tool_entries),
-                "tools": tool_entries,
-            }
-        )
+    by_module, total, installed = await asyncio.to_thread(_collect)
 
     log_tool_result(
         "get_profile_tools", call_id, True, (time.monotonic() - t0) * 1000, summary=f"{profile_lower}: {total} tools"
@@ -593,7 +612,7 @@ def get_profile_tools(profile: str) -> dict:
     }
 
 
-@mcp.tool
+@mcp.tool(annotations=_ADVISORY)
 def get_module_info(module: str) -> dict:
     """Get full details about a module: description, all tools, and management commands.
 
@@ -666,7 +685,8 @@ def get_module_info(module: str) -> dict:
     }
 
 
-@mcp.tool
+# Destructive hint: autonomous mode runs scanners via the same path as run_tool.
+@mcp.tool(annotations=_EXEC)
 async def guided_assessment(
     target: str,
     finding: str = "",
@@ -743,7 +763,9 @@ async def guided_assessment(
     )
     t0 = time.monotonic()
 
-    result = build_guided_plan(
+    # Advisor install checks may shell out to `docker images`, so planning runs off the event loop.
+    result = await asyncio.to_thread(
+        build_guided_plan,
         target=target,
         finding=finding,
         target_type=target_type,
@@ -806,7 +828,7 @@ async def guided_assessment(
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_EXEC)
 async def run_tool(
     tool_name: str,
     args: str = "",
@@ -858,7 +880,7 @@ async def run_tool(
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_EXEC)
 async def run_pipeline(
     steps: list[dict],
     timeout: int = 120,
@@ -917,7 +939,7 @@ async def run_pipeline(
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_EXEC)
 async def run_script(
     code: str,
     language: str = "python",
@@ -992,7 +1014,7 @@ async def run_script(
     return result
 
 
-@mcp.tool
+@mcp.tool(annotations=_CONFIG)
 async def manage_remote_hosts(
     action: Literal["list", "add", "remove", "test"],
     name: Optional[str] = None,

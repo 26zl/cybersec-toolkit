@@ -127,6 +127,89 @@ setup() {
     assert_output --partial "mutually exclusive"
 }
 
+@test "install.sh exits non-zero on an unknown option" {
+    run bash "$INSTALL_SH" --require-checksum --dry-run
+    assert_failure
+    assert_output --partial "Unknown option: --require-checksum"
+}
+
+@test "install.sh refuses --dry-run with --tool instead of installing" {
+    run bash "$INSTALL_SH" --tool nmap --dry-run
+    assert_failure
+    assert_output --partial "cannot be combined"
+    refute_output --partial "must be run as root"
+}
+
+@test "install.sh refuses --dry-run with --rollback instead of removing" {
+    run bash "$INSTALL_SH" --rollback last --yes --dry-run
+    assert_failure
+    assert_output --partial "cannot be combined"
+}
+
+@test "install.sh rejects --profile combined with --module" {
+    run bash "$INSTALL_SH" --profile ctf --module web --dry-run
+    assert_failure
+    assert_output --partial "Mutually exclusive options"
+}
+
+@test "install.sh rejects --tool combined with --profile" {
+    run bash "$INSTALL_SH" --tool nmap --profile ctf
+    assert_failure
+    assert_output --partial "Mutually exclusive options"
+}
+
+@test "sourcing install.sh does not create or truncate the install log" {
+    local copy="$BATS_TEST_TMPDIR/toolkit"
+    mkdir -p "$copy"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    run bash -c '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$copy"'/install.sh"
+    '
+    assert_success
+    [ ! -e "$copy/cybersec_install.log" ]
+}
+
+@test "rollback keeps rows and manifest when a system package survives removal" {
+    local copy="$BATS_TEST_TMPDIR/toolkit" fake="$BATS_TEST_TMPDIR/fakebin"
+    mkdir -p "$copy/.install_sessions" "$fake" "$BATS_TEST_TMPDIR/prefix/bin"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    printf 'alpha\nstuck\n' > "$BATS_TEST_TMPDIR/installed"
+    # dpkg -l reports the state file; `pkg uninstall` drops everything except
+    # "stuck" and still exits 0, like pacman's masked pkg_remove.
+    cat > "$fake/dpkg" <<EOF
+#!/bin/sh
+grep -qx "\$2" "$BATS_TEST_TMPDIR/installed" && echo "ii  \$2"
+exit 0
+EOF
+    cat > "$fake/pkg" <<EOF
+#!/bin/sh
+grep -x stuck "$BATS_TEST_TMPDIR/installed" > "$BATS_TEST_TMPDIR/installed.new"
+mv "$BATS_TEST_TMPDIR/installed.new" "$BATS_TEST_TMPDIR/installed"
+exit 0
+EOF
+    chmod +x "$fake/dpkg" "$fake/pkg"
+    {
+        echo "# Session: 20260101_000000_1"
+        echo "# Schema: 2"
+        echo "alpha|pkg|installed|2026-01-01 00:00:00"
+        echo "stuck|pkg|installed|2026-01-01 00:00:00"
+    } > "$copy/.install_sessions/20260101_000000_1.manifest"
+    printf '# tool|method|version|last_updated\nalpha|pkg|system|x\nstuck|pkg|system|x\n' > "$copy/.versions"
+
+    run env PATH="$fake:$PATH" PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=Termux \
+        PREFIX="$BATS_TEST_TMPDIR/prefix" \
+        bash "$copy/install.sh" --rollback 20260101_000000_1 --yes < /dev/null
+    assert_failure
+    assert_output --partial "Still installed after removal attempt: stuck"
+    ! grep -q '^alpha|' "$copy/.versions"
+    grep -q '^stuck|' "$copy/.versions"
+    [ -f "$copy/.install_sessions/20260101_000000_1.manifest" ]
+}
+
 @test "install.sh --dry-run with --module shows selected modules" {
     run bash "$INSTALL_SH" --module web --module recon --dry-run
     assert_success
@@ -295,6 +378,22 @@ setup() {
     '
     assert_success
     assert_output --partial "SOURCE=massdns|https://github.com/blechschmidt/massdns.git|make"
+}
+
+@test "install_single_tool resolves INCLUDE_C2-gated git tools (Hoaxshell)" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        export LOG_FILE=/dev/null
+        git_clone_or_pull() { return 0; }
+        setup_git_repo() { return 0; }
+        _tree_provenance() { echo latest; }
+        track_version() { :; }
+        install_single_tool Hoaxshell
+    '
+    assert_success
+    assert_output --partial "Installed: Hoaxshell"
 }
 
 @test "install_single_tool finds module npm packages and promptfoo" {

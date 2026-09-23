@@ -84,7 +84,8 @@ pkg_exists() {
             zypper --non-interactive --quiet search --match-exact "$p" &>/dev/null \
                 || zypper --non-interactive --quiet search --provides --match-exact "$p" &>/dev/null ;;
         pkg)
-            pkg show "$p" &>/dev/null || apt-cache policy "$p" &>/dev/null ;;
+            # apt-cache policy exits 0 even for unknown names, so test its output as for apt.
+            pkg show "$p" &>/dev/null || [[ -n "$(apt-cache policy "$p" 2>/dev/null)" ]] ;;
         *)
             return 0 ;;   # unknown manager: nothing to assert
     esac

@@ -37,6 +37,8 @@ usage_error() {
 
 launch_local() {
     echo "MCP local mode: tools execute with this host user's permissions." >&2
+    # Recorded in the audit log's server_start record so the trail shows no VM boundary.
+    export CYBERSEC_SANDBOX_MODE=local
     exec uv run --directory "$REPO_ROOT/mcp_server" fastmcp run server.py \
         --transport stdio --no-banner
 }

@@ -69,6 +69,91 @@ _first_words() {
     done
 }
 
+# Quote- and heredoc-aware variant of _first_words: quoted text and heredoc bodies are data.
+read -r -d '' _PY_COMMAND_WORDS <<'PY' || true
+import re
+import shlex
+import sys
+
+SKIP = {"sudo", "env", "exec", "time", "nohup", "maybe_sudo"}
+TAKES_ARG = {"sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"}, "env": {"-u", "-C"}}
+OPS = set(";&|()\n")
+HEREDOC = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+ASSIGN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+SUBST = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
+
+
+def drop_heredoc_bodies(text):
+    lines = text.split("\n")
+    kept = []
+    i, n = 0, len(lines)
+    while i < n:
+        kept.append(lines[i])
+        m = HEREDOC.search(lines[i])
+        i += 1
+        if not m:
+            continue
+        strip_tabs, delim = m.group(1) == "-", m.group(3)
+        j = i
+        while j < n and (lines[j].lstrip("\t") if strip_tabs else lines[j]) != delim:
+            j += 1
+        # Drop the body only when the delimiter is actually reached; an unclosed
+        # heredoc (a `<<` in a quote or arithmetic) leaves its lines to be scanned.
+        if j < n:
+            i = j + 1
+    return "\n".join(kept)
+
+
+def command_words(text):
+    lex = shlex.shlex(drop_heredoc_bodies(text), posix=True, punctuation_chars=";&|()\n")
+    lex.whitespace = " \t\r"
+    lex.whitespace_split = True
+    lex.commenters = ""
+    words, expect, wrapper, skip_next = [], True, None, False
+    for tok in lex:
+        if tok and set(tok) <= OPS:
+            expect, wrapper, skip_next = True, None, False
+            continue
+        # Command substitution runs even inside double quotes.
+        for m in SUBST.finditer(tok):
+            words.extend(command_words(m.group(1) if m.group(1) is not None else m.group(2)))
+        if not expect:
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        if tok.startswith("#"):
+            expect = False
+            continue
+        if wrapper == "command" and tok in ("-v", "-V"):
+            expect = False
+            continue
+        if tok in SKIP or tok == "command":
+            wrapper = tok
+            continue
+        if tok.startswith("-"):
+            skip_next = tok in TAKES_ARG.get(wrapper, ())
+            continue
+        if ASSIGN.match(tok):
+            continue
+        words.append(tok.rsplit("/", 1)[-1])
+        expect = False
+    return words
+
+
+print("\n".join(command_words(sys.stdin.read())))
+PY
+
+_command_words() {
+    local out
+    if command -v python3 >/dev/null 2>&1 \
+        && out=$(printf '%s' "$1" | python3 -c "$_PY_COMMAND_WORDS" 2>/dev/null); then
+        [[ -z "$out" ]] || printf '%s\n' "$out"
+        return 0
+    fi
+    _first_words "$1"
+}
+
 _advised_since() {
     local since="$1"
     if command -v jq >/dev/null 2>&1; then
@@ -137,12 +222,19 @@ except Exception: pass' 2>/dev/null)
     fi
     [[ -n "$cmd" ]] || allow
 
+    # Fast path: no governed name anywhere in the command.
+    hit=""
+    for g in "${GOVERNED[@]}"; do
+        [[ "$cmd" == *"$g"* ]] && { hit="$g"; break; }
+    done
+    [[ -n "$hit" ]] || allow
+
     hit=""
     while IFS= read -r word; do
         for g in "${GOVERNED[@]}"; do
             [[ "$word" == "$g" ]] && { hit="$word"; break 2; }
         done
-    done < <(_first_words "$cmd")
+    done < <(_command_words "$cmd")
     [[ -n "$hit" ]] || allow
 
     # Has the server been called since this session started?

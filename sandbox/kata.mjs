@@ -16,7 +16,7 @@
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
 
@@ -193,6 +193,29 @@ export const buildRunArgs = ({ name, runtime, options, env }) => {
   return args;
 };
 
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Split exec-scoped variables into name-only `--env` flags and the docker CLI's
+ * own environment.
+ *
+ * Docker resolves a bare `--env NAME` from its own environment, so values never
+ * appear in the host process list, and unlike create() variables they never
+ * reach the container's PID 1. DOCKER_* names are refused: the CLI would read
+ * them as its own configuration.
+ */
+export const buildExecEnv = (env = {}, base = process.env) => {
+  const args = [];
+  for (const [name, value] of Object.entries(env)) {
+    if (!ENV_NAME.test(name) || /^DOCKER_/i.test(name)) {
+      throw new Error(`Invalid exec environment variable name '${name}'.`);
+    }
+    if (typeof value !== 'string') throw new Error(`Exec environment variable '${name}' must be a string.`);
+    args.push('--env', name);
+  }
+  return { args, env: { ...base, ...env } };
+};
+
 /** Append to a streamed-output tail, keeping at most `limit` trailing characters. */
 export const appendTail = (tail, chunk, limit = MAX_TAIL_CHARS) => {
   const next = tail + chunk;
@@ -231,7 +254,7 @@ const assertImagePresent = async (image) => {
   }
 };
 
-const assertWorkspaceUsable = (workspace) => {
+export const assertWorkspaceUsable = (workspace) => {
   if (!workspace) return;
   let stats;
   try {
@@ -240,6 +263,10 @@ const assertWorkspaceUsable = (workspace) => {
     throw new Error(`Workspace '${workspace}' does not exist on the host.`);
   }
   if (!stats.isDirectory()) throw new Error(`Workspace '${workspace}' is not a directory.`);
+  // The host root would hand the VM every host path, read-write unless _RO is set.
+  if (realpathSync(workspace) === '/') {
+    throw new Error(`Workspace '${workspace}' resolves to the host root; mount a case directory instead.`);
+  }
 };
 
 /**
@@ -390,18 +417,21 @@ export const kata = (options = {}) => {
             child.on('close', (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
           }),
 
+        // `opts.env` extends Sandcastle's contract: variables for this process only.
         interactiveExec: (args, opts) =>
           new Promise((resolve, reject) => {
+            const execEnv = buildExecEnv(opts.env);
             const execArgs = ['exec'];
             execArgs.push('isTTY' in opts.stdin && opts.stdin.isTTY ? '-it' : '--interactive');
             if (opts.cwd) execArgs.push('--workdir', opts.cwd);
-            execArgs.push(containerName, ...args);
+            execArgs.push(...execEnv.args, containerName, ...args);
 
             // A stream without a file descriptor (an audit tee, say) cannot be
             // handed to spawn; pipe that one and keep the rest on direct fds.
             const stderrHasFd = typeof opts.stderr?.fd === 'number';
             const child = spawn('docker', execArgs, {
               stdio: [opts.stdin, opts.stdout, stderrHasFd ? opts.stderr : 'pipe'],
+              env: execEnv.env,
             });
             if (!stderrHasFd) child.stderr.pipe(opts.stderr);
             child.on('error', (error) => reject(new Error(`docker exec failed: ${error.message}`)));

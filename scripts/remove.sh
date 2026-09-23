@@ -41,6 +41,9 @@ Modules: $(IFS=', '; echo "${ALL_MODULES[*]}")
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems).
+
+Only tools that .versions records as installed by this toolkit are removed;
+tools you installed yourself stay in place.
 EOF
     exit 0
 fi
@@ -104,6 +107,20 @@ fi
 _check_pkg_manager
 _setup_verbose
 
+# Provenance: with an install record present, only what it lists as installed by
+# this toolkit is removed. Modules that were never installed and the user's own
+# same-named tools under /opt or /usr/local/bin are left alone.
+_VERSIONS_FILE="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
+declare -A _TOOLKIT_INSTALLED=()
+if [[ -f "$_VERSIONS_FILE" ]]; then
+    while IFS='|' read -r _vt _ _vv _; do
+        [[ -z "$_vt" || "$_vt" == \#* || "$_vv" == "existing" ]] && continue
+        _TOOLKIT_INSTALLED["$_vt"]=1
+    done < "$_VERSIONS_FILE"
+else
+    log_warn "No install record at $_VERSIONS_FILE — every listed tool found on this system will be removed, including copies this toolkit did not install"
+fi
+
 # Confirmation
 if [[ "$AUTO_YES" == "false" ]]; then
     log_warn "This will remove cybersecurity tools and their configurations."
@@ -129,6 +146,32 @@ START_TIME=$(date +%s)
 
 # shellcheck disable=SC2076  # Intentional literal match, not regex
 should_remove() { [[ " ${REMOVE_MODULES[*]} " =~ " $1 " ]]; }
+
+# _removable NAME — this toolkit installed NAME, or there is no install record to
+# tell (installs that predate .versions).
+_removable() {
+    [[ ! -f "$_VERSIONS_FILE" || -n "${_TOOLKIT_INSTALLED[$1]:-}" ]]
+}
+
+# filter_untracked ARRAY LABEL — drop entries this toolkit did not install.
+filter_untracked() {
+    local -n __fu_arr=$1
+    local label="$2" _fu_item _fu_skipped=0
+    local -a _fu_kept=()
+    for _fu_item in "${__fu_arr[@]}"; do
+        if _removable "$_fu_item"; then
+            _fu_kept+=("$_fu_item")
+        else
+            _fu_skipped=$((_fu_skipped + 1))
+        fi
+    done
+    [[ "$_fu_skipped" -gt 0 ]] && log_info "Skipping $_fu_skipped ${label} not installed by this toolkit"
+    if [[ ${#_fu_kept[@]} -gt 0 ]]; then
+        __fu_arr=("${_fu_kept[@]}")
+    else
+        __fu_arr=()
+    fi
+}
 
 # Build aggregate removal lists from module arrays
 PKGS_TO_REMOVE=()
@@ -172,6 +215,12 @@ filter_preexisting GIT_NAMES_TO_REMOVE "Git/source trees"
 filter_preexisting GEMS_TO_REMOVE      "gems"
 filter_preexisting CARGO_TO_REMOVE     "cargo crates"
 filter_preexisting NPM_TO_REMOVE       "npm packages"
+filter_untracked PIPX_TO_REMOVE        "pipx tools"
+filter_untracked GO_BINS_TO_REMOVE     "Go binaries"
+filter_untracked GIT_NAMES_TO_REMOVE   "Git/source trees"
+filter_untracked GEMS_TO_REMOVE        "gems"
+filter_untracked CARGO_TO_REMOVE       "cargo crates"
+filter_untracked NPM_TO_REMOVE         "npm packages"
 
 # Execute removal
 # ORDER: Tools that need runtime commands (pipx, gem, cargo) are removed FIRST,
@@ -266,6 +315,8 @@ echo ""
 # 3) Cargo tools — must run BEFORE system packages (cargo is from rustup, not apt, but be safe)
 if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
     _cargo_home="$(_builder_home)/.cargo/bin"
+    # Crates were installed into the builder's CARGO_HOME, which root's cargo does not see.
+    _cargo_cmd=$(_builder_cmd cargo 2>/dev/null) || _cargo_cmd=""
     log_info "Removing ${#CARGO_TO_REMOVE[@]} Cargo tools..."
     for crate in "${CARGO_TO_REMOVE[@]}"; do
         # Probe the installed BINARY name (which may differ from the crate name)
@@ -275,9 +326,9 @@ if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
             log_debug "Skipping cargo $crate (not installed)"
             continue
         fi
-        if command_exists cargo; then
+        if [[ -n "$_cargo_cmd" ]]; then
             # cargo uninstalls by CRATE name, not binary name.
-            if cargo uninstall "$crate" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "$_cargo_cmd uninstall '$(_escape_single_quoted "$crate")'" >> "$LOG_FILE" 2>&1; then
                 log_success "Removed cargo: $crate"
             else
                 log_warn "Failed to remove cargo: $crate"
@@ -293,8 +344,27 @@ echo ""
 
 # 4) System packages — AFTER tools that need runtime commands
 if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
-    # Apply distro-specific package name translation (same as install path)
-    fixup_package_names PKGS_TO_REMOVE
+    # Translate per package so a row under either the Debian name (install.sh --tool)
+    # or the distro-specific name (batch installs) counts as installed by this toolkit.
+    _pkgs_fixed=()
+    _pkgs_untracked=0
+    for _pkg_generic in "${PKGS_TO_REMOVE[@]}"; do
+        _pkg_fx=("$_pkg_generic")
+        fixup_package_names _pkg_fx
+        for _pkg_name in "${_pkg_fx[@]}"; do
+            if _removable "$_pkg_generic" || _removable "$_pkg_name"; then
+                _pkgs_fixed+=("$_pkg_name")
+            else
+                _pkgs_untracked=$((_pkgs_untracked + 1))
+            fi
+        done
+    done
+    [[ "$_pkgs_untracked" -gt 0 ]] && log_info "Skipping $_pkgs_untracked system packages not installed by this toolkit"
+    if [[ ${#_pkgs_fixed[@]} -gt 0 ]]; then
+        PKGS_TO_REMOVE=("${_pkgs_fixed[@]}")
+    else
+        PKGS_TO_REMOVE=()
+    fi
     # Then drop the ones that were already installed before this toolkit ran
     filter_preexisting PKGS_TO_REMOVE "system packages"
 
@@ -345,7 +415,21 @@ if [[ ${#GO_BINS_TO_REMOVE[@]} -gt 0 ]]; then
 fi
 echo ""
 
-# 6) GitHub repos
+# _remove_repo_links NAME REPO — drop the PATH entry setup_git_repo made for a
+# cloned repo: a symlink into REPO or a wrapper script that execs a file in it.
+_remove_repo_links() {
+    local lower="${1,,}" link
+    for link in "$PIPX_BIN_DIR/$1" "$PIPX_BIN_DIR/$lower" "$PIPX_BIN_DIR/${lower//-/_}"; do
+        if [[ -L "$link" ]]; then
+            [[ "$(readlink "$link")" == "$2/"* ]] && rm -f "$link"
+        elif [[ -f "$link" && "$(head -c 2 "$link" 2>/dev/null)" == "#!" ]] \
+            && grep -qF -e "$2/" -e "$2\"" "$link" 2>/dev/null; then
+            rm -f "$link"
+        fi
+    done
+}
+
+# 6) GitHub repos (build-from-source trees are listed here too; they build in place)
 if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
     git_removed=0
     git_skipped=0
@@ -353,6 +437,7 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
         repo_path="$GITHUB_TOOL_DIR/$name"
         if [[ -d "$repo_path" ]]; then
             rm -rf "$repo_path"
+            _remove_repo_links "$name" "$repo_path"
             log_success "Removed: $repo_path"
             git_removed=$((git_removed + 1))
         else
@@ -362,11 +447,6 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
     done
     log_info "Git repos: $git_removed removed, $git_skipped already removed"
 fi
-
-# 6b) Build-from-source tools (*_BUILD_NAMES) are NOT installed to /usr/local/bin —
-# build_from_source() builds in place under $GITHUB_TOOL_DIR/<name> and leaves the
-# binary there. Their directories are removed above via GIT_NAMES_TO_REMOVE, which
-# has *_BUILD_NAMES appended to it. No extra cleanup needed here.
 
 # 7) Binary releases
 log_info "Removing binary releases from $PIPX_BIN_DIR..."
@@ -387,6 +467,7 @@ for _br_mod in "${REMOVE_MODULES[@]}"; do
     done
 done
 filter_preexisting BINARY_TOOLS "binary releases"
+filter_untracked BINARY_TOOLS "binary releases"
 bin_removed=0
 bin_skipped=0
 for bin in "${BINARY_TOOLS[@]}"; do
@@ -402,24 +483,20 @@ for bin in "${BINARY_TOOLS[@]}"; do
     rm -f "$PIPX_BIN_DIR/.$bin.vtag" 2>/dev/null || true
 done
 log_info "Binary releases: $bin_removed removed, $bin_skipped already removed"
-# Jar wrappers and custom dest directories used by binary releases
-for jar_bin in ysoserial jd-gui; do
-    [[ -f "$PIPX_BIN_DIR/$jar_bin" ]] && rm -f "$PIPX_BIN_DIR/$jar_bin" 2>/dev/null || true
-done
-# A dest dir shared with a module that is NOT being removed must survive:
-# cybersec-jars holds both ysoserial (web) and jd-gui (reversing), so removing one
-# module must not rm -rf the other's jar. Collect dests still claimed by surviving
-# modules first, then skip those below. On full removal nothing survives, so every
-# dest is cleaned.
+# A custom dest dir survives when a module that is not being removed still uses it
+# (cybersec-jars holds ysoserial from web and jd-gui from reversing) or when any
+# release in it was not installed by this toolkit.
 declare -A _KEEP_DESTS=()
 for _sv_mod in "${ALL_MODULES[@]}"; do
-    should_remove "$_sv_mod" && continue
     for _sv_arr in "BINARY_RELEASES_${_sv_mod^^}" "BINARY_RELEASES_${_sv_mod^^}_C2"; do
         declare -p "$_sv_arr" &>/dev/null || continue
         declare -n _sv_ref="$_sv_arr"
         for _sv_entry in "${_sv_ref[@]}"; do
-            IFS='|' read -r _ _ _ _sv_dest <<< "$_sv_entry"
-            [[ -n "${_sv_dest:-}" ]] && _KEEP_DESTS["$_sv_dest"]=1
+            IFS='|' read -r _ _sv_binary _ _sv_dest _ <<< "$_sv_entry"
+            [[ -n "${_sv_dest:-}" ]] || continue
+            if ! should_remove "$_sv_mod" || ! _removable "$_sv_binary"; then
+                _KEEP_DESTS["$_sv_dest"]=1
+            fi
         done
     done
 done
@@ -430,10 +507,10 @@ for _br_mod in "${REMOVE_MODULES[@]}"; do
         declare -p "$_br_arr" &>/dev/null || continue
         declare -n _br_ref="$_br_arr"
         for _br_entry in "${_br_ref[@]}"; do
-            IFS='|' read -r _br_repo _br_binary _br_pattern _br_dest <<< "$_br_entry"
+            IFS='|' read -r _br_repo _br_binary _br_pattern _br_dest _ <<< "$_br_entry"
             if [[ -n "${_br_dest:-}" ]] && [[ "$_br_dest" != "$PIPX_BIN_DIR" ]] && [[ -d "$_br_dest" ]]; then
                 if [[ -n "${_KEEP_DESTS[$_br_dest]:-}" ]]; then
-                    log_info "Keeping $_br_dest — still used by another installed module"
+                    log_info "Keeping $_br_dest — in use by another module or not installed by this toolkit"
                 else
                     rm -rf "$_br_dest" 2>/dev/null
                     log_success "Removed: $_br_dest"
@@ -447,9 +524,11 @@ echo ""
 # 8) Special tools
 log_info "Removing special tools..."
 
-# Searchsploit symlink
-[[ -L "$PIPX_BIN_DIR/searchsploit" ]] && rm -f "$PIPX_BIN_DIR/searchsploit" 2>/dev/null && \
-    log_success "Removed searchsploit symlink"
+# Searchsploit symlink into the toolkit's exploitdb clone (pwn module)
+if should_remove "pwn" && _removable exploitdb && [[ -L "$PIPX_BIN_DIR/searchsploit" ]] \
+    && [[ "$(readlink "$PIPX_BIN_DIR/searchsploit")" == "$GITHUB_TOOL_DIR/exploitdb/"* ]]; then
+    rm -f "$PIPX_BIN_DIR/searchsploit" 2>/dev/null && log_success "Removed searchsploit symlink"
+fi
 
 # Special tools are removed only when this toolkit recorded installing them and
 # they were not present beforehand, so a user's own copy is never uninstalled.
@@ -480,8 +559,8 @@ if should_remove "cloud" && command_exists steampipe && _toolkit_installed steam
     remove_special_tool steampipe && log_success "Steampipe removed"
 fi
 
-# NetExec (pipx from git — installed outside ENTERPRISE_PIPX, modules/enterprise.sh)
-if should_remove "enterprise" && command_exists pipx; then
+# NetExec (pipx from git, tracked as nxc — installed outside ENTERPRISE_PIPX, modules/enterprise.sh)
+if should_remove "enterprise" && command_exists pipx && _toolkit_installed nxc; then
     if pipx list --short 2>/dev/null | grep -qi '^netexec '; then
         log_info "Removing NetExec (pipx)..."
         if pipx_remove netexec >> "$LOG_FILE" 2>&1; then
@@ -499,8 +578,8 @@ if should_remove "crypto"; then
     if [[ -d "$_crypto_venv" ]]; then
         # A venv the user built themselves was only added to, never installed by
         # us — removing it would take their other packages with it.
-        if _is_preexisting ctf-crypto-venv; then
-            log_info "Preserving pre-existing venv: ctf-crypto-venv"
+        if _is_preexisting ctf-crypto-venv || ! _removable ctf-crypto-venv; then
+            log_info "Preserving venv not installed by this toolkit: ctf-crypto-venv"
         else
             log_info "Removing ctf-crypto venv..."
             remove_special_tool ctf-crypto-venv && log_success "Removed venv: ctf-crypto-venv"
@@ -509,7 +588,7 @@ if should_remove "crypto"; then
 fi
 
 # patator (dedicated venv — installed outside CRACKING_PIPX, modules/cracking.sh)
-if should_remove "cracking"; then
+if should_remove "cracking" && _removable patator; then
     if [[ -d "$GITHUB_TOOL_DIR/patator" ]]; then
         log_info "Removing patator (venv)..."
         remove_special_tool patator && log_success "Removed venv: patator"
@@ -528,9 +607,9 @@ fi
 
 # uv + theHarvester wrapper (installed by recon module)
 if should_remove "recon"; then
-    # theHarvester wrapper script (not cleaned by git repo removal)
-    [[ -f "$PIPX_BIN_DIR/theHarvester" ]] && rm -f "$PIPX_BIN_DIR/theHarvester" 2>/dev/null && \
-        log_success "Removed theHarvester wrapper"
+    if _removable theHarvester && [[ -f "$PIPX_BIN_DIR/theHarvester" ]]; then
+        rm -f "$PIPX_BIN_DIR/theHarvester" 2>/dev/null && log_success "Removed theHarvester wrapper"
+    fi
     # uv (installed for theHarvester) is also the MCP server's runtime, so only remove it under --remove-deps, and via _builder_home() (not $HOME, which is /root under sudo) to target the real user's install.
     if [[ "$REMOVE_DEPS" == "true" ]]; then
         _uv_home="$(_builder_home)"
@@ -548,12 +627,15 @@ if should_remove "recon"; then
 fi
 
 # npm tools (promptfoo)
-if should_remove "llm" && command_exists npm; then
+if should_remove "llm" && command_exists npm && _toolkit_installed promptfoo; then
     if npm list -g promptfoo &>/dev/null; then
         log_info "Removing promptfoo (npm)..."
-        npm uninstall -g promptfoo >> "$LOG_FILE" 2>&1 && \
-            log_success "Removed npm: promptfoo" || \
+        if npm uninstall -g promptfoo >> "$LOG_FILE" 2>&1; then
+            log_success "Removed npm: promptfoo"
+        else
             log_warn "Failed to remove promptfoo via npm"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
 fi
 echo ""
@@ -563,6 +645,7 @@ if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; 
     log_info "Removing Docker images..."
     for _docker_entry in "${ALL_DOCKER_IMAGES[@]}"; do
         IFS='|' read -r _docker_img _docker_label <<< "$_docker_entry"
+        _removable "$_docker_label" || continue
         if docker images "${_docker_img%%:*}" -q 2>/dev/null | grep -q .; then
             docker rmi "$_docker_img" >> "$LOG_FILE" 2>&1 && \
                 log_success "Removed Docker: $_docker_label" || true
@@ -570,14 +653,10 @@ if command_exists docker && [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; 
     done
 fi
 
-# Go SDK installed by ensure_go (only with --remove-deps)
-if [[ "$REMOVE_DEPS" == "true" ]]; then
-    _go_root=""
-    if [[ "$PKG_MANAGER" == "pkg" ]]; then
-        _go_root="$PREFIX/lib/go"
-    else
-        _go_root="/usr/local/go"
-    fi
+# Go SDK installed by ensure_go (only with --remove-deps). On Termux ensure_go never
+# installs one; $PREFIX/lib/go there belongs to the golang package.
+if [[ "$REMOVE_DEPS" == "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
+    _go_root="/usr/local/go"
     if [[ -d "$_go_root" ]]; then
         rm -rf "$_go_root"
         log_success "Removed Go SDK from $_go_root"
@@ -609,10 +688,15 @@ else
     log_info "Package cache already cleaned (low disk space path)"
 fi
 
-# Remove version tracking file on full removal
+# Remove the install record on a clean full removal; after a failure it is the only
+# thing that tells a retry which tools are ours.
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
-    [[ -f "$SCRIPT_DIR/.versions" ]] && rm -f "$SCRIPT_DIR/.versions"
-    [[ -f "$SCRIPT_DIR/.versions.lock" ]] && rm -f "$SCRIPT_DIR/.versions.lock"
+    if [[ "$REMOVAL_FAILURES" -eq 0 ]]; then
+        [[ -f "$_VERSIONS_FILE" ]] && rm -f "$_VERSIONS_FILE"
+        [[ -f "$_VERSIONS_FILE.lock" ]] && rm -f "$_VERSIONS_FILE.lock"
+    else
+        log_warn "Keeping $_VERSIONS_FILE because some removals failed — re-run to retry"
+    fi
 fi
 
 # 10) Deep clean — purge all caches, build artifacts, stale symlinks
@@ -668,12 +752,16 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         log_success "Removed Rustup toolchains (~/.rustup — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi
-    # Empty .cargo dir if nothing useful remains
+    # Drop ~/.cargo only when no binaries are left, and never its config.toml,
+    # credentials.toml or env: rmdir fails while any of those remain.
     if [[ -d "$_user_home/.cargo" ]]; then
         _cargo_bins=$(find "$_user_home/.cargo/bin" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
         if [[ "$_cargo_bins" -eq 0 ]]; then
-            rm -rf "$_user_home/.cargo"
-            log_success "Removed empty ~/.cargo"
+            rmdir "$_user_home/.cargo/bin" 2>/dev/null || true
+            rm -rf "$_user_home/.cargo/.crates.toml" "$_user_home/.cargo/.crates2.json" \
+                "$_user_home/.cargo/.package-cache" "$_user_home/.cargo/.package-cache-mutate" \
+                "$_user_home/.cargo/.global-cache" 2>/dev/null || true
+            rmdir "$_user_home/.cargo" 2>/dev/null && log_success "Removed empty ~/.cargo"
         fi
     fi
 
@@ -736,12 +824,12 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         fi
     fi
 
-    # Gem cache
-    _gem_cache="${_user_home}/.gem"
-    if [[ -d "$_gem_cache/specs" ]] || [[ -d "$_gem_cache/ruby" ]]; then
+    # Gem spec cache only: the rest of ~/.gem is user-installed gems and RubyGems credentials.
+    _gem_cache="${_user_home}/.gem/specs"
+    if [[ -d "$_gem_cache" ]]; then
         _sz=$(du -sm "$_gem_cache" 2>/dev/null | cut -f1 || echo 0)
         rm -rf "$_gem_cache"
-        log_success "Removed gem cache (~/.gem — ${_sz}MB)"
+        log_success "Removed gem cache (~/.gem/specs — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi
 

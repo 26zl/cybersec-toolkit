@@ -29,7 +29,6 @@ MISC_GIT=(
     "SUDO_KILLER=https://github.com/TH3xACE/SUDO_KILLER.git"
     # General
     "CyberChef=https://github.com/gchq/CyberChef.git"
-    "RedEye=https://github.com/cisagov/RedEye.git"
 )
 
 # Tools gated by INCLUDE_C2. Loki-C2 is cloned as a resource and requires manual setup.
@@ -61,7 +60,7 @@ MISC_C2_GIT=(
 MISC_GIT_NAMES=(
     SecLists PayloadsAllTheThings InternalAllTheThings
     PEASS-ng linux-smart-enumeration SUDO_KILLER
-    CyberChef RedEye
+    CyberChef
 )
 MISC_C2_GIT_NAMES=(
     SET Zphisher EvilGoPhish SquarePhish CredMaster Modlishka

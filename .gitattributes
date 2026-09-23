@@ -29,6 +29,7 @@ mcp_server/tests/ export-ignore
 .gitmodules export-ignore
 .gitleaks.toml export-ignore
 .markdownlint.jsonc export-ignore
+scripts/_bash_arrays.py export-ignore
 scripts/audit_skill_dependencies.py export-ignore
 scripts/curate_claude_skills.py export-ignore
 scripts/validate_claude_skills.py export-ignore

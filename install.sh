@@ -52,6 +52,7 @@ ROLLBACK_TARGET=""
 FORCE_YES="${FORCE_YES:-false}"
 
 usage() {
+    local _exit_code="${1:-0}"
     # Build profile and module lists dynamically from filesystem / registry
     local _profiles=""
     for _pf in "$SCRIPT_DIR"/profiles/*.conf; do
@@ -135,7 +136,7 @@ Examples (Termux/Android — no sudo):
   ./install.sh --profile lightweight             # Recommended for Termux
   ./install.sh --module recon --module web        # Specific modules
 EOF
-    exit 0
+    exit "$_exit_code"
 }
 
 _installation_failed() {
@@ -360,7 +361,7 @@ while [[ $# -gt 0 ]]; do
                            ROLLBACK_TARGET="$2"; shift 2 ;;
         -y|--yes|--force)  FORCE_YES=true; shift ;;
         --version)         echo "cybersec-toolkit ${INSTALLER_VERSION:-unknown}"; exit 0 ;;
-        *)                 log_error "Unknown option: $1"; usage ;;
+        *)                 log_error "Unknown option: $1"; usage 1 ;;
     esac
 done
 
@@ -368,6 +369,25 @@ done
 
 if [[ "$FAST_MODE" == "true" && "$REQUIRE_CHECKSUMS" == "true" ]]; then
     log_error "--fast is mutually exclusive with --require-checksums/--production"
+    exit 1
+fi
+
+# The --tool and --rollback paths act before the dry-run preview, so refuse the combination.
+if [[ "$DRY_RUN" == "true" ]] && [[ ${#SELECTED_TOOLS[@]} -gt 0 || -n "$ROLLBACK_TARGET" ]]; then
+    log_error "--dry-run cannot be combined with --tool or --rollback"
+    exit 1
+fi
+
+# --tool, --rollback, --profile and --module select what to act on and are dispatched
+# by precedence, so combining them would silently discard all but the winner. Refuse
+# instead. (--profile and --module together is the same contradiction.)
+_active_modes=()
+[[ ${#SELECTED_TOOLS[@]} -gt 0 ]]   && _active_modes+=("--tool")
+[[ -n "$ROLLBACK_TARGET" ]]         && _active_modes+=("--rollback")
+[[ -n "$PROFILE" ]]                 && _active_modes+=("--profile")
+[[ ${#SELECTED_MODULES[@]} -gt 0 ]] && _active_modes+=("--module")
+if [[ ${#_active_modes[@]} -gt 1 ]]; then
+    log_error "Mutually exclusive options: ${_active_modes[*]} — use only one"
     exit 1
 fi
 
@@ -535,8 +555,10 @@ install_single_tool() {
         fi
     done
 
-    # Git repos (match name= prefix)
+    # Git repos (match name= prefix). Include the INCLUDE_C2-gated arrays: naming
+    # a C2 tool with --tool is itself the opt-in, so it must still resolve.
     local git_arrs=(); _module_array_names GIT git_arrs
+    _module_array_names C2_GIT git_arrs
     for a in "${git_arrs[@]}"; do
         declare -p "$a" &>/dev/null || continue
         local -n _gitref="$a"
@@ -658,6 +680,9 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     done
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
+    # Fresh containers and hosts may have empty package indexes (the Docker image deletes them).
+    log_info "Refreshing package lists..."
+    pkg_update >> "$LOG_FILE" 2>&1 || log_warn "Package list refresh had errors (check log) — continuing"
     log_info "Installing ${#SELECTED_TOOLS[@]} individual tool(s)..."
     TOOL_FAILED=0
     for tool in "${SELECTED_TOOLS[@]}"; do
@@ -888,19 +913,45 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
         log_success "Removed: $rb_tool ($rb_method)"
     done
 
-    # One transaction so the package manager resolves dependencies once.
+    # One transaction; success is checked per package afterwards because pkg_remove's exit code is unreliable (pacman masks failures).
     if [[ ${#RB_SYS_PKGS[@]} -gt 0 ]]; then
         echo ""
         log_info "Removing ${#RB_SYS_PKGS[@]} system package(s) this session installed..."
-        if pkg_remove "${RB_SYS_PKGS[@]}" >> "$LOG_FILE" 2>&1; then
-            for rb_tool in "${RB_SYS_PKGS[@]}"; do
-                _rb_forget_version "$rb_tool"
+        # The manifest stores the generic (Debian) name, but the package is installed
+        # under this distro's translated name, so translate before checking or removing
+        # — matching the install and remove.sh paths.
+        declare -a RB_SYS_PRESENT=()
+        declare -A RB_SYS_XLATE=()
+        for rb_tool in "${RB_SYS_PKGS[@]}"; do
+            _rb_fx=("$rb_tool"); fixup_package_names _rb_fx
+            for _rb_name in "${_rb_fx[@]}"; do
+                RB_SYS_XLATE["$_rb_name"]="$rb_tool"
+                pkg_is_installed "$_rb_name" && RB_SYS_PRESENT+=("$_rb_name")
             done
-            rb_removed=$((rb_removed + ${#RB_SYS_PKGS[@]}))
-            log_success "System packages: ${#RB_SYS_PKGS[@]} removed ($PKG_MANAGER)"
-        else
+        done
+        if [[ ${#RB_SYS_PRESENT[@]} -gt 0 ]]; then
+            pkg_remove "${RB_SYS_PRESENT[@]}" >> "$LOG_FILE" 2>&1 || true
+        fi
+        # A generic name whose translated package is still installed counts as failed.
+        declare -A _rb_still=()
+        for _rb_name in "${!RB_SYS_XLATE[@]}"; do
+            pkg_is_installed "$_rb_name" && _rb_still["${RB_SYS_XLATE[$_rb_name]}"]=1
+        done
+        rb_sys_left=0
+        for rb_tool in "${RB_SYS_PKGS[@]}"; do
+            if [[ -n "${_rb_still[$rb_tool]:-}" ]]; then
+                log_warn "Still installed after removal attempt: $rb_tool ($PKG_MANAGER) — keeping its .versions entry"
+                rb_sys_left=$((rb_sys_left + 1))
+            else
+                _rb_forget_version "$rb_tool"
+                rb_removed=$((rb_removed + 1))
+            fi
+        done
+        if [[ "$rb_sys_left" -gt 0 ]]; then
             log_warn "Some system packages failed to remove — see $LOG_FILE"
-            rb_failed=$((rb_failed + ${#RB_SYS_PKGS[@]}))
+            rb_failed=$((rb_failed + rb_sys_left))
+        else
+            log_success "System packages: ${#RB_SYS_PKGS[@]} removed ($PKG_MANAGER)"
         fi
     fi
 
@@ -1061,8 +1112,8 @@ estimate_install_time() {
     fi
 
     # Stage 3: Non-APT batches (run in PARALLEL when PARALLEL_JOBS > 1)
-    # Per-method benchmarks (seconds per tool).  pipx and Cargo run
-    # sequentially within their batch; Go/Git/Binary use a shared semaphore.
+    # Per-method benchmarks (seconds per tool); pipx is estimated as sequential
+    # (an upper bound), Go/Git/Binary as sharing the parallel semaphore.
     local pipx_min=$((pipx_count * 8))       pipx_max=$((pipx_count * 20))
     local go_min=$((go_count * 5))           go_max=$((go_count * 15))
     local cargo_min=$((cargo_count * 25))    cargo_max=$((cargo_count * 75))
@@ -1202,15 +1253,11 @@ if [[ "$DRY_RUN" == "true" ]]; then
 fi
 
 # Main installation
-LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
-if : > "$LOG_FILE" 2>/dev/null; then
-    chmod 600 "$LOG_FILE" 2>/dev/null || true
-else
-    LOG_FILE="/dev/null"
-fi
 VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {
+    # Created here, not at file scope, so sourcing install.sh never truncates the log.
+    _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
     trap '_global_cleanup; exit 130' INT TERM
     print_banner
@@ -1418,7 +1465,7 @@ install_modules() {
         if [[ ${#_ALL_GIT[@]} -gt 0 ]];    then _method_names+=("Git");    _report_method_total "Git"    "${#_ALL_GIT[@]}";    fi
         if [[ ${#_ALL_BINARY[@]} -gt 0 ]]; then _method_names+=("Binary"); _report_method_total "Binary" "${#_ALL_BINARY[@]}"; fi
 
-        # pipx (sequential within — venv lock)
+        # pipx (parallelized within via global semaphore; one venv per tool)
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]]; then
             (
                 trap '[[ -f "$_fail_dir/pipx.cnt" ]] || echo 1 > "$_fail_dir/pipx.cnt"' EXIT

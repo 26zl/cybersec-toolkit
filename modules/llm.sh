@@ -38,6 +38,7 @@ install_module_llm() {
         if command_exists promptfoo; then
             local _pf_ver; _pf_ver=$(promptfoo --version 2>/dev/null || true)
             log_success "promptfoo already installed${_pf_ver:+ ($_pf_ver)}"
+            _track_already_present "promptfoo" "npm"
         elif ensure_node; then
             _start_spinner "Installing promptfoo via npm..."
             if npm install -g "promptfoo@${PROMPTFOO_VERSION}" >> "$LOG_FILE" 2>&1; then
@@ -52,7 +53,8 @@ install_module_llm() {
                 TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             fi
         else
-            log_warn "Skipping promptfoo — Node.js/npm not available"
+            log_error "Node.js/npm not available — cannot install promptfoo"
+            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
         fi
     fi
 }

@@ -54,7 +54,7 @@ ENTERPRISE_GIT=(
     "lnkup=https://github.com/Plazmaz/lnkUp.git"
     "ruler=https://github.com/sensepost/ruler.git"
     "bqm=https://github.com/Acceis/bqm.git"
-    "cyperoth=https://github.com/seajaysec/cypheroth.git"
+    "cypheroth=https://github.com/seajaysec/cypheroth.git"
     "abuseACL=https://github.com/AetherBlack/abuseACL.git"
     "asrepcatcher=https://github.com/Yaxxine7/ASRepCatcher.git"
     "conpass=https://github.com/login-securite/conpass.git"
@@ -67,10 +67,11 @@ ENTERPRISE_GIT=(
 )
 
 ENTERPRISE_GO_BINS=(godap pretender windapsearch ldapnomnom)
-ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx spraykatz dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cyperoth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester targetedKerberoast)
+ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx spraykatz dfscoerce petitpotam shadowcoerce noPac zerologon ntlm_theft ntlmv1-multi PassTheCert pkinittools privexchange GPOddity gmsadumper ExtractBitlockerKeys PXEThief sccmsecrets sccmwtf cmloot pywsus RemoteMonologue roastinthemiddle lnkup ruler bqm cypheroth abuseACL asrepcatcher conpass freeipscanner goldencopy keytabextract ldaprelayscan LDAPWordlistHarvester targetedKerberoast)
 
 ENTERPRISE_BUILD_NAMES=(azurehound gosecretsdump GoExec GoMapEnum rusthound rusthound-ce)
-declare -A ENTERPRISE_BUILD_URLS=(
+# -g: verify/update/remove source modules from inside a function.
+declare -gA ENTERPRISE_BUILD_URLS=(
     [azurehound]="https://github.com/BloodHoundAD/AzureHound.git"
     [gosecretsdump]="https://github.com/c-sto/gosecretsdump.git"
     [GoExec]="https://github.com/FalconOpsLLC/goexec.git"
@@ -78,7 +79,7 @@ declare -A ENTERPRISE_BUILD_URLS=(
     [rusthound]="https://github.com/NH-RED-TEAM/RustHound.git"
     [rusthound-ce]="https://github.com/g0h4n/RustHound-CE.git"
 )
-declare -A ENTERPRISE_BUILD_CMDS=(
+declare -gA ENTERPRISE_BUILD_CMDS=(
     [azurehound]="go build"
     [gosecretsdump]="go build"
     [GoExec]="go build -o GoExec ."
@@ -92,15 +93,19 @@ install_module_enterprise() {
     [[ ${#ENTERPRISE_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Enterprise - Packages" "${ENTERPRISE_PACKAGES[@]}"
     install_pipx_batch "Enterprise - Python" "${ENTERPRISE_PIPX[@]}"
 
-    if [[ "${SKIP_PIPX:-false}" != "true" ]] && ! pipx list --short 2>/dev/null | grep -qi "^netexec "; then
-        log_info "Installing NetExec from GitHub..."
-        if pipx install "git+https://github.com/Pennyw0rth/NetExec" >> "$LOG_FILE" 2>&1; then
-            log_success "NetExec installed"
-            # The installed binary is named nxc.
-            track_version "nxc" "pipx" "git"
+    # The installed binary is named nxc, which is what .versions records.
+    if [[ "${SKIP_PIPX:-false}" != "true" ]]; then
+        if pipx list --short 2>/dev/null | grep -qi "^netexec "; then
+            _track_already_present "nxc" "pipx"
         else
-            log_error "Failed pipx: NetExec"
-            TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+            log_info "Installing NetExec from GitHub..."
+            if pipx install "git+https://github.com/Pennyw0rth/NetExec" >> "$LOG_FILE" 2>&1; then
+                log_success "NetExec installed"
+                track_version "nxc" "pipx" "git"
+            else
+                log_error "Failed pipx: NetExec"
+                TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+            fi
         fi
     fi
     install_go_batch "Enterprise - Go" "${ENTERPRISE_GO[@]}"

@@ -96,7 +96,7 @@ These are limitations of that nesting layer, not of Kata. On macOS, prefer `--lo
    sudo systemctl restart docker
    docker info --format '{{json .Runtimes}}'
    uname -r                                              # host kernel
-   docker run --runtime kata --rm ubuntu:24.04 uname -r  # guest kernel
+   docker run --runtime kata --rm ubuntu:26.04 uname -r  # guest kernel
    ```
 
    The deprecated Go runtime from a `kata-go-static` tarball registers the
@@ -165,7 +165,7 @@ to `kata()`.
 | `CYBERSEC_SANDBOX_RUNTIME` | auto-detected | Pin a runtime name registered with Docker. |
 | `CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME` | `0` | `1` accepts a non-Kata runtime. Startup refuses one otherwise, and warns loudly when accepted: there is no VM boundary. |
 | `CYBERSEC_SANDBOX_NETWORK` | Docker default bridge | `none` for an offline VM, or a named Docker network. |
-| `CYBERSEC_SANDBOX_WORKSPACE` | unset | Absolute host directory to mount at `/workspace`. The only host path the VM can see. |
+| `CYBERSEC_SANDBOX_WORKSPACE` | unset | Absolute host directory to mount at `/workspace`. The only host path the VM can see; the host root is refused. |
 | `CYBERSEC_SANDBOX_WORKSPACE_RO` | `0` | `1` mounts the workspace read-only. |
 | `CYBERSEC_SANDBOX_MEMORY` | `2g` | Guest memory. |
 | `CYBERSEC_SANDBOX_CPUS` | `2` | Guest vCPUs. |
@@ -274,6 +274,33 @@ Two things depend on that host copy:
 Set `CYBERSEC_MCP_AUDIT_REQUIRED=1` on the host to refuse to start when the host
 log cannot be written, rather than continuing with a warning.
 
+### Authenticated records
+
+Guest stderr is not a trusted channel. Anything in the VM that can reach the
+server's stderr — a tool, a `run_script` body, a process started by a sample —
+could print a line shaped like a record, and a forged `guided_assessment` record
+would clear the agent guard. The launcher therefore persists only records the
+server process itself tagged:
+
+- `sandbox/mcp.mjs` generates a random 32-byte key per launch and passes it to
+  the server process alone, as the exec-scoped `CYBERSEC_MCP_AUDIT_KEY`.
+  `docker exec` gets only the variable name and reads the value from its own
+  environment, so the key never appears on a command line in the host process
+  list, and never reaches the VM's PID 1 the way container-wide variables do.
+- The server removes the key from its environment at startup, so the tools and
+  scripts it spawns do not inherit it, and on Linux makes itself non-dumpable,
+  so a same-user process cannot read the key back through `/proc/<pid>/environ`
+  or its memory.
+- Each mirrored line is `@cybersec-audit@ <tag> <record>`, where the tag is the
+  HMAC-SHA256 of the record under the key. The launcher appends the record only
+  when the tag verifies and its `seq` moves its chain forward, so a replayed line
+  is refused as well. Any other line carrying the sentinel goes to stderr as a
+  `Rejected ... audit record` message, never to the log.
+
+A server started without the key — by an older launcher, or by an agent inside
+the VM through `sandbox/guest-mcp.json` — warns and does not mirror; its records
+stay in the in-VM log.
+
 ### Tamper evidence
 
 Every record carries `chain` (one id per server process), `seq`, and `prev` —
@@ -286,11 +313,12 @@ python3 scripts/verify_audit_chain.py path/to.log   # or a specific one
 ```
 
 The chain survives the trip out of the VM because the host appends the guest's
-lines verbatim. Two limits are inherent and worth stating: records written
-before this existed are reported as unchained rather than flagged, and because
-the chain is unkeyed, someone who can read the log can still append a
-well-formed record. It detects modification and deletion, not forgery by a
-reader.
+lines verbatim; the tag is checked on the way in and not stored. Two limits are
+inherent and worth stating: records written before this existed are reported as
+unchained rather than flagged, and because the chain is unkeyed, someone who can
+read and write the host log can still append a well-formed record. The session
+key keeps forged records from arriving through the VM; the chain detects
+modification and deletion, not forgery by someone with access to the file.
 
 ## Hardening applied to each VM
 

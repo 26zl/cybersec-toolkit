@@ -12,7 +12,7 @@ MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skil
 
 .DEFAULT_GOAL := help
 .PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py test-sandbox validate-packages check-links test-distros \
-	validate check-pins check-skills sync-skills curate check doctor mcp docker sandbox-image audit-verify clean
+	validate check-pins check-skills sync-skills curate check doctor bump mcp docker sandbox-image audit-verify clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -27,9 +27,10 @@ setup: ## One-time dev setup: submodules, MCP deps, sandbox deps, skill mirror (
 
 lint: lint-sh lint-py lint-md ## Run all linters
 
+# bash -n checks only its first file argument, so each file is checked separately.
 lint-sh: ## shellcheck + bash syntax on all shell scripts
 	shellcheck --severity=warning $(SH_FILES)
-	bash -n $(SH_FILES)
+	rc=0; for f in $(SH_FILES); do bash -n "$$f" || rc=1; done; exit $$rc
 
 lint-py: ## ruff check on the MCP server and repo-root scripts
 	cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . \
@@ -51,10 +52,10 @@ test-py: ## MCP server tests (pytest)
 
 test-sandbox: ## Kata sandbox provider tests (node --test; needs sandbox deps)
 	@if [ -d sandbox/node_modules ]; then node --test sandbox/*.test.mjs; \
-	else echo "sandbox deps missing — run 'npm --prefix sandbox ci --ignore-scripts'"; fi
+	else echo "ERROR: sandbox deps missing — run 'npm --prefix sandbox ci --ignore-scripts' (or 'make setup')" >&2; exit 1; fi
 
 validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles, version, agent docs)
-	python3 scripts/validate_tools_config.py
+	python3 scripts/validate_tools_config.py --strict
 	python3 scripts/validate_mcp_sync.py
 	python3 scripts/validate_distro_compat.py
 	python3 scripts/validate_claude_skills.py

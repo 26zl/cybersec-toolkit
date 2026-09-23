@@ -527,10 +527,10 @@ ensure_python_modern() {
     return 0
 }
 
-# ensure_node — install Node.js + npm, preferring Node.js 18+ LTS.
-# Required for npm-based tools (e.g., promptfoo needs native modules that
-# require Node.js 18+).  Ubuntu 22.04 ships Node.js 12 which is too old.
-NODE_MIN_VERSION="${NODE_MIN_VERSION:-18}"
+# ensure_node — install Node.js + npm, preferring a current LTS.
+# Required for npm-based tools (e.g., promptfoo needs native modules). Node.js 18
+# reached end of life in April 2025, so default to 22 LTS.
+NODE_MIN_VERSION="${NODE_MIN_VERSION:-22}"
 
 ensure_node() {
     if command_exists node && command_exists npm; then

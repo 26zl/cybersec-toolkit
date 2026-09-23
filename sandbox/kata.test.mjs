@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
   appendTail,
   assertVmBoundary,
+  assertWorkspaceUsable,
+  buildExecEnv,
   buildRunArgs,
   isKataRuntime,
   registerShutdown,
@@ -97,6 +102,19 @@ test('resolveOptions rejects a relative workspace path', () => {
   assert.throws(() => resolveOptions({ workspace: 'evidence' }, {}), /absolute path/);
 });
 
+test('assertWorkspaceUsable refuses the host root, including through a symlink', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kata-ws-'));
+  try {
+    const link = join(dir, 'root-link');
+    symlinkSync('/', link);
+    assert.throws(() => assertWorkspaceUsable('/'), /host root/);
+    assert.throws(() => assertWorkspaceUsable(link), /host root/);
+    assert.doesNotThrow(() => assertWorkspaceUsable(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('resolveOptions rejects a malformed capability', () => {
   assert.throws(() => resolveOptions({ capAdd: 'net_raw; rm -rf /' }, {}), /Invalid capability/);
   assert.deepEqual(resolveOptions({ capAdd: 'NET_RAW,NET_ADMIN' }, {}).capAdd, ['NET_RAW', 'NET_ADMIN']);
@@ -151,6 +169,24 @@ test('buildRunArgs adds requested capabilities and a network only when set', () 
   const args = buildRunArgs({ name: 'sbx', runtime: 'kata', options: tuned, env: {} });
   assert.deepEqual(flagValues(args, '--cap-add'), ['NET_RAW']);
   assert.deepEqual(flagValues(args, '--network'), ['none']);
+});
+
+test('buildExecEnv passes exec-scoped variables by name, values only through the CLI environment', () => {
+  const secret = 'ab'.repeat(32);
+  const { args, env } = buildExecEnv({ CYBERSEC_MCP_AUDIT_KEY: secret }, { PATH: '/usr/bin' });
+
+  assert.deepEqual(args, ['--env', 'CYBERSEC_MCP_AUDIT_KEY']);
+  assert.equal(args.some((arg) => arg.includes(secret)), false);
+  assert.deepEqual(env, { PATH: '/usr/bin', CYBERSEC_MCP_AUDIT_KEY: secret });
+  assert.deepEqual(buildExecEnv(undefined, { PATH: '/usr/bin' }), { args: [], env: { PATH: '/usr/bin' } });
+});
+
+test('buildExecEnv refuses names docker would misread and non-string values', () => {
+  // NAME=value would put the value back on the command line; DOCKER_* would reconfigure the CLI.
+  for (const name of ['NAME=value', '', '1ABC', 'WITH SPACE', 'DOCKER_HOST']) {
+    assert.throws(() => buildExecEnv({ [name]: 'x' }, {}), /Invalid exec environment variable name/, name);
+  }
+  assert.throws(() => buildExecEnv({ CYBERSEC_MCP_AUDIT_KEY: 1 }, {}), /must be a string/);
 });
 
 const fakeProcess = (calls) => Object.assign(new EventEmitter(), { exit: (code) => calls.push(`exit ${code}`) });

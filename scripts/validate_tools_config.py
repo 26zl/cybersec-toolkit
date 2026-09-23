@@ -374,8 +374,12 @@ def extract_module_tools(module_name):
     return tools
 
 
-def validate():
-    """Cross-validate tools_config.json against module files. Return exit code."""
+def validate(strict=False):
+    """Cross-validate tools_config.json against module files. Return exit code.
+
+    With ``strict``, warnings also fail (the documented "0 errors, 0 warnings"
+    contract); without it, only errors fail.
+    """
     errors = 0
     warnings = 0
 
@@ -496,8 +500,10 @@ def validate():
     print(f"\ntools_config.json: {len(config)} tools")
     print(f"Module arrays:     {len(module_tools)} tools parsed")
     print(f"Errors: {errors}  Warnings: {warnings}")
+    if strict and errors == 0 and warnings > 0:
+        print("FAIL (strict): warnings are treated as failures")
 
-    return 1 if errors > 0 else 0
+    return 1 if errors > 0 or (strict and warnings > 0) else 0
 
 
 def sync():
@@ -540,7 +546,7 @@ def main():
     if "--sync" in sys.argv:
         sync()
     else:
-        sys.exit(validate())
+        sys.exit(validate(strict="--strict" in sys.argv[1:]))
 
 
 if __name__ == "__main__":

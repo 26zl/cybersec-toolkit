@@ -26,11 +26,12 @@ RE_GIT_NAMES=(pwndbg GEF peda decomp2dbg Qiling Krakatau pyinstxtractor)
 RE_BUILD_NAMES=(ELFkickers rappel)
 # Source of truth for build-from-source url + command (install + update). rappel is
 # x86-only, so install gates it on !IS_ARM; update skips it on ARM (never cloned).
-declare -A RE_BUILD_URLS=(
+# -g: verify/update/remove source modules from inside a function.
+declare -gA RE_BUILD_URLS=(
     [ELFkickers]="https://github.com/BR903/ELFkickers.git"
     [rappel]="https://github.com/yrp604/rappel.git"
 )
-declare -A RE_BUILD_CMDS=(
+declare -gA RE_BUILD_CMDS=(
     [ELFkickers]="make"
     [rappel]="make"
 )

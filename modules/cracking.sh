@@ -38,10 +38,11 @@ CRACKING_GIT_NAMES=(DefaultCreds-cheat-sheet pipal Hob0Rules Pantagrule OneRuleT
 CRACKING_GO_BINS=(brutespray)
 CRACKING_BUILD_NAMES=(duplicut)
 # Source of truth for build-from-source url + command (install + update).
-declare -A CRACKING_BUILD_URLS=(
+# -g: verify/update/remove source modules from inside a function.
+declare -gA CRACKING_BUILD_URLS=(
     [duplicut]="https://github.com/nil0x42/duplicut.git"
 )
-declare -A CRACKING_BUILD_CMDS=(
+declare -gA CRACKING_BUILD_CMDS=(
     [duplicut]="make"
 )
 

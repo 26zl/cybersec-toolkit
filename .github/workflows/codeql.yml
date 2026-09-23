@@ -1,8 +1,8 @@
 name: CodeQL
 
-# Static analysis (SAST) for the Python execution engine and the workflows.
-# Scoped to first-party code — vendored skills under .claude/skills are excluded
-# so findings stay actionable.
+# Static analysis (SAST) for the Python MCP server, the JavaScript sandbox launcher,
+# and the workflows. Vendored skills under .claude/skills are excluded so findings
+# stay actionable.
 
 on:
   push:

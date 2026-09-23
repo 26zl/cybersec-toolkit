@@ -1,3 +1,6 @@
+# A named stage (not COPY --from=<image>) so Dependabot tracks the uv image.
+FROM ghcr.io/astral-sh/uv:0.12.17@sha256:10787c682e4184e4f290de1171fd4703dc63de99221f10fe1c99002ce7fa9acc AS uv
+
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -6,7 +9,7 @@ RUN apt-get update && apt-get upgrade -y \
         bash ca-certificates curl file git binutils nmap python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.4@sha256:d0a6eca6c669dc7e9c51218707b8438a3d30402733d739dcc00adb3e213e8f5c /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /opt/cybersec-toolkit
 # Copy only runtime and installer sources; local credentials never enter layers.

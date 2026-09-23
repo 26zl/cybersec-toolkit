@@ -40,7 +40,7 @@ install_module_cloud() {
         log_info "Installing Steampipe..."
         local _sp_installer
         _sp_installer=$(mktemp); _register_cleanup "$_sp_installer"
-        if curl -L --proto '=https' --tlsv1.2 -fsSL "https://raw.githubusercontent.com/turbot/steampipe/v2.4.4/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE" \
+        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "https://raw.githubusercontent.com/turbot/steampipe/v2.4.4/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE" \
                 && _validate_curl_pipe "$_sp_installer" 'steampipe' 'install'; then
             _start_spinner "Installing Steampipe..."
             if bash "$_sp_installer" >> "$LOG_FILE" 2>&1; then

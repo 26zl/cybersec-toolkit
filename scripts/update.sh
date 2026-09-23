@@ -88,6 +88,13 @@ _setup_verbose
 START_TIME=$(date +%s)
 UPDATE_FAILURES=0
 
+# Refresh the version row of a tool this toolkit installed. Never create a row or
+# relabel a pre-existing one: remove.sh reads these rows to decide what is ours.
+_track_update() {
+    _version_known "$1" && ! _is_preexisting "$1" && track_version "$@"
+    return 0
+}
+
 # 1) System packages
 if [[ "$SKIP_SYSTEM" == "false" ]]; then
     log_info "Updating system packages..."
@@ -187,7 +194,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
                         mv "$_gobin_stage/$tool_name" "$GOBIN/$tool_name" && chmod +x "$GOBIN/$tool_name"
                         log_success "Updated: $tool_name"
                         GO_UPDATED=$((GO_UPDATED + 1))
-                        track_version "$tool_name" "go" "latest"
+                        _track_update "$tool_name" "go" "latest"
                     fi
                 else
                     # No staging (Termux or direct GOBIN) — compare installed binary
@@ -198,7 +205,7 @@ if [[ "$SKIP_GO" == "false" ]]; then
                     else
                         log_success "Updated: $tool_name"
                         GO_UPDATED=$((GO_UPDATED + 1))
-                        track_version "$tool_name" "go" "latest"
+                        _track_update "$tool_name" "go" "latest"
                     fi
                 fi
             else
@@ -224,11 +231,19 @@ if [[ "$SKIP_GIT" == "false" ]]; then
     if [[ -d "$GITHUB_TOOL_DIR" ]]; then
         # Only repos this toolkit clones are touched: a hard reset on an unrelated
         # repo under $GITHUB_TOOL_DIR would drop the owner's unpushed commits.
-        declare -A _TOOLKIT_GIT_NAMES=()
+        # Build-from-source trees are left to step 10, which has to see the new
+        # commits itself to know that a rebuild is due.
+        declare -A _TOOLKIT_GIT_NAMES=() _BUILD_TREE_NAMES=()
         _upd_git_names=(); _collect_module_arrays "GIT_NAMES" _upd_git_names
         _collect_module_arrays "C2_GIT_NAMES" _upd_git_names
-        _collect_module_arrays "BUILD_NAMES" _upd_git_names
         for _gn in "${_upd_git_names[@]}"; do _TOOLKIT_GIT_NAMES["$_gn"]=1; done
+        _upd_build_names=(); _collect_module_arrays "BUILD_NAMES" _upd_build_names
+        for _gn in "${_upd_build_names[@]}"; do _BUILD_TREE_NAMES["$_gn"]=1; done
+        # A clone since dropped from the registry still has its "git" row; a row for
+        # another method (e.g. a pipx tool of the same name) says nothing about a repo.
+        _git_row_known() {
+            [[ -f "$VERSION_FILE" ]] && awk -F'|' -v t="$1" '$1==t && $2=="git"{f=1} END{exit !f}' "$VERSION_FILE" 2>/dev/null
+        }
 
         GIT_TOTAL=0
         GIT_UPDATED=0
@@ -237,8 +252,9 @@ if [[ "$SKIP_GIT" == "false" ]]; then
         for dir in "$GITHUB_TOOL_DIR"/*/; do
             [[ -d "$dir/.git" ]] || continue
             name="$(basename "$dir")"
+            [[ -n "${_BUILD_TREE_NAMES[$name]:-}" ]] && continue
             # Skip repos the toolkit did not clone, and ones present beforehand.
-            if [[ -z "${_TOOLKIT_GIT_NAMES[$name]:-}" ]] && ! _version_known "$name"; then
+            if [[ -z "${_TOOLKIT_GIT_NAMES[$name]:-}" ]] && ! _git_row_known "$name"; then
                 log_debug "Skipping $name (not a toolkit repo)"
                 continue
             fi
@@ -257,15 +273,15 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                 else
                     log_success "Updated: $name"
                     GIT_UPDATED=$((GIT_UPDATED + 1))
-                    track_version "$name" "git" "HEAD"
+                    _track_update "$name" "git" "HEAD"
 
-                    # Reinstall Python deps if present — only into existing venvs to
-                    # avoid polluting system Python.
+                    # Reinstall Python deps into an existing venv only, as the builder
+                    # that owns it — setup_git_repo keeps dependency builds off root too.
                     if [[ -f "$dir/requirements.txt" ]]; then
                         if [[ -d "$dir/venv" ]]; then
-                            "$dir/venv/bin/pip" install -q -r "$dir/requirements.txt" >> "$LOG_FILE" 2>&1 || true
+                            _as_builder "'${_dir_escaped}venv/bin/pip' install -q -r '${_dir_escaped}requirements.txt'" >> "$LOG_FILE" 2>&1 || true
                         elif [[ -d "$dir/.venv" ]]; then
-                            "$dir/.venv/bin/pip" install -q -r "$dir/requirements.txt" >> "$LOG_FILE" 2>&1 || true
+                            _as_builder "'${_dir_escaped}.venv/bin/pip' install -q -r '${_dir_escaped}requirements.txt'" >> "$LOG_FILE" 2>&1 || true
                         else
                             log_warn "$name has requirements.txt but no venv — skipping pip install (create venv to enable)"
                         fi
@@ -280,7 +296,7 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                 if _git_safe_reset_to_remote "$dir" "$LOG_FILE"; then
                     log_success "Updated: $name (reset to origin HEAD)"
                     GIT_UPDATED=$((GIT_UPDATED + 1))
-                    track_version "$name" "git" "HEAD"
+                    _track_update "$name" "git" "HEAD"
                 else
                     log_warn "Failed: $name"
                     GIT_FAILED=$((GIT_FAILED + 1))
@@ -393,7 +409,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                         if [[ -f "$_cargo_bin_dir/$_cargo_bin" ]]; then
                             ln -sf "$_cargo_bin_dir/$_cargo_bin" "$PIPX_BIN_DIR/$_cargo_bin" 2>/dev/null || true
                         fi
-                        track_version "$crate" "cargo" "latest"
+                        _track_update "$crate" "cargo" "latest"
                     fi
                 else
                     # cargo install exits non-zero for "already installed" on some versions
@@ -466,7 +482,7 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
 
         if download_github_release_update "$repo" "$binary" "$pattern" "$dest" "$archive_binary" >> "$LOG_FILE" 2>&1; then
             local tag="${_RELEASE_TAG:-$latest_tag}"
-            track_version "$binary" "binary" "$tag"
+            _track_update "$binary" "binary" "$tag"
 
             # Compare checksum to detect if binary actually changed
             local _new_bin_sum=""
@@ -529,10 +545,15 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
     # Metasploit (snap takes priority, then msfupdate for Rapid7/apt installs)
     if snap_available && snap list metasploit-framework &>/dev/null 2>&1; then
         log_info "Updating Metasploit (snap)..."
-        snap refresh metasploit-framework >> "$LOG_FILE" 2>&1 && \
-            log_success "Metasploit updated" || \
+        if snap refresh metasploit-framework >> "$LOG_FILE" 2>&1; then
+            log_success "Metasploit updated"
+        else
             log_warn "Metasploit update failed"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
+        fi
     elif command_exists msfupdate; then
+        # Not counted as a failure: distro packages (Kali) ship an msfupdate that
+        # refuses to run and defers to the package manager (step 1).
         log_info "Updating Metasploit..."
         msfupdate >> "$LOG_FILE" 2>&1 && \
             log_success "Metasploit updated" || \
@@ -545,18 +566,22 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
         if npm install -g "promptfoo@latest" >> "$LOG_FILE" 2>&1; then
             _pf_ver=$(promptfoo --version 2>/dev/null || echo "latest")
             log_success "promptfoo updated ($_pf_ver)"
-            track_version "promptfoo" "npm" "$_pf_ver"
+            _track_update "promptfoo" "npm" "$_pf_ver"
         else
             log_warn "promptfoo update failed"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
         fi
     fi
 
     # OWASP ZAP (snap)
-    if command_exists zaproxy && snap_available; then
+    if command_exists zaproxy && snap_available && snap list zaproxy &>/dev/null; then
         log_info "Updating OWASP ZAP..."
-        snap refresh zaproxy >> "$LOG_FILE" 2>&1 && \
-            log_success "OWASP ZAP updated" || \
+        if snap refresh zaproxy >> "$LOG_FILE" 2>&1; then
+            log_success "OWASP ZAP updated"
+        else
             log_warn "OWASP ZAP update failed"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
+        fi
     fi
 
     # Foundry (foundryup) — run as the invoking user so the update lands in the
@@ -568,6 +593,7 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_success "Foundry updated"
         else
             log_warn "Foundry update failed"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
         fi
     fi
 
@@ -580,6 +606,7 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
             log_success "ctf-crypto venv updated"
         else
             log_warn "ctf-crypto venv update failed"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
         fi
     fi
 
@@ -594,9 +621,11 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
                 log_success "Steampipe updated"
             else
                 log_warn "Steampipe update failed"
+                UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
             fi
         else
             log_warn "Steampipe update script verification failed — skipping"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
         fi
         rm -f "$_sp_tmp"
     fi
@@ -634,6 +663,7 @@ echo ""
 log_info "Updating build-from-source tools..."
 BUILD_UPDATED=0
 BUILD_SKIPPED=0
+BUILD_NOT_INSTALLED=0
 BUILD_FAILED=0
 for _bmod in "${ALL_MODULES[@]}"; do
     _bpfx=$(_module_prefix "$_bmod")
@@ -649,28 +679,43 @@ for _bmod in "${ALL_MODULES[@]}"; do
     fi
     for _bname in "${_bnames[@]}"; do
         _bdir="$GITHUB_TOOL_DIR/$_bname"
-        [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_SKIPPED=$((BUILD_SKIPPED + 1)); continue; }
+        [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1)); continue; }
+        # Same rule as step 4: a tree that predates the toolkit is the user's.
+        if _is_preexisting "$_bname"; then
+            log_debug "Skipping build $_bname (present before install)"
+            BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1))
+            continue
+        fi
         _bdir_escaped="$(_escape_single_quoted "$_bdir")"
+        # Build trees are patched in place (yafu/honggfuzz/pemcrack sed the Makefile),
+        # so a plain pull fails on the dirty tree; reset to upstream and let the rebuild
+        # reapply the idempotent patch before giving up.
         _pull_out=""
+        _src_state="failed"
         if _pull_out=$(_as_builder "git $_GIT_STALL_OPTS -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
-            if echo "$_pull_out" | grep -q "Already up to date"; then
-                log_debug "Already latest: $_bname"
-                BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
-            else
+            if echo "$_pull_out" | grep -q "Already up to date"; then _src_state="skip"; else _src_state="changed"; fi
+        elif _as_builder "git $_GIT_STALL_OPTS -C '$_bdir_escaped' fetch origin" >> "$LOG_FILE" 2>&1 \
+            && _as_builder "git -C '$_bdir_escaped' reset --hard '@{u}'" >> "$LOG_FILE" 2>&1; then
+            log_debug "Reset $_bname to upstream (build patch reapplied by rebuild)"
+            _src_state="changed"
+        fi
+
+        if [[ "$_src_state" == "skip" ]]; then
+            log_debug "Already latest: $_bname"
+            BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
+        elif [[ "$_src_state" == "failed" ]]; then
+            log_warn "Failed to update: $_bname"
+            BUILD_FAILED=$((BUILD_FAILED + 1))
+        else
                 log_success "Updated source: $_bname — attempting rebuild..."
-                # Try common build patterns (use _as_builder for consistent ownership).
-                # Only count an update and write .versions on a SUCCESSFUL rebuild,
-                # so a stale/broken binary is never reported as updated (and a failed
-                # or skipped rebuild counts as a failure → non-zero exit).
+                # Only a successful rebuild counts as updated; a failed or missing
+                # rebuild is a failure, since the binary is now stale.
                 _rebuilt=0
                 _attempted=0
                 _bcmd="${_bcmds[$_bname]:-}"
                 if [[ -n "$_bcmd" ]]; then
-                    # Re-run the exact install-time command (re-applies patches,
-                    # honors custom targets like 'make source-only'/'make -f Makefile.gcc').
-                    # Patches are idempotent, so re-running on an already-patched tree is safe.
-                    # Pass verbatim to bash -c (do NOT single-quote-escape — would corrupt
-                    # the command's own quotes, e.g. the yafu/pemcrack sed patches).
+                    # The install-time command, passed verbatim: escaping would corrupt
+                    # the quotes in its idempotent sed patches (yafu, pemcrack).
                     _attempted=1
                     if (cd "$_bdir" && _as_builder "$_bcmd") >> "$LOG_FILE" 2>&1; then
                         _rebuilt=1
@@ -689,7 +734,7 @@ for _bmod in "${ALL_MODULES[@]}"; do
                 if [[ "$_rebuilt" == 1 ]]; then
                     log_success "Rebuilt: $_bname"
                     BUILD_UPDATED=$((BUILD_UPDATED + 1))
-                    track_version "$_bname" "source" "HEAD"
+                    _track_update "$_bname" "source" "HEAD"
                 else
                     if [[ "$_attempted" == 1 ]]; then
                         log_warn "Rebuild failed for $_bname — source updated but binary may be stale"
@@ -698,15 +743,11 @@ for _bmod in "${ALL_MODULES[@]}"; do
                     fi
                     BUILD_FAILED=$((BUILD_FAILED + 1))
                 fi
-            fi
-        else
-            log_warn "Failed to update: $_bname"
-            BUILD_FAILED=$((BUILD_FAILED + 1))
         fi
     done
 done
 if [[ "$BUILD_UPDATED" -gt 0 || "$BUILD_FAILED" -gt 0 || "$BUILD_SKIPPED" -gt 0 ]]; then
-    log_success "Build-from-source: $BUILD_UPDATED updated, $BUILD_SKIPPED already latest, $BUILD_FAILED failed"
+    log_success "Build-from-source: $BUILD_UPDATED updated, $BUILD_SKIPPED already latest, $BUILD_NOT_INSTALLED skipped (not installed), $BUILD_FAILED failed"
     UPDATE_FAILURES=$((UPDATE_FAILURES + BUILD_FAILED))
 fi
 echo ""
@@ -732,8 +773,10 @@ if command_exists npm; then
             log_info "Updating npm packages (${NPM_TO_UPDATE[*]})..."
             NPM_FAILED=0
             for _npm_pkg in "${NPM_TO_UPDATE[@]}"; do
+                # Unpinned by design, same trust model as install_npm_batch: a global
+                # CLI install has no lockfile, so Scorecard's pinning check cannot pass.
                 if npm install -g "${_npm_pkg}@latest" >> "$LOG_FILE" 2>&1; then
-                    track_version "$_npm_pkg" "npm" "latest"
+                    _track_update "$_npm_pkg" "npm" "latest"
                 else
                     log_warn "npm update failed: $_npm_pkg"
                     NPM_FAILED=$((NPM_FAILED + 1))

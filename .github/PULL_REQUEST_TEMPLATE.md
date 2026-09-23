@@ -22,9 +22,10 @@ What changed and why?
 - [ ] `python3 scripts/audit_skill_dependencies.py --check-declared` if skill helper scripts changed
 - [ ] `bash scripts/update-skills.sh --check-pins` if vendored skills or source pins changed
 - [ ] `shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh`
-- [ ] `bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh`
+- [ ] `for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done`
 - [ ] `./tests/bats/bin/bats tests/*.bats`
 - [ ] `cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . && uv run --group dev ruff check ../scripts/ && uv run --group dev pytest tests/ -q`
+- [ ] `node --test sandbox/*.test.mjs` if `sandbox/` changed (after `npm --prefix sandbox ci --ignore-scripts`)
 
 ## Notes
 

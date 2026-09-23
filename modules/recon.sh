@@ -57,12 +57,10 @@ RECON_GIT=(
     "stringcheese=https://github.com/MathisHammel/stringcheese.git"
     "blackbird=https://github.com/p1ngul1n0/blackbird.git"
     "GooFuzz=https://github.com/m3n0sd0n4ld/GooFuzz.git"
-    "Telepathy=https://github.com/jordanwildon/Telepathy.git"
+    "Telepathy=https://github.com/prose-intelligence-ltd/Telepathy-Community.git"
     "iKy=https://github.com/kennbroorg/iKy.git"
     "certSniff=https://github.com/A-poc/certSniff.git"
     "linkedin2username=https://github.com/initstring/linkedin2username.git"
-    "Gato=https://github.com/praetorian-inc/gato.git"
-    "pwndb=https://github.com/davidtavarez/pwndb.git"
     "EyeWitness=https://github.com/FortyNorthSecurity/EyeWitness.git"
     "osmedeus=https://github.com/j3ssie/osmedeus.git"
     "recon-ng=https://github.com/lanmaster53/recon-ng.git"
@@ -76,13 +74,14 @@ RECON_GIT=(
 
 # Binary names for verify/remove
 RECON_GO_BINS=(subfinder amass waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor subzy mosint hakrevdns smap assetfinder gospider subjs)
-RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username Gato pwndb EyeWitness osmedeus recon-ng vulscan theHarvester LinkFinder SecretFinder FavFreak Photon)
+RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username EyeWitness osmedeus recon-ng vulscan theHarvester LinkFinder SecretFinder FavFreak Photon)
 RECON_BUILD_NAMES=(massdns)
 # Source of truth for build-from-source url + command (install + update).
-declare -A RECON_BUILD_URLS=(
+# -g: verify/update/remove source modules from inside a function.
+declare -gA RECON_BUILD_URLS=(
     [massdns]="https://github.com/blechschmidt/massdns.git"
 )
-declare -A RECON_BUILD_CMDS=(
+declare -gA RECON_BUILD_CMDS=(
     [massdns]="make"
 )
 

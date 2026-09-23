@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """CI check: validate MCP server hardcoded data matches bash source files.
 
-Compares MODULE_DESCRIPTIONS, DOCKER_IMAGES, PIPX_BIN_NAMES, and profile
-module lists between the Python MCP server and the bash installer sources.
+Compares MODULE_DESCRIPTIONS, DOCKER_IMAGES, PIPX_BIN_NAMES, C2_TOOLS, and
+profile modules/flags/descriptions with the bash installer sources; checks that
+TOOL_ALIASES targets, advisor and KNOWN_CVES tool/skill/module references, and
+APT/SPECIAL_BIN_NAMES keys resolve; that MCP_TOOLCHAIN matches the @mcp.tool set
+in server.py; and that AUDIT_STREAM_PREFIX agrees with the sandbox audit sink.
 
 Exit code 0 = all in sync, 1 = drift detected.
 """
@@ -354,25 +357,30 @@ def check_advisor_tool_names() -> None:
 def check_c2_tools() -> None:
     """C2_TOOLS (tools_db.py) must match the INCLUDE_C2-gated bash arrays.
 
-    Sources: modules/misc.sh MISC_C2_GIT_NAMES (git) + lib/installers.sh
-    BINARY_RELEASES_MISC_C2 (binary, 2nd |-field) + the docker-only 'empire'.
+    Sources: modules/misc.sh MISC_C2_GIT_NAMES + modules/pwn.sh PWN_C2_GIT_NAMES
+    (git) + lib/installers.sh BINARY_RELEASES_MISC_C2 (binary, 2nd |-field) + the
+    docker-only 'empire'.
     """
     from mcp_server.tools_db import C2_TOOLS as py_c2
 
     misc_text = (ROOT / "modules" / "misc.sh").read_text(encoding="utf-8")
+    pwn_text = (ROOT / "modules" / "pwn.sh").read_text(encoding="utf-8")
     inst_text = (ROOT / "lib" / "installers.sh").read_text(encoding="utf-8")
 
     git_names = parse_bash_unquoted_array(misc_text, "MISC_C2_GIT_NAMES")
+    pwn_c2_names = parse_bash_unquoted_array(pwn_text, "PWN_C2_GIT_NAMES")
     bin_entries = parse_bash_indexed_array(inst_text, "BINARY_RELEASES_MISC_C2")
     bin_names = [e.split("|")[1] for e in bin_entries if len(e.split("|")) >= 2]
 
     if not git_names:
         errors.append("C2_TOOLS: could not parse MISC_C2_GIT_NAMES from modules/misc.sh")
+    if not pwn_c2_names:
+        errors.append("C2_TOOLS: could not parse PWN_C2_GIT_NAMES from modules/pwn.sh")
     if not bin_names:
         errors.append("C2_TOOLS: could not parse BINARY_RELEASES_MISC_C2 from lib/installers.sh")
 
     # 'empire' is the docker-only C2 framework gated in install_module_misc (no array).
-    bash_c2 = set(git_names) | set(bin_names) | {"empire"}
+    bash_c2 = set(git_names) | set(pwn_c2_names) | set(bin_names) | {"empire"}
 
     for name in bash_c2 - py_c2:
         errors.append(f"C2_TOOLS: '{name}' gated in bash but missing from C2_TOOLS (tools_db.py)")
@@ -525,6 +533,25 @@ def check_audit_stream_prefix() -> None:
     print(f"AUDIT_STREAM_PREFIX: {len(found)} sources checked")
 
 
+def check_audit_key_env() -> None:
+    """The launcher hands the server its per-session audit HMAC key via this env var."""
+    pattern = r"""AUDIT_KEY_ENV\s*=\s*(['"])(.*?)\1"""
+    sources = {
+        "mcp_server/audit.py": ROOT / "mcp_server" / "audit.py",
+        "sandbox/audit-sink.mjs": ROOT / "sandbox" / "audit-sink.mjs",
+    }
+    found = {}
+    for label, path in sources.items():
+        match = re.search(pattern, path.read_text(encoding="utf-8"))
+        if not match:
+            errors.append(f"AUDIT_KEY_ENV: not found in {label}")
+            return
+        found[label] = match.group(2)
+    if len(set(found.values())) != 1:
+        errors.append(f"AUDIT_KEY_ENV: differs between {' and '.join(f'{k}={v!r}' for k, v in found.items())}")
+    print(f"AUDIT_KEY_ENV: {len(found)} sources checked")
+
+
 def main() -> int:
     print("=== MCP Server Data Sync Check ===\n")
 
@@ -540,6 +567,7 @@ def main() -> int:
     check_cve_advisor()
     check_bin_name_maps()
     check_audit_stream_prefix()
+    check_audit_key_env()
 
     print()
     if errors:

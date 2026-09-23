@@ -14,7 +14,7 @@ Run these in parallel where possible. Goal: zero errors, zero warnings before pu
 shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
 
 # 2. Bash syntax
-bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
+for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done
 
 # 3. Bats unit tests
 ./tests/bats/bin/bats tests/*.bats
@@ -30,7 +30,7 @@ git submodule update --init --recursive
 
 ```bash
 # 4. tools_config.json ↔ module arrays
-python3 scripts/validate_tools_config.py
+python3 scripts/validate_tools_config.py --strict
 
 # 5. MCP hardcoded data ↔ bash sources
 python3 scripts/validate_mcp_sync.py

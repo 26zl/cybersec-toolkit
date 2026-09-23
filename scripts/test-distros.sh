@@ -30,7 +30,9 @@ if [[ "${1:-}" == "--in-container" ]]; then
 
     echo "[$DISTRO] bash $BASH_VERSION"
 
-    run "bash -n all shell" bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
+    # bash -n checks only its first file argument, so loop over every file.
+    run "bash -n all shell" bash -c '
+        rc=0; for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f" || rc=1; done; exit "$rc"'
     run "source chain loads" bash -c '
         set -uo pipefail; SCRIPT_DIR="'"$PWD"'"; LOG_FILE=/dev/null
         source lib/common.sh && source lib/installers.sh && source lib/shared.sh'
@@ -132,7 +134,7 @@ run_one() {
             ${PREREQ[$d]}
             bash /work/scripts/test-distros.sh --in-container $d $MODE
         "
-        echo "EXIT=\$?"
+        echo "EXIT=$?"
     } >"$OUT/$d.log" 2>&1
     echo "  $d finished"
 }
@@ -148,9 +150,12 @@ for d in "${WANT[@]}"; do
     hard=$(_count '\] FAIL ' "$OUT/$d.log")
     pc=$(_count '\] PASS ' "$OUT/$d.log")
     warn=$(_count '\] WARN ' "$OUT/$d.log")
-    status="ok"; [[ "$hard" -gt 0 ]] && { status="FAIL"; overall=1; }
+    # A container that never ran reports no FAIL lines, so its exit status decides too.
+    rc=$(sed -n 's/^EXIT=//p' "$OUT/$d.log" | tail -n 1)
+    status="ok"; [[ "$hard" -gt 0 || "$rc" != "0" ]] && { status="FAIL"; overall=1; }
     printf '  %-9s %2s pass  %s hard-fail  %s warn   [%s]\n' "$d" "$pc" "$hard" "$warn" "$status"
     [[ "$hard" -gt 0 ]] && grep '\] FAIL ' "$OUT/$d.log" | sed 's/^/       /'
+    [[ "$hard" -eq 0 && "$rc" != "0" ]] && echo "       container exited ${rc:-without status}; see its log"
 done
 echo
 echo "Full logs copied to: ./test-distros-logs/"

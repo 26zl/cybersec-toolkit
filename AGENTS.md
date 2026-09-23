@@ -90,7 +90,9 @@ falling back to the host.
 Audit records leave the VM over stderr and are appended to the host log, which
 is both the operator's durable trail and the clearance source
 `scripts/agent-guard.sh` reads; records are hash-chained so tampering is
-detectable (`make audit-verify`).
+detectable (`make audit-verify`). Only records tagged with the launch's
+per-session HMAC key, which only the server process receives, are appended, so
+nothing else in the VM can add one.
 
 The boundary covers execution, not authorization or network scope: the
 `CYBERSEC_MCP_ALLOW_EXTERNAL` preflight and the operator's engagement scope
@@ -115,10 +117,10 @@ stays portable across every MCP client. See
 shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
 
 # Bash syntax check
-bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
+for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done
 
 # Cross-validate tools_config.json against module arrays (0 errors, 0 warnings = pass)
-python3 scripts/validate_tools_config.py
+python3 scripts/validate_tools_config.py --strict
 
 # Validate MCP hardcoded data matches bash sources
 python3 scripts/validate_mcp_sync.py
@@ -233,8 +235,10 @@ such as `curl` remain normal `run_tool` calls.
 - `CYBERSEC_MCP_AUDIT_REQUIRED=1` — fail startup instead of falling back to stderr
   when file audit logging is unavailable
 - `CYBERSEC_MCP_AUDIT_STREAM=1` — additionally mirror each audit record to stderr
-  behind the `@cybersec-audit@` sentinel. Set inside the sandbox image so the host
-  launcher can keep the durable copy; unnecessary for host-local runs
+  behind the `@cybersec-audit@` sentinel, HMAC-tagged with the per-launch key the
+  sandbox launcher passes as `CYBERSEC_MCP_AUDIT_KEY` (removed from the server's
+  environment at startup; without it nothing is mirrored). Set inside the sandbox
+  image so the host launcher can keep the durable copy; unnecessary for host-local runs
 - `CYBERSEC_INSTALLER_ROOT` — override project root for `tools_config.json` lookup
 - `CYBERSEC_SANDBOX_MODE` — `kata` (default) or `local`; `local` runs the server on
   the host with no VM boundary
@@ -476,7 +480,7 @@ silently falling back to a hand-written substitute.
    `lib/installers.sh`; Docker → `ALL_DOCKER_IMAGES` + `docker_pull` call; source →
    `build_from_source` + `<PREFIX>_BUILD_NAMES`).
 2. Add an entry to `tools_config.json` (`name`, `method`, `module`, `url`).
-3. Run `python3 scripts/validate_tools_config.py` — must show 0 errors, 0 warnings.
+3. Run `python3 scripts/validate_tools_config.py --strict` — must show 0 errors, 0 warnings (--strict makes warnings fail).
 4. If the tool touches a data source mirrored in the MCP server, update the Python
    constant and run `python3 scripts/validate_mcp_sync.py`.
 5. verify/update/remove scripts pick up array changes automatically.

@@ -607,9 +607,14 @@ install_cargo_batch() {
     _cbdir="$(_builder_home)/.cargo/bin"
     export PATH="$_cbdir:$PATH"
 
-    # Try to set up cargo-binstall for faster pre-compiled downloads
+    # Try to set up cargo-binstall for faster pre-compiled downloads.
+    # cargo-binstall fetches prebuilt binaries (and its QuickInstall fallback) with
+    # no checksum verification, so skip it under --require-checksums/--production and
+    # compile via `cargo install`, which validates against the crates.io index.
     local _use_binstall=false
-    if type ensure_cargo_binstall &>/dev/null; then
+    if [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+        log_info "Checksums required — building ${label} from source (skipping cargo-binstall)"
+    elif type ensure_cargo_binstall &>/dev/null; then
         ensure_cargo_binstall && _use_binstall=true
     elif command_exists cargo-binstall; then
         _use_binstall=true
@@ -693,9 +698,12 @@ install_gem_batch() {
     fi
 
     if ! command_exists gem; then
-        log_warn "Ruby gem not found — skipping ${label}"
-        _report_method_total "Gems" 0
-        return 0
+        # Count as failures (consistent with go/cargo) so a missing toolchain is
+        # surfaced in the summary rather than silently dropped.
+        log_error "Ruby gem not found — cannot install ${label}"
+        _report_method_total "Gems" "$total"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + total))
+        return 1
     fi
 
     log_debug "install_gem_batch: starting '$label' with $total items"
@@ -1101,8 +1109,14 @@ _setup_curl_opts() {
     # Timeouts bound the small API/checksum requests so a stalled server can't hang the run.
     _CURL_OPTS=(-sSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120)
     # Auto-detect token from gh CLI if not explicitly set
-    if [[ -z "${GITHUB_TOKEN:-}" ]] && command -v gh &>/dev/null; then
-        GITHUB_TOKEN=$(gh auth token 2>/dev/null) || true
+    if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+        if command -v gh &>/dev/null; then
+            GITHUB_TOKEN=$(gh auth token 2>/dev/null) || true
+        fi
+        # Under sudo, root's gh has no login; ask the invoking user's gh instead.
+        if [[ -z "${GITHUB_TOKEN:-}" && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+            GITHUB_TOKEN=$(_as_builder "gh auth token" 2>/dev/null) || true
+        fi
         [[ -n "${GITHUB_TOKEN:-}" ]] && log_info "Using GitHub token from gh CLI (5000 req/hr API limit)"
     fi
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -1510,7 +1524,8 @@ for asset in data.get('assets', []):
                 rm -rf "$tmp_dir"
                 return 1
             fi
-            if ! tar xzf "$tmp_dir/$asset_name" -C "$content_root" 2>>"$LOG_FILE"; then
+            # As root, tar would otherwise restore archive owners and group/world-write bits.
+            if ! tar --no-same-owner --no-same-permissions -xzf "$tmp_dir/$asset_name" -C "$content_root" 2>>"$LOG_FILE"; then
                 log_error "Failed to extract tar archive: $asset_name"
                 rm -rf "$tmp_dir"
                 return 1
@@ -1615,7 +1630,7 @@ WRAPPER
             rm -rf "$tmp_dir"
             return 1
         fi
-        # Root's tar and cp -a keep archive modes; no release file may arrive setuid/setgid.
+        # cp -a keeps extracted modes (and unzip restores archive modes); strip setuid/setgid.
         find "$dest_dir" -xdev -type f -perm /6000 -exec chmod a-s {} + 2>>"$LOG_FILE"
         local dest_bin=""
         for candidate in \
@@ -1885,8 +1900,8 @@ BINARY_RELEASES_MISC_C2=(
     "kgretzky/evilginx2|evilginx|linux-64bit\\.zip"
 )
 BINARY_RELEASES_NETWORKING=(
-    "nicocha30/ligolo-ng|ligolo-proxy|linux_amd64"
-    "nicocha30/ligolo-ng|ligolo-agent|agent.*linux_amd64"
+    "nicocha30/ligolo-ng|ligolo-proxy|_proxy_.*_linux_amd64\\.tar\\.gz$||proxy"
+    "nicocha30/ligolo-ng|ligolo-agent|_agent_.*_linux_amd64\\.tar\\.gz$||agent"
     "fatedier/frp|frpc|linux_amd64\\.tar\\.gz"
     "fatedier/frp|frps|linux_amd64\\.tar\\.gz"
     "ginuerzh/gost|gost|linux_amd64\\.tar\\.gz$"
@@ -1992,9 +2007,12 @@ install_npm_batch() {
         return 0
     fi
     if ! ensure_node; then
-        log_warn "Skipping ${label} — Node.js/npm not available"
-        _report_method_total "npm" 0
-        return 0
+        # Count as failures (consistent with go/cargo) so a missing toolchain is
+        # surfaced in the summary rather than silently dropped.
+        log_error "Node.js/npm not available — cannot install ${label}"
+        _report_method_total "npm" "$total"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + total))
+        return 1
     fi
 
     log_info "Installing ${label} ($total npm tools)..."
@@ -2004,6 +2022,12 @@ install_npm_batch() {
         current=$((current + 1))
         show_progress "$current" "$total" "$pkg"
         _report_tool_start "npm" "$pkg"
+        # Record a package the host already had as "existing" so remove.sh leaves it.
+        if npm ls -g --depth=0 "$pkg" >/dev/null 2>&1; then
+            _track_already_present "$pkg" "npm"
+            _report_tool_done "npm" "$pkg" "skip"
+            continue
+        fi
         if npm install -g "$pkg" >> "$LOG_FILE" 2>&1; then
             log_success "npm: $pkg"
             track_version "$pkg" "npm" "latest"

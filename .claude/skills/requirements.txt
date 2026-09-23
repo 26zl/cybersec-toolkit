@@ -58,6 +58,7 @@ jsbeautifier
 jsonschema
 kubernetes
 ldap3
+libpff-python
 librosa
 LnkParse3
 lxml
@@ -90,7 +91,6 @@ PyJWT
 pymisp
 pymodbus
 pyOpenSSL
-pypff
 pyrad
 pyshark
 pysigma

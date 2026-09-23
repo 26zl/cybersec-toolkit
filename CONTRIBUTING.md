@@ -73,7 +73,7 @@ Prefer installation methods in this order: `apt > pipx > go > cargo > binary > g
 ```bash
 # Shell (must pass before push)
 shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
-bash -n install.sh lib/*.sh modules/*.sh scripts/*.sh
+for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done
 
 # Bats unit tests
 ./tests/bats/bin/bats tests/*.bats

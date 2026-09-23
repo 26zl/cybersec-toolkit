@@ -6,13 +6,13 @@ flowchart TB
 
     clients --> configs --> launcher
 
-    subgraph MCP["FastMCP server"]
+    subgraph MCP["FastMCP server · Kata VM by default, host with --local"]
         direction TB
         gateway["MCP transport and tool API"]:::core
         advisors["Discovery and advisors"]:::core
         governed["Governed tool execution<br/>run_tool · run_pipeline"]:::security
         scripts["Opt-in script execution<br/>run_script"]:::optin
-        remote["Authorized remote hosts"]:::core
+        remote["Authorized remote hosts<br/>--local only"]:::core
 
         gateway --> advisors
         gateway --> governed
@@ -27,7 +27,7 @@ flowchart TB
         operator(["Operator"]):::actor
         installer["install.sh and module installers"]:::core
         registry[("tools_config.json<br/>tool registry")]:::data
-        installed[("Installed security tools")]:::data
+        installed[("Installed security tools<br/>host, or baked into the VM image")]:::data
 
         operator --> installer
         installer --> registry
