@@ -5,8 +5,9 @@ Usage: python3 scripts/bump_version.py X.Y.Z
 
 Surfaces kept in sync (enforced by scripts/validate_version.sh):
 VERSION, mcp_server/pyproject.toml, .claude-plugin/plugin.json,
-.claude-plugin/marketplace.json, CITATION.cff, and server.json
-(top version, package version, and the OCI image tag).
+.claude-plugin/marketplace.json, CITATION.cff, server.json
+(top version, package version, and the OCI image tag), and the release
+tag in README.md's install command.
 """
 
 import re
@@ -38,6 +39,7 @@ def main() -> None:
     sub("CITATION.cff", r'(?m)^(version:\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
     sub("server.json", r'("version":\s*)"' + ANY + '"', r'\g<1>"' + v + '"')
     sub("server.json", r"(cybersec-toolkit:)" + ANY, r"\g<1>" + v)
+    sub("README.md", r"(--branch v)" + ANY, r"\g<1>" + v)
     print(f"bumped all release surfaces to {v}")
 
 

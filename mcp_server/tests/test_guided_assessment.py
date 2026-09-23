@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from mcp_server import server
-from mcp_server.guided_assessment import _recommended_next_command, build_guided_plan
+from mcp_server.guided_assessment import _recommended_next_command, _target_is_external, build_guided_plan
+from mcp_server.security import _address_is_safe
 
 
 def test_companion_web_includes_advisor_commands_and_recommendation() -> None:
@@ -602,3 +604,12 @@ def test_typed_file_keeps_plain_file_description() -> None:
 
     desc = _file_type_step(result)["rationale"]
     assert "re-run guided_assessment" not in desc
+
+
+@pytest.mark.parametrize(
+    "ip",
+    ["10.0.0.1", "100.100.1.1", "169.254.169.254", "198.18.0.1", "192.0.2.10", "fd00:ec2::254", "0.0.0.0", "8.8.8.8"],
+)
+def test_external_verdict_matches_the_execution_policy(ip: str) -> None:
+    """A plan that disagrees with the policy passes steps the policy then blocks."""
+    assert _target_is_external(ip) is not _address_is_safe(ipaddress.ip_address(ip))

@@ -16,7 +16,6 @@ from mcp_server.remote import (
 )
 
 
-# RemoteHostConfig
 class TestRemoteHostConfig:
     def test_add_host(self, remote_config: RemoteHostConfig) -> None:
         entry = remote_config.add_host(
@@ -262,7 +261,6 @@ class TestRemoteHostConfig:
             RemoteHostConfig(config_path=config_path)
 
 
-# check_ssh_connection (async, mocked subprocess)
 class TestCheckSshConnection:
     @pytest.mark.asyncio
     async def test_successful_connection(self) -> None:
@@ -311,7 +309,6 @@ class TestCheckSshConnection:
         assert "not found" in result["message"].lower()
 
 
-# execute_remote_command (async, mocked subprocess)
 class TestExecuteRemoteCommand:
     @pytest.mark.asyncio
     async def test_successful_execution(self) -> None:

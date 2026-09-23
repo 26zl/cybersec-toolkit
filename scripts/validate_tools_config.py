@@ -113,7 +113,6 @@ def parse_assoc_array(text, name):
 
 def go_github_url(import_path):
     """github.com/org/repo/... → https://github.com/org/repo"""
-    # Strip @latest or @version suffix
     clean = import_path.split("@")[0]
     parts = clean.split("/")
     if len(parts) >= 3 and parts[0] == "github.com":
@@ -151,7 +150,6 @@ BINARY_RELEASE_MODULE = {
     "BLOCKCHAIN": "blockchain", "WIRELESS": "wireless",
 }
 
-# Binary release extraction from installers.sh
 def extract_binary_releases():
     """Parse BINARY_RELEASES_* arrays from lib/installers.sh.
 
@@ -178,7 +176,6 @@ def extract_binary_releases():
     return tools
 
 
-# Shared base dependencies from lib/shared.sh
 def extract_shared_tools():
     """Parse SHARED_BASE_PACKAGES from lib/shared.sh."""
     text = SHARED_PATH.read_text(encoding="utf-8", errors="replace")
@@ -189,7 +186,6 @@ def extract_shared_tools():
     return tools
 
 
-# Module extraction
 def extract_module_tools(module_name):
     """Return list of {name, method, url} for every tool in a module."""
     if module_name == "shared":
@@ -378,20 +374,18 @@ def extract_module_tools(module_name):
     return tools
 
 
-# Validation
 def validate():
     """Cross-validate tools_config.json against module files. Return exit code."""
     errors = 0
     warnings = 0
 
-    # Load JSON
     try:
         config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON: {e}")
         return 1
 
-    # -- Module-set check --
+    # Module-set check
     # ALL_MODULES is hand-maintained; enumerate modules/*.sh so a new module
     # file (or a deleted one) can't silently escape cross-validation. "shared"
     # is a pseudo-module (lib/shared.sh), so it is excluded from the disk set.
@@ -404,7 +398,7 @@ def validate():
         print(f"ERROR: '{name}' in ALL_MODULES but modules/{name}.sh not found")
         errors += 1
 
-    # -- Structural checks --
+    # Structural checks
     for i, entry in enumerate(config):
         for field in ("name", "method", "module"):
             if field not in entry:
@@ -424,7 +418,6 @@ def validate():
             print(f"ERROR: URL for '{entry.get('name')}' must use HTTPS: {url}")
             errors += 1
 
-    # Duplicate check
     seen = set()
     for entry in config:
         name = entry.get("name", "")
@@ -463,11 +456,7 @@ def validate():
             # Check if name exists with a different method
             alt = [m for (n, m) in config_tools if n == name]
             if alt:
-                # Same tool name, different method — install-method drift.
-                # Name it explicitly so a pipx-vs-git style mismatch (e.g.
-                # theHarvester) can't slip past the validator. Treated as an
-                # ERROR (not a warning) so CI, which keys off the exit code,
-                # fails on method drift per the "0 errors, 0 warnings" contract.
+                # Same name, different method: install-method drift, reported as an ERROR.
                 print(
                     f"ERROR: '{name}' method mismatch: installer array in "
                     f"modules/{mod}.sh uses '{method}' but tools_config.json "
@@ -511,7 +500,6 @@ def validate():
     return 1 if errors > 0 else 0
 
 
-# Sync (populate URLs)
 def sync():
     """Add/update url field in tools_config.json from module data."""
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -548,7 +536,6 @@ def sync():
     print(f"Synced: {populated}/{len(config)} tools have URLs")
 
 
-# Main
 def main():
     if "--sync" in sys.argv:
         sync()

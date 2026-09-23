@@ -222,9 +222,11 @@ check_pipx() {
 
     # 3. Fallback: check pipx package list (handles normalized names)
     if command_exists pipx; then
+        # Listed once per run: pipx is slow and this runs for every missing pipx tool.
+        [[ -n "${_PIPX_LIST+set}" ]] || _PIPX_LIST=$(pipx list --short 2>/dev/null | sed 's/-/_/g')
         # Normalize hyphens/underscores for PEP 503 compatibility
         local _norm="${tool//-/_}"
-        if pipx list --short 2>/dev/null | sed 's/-/_/g' | awk -v t="$_norm" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
+        if awk -v t="$_norm" 'tolower($1)==tolower(t){f=1} END{exit !f}' <<< "$_PIPX_LIST"; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
             vlog_success "$tool — installed (pipx)"
             return 0
@@ -732,6 +734,7 @@ if command_exists docker; then
     log_info "━━━━━ Docker Images ━━━━━"
     for _docker_entry in "${ALL_DOCKER_IMAGES[@]}"; do
         IFS='|' read -r _docker_img _docker_label <<< "$_docker_entry"
+        _is_tracked "$_docker_label" || continue
         TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
         if docker images "${_docker_img%%:*}" -q 2>/dev/null | grep -q .; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))

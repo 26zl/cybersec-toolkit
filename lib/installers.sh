@@ -249,7 +249,6 @@ install_apt_batch() {
     return 0
 }
 
-# Batch pipx install
 install_pipx_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
@@ -356,7 +355,6 @@ install_pipx_batch() {
         local _injected=0
         for _venv_dir in "$PIPX_HOME/venvs"/*/; do
             [[ -x "$_venv_dir/bin/python" ]] || continue
-            # Skip if setuptools is already installed in this venv
             "$_venv_dir/bin/python" -c 'import setuptools' 2>/dev/null && continue
             # Some pipx venvs lack the pip binary — use python -m pip instead.
             # Bootstrap pip via ensurepip if neither is available.
@@ -447,7 +445,6 @@ install_ctf_venv() {
     return 0
 }
 
-# Batch Go install
 install_go_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
@@ -467,7 +464,7 @@ install_go_batch() {
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + total))
         return 1
     fi
-    # GOPATH and GOBIN are set in common.sh (GOPATH=$GOPATH, GOBIN=$GOBIN)
+    # GOPATH and GOBIN are set in common.sh
     # When privilege-dropping via _as_builder, $SUDO_USER cannot write to root-owned
     # GOBIN (/usr/local/bin) or GOPATH (/opt/go).  Use a staging GOBIN that $SUDO_USER
     # owns, then move completed binaries to the real GOBIN as root.
@@ -584,7 +581,6 @@ declare -gA _NPM_BIN_NAMES=(
     [rms-runtime-mobile-security]="rms"
 )
 
-# Batch cargo install
 install_cargo_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
@@ -683,7 +679,6 @@ install_cargo_batch() {
     return 0
 }
 
-# Batch gem install
 install_gem_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
@@ -1082,8 +1077,6 @@ install_git_batch() {
 
 # GitHub API curl options (with optional token auth)
 # Sets the global _CURL_OPTS array — callers expand it as "${_CURL_OPTS[@]}".
-# This avoids the word-splitting problem with echoing options as a string
-# (the Authorization header contains spaces that must not be split).
 _CURL_OPTS=()
 # Security: GITHUB_TOKEN is passed via a temporary netrc file instead of a
 # command-line -H header to prevent the token from appearing in process listings
@@ -1094,6 +1087,8 @@ _GH_NETRC_FILE=""
 # call), NOT at module-source time. This keeps --help/--version/--list-modules
 # and verify/update/remove from probing `gh auth token` or logging a token notice.
 _CURL_OPTS_DONE=false
+# Set inside the xtrace-suppressed block so later checks never expand the token.
+_GH_TOKEN_SET=false
 _setup_curl_opts() {
     [[ "$_CURL_OPTS_DONE" == "true" ]] && return 0
     _CURL_OPTS_DONE=true
@@ -1111,6 +1106,7 @@ _setup_curl_opts() {
         [[ -n "${GITHUB_TOKEN:-}" ]] && log_info "Using GitHub token from gh CLI (5000 req/hr API limit)"
     fi
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        _GH_TOKEN_SET=true
         _GH_NETRC_FILE=$(mktemp "${TMPDIR:-/tmp}/gh-netrc.XXXXXX")
         chmod 600 "$_GH_NETRC_FILE"
         printf 'machine github.com\nlogin x-access-token\npassword %s\n' "$GITHUB_TOKEN" > "$_GH_NETRC_FILE"
@@ -1153,7 +1149,6 @@ _gh_api_get() {
     cache_key=$(echo "$url" | sed 's|[/:?&=]|_|g')
     local cache_file="$_GH_API_CACHE_DIR/$cache_key"
 
-    # Return cached response if available
     if [[ -f "$cache_file" ]]; then
         cat "$cache_file"
         return 0
@@ -1209,7 +1204,7 @@ _gh_api_get() {
 
             if [[ "$_attempt" -eq 1 ]]; then
                 log_warn "GitHub API rate limit hit — waiting ${_wait}s before retry (attempt $_attempt/3)..."
-                [[ -z "${GITHUB_TOKEN:-}" ]] && \
+                [[ "$_GH_TOKEN_SET" != "true" ]] && \
                     log_warn "Tip: export GITHUB_TOKEN=ghp_... to raise the limit from 60 to 5000 requests/hour"
             else
                 log_debug "_gh_api_get: rate limit retry attempt $_attempt/3 — waiting ${_wait}s"
@@ -1259,16 +1254,27 @@ verify_github_checksum() {
     local file_path="$2"
     local file_name="$3"
 
-    # Look for a checksum asset in the release
+    # Look for a checksum asset in the release. Prefer a per-file "<file>.sha256",
+    # then a shared checksums file; skip signatures (.sig/.asc/.pem/.pub/.cert),
+    # which contain no hash and would be treated as "no entry" → unverified.
     local checksum_url
-    checksum_url=$(echo "$release_json" | python3 -c "
-import json, sys
+    checksum_url=$(echo "$release_json" | FILE_NAME="$file_name" python3 -c "
+import json, os, sys
 data = json.load(sys.stdin)
+target = os.environ['FILE_NAME'].lower()
+SIG = ('.sig', '.asc', '.pem', '.pub', '.cert', '.crt', '.minisig')
+KEYS = ('checksums', 'sha256sums', 'sha256sum', 'sha256')
+per_file, shared = None, None
 for asset in data.get('assets', []):
     name = asset.get('name', '').lower()
-    if any(k in name for k in ('checksums', 'sha256sums', 'sha256sum', 'sha256')):
-        print(asset['browser_download_url'])
+    if name.endswith(SIG):
+        continue
+    if name in (target + '.sha256', target + '.sha256sum'):
+        per_file = asset['browser_download_url']
         break
+    if shared is None and any(k in name for k in KEYS):
+        shared = asset['browser_download_url']
+print(per_file or shared or '')
 " 2>>"$LOG_FILE")
 
     if [[ -z "$checksum_url" ]]; then
@@ -1305,6 +1311,15 @@ for asset in data.get('assets', []):
 
     local expected_hash
     expected_hash=$(echo "$checksums" | awk -v f="$file_name" '$2 == f || $2 == ("*" f) {print $1; exit}')
+    # A per-file "<file>.sha256" may hold just the bare hash with no filename.
+    # Accept it only when the whole file is a single lone-hash line, so a shared
+    # checksums file listing other files never falls back to an unrelated hash.
+    if [[ -z "$expected_hash" ]]; then
+        expected_hash=$(echo "$checksums" | awk '
+            /^[[:space:]]*$/ {next}
+            {lines++; if (NF==1 && $1 ~ /^[0-9A-Fa-f]{64}$/) {h=$1; hits++}}
+            END {if (lines==1 && hits==1) print h}')
+    fi
     if [[ -z "$expected_hash" ]]; then
         log_warn "No checksum entry for $file_name in checksums file"
         return 1
@@ -1312,7 +1327,8 @@ for asset in data.get('assets', []):
 
     local actual_hash
     actual_hash=$(sha256sum "$file_path" | awk '{print $1}')
-    if [[ "$actual_hash" == "$expected_hash" ]]; then
+    # sha256sum prints lowercase; some upstream checksum files use uppercase.
+    if [[ "$actual_hash" == "${expected_hash,,}" ]]; then
         log_success "Checksum verified: $file_name"
         return 0
     else
@@ -1425,7 +1441,6 @@ _download_github_release_impl() {
     local release_tag=""
     release_tag=$(echo "$release_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || true)
 
-    # Set _RELEASE_TAG for update callers
     [[ "$mode" == "update" ]] && _RELEASE_TAG="$release_tag"
 
     # Parse download URL using Python (portable — no grep -P dependency)
@@ -1600,6 +1615,8 @@ WRAPPER
             rm -rf "$tmp_dir"
             return 1
         fi
+        # Root's tar and cp -a keep archive modes; no release file may arrive setuid/setgid.
+        find "$dest_dir" -xdev -type f -perm /6000 -exec chmod a-s {} + 2>>"$LOG_FILE"
         local dest_bin=""
         for candidate in \
             "$dest_dir/bin/$binary" \
@@ -1695,7 +1712,6 @@ download_github_release_update() {
     _download_github_release_impl "$repo" "$binary" "$pattern" "$dest_dir" "update" "$archive_binary"
 }
 
-# Docker image pull
 docker_pull() {
     local image="$1"
     local name="$2"
@@ -1782,7 +1798,6 @@ track_version() {
     fi
 }
 
-# Build from source helper
 build_from_source() {
     local name="$1"
     local url="$2"
@@ -2056,8 +2071,7 @@ install_binary_releases() {
 
     # Non-dpkg distros: drop .deb-only entries (e.g. stegseek) before downloading
     # rather than failing on dpkg afterwards.
-    # ponytail: pattern sniffing — an entry that can also match a tarball must not
-    # put ".deb" in its pattern.
+    # An entry that can also match a tarball must not put ".deb" in its pattern.
     if [[ "$PKG_MANAGER" != "apt" && "$PKG_MANAGER" != "pkg" ]]; then
         local -a _deb_filtered=()
         for _entry in "${entries[@]}"; do
@@ -2181,7 +2195,6 @@ install_binary_releases() {
     log_debug "install_binary_releases: completed in ${_batch_elapsed}s"
 }
 
-# Install searchsploit symlink
 install_searchsploit_symlink() {
     if [[ -f "$GITHUB_TOOL_DIR/exploitdb/searchsploit" ]]; then
         ln -sf "$GITHUB_TOOL_DIR/exploitdb/searchsploit" "$PIPX_BIN_DIR/searchsploit" 2>/dev/null
@@ -2193,6 +2206,7 @@ install_searchsploit_symlink() {
 install_metasploit() {
     if command_exists msfconsole; then
         log_success "Metasploit already installed"
+        _track_already_present "metasploit" "system"
         return 0
     fi
 
@@ -2235,7 +2249,6 @@ install_metasploit() {
         local _tmp_key
         _tmp_key=$(mktemp); _register_cleanup "$_tmp_key"
         if curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 "https://apt.metasploit.com/metasploit-framework.gpg.key" -o "$_tmp_key" 2>>"$LOG_FILE"; then
-            # Verify downloaded key is non-empty before processing
             if [[ ! -s "$_tmp_key" ]]; then
                 log_error "Metasploit GPG key download produced empty file"
                 rm -f "$_tmp_key"
@@ -2301,6 +2314,7 @@ install_metasploit() {
 install_zap() {
     if command_exists zaproxy; then
         log_success "OWASP ZAP already installed"
+        _track_already_present "zaproxy" "snap"
         return 0
     fi
     if [[ "$IS_DOCKER" == "true" ]]; then

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,6 +16,7 @@ from mcp_server.security import (
     SYSTEM_UTILITIES,
     _append_truncation_marker,
     _bounded_communicate,
+    _child_env,
     _is_safe_target,
     _is_sensitive_write_target,
     _RateLimiter,
@@ -38,7 +40,6 @@ def _reset_rate_limiter():
     mod._rate_limiter = _RateLimiter()
 
 
-# _is_safe_target
 class TestIsSafeTarget:
     """Target validation for private/local network ranges."""
 
@@ -107,7 +108,6 @@ class TestIsSafeTarget:
         assert isinstance(result, bool)
 
 
-# sanitize_args
 class TestSanitizeArgs:
     def test_normal_args(self) -> None:
         assert sanitize_args("-sV --top-ports 100 10.0.0.1") == ["-sV", "--top-ports", "100", "10.0.0.1"]
@@ -172,7 +172,6 @@ class TestSanitizeArgs:
         assert len(result) > 0
 
 
-# check_policy
 class TestCheckPolicy:
     @pytest.mark.parametrize("target", ["169.254.169.254/32", "169.254.0.0/16", "fd00:ec2::/64"])
     @patch("mcp_server.security._allow_external", return_value=False)
@@ -477,7 +476,7 @@ class TestCheckPolicy:
     def test_long_flag_value_not_treated_as_target(self, _mock_ext) -> None:
         """Non-target-shaped values of --long-flags are consumed, not validated.
 
-        Single-label words are intentionally treated as candidate hostnames now
+        Single-label words are intentionally treated as candidate hostnames
         (see test_unknown_flag_single_label_target_blocked) — a flag value that
         is genuinely not a target (a number) must not break, and the real target
         after it must still resolve correctly.
@@ -521,8 +520,7 @@ class TestCheckPolicy:
     )
     def test_embedded_flag_value_external_target_blocked(self, _mock_ext, tool, args) -> None:
         """A target embedded in a flag (-flag=<host> or attached -f<host>) must
-        still clear the allowlist — the =joined/attached forms previously skipped
-        target validation entirely (external-network gate bypass)."""
+        still clear the allowlist."""
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy(tool, args)
 
@@ -685,7 +683,6 @@ class TestCheckPolicy:
         check_policy("httpx", ["-w", "wordlist.txt", "-u", "http://10.0.0.1/"])
 
 
-# _RateLimiter
 class TestRateLimiter:
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded(self) -> None:
@@ -706,7 +703,6 @@ class TestRateLimiter:
         assert acquired == 0
 
 
-# Validation failure audit logging
 class TestValidationFailureLogged:
     @pytest.mark.asyncio
     async def test_validation_failure_logged(self, tools_db) -> None:
@@ -726,7 +722,6 @@ class TestValidationFailureLogged:
         )
 
 
-# validate_tool_for_execution
 class TestValidateToolForExecution:
     def test_valid_tool(self, tools_db) -> None:
         with patch("shutil.which", return_value="/usr/bin/nmap"):
@@ -769,7 +764,6 @@ class TestValidateToolForExecution:
         mock_which.assert_called_once_with(expected)
 
 
-# execute_tool (async, mocked subprocess)
 class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_successful_execution(self, tools_db) -> None:
@@ -805,7 +799,7 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_timeout(self, tools_db) -> None:
         mock_proc = AsyncMock()
-        mock_proc.pid = 4194303  # a real int: an unset mock pid coerces to 1 in killpg()
+        mock_proc.pid = 4194303  # a real int: an unset mock pid coerces to 1 in killpg(), which is patched
         mock_proc.communicate.side_effect = asyncio.TimeoutError()
         mock_proc.kill = MagicMock()
         mock_proc.wait = AsyncMock()
@@ -813,11 +807,13 @@ class TestExecuteTool:
         with (
             patch("shutil.which", return_value="/usr/bin/nmap"),
             patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("os.killpg") as mock_killpg,
         ):
             result = await execute_tool("nmap", "-sV 10.0.0.1", tools_db, timeout=1)
 
         assert result["exit_code"] == -1
         assert "timed out" in result["stderr"]
+        mock_killpg.assert_called_once_with(4194303, signal.SIGKILL)
 
     @pytest.mark.asyncio
     async def test_output_truncation(self, tools_db) -> None:
@@ -859,7 +855,6 @@ class TestExecuteTool:
         assert "not in a private/local" in result["stderr"]
 
 
-# validate_tool_for_remote_execution
 class TestValidateToolForRemoteExecution:
     def test_valid_tool(self, tools_db) -> None:
         binary = validate_tool_for_remote_execution("nmap", tools_db)
@@ -899,7 +894,6 @@ class TestValidateToolForRemoteExecution:
         assert binary == "nmap"
 
 
-# execute_tool_remote (async, mocked subprocess)
 class TestExecuteToolRemote:
     @pytest.mark.asyncio
     async def test_successful_remote_execution(self, tools_db, remote_config) -> None:
@@ -963,7 +957,6 @@ class TestExecuteToolRemote:
         assert result["remote"] is True
 
 
-# Output sanitization integration
 class TestOutputSanitization:
     @pytest.mark.asyncio
     async def test_execute_tool_output_sanitized(self, tools_db) -> None:
@@ -1000,7 +993,6 @@ class TestOutputSanitization:
         assert "remote" in result["stdout"]
 
 
-# System utility validation
 class TestSystemUtilityValidation:
     """System utilities bypass registry but still need PATH."""
 
@@ -1323,7 +1315,7 @@ class TestSystemUtilityNetworkPolicy:
 class TestSensitiveWriteGuard:
     """Write-capable utilities (cp/mv/ln/tee/touch/mkdir) and curl/wget output
     flags must not overwrite/symlink into dotfiles, shell-rc/login files, cron,
-    or system dirs (F2)."""
+    or system dirs."""
 
     def test_is_sensitive_write_target_classification(self) -> None:
         home = os.path.expanduser("~")
@@ -1500,7 +1492,7 @@ class TestSensitiveWriteGuard:
 
 class TestAwkProgramFileBlocked:
     """awk/gawk -f/--file/--source/--load and @load run uninspected program
-    files, bypassing the inline system()/getline block (F3)."""
+    files, bypassing the inline system()/getline block."""
 
     @pytest.mark.parametrize("tool", ["awk", "gawk"])
     def test_awk_program_file_flag_blocked(self, tool) -> None:
@@ -1614,7 +1606,6 @@ class TestBooleanFlagBypass:
             check_policy("sqlmap", ["-u", "http://example.com/page?id=1"])
 
 
-# execute_pipeline
 class TestExecutePipeline:
     """Pipeline execution — safe stdin piping between tools."""
 
@@ -1725,7 +1716,7 @@ class TestExecutePipeline:
     @pytest.mark.asyncio
     async def test_pipeline_timeout(self, tools_db) -> None:
         mock_proc = AsyncMock()
-        mock_proc.pid = 4194303  # a real int: an unset mock pid coerces to 1 in killpg()
+        mock_proc.pid = 4194303  # a real int: an unset mock pid coerces to 1 in killpg(), which is patched
         mock_proc.communicate.side_effect = asyncio.TimeoutError()
         mock_proc.kill = MagicMock()
         mock_proc.wait = AsyncMock()
@@ -1733,12 +1724,14 @@ class TestExecutePipeline:
         with (
             patch("shutil.which", return_value="/usr/bin/fake"),
             patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("os.killpg") as mock_killpg,
         ):
             result = await execute_pipeline(
                 [{"tool": "cat", "args": "bigfile"}],
                 tools_db,
                 timeout=1,
             )
+        mock_killpg.assert_called_once_with(4194303, signal.SIGKILL)
 
         assert result["exit_code"] == -1
         assert "timed out" in result["stderr"]
@@ -1773,7 +1766,6 @@ class TestExecutePipeline:
                 tools_db,
             )
 
-        # Second process should have been called with input=first_output
         mock_proc2.communicate.assert_called_once_with(input=first_output)
 
     @pytest.mark.asyncio
@@ -1799,7 +1791,6 @@ class TestExecutePipeline:
             )
 
         assert exec_kwargs.get("stdin") == asyncio.subprocess.DEVNULL
-        # communicate should be called without input (None)
         mock_proc.communicate.assert_called_once_with(input=None)
 
     @pytest.mark.asyncio
@@ -1864,9 +1855,8 @@ class TestExecutePipeline:
         mock_exec.assert_not_called()
 
 
-# Default value tests
 class TestDefaultValues:
-    """Verify defaults were updated for CTF workflow."""
+    """Default timeout, output cap and rate limits."""
 
     def test_default_timeout_is_120(self) -> None:
         import inspect
@@ -1886,7 +1876,6 @@ class TestDefaultValues:
         assert limiter._max_per_minute == 60
 
 
-# _redact_sensitive (audit.py)
 class TestRedactSensitive:
     """Credential redaction in audit logs."""
 
@@ -2040,7 +2029,7 @@ class TestBoundedCommunicate:
 
 
 class TestTruncationMarkerDelegation:
-    """_append_truncation_marker delegates to sanitize.truncate_output (F4)."""
+    """_append_truncation_marker delegates to sanitize.truncate_output."""
 
     def test_marker_present_and_within_budget(self) -> None:
         out = _append_truncation_marker("A" * 5000, 1000)
@@ -2092,8 +2081,7 @@ class TestExecuteToolOutputBounds:
 
 
 class TestFinalizeStreamBudget:
-    """sanitize_output adds ``[SANITIZED] `` prefixes, so bounding before it ran
-    let the returned text exceed max_output. Order is sanitize, then bound."""
+    """sanitize_output adds [SANITIZED] prefixes, so the byte budget is applied after sanitizing."""
 
     def test_sanitizing_cannot_push_output_past_the_budget(self):
         from mcp_server.security import _finalize_stream
@@ -2188,3 +2176,125 @@ class TestExecCapableUtilityFlags:
 
         with patch.dict(os.environ, {"HOME": "/root"}):
             assert self._blocked(tool, args), f"{tool} {args} should be blocked"
+
+
+class TestLongOptionAbbreviation:
+    """Blocked long flags must also be caught in abbreviated form on parsers that
+    resolve an unambiguous prefix (GNU getopt_long, argparse, OptionParser)."""
+
+    @staticmethod
+    def _blocked(tool, args):
+        try:
+            check_policy(tool, args)
+            return False
+        except ValueError:
+            return True
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("tar", ["-xf", "a.tar", "--use-compress-progr=evil"]),
+            ("tar", ["-xf", "a.tar", "--use=evil"]),
+            ("awk", ["--fil=x.awk", "d"]),
+            ("awk", ["--so=BEGIN{}", "d"]),
+            ("awk", ["--lo=x.so", "d"]),
+            ("wget", ["--inp", "list.txt"]),
+            ("sed", ["--in-plac", "s/a/b/", "f"]),
+            ("sqlmap", ["-u", "http://10.0.0.1", "--os-she"]),
+            ("sqlmap", ["-u", "http://10.0.0.1", "--fi=/etc/passwd"]),
+            ("gdb", ["--comm=x"]),
+            ("arjun", ["--inp=list"]),
+            ("whatweb", ["--inp", "list"]),
+        ],
+    )
+    def test_abbreviation_is_blocked(self, tool, args):
+        assert self._blocked(tool, args)
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("tar", ["--checkpoint", "-xf", "a.tar"]),  # distinct safe real option
+            ("tar", ["--to-stdout", "-xf", "a.tar"]),
+            ("awk", ["--field-separator=,", "{print}", "d"]),
+            ("awk", ["--sandbox", "BEGIN{print 1}"]),
+            ("wget", ["--input-metalink=m", "https://10.0.0.1/"]),
+            ("sed", ["--separate", "s/a/b/", "f"]),
+            ("curl", ["--connect-timeout", "5", "http://10.0.0.1"]),  # not an abbrev parser
+        ],
+    )
+    def test_legitimate_flag_still_allowed(self, tool, args):
+        assert not self._blocked(tool, args)
+
+
+class TestCurlFileReads:
+    """curl must not read arbitrary host files via -T/--upload-file or -d @file."""
+
+    @staticmethod
+    def _blocked(args):
+        try:
+            check_policy("curl", args)
+            return False
+        except ValueError:
+            return True
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-T", "/etc/passwd", "http://10.0.0.1/"],
+            ["--upload-file", "/etc/passwd", "http://10.0.0.1/"],
+            ["-d", "@/etc/passwd", "http://10.0.0.1/"],
+            ["-d@/etc/passwd", "http://10.0.0.1/"],
+            ["--data-binary", "@/etc/shadow", "http://10.0.0.1/"],
+        ],
+    )
+    def test_file_read_blocked(self, args):
+        assert self._blocked(args)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-d", "user=admin&pw=x", "http://10.0.0.1/"],
+            ["--data-raw", '{"a":1}', "http://10.0.0.1/"],
+            ["-d", "@-", "http://10.0.0.1/"],  # stdin, not a host file
+            ["-sS", "http://10.0.0.1/"],
+        ],
+    )
+    def test_inline_data_allowed(self, args):
+        assert not self._blocked(args)
+
+
+class TestChildEnv:
+    """Spawned tools/scripts must not inherit the server's credential-shaped env."""
+
+    def test_secrets_removed_benign_kept(self, monkeypatch):
+        for k in ("GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "MY_API_KEY", "DB_PASSWORD", "STRIPE_KEY"):
+            monkeypatch.setenv(k, "x")
+        monkeypatch.setenv("PATH", "/usr/bin")
+        monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:8080")
+        env = _child_env()
+        for k in ("GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "MY_API_KEY", "DB_PASSWORD", "STRIPE_KEY"):
+            assert k not in env, k
+        assert env.get("PATH") == "/usr/bin"
+        assert env.get("HTTP_PROXY") == "http://127.0.0.1:8080"
+
+
+class TestPipelineStepTypes:
+    """Malformed pipeline steps must return a structured error, not a raw exception."""
+
+    @pytest.mark.asyncio
+    async def test_non_dict_step(self, tools_db):
+        result = await execute_pipeline([["cat", "x"]], tools_db)
+        assert result["exit_code"] != 0
+        assert "object" in result["stderr"].lower()
+
+    @pytest.mark.asyncio
+    async def test_non_string_tool(self, tools_db):
+        result = await execute_pipeline([{"tool": ["cat"]}], tools_db)
+        assert result["exit_code"] != 0
+        assert "string" in result["stderr"].lower()
+
+
+class TestNulByteRejected:
+    def test_nul_byte_in_args(self):
+        with pytest.raises(ValueError, match="NUL"):
+            sanitize_args("foo\x00bar")

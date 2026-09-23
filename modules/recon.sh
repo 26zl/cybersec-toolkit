@@ -93,9 +93,6 @@ install_module_recon() {
     install_git_batch "Recon / OSINT - Git" "${RECON_GIT[@]}"
 
     # theHarvester (requires uv — not pipx compatible).
-    # ensure_uv() lives in lib/shared.sh and is the canonical uv installer for
-    # the project (centralised so the MCP server and any future uv-based tools
-    # share the same install path).
     local _th_dir="$GITHUB_TOOL_DIR/theHarvester"
     if [[ -f "$_th_dir/pyproject.toml" ]]; then
         ensure_uv || true
@@ -103,7 +100,6 @@ install_module_recon() {
             _start_spinner "Setting up theHarvester with uv..."
             if (cd "$_th_dir" && uv sync) >> "$LOG_FILE" 2>&1; then
                 _stop_spinner
-                # Create wrapper script
                 cat > "$PIPX_BIN_DIR/theHarvester" 2>/dev/null << THWRAP
 #!/bin/bash
 cd "$_th_dir" && exec uv run theHarvester "\$@"
@@ -123,6 +119,5 @@ THWRAP
     log_info "Building massdns from source..."
     build_module_from_source RECON
 
-    # Binary releases
     install_binary_releases "${BINARY_RELEASES_RECON[@]}"
 }

@@ -6,21 +6,16 @@ setup() {
     load 'test_helper'
     source_libs --installers debian apt
 
-    # Source all module files
     for mod in "${ALL_MODULES[@]}"; do
         source "$PROJECT_ROOT/modules/${mod}.sh"
     done
 }
-
-# Module files exist
 
 @test "all 18 module files exist" {
     for mod in "${ALL_MODULES[@]}"; do
         [[ -f "$PROJECT_ROOT/modules/${mod}.sh" ]] || { echo "Missing: modules/${mod}.sh"; return 1; }
     done
 }
-
-# install_module_* functions defined
 
 @test "each module defines install_module_<name> function" {
     for mod in "${ALL_MODULES[@]}"; do
@@ -76,8 +71,6 @@ _get_prefix() {
     done
 }
 
-# Git arrays use name=url format
-
 @test "all git arrays use name=url format" {
     local git_arrays=(
         MISC_GIT NET_GIT RECON_GIT WEB_GIT CRYPTO_GIT PWN_GIT RE_GIT
@@ -91,7 +84,6 @@ _get_prefix() {
         [[ ${#arr[@]} -eq 0 ]] && continue
 
         for entry in "${arr[@]}"; do
-            # Must contain = separator
             [[ "$entry" == *"="* ]] || { echo "$arr_name: entry missing '=' separator: $entry"; return 1; }
             # URL part should start with https://
             local url="${entry#*=}"
@@ -99,8 +91,6 @@ _get_prefix() {
         done
     done
 }
-
-# Go arrays end with @latest
 
 @test "all Go tool paths end with @latest" {
     local go_arrays=(
@@ -117,8 +107,6 @@ _get_prefix() {
         done
     done
 }
-
-# Go binary arrays match Go arrays
 
 @test "Go binary arrays have entries for modules with Go tools" {
     local -A go_to_bins=(
@@ -140,8 +128,6 @@ _get_prefix() {
     done
 }
 
-# Git name arrays have entries for modules with Git repos
-
 @test "Git name arrays have entries for modules with git repos" {
     local -A git_to_names=(
         [RECON_GIT]=RECON_GIT_NAMES
@@ -161,8 +147,6 @@ _get_prefix() {
         [[ ${#namesref[@]} -gt 0 ]] || { echo "$names_arr is empty but $git_arr has entries"; return 1; }
     done
 }
-
-# No duplicate entries in arrays
 
 @test "no duplicate entries in pipx arrays" {
     local pipx_arrays=(

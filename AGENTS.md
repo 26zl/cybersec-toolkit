@@ -161,7 +161,8 @@ git submodule update --init --recursive
 ```
 
 Test files: `tests/common.bats`, `tests/install.bats`, `tests/installers.bats`,
-`tests/modules.bats`, `tests/profiles.bats`. Helper at `tests/test_helper.bash`.
+`tests/modules.bats`, `tests/profiles.bats`, `tests/scripts.bats`. Helper at
+`tests/test_helper.bash`.
 
 ### MCP Server
 

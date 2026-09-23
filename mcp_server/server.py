@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import time
@@ -90,7 +91,6 @@ try:
 except (ValueError, OSError) as e:
     _remote_init_error = str(e)
 
-# Log server startup with config state.
 log_server_start()
 
 
@@ -174,7 +174,6 @@ def list_tools(
         "tools": tool_entries,
     }
 
-    # Add filter info when no filters applied
     if not module and not method:
         result["available_modules"] = _db.modules
         result["available_methods"] = _db.methods
@@ -217,7 +216,7 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
                     log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=msg)
                     return {"tool": tool_name, "in_registry": False, "system_utility": True, "error": msg}
                 try:
-                    ssh_args = _remote.get_ssh_base_args(host)
+                    ssh_args = await asyncio.to_thread(_remote.get_ssh_base_args, host)
                 except ValueError as e:
                     log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
                     return {"tool": tool_name, "in_registry": False, "system_utility": True, "error": str(e)}
@@ -282,7 +281,7 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
             log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=msg)
             return {"tool": tool_name, "in_registry": True, "error": msg}
         try:
-            ssh_args = _remote.get_ssh_base_args(host)
+            ssh_args = await asyncio.to_thread(_remote.get_ssh_base_args, host)
         except ValueError as e:
             log_tool_result("check_installed", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"tool": tool_name, "in_registry": True, "error": str(e)}
@@ -1112,7 +1111,7 @@ async def manage_remote_hosts(
 
     if action == "test":
         try:
-            ssh_args = _remote.get_ssh_base_args(name)
+            ssh_args = await asyncio.to_thread(_remote.get_ssh_base_args, name)
         except ValueError as e:
             log_tool_result("manage_remote_hosts", call_id, False, (time.monotonic() - t0) * 1000, error=str(e))
             return {"error": str(e)}

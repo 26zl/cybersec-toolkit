@@ -411,15 +411,13 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
             "available_profiles": list(PROFILES.keys()),
         }
 
-    # 1. Check if specific tools are mentioned by name
+    # Check if specific tools are mentioned by name
     mentioned_tools = _match_individual_tools(task, tools_db)
 
-    # 2. Score profiles
     profile_scores = _score_profiles(task)
     ranked_profiles = sorted(profile_scores.items(), key=lambda x: x[1], reverse=True)
     top_profiles = [(name, score) for name, score in ranked_profiles if score > 0]
 
-    # 3. Score individual modules
     matched_modules = _match_modules(task)
 
     # Decision logic: recommend individual tools, a few modules, or a full profile
@@ -499,7 +497,7 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
 
     # Case C: Module-level match — user needs a few specific modules, not a full profile
     if matched_modules:
-        modules_needed = [m for m, _ in matched_modules[:4]]  # Top 4 max
+        modules_needed = [m for m, _ in matched_modules[:4]]
         # A bare --module install does not pass --include-c2, so C2 tools are not
         # installed; exclude them so module counts reflect what actually lands.
         tool_count = _count_module_tools(modules_needed, tools_db, include_c2=False)

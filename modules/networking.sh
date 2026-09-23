@@ -41,7 +41,6 @@ install_module_networking() {
     install_go_batch "Networking - Go" "${NET_GO[@]}"
     install_git_batch "Networking - Git" "${NET_GIT[@]}"
 
-    # Binary releases
     install_binary_releases "${BINARY_RELEASES_NETWORKING[@]}"
 
     # RustScan (Rust-based port scanner)

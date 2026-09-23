@@ -78,7 +78,6 @@ def check_module_descriptions() -> None:
     bash_text = (ROOT / "lib" / "common.sh").read_text(encoding="utf-8")
     bash_descs = parse_bash_assoc_array(bash_text, "MODULE_DESCRIPTIONS")
 
-    # Import Python version
     sys.path.insert(0, str(ROOT))
     from mcp_server.tools_db import MODULE_DESCRIPTIONS as py_descs
 
@@ -323,11 +322,7 @@ _ADVISOR_TOOL_EXCEPTIONS: set[str] = set()
 def check_advisor_tool_names() -> None:
     """Every tool named in the CTF/bounty advisor maps must be a registry tool.
 
-    advisor_utils.TOOL_ALIASES is small (display→registry name fixups), but the
-    hundreds of tool names embedded in ctf_advisor.CTF_CATEGORY_MAP and
-    bounty_advisor.BOUNTY_TARGET_MAP were never cross-checked. Resolve each
-    through TOOL_ALIASES and error if it isn't in tools_config.json so a renamed
-    or removed registry tool can't silently break a suggestion list.
+    Resolve every CTF/bounty map tool via TOOL_ALIASES; error if absent from tools_config.json.
     """
     import json
 
@@ -438,10 +433,10 @@ def check_mcp_toolchain() -> None:
 def check_cve_advisor() -> None:
     """KNOWN_CVES references must resolve: tools→registry, skills→dir, modules→descs.
 
-    KNOWN_CVES is a hardcoded curated map with no sync validator, so a renamed
-    registry tool, deleted skill dir, or dropped module would silently break a CVE
-    mapping. Resolve every referenced tool through TOOL_ALIASES, confirm each skill
-    exists as .claude/skills/<name>, and each module is a MODULE_DESCRIPTIONS key.
+    KNOWN_CVES is a hardcoded curated map, so a renamed registry tool, deleted
+    skill dir, or dropped module would silently break a CVE mapping. Resolve every
+    referenced tool through TOOL_ALIASES, confirm each skill exists as
+    .claude/skills/<name>, and each module is a MODULE_DESCRIPTIONS key.
     """
     import json
 
@@ -511,6 +506,25 @@ def check_bin_name_maps() -> None:
     )
 
 
+def check_audit_stream_prefix() -> None:
+    """The sandbox launcher picks audit records out of stderr by this sentinel."""
+    pattern = r"""AUDIT_STREAM_PREFIX\s*=\s*(['"])(.*?)\1"""
+    sources = {
+        "mcp_server/audit.py": ROOT / "mcp_server" / "audit.py",
+        "sandbox/audit-sink.mjs": ROOT / "sandbox" / "audit-sink.mjs",
+    }
+    found = {}
+    for label, path in sources.items():
+        match = re.search(pattern, path.read_text(encoding="utf-8"))
+        if not match:
+            errors.append(f"AUDIT_STREAM_PREFIX: not found in {label}")
+            return
+        found[label] = match.group(2)
+    if len(set(found.values())) != 1:
+        errors.append(f"AUDIT_STREAM_PREFIX: differs between {' and '.join(f'{k}={v!r}' for k, v in found.items())}")
+    print(f"AUDIT_STREAM_PREFIX: {len(found)} sources checked")
+
+
 def main() -> int:
     print("=== MCP Server Data Sync Check ===\n")
 
@@ -525,6 +539,7 @@ def main() -> int:
     check_mcp_toolchain()
     check_cve_advisor()
     check_bin_name_maps()
+    check_audit_stream_prefix()
 
     print()
     if errors:

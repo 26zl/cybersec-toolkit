@@ -23,6 +23,7 @@ Expect an initial response within 7 days. Credit is given in the release notes u
 
 - Code execution, privilege escalation, or sandbox escape in the installer (`install.sh`, `lib/`, `modules/`, `scripts/`)
 - Command injection, path traversal, or argument-sanitization bypass in the MCP server (`mcp_server/`)
+- VM-boundary bypass or host exposure in the execution sandbox (`sandbox/`, `scripts/mcp-launch.sh`)
 - Supply-chain weaknesses in project bootstrap/runtime or installer logic: unverified downloads, checksum bypasses, dependency update weaknesses, or fetching the wrong upstream artifact through our scripts
 - Secrets leakage in version-controlled files (`.versions`, audit logs, config samples)
 - CI/CD pipeline weaknesses: unpinned actions, missing egress controls, unauthenticated artifact uploads
@@ -48,11 +49,13 @@ For context when evaluating a report:
 - **MCP Python dependencies** — resolved by `uv` with a 3-day `exclude-newer` release-age window for project runtime dependencies
 - **GitHub Actions** — all SHA-pinned with version comments; `step-security/harden-runner` enforces egress audit in every job
 - **MCP execution engine** — tool allowlisting, argument sanitization (blocks `|`, backtick, `$(`, `${`; `;` and `&` pass through as literals since no shell is used), protected write destinations, per-tool blocked flags, private/loopback network and SSH scope by default, rate limiting, and audit logging
+- **Execution sandbox** — the launcher starts the MCP server in a per-session Kata Containers VM by default ([`docs/SANDBOX.md`](docs/SANDBOX.md)); `--local` is the explicit host-mode opt-out. Audit records are hash-chained and mirrored out of the VM
 - **MCP script execution** — off by default; `CYBERSEC_MCP_ALLOW_SCRIPTS=1` is an explicit unsandboxed code-execution opt-in and is not constrained by `CYBERSEC_MCP_ALLOW_EXTERNAL`
 
 The MCP execution policy is not an OS sandbox. Allowed tools keep the MCP
 process user's permissions, and disabling `run_script` does not prevent a tool
-from launching child processes or loading plugins.
+from launching child processes or loading plugins. The OS boundary is the Kata
+VM; in `--local` mode that user is the operator and there is none.
 
 ## Automated security checks
 

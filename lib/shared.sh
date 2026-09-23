@@ -92,7 +92,6 @@ _version_ge() {
 _validate_curl_pipe() {
     local file="$1"; shift
     local -a keywords=("$@")
-    # File must exist and be non-empty
     if [[ ! -s "$file" ]]; then
         log_warn "Downloaded script is empty or missing: $file"
         return 1
@@ -253,7 +252,6 @@ for rel in json.load(sys.stdin):
         log_warn "Could not fetch Go checksum from go.dev — skipping verification"
     fi
 
-    # Remove previous Go SDK at this location
     [[ -d "$install_parent/go" ]] && rm -rf "$install_parent/go"
 
     # Extract — creates $install_parent/go/{bin,src,pkg,...}

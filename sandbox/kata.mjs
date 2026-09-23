@@ -387,7 +387,7 @@ export const kata = (options = {}) => {
             child.stderr.on('data', (chunk) => {
               stderr = appendTail(stderr, chunk.toString());
             });
-            child.on('close', (code) => resolve({ stdout, stderr, exitCode: code ?? 0 }));
+            child.on('close', (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
           }),
 
         interactiveExec: (args, opts) =>
@@ -405,7 +405,7 @@ export const kata = (options = {}) => {
             });
             if (!stderrHasFd) child.stderr.pipe(opts.stderr);
             child.on('error', (error) => reject(new Error(`docker exec failed: ${error.message}`)));
-            child.on('close', (code) => resolve({ exitCode: code ?? 0 }));
+            child.on('close', (code) => resolve({ exitCode: code ?? 1 }));
           }),
 
         copyIn: async (hostPath, sandboxPath) => {

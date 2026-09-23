@@ -44,12 +44,25 @@ updates:
       - "dependencies"
 
   - package-ecosystem: "docker"
-    directory: "/"
+    directories:
+      - "/"
+      - "/sandbox"
     schedule:
       interval: "monthly"
     cooldown:
       default-days: 3
     commit-message:
       prefix: "docker"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "gitsubmodule"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "deps"
     labels:
       - "dependencies"

@@ -1,7 +1,10 @@
 .git/
 .github/
-*.log
-.versions
+**/*.log
+**/.versions*
+.install_sessions/
+test-distros-logs/
+.vscode/
 # Recursive: a bare "__pycache__/" only matches the context root, not nested dirs.
 **/tests/
 **/__pycache__/
@@ -14,12 +17,17 @@ mcp_server/.venv/
 # runtime; excluding keeps ~40M of markdown and developer-local settings out of layers.
 .claude/
 # Local secrets / sensitive artifacts that must never be baked into image layers
-.env
-.env.*
+**/.env
+**/.env.*
+**/*.pem
+**/*.p12
+**/credentials.json
+**/secrets.json
+**/token.json
 writeups/
 manual_scripts/
 .agents/
-remote_hosts.json
+**/remote_hosts.json
 *.corrupt.*
 .DS_Store
 **/node_modules/

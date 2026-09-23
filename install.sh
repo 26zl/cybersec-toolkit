@@ -345,7 +345,6 @@ while [[ $# -gt 0 ]]; do
         --dry-run)         DRY_RUN=true; shift ;;
         -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
                            PARALLEL_JOBS="$2"
-                           # Validation handled by lib/common.sh on next source
                            if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
                                PARALLEL_JOBS=4
                            elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
@@ -380,14 +379,7 @@ install_single_tool() {
     local SKIP_PIPX=false SKIP_GO=false SKIP_CARGO=false SKIP_GEMS=false
     local SKIP_GIT=false SKIP_BINARY=false SKIP_SOURCE=false
 
-    # Provenance: was the tool already on the system before we touched it? If so it
-    # is recorded "existing" so --rollback/remove never uninstall what the user had.
-    # command_exists covers the command-producing methods; the pkg branch overrides
-    # this with pkg_is_installed (a library package is not a command), and git/source
-    # use _tree_provenance on their dest dir.
-    # Present AND not something a previous run of ours installed — otherwise a
-    # second --tool run would see our own install and mark it unremovable (the same
-    # sticky rule the batch installers use via _is_preexisting).
+    # Tools present before any toolkit run are recorded "existing" so rollback/remove never uninstall them.
     local _pre=false
     if command_exists "$tool" && { ! _version_known "$tool" || _is_preexisting "$tool"; }; then
         _pre=true
@@ -569,7 +561,10 @@ install_single_tool() {
         done
     done
 
-    # GitHub binary releases
+    # GitHub binary releases. Curl options and the API cache are set up here, not
+    # lazily inside the release_json=$(...) subshell, whose cleanup never runs.
+    _setup_curl_opts
+    _gh_api_cache_init
     local binary_arr
     while IFS= read -r binary_arr; do
         declare -p "$binary_arr" &>/dev/null || continue
@@ -946,7 +941,6 @@ if [[ -n "$PROFILE" ]]; then
     _cli_skip_heavy="$SKIP_HEAVY"
     _cli_enable_docker="$ENABLE_DOCKER"
     _cli_include_c2="$INCLUDE_C2"
-    # Source profile config
     source "$local_profile"
     # Explicit CLI flags override profile defaults (in both directions)
     [[ "$_CLI_SET_SKIP_HEAVY" == "true" ]]     && SKIP_HEAVY="$_cli_skip_heavy"
@@ -970,11 +964,9 @@ else
     MODULES_TO_INSTALL=("${ALL_MODULES[@]}")
 fi
 
-# Export flags for modules
 export SKIP_HEAVY SKIP_PIPX SKIP_GO SKIP_CARGO SKIP_GEMS SKIP_GIT SKIP_BINARY SKIP_SOURCE
 export ENABLE_DOCKER INCLUDE_C2 REQUIRE_CHECKSUMS PRODUCTION_MODE FAST_MODE UPGRADE_SYSTEM VERBOSE PARALLEL_JOBS
 
-# Source selected modules
 for mod in "${MODULES_TO_INSTALL[@]}"; do
     local_mod="$SCRIPT_DIR/modules/${mod}.sh"
     if [[ -f "$local_mod" ]]; then
@@ -1008,25 +1000,21 @@ estimate_install_time() {
         prefix=$(_module_prefix "$mod")
         local mod_upper="${mod^^}"
 
-        # APT packages
         apt_count=$((apt_count + $(_count_array "${prefix}_PACKAGES")))
         if [[ "$SKIP_HEAVY" != "true" ]]; then
             apt_count=$((apt_count + $(_count_array "${prefix}_HEAVY_PACKAGES")))
         fi
 
-        # pipx / Go / Cargo / Gems
         pipx_count=$((pipx_count + $(_count_array "${prefix}_PIPX")))
         go_count=$((go_count + $(_count_array "${prefix}_GO")))
         cargo_count=$((cargo_count + $(_count_array "${prefix}_CARGO")))
         gem_count=$((gem_count + $(_count_array "${prefix}_GEMS")))
 
-        # Git repos
         git_count=$((git_count + $(_count_array "${prefix}_GIT")))
 
         # Binary releases (BINARY_RELEASES_<MODULE_UPPER> in installers.sh)
         binary_count=$((binary_count + $(_count_array "BINARY_RELEASES_${mod_upper}")))
 
-        # Build from source (PREFIX_BUILD_NAMES)
         build_count=$((build_count + $(_count_array "${prefix}_BUILD_NAMES")))
     done
 
@@ -1060,20 +1048,19 @@ estimate_install_time() {
             }
             END { printf "%d %d %d\n", snap+0, special+0, docker+0 }
         ' "$_config")
-        # Exclude docker tools when Docker is disabled
         [[ "${ENABLE_DOCKER:-false}" != "true" ]] && docker_count=0
     fi
 
     local total=$((apt_count + pipx_count + go_count + cargo_count + gem_count + git_count + binary_count + build_count + snap_count + special_count + docker_count))
 
-    # ── Stage 2: APT (sequential, single batch install) ──
+    # Stage 2: APT (sequential, single batch install)
     local apt_min=0 apt_max=0
     if [[ "$apt_count" -gt 0 ]]; then
         apt_min=$((60 + apt_count * 2))      # dep resolution + download + unpack
         apt_max=$((120 + apt_count * 4))
     fi
 
-    # ── Stage 3: Non-APT batches (run in PARALLEL when PARALLEL_JOBS > 1) ──
+    # Stage 3: Non-APT batches (run in PARALLEL when PARALLEL_JOBS > 1)
     # Per-method benchmarks (seconds per tool).  pipx and Cargo run
     # sequentially within their batch; Go/Git/Binary use a shared semaphore.
     local pipx_min=$((pipx_count * 8))       pipx_max=$((pipx_count * 20))
@@ -1111,7 +1098,7 @@ estimate_install_time() {
         stage3_max=$((pipx_max + go_max + cargo_max + gem_max + git_max + binary_max))
     fi
 
-    # ── Stage 4: Custom installers + build-from-source (sequential) ──
+    # Stage 4: Custom installers + build-from-source (sequential)
     # Build from source: compile time per tool
     local stage4_min=$((build_count * 15))     stage4_max=$((build_count * 45))
     # Snap installs: snapd bootstrap + each snap is slow
@@ -1245,10 +1232,8 @@ main() {
     log_info "Modules: ${MODULES_TO_INSTALL[*]}"
     estimate_install_time
 
-    # Pre-flight disk space check
     check_disk_space "${#MODULES_TO_INSTALL[@]}"
 
-    # Initialize session tracking for rollback support
     _init_session "${PROFILE:-full}" "${MODULES_TO_INSTALL[*]}"
     log_info "Session: $_SESSION_ID"
     log_info "Starting installation..."
@@ -1257,7 +1242,6 @@ main() {
     local start_time
     start_time=$(date +%s)
 
-    # Refresh package lists (required for installing packages)
     log_info "Refreshing package lists..."
     if pkg_update >> "$LOG_FILE" 2>&1; then
         log_success "Package lists refreshed"
@@ -1288,10 +1272,8 @@ main() {
     ensure_uv
     echo ""
 
-    # Install modules
     install_modules
 
-    # Disable debug trace before summary output
     disable_debug_trace
 
     # Final summary
@@ -1347,7 +1329,6 @@ main() {
     log_info "  Rollback this run:    sudo ./install.sh --rollback $_SESSION_ID"
     echo ""
 
-    # Clean up GitHub API cache
     _gh_api_cache_cleanup 2>/dev/null || true
 
     # Finalize session manifest
@@ -1363,7 +1344,7 @@ main() {
 TOTAL_MODULE_FAILURES=0
 
 install_modules() {
-    # Stage 1/4: Aggregate all tool arrays from selected modules ──
+    # Stage 1/4: Aggregate all tool arrays from selected modules
     log_info "Stage 1/4: Aggregating tool lists from ${#MODULES_TO_INSTALL[@]} modules..."
 
     local -a _ALL_APT=() _ALL_PIPX=() _ALL_GO=() _ALL_CARGO=() _ALL_GEMS=()
@@ -1374,13 +1355,11 @@ install_modules() {
         _pfx=$(_module_prefix "$_mod")
         local _mod_upper="${_mod^^}"
 
-        # APT packages
         _append_module_array _ALL_APT "${_pfx}_PACKAGES"
         if [[ "${SKIP_HEAVY:-false}" != "true" ]]; then
             _append_module_array _ALL_APT "${_pfx}_HEAVY_PACKAGES"
         fi
 
-        # Other batch methods
         _append_module_array _ALL_PIPX  "${_pfx}_PIPX"
         _append_module_array _ALL_GO    "${_pfx}_GO"
         _append_module_array _ALL_CARGO "${_pfx}_CARGO"
@@ -1399,14 +1378,14 @@ install_modules() {
     done
 
     log_info "  APT: ${#_ALL_APT[@]}, pipx: ${#_ALL_PIPX[@]}, Go: ${#_ALL_GO[@]}, Cargo: ${#_ALL_CARGO[@]}, Gems: ${#_ALL_GEMS[@]}, npm: ${#_ALL_NPM[@]}, Git: ${#_ALL_GIT[@]}, Binary: ${#_ALL_BINARY[@]}"
-    # Stage 2/4: Single APT transaction for ALL packages ──
+    # Stage 2/4: Single APT transaction for ALL packages
     echo ""
     log_info "Stage 2/4: Installing all system packages in one transaction..."
     if [[ ${#_ALL_APT[@]} -gt 0 ]]; then
         install_apt_batch "All modules - Packages" "${_ALL_APT[@]}"
     fi
 
-    # Stage 3/4: Non-APT batch installs ──
+    # Stage 3/4: Non-APT batch installs
     echo ""
 
     # Save APT failure count so parallel subshell totals don't double-count
@@ -1418,10 +1397,8 @@ install_modules() {
         local _fail_dir
         _fail_dir=$(mktemp -d); _register_cleanup "$_fail_dir"
 
-        # Initialise global concurrency semaphore (shared across all batch methods)
         _init_global_semaphore
 
-        # Initialise progress display IPC directory
         _init_progress_dir
 
         # Clean up child processes, semaphore, and progress on interrupt (Ctrl+C / kill)
@@ -1518,7 +1495,6 @@ install_modules() {
             _job_pids+=($!)
         fi
 
-        # Launch live multi-line progress display
         if [[ ${#_method_names[@]} -gt 0 ]]; then
             _start_progress_display "${_method_names[@]}"
         fi
@@ -1574,7 +1550,7 @@ install_modules() {
         log_warn "Batch install stages: $_batch_failures tool(s) failed (see log for details)"
     fi
 
-    # Stage 4/4: Module-specific custom logic ──
+    # Stage 4/4: Module-specific custom logic
     # Set _SKIP_BATCH_REINSTALL so batch functions (apt, pipx, go, cargo, gems,
     # git, binary) return immediately — only custom logic runs (Docker, builds,
     # special installers like ZAP/Metasploit, direct download_github_release calls).

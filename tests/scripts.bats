@@ -276,3 +276,44 @@ _load_restore_tree() {
     assert_failure
     [[ ! -e "$TEST_TMPDIR/elsewhere/c" ]]
 }
+
+# ── mcp-launch.sh mode selection and fail-closed behaviour ──────────────
+
+@test "mcp-launch.sh --local runs uv on the host, not the sandbox" {
+    run env CYBERSEC_SANDBOX_MODE= bash -c '
+        PATH="'"$TEST_TMPDIR"'/bin:$PATH"
+        mkdir -p "'"$TEST_TMPDIR"'/bin"
+        cat > "'"$TEST_TMPDIR"'/bin/uv" <<EOF
+#!/usr/bin/env bash
+echo "UV_RAN: \$*"
+EOF
+        chmod +x "'"$TEST_TMPDIR"'/bin/uv"
+        exec bash "'"$PROJECT_ROOT"'/scripts/mcp-launch.sh" --local
+    '
+    assert_success
+    assert_output --partial "UV_RAN:"
+    assert_output --partial "server.py"
+}
+
+@test "mcp-launch.sh rejects an unknown mode" {
+    run bash "$PROJECT_ROOT/scripts/mcp-launch.sh" --bogus
+    assert_failure
+    assert_output --partial "Usage"
+}
+
+@test "mcp-launch.sh kata mode fails closed without node" {
+    mkdir -p "$TEST_TMPDIR/nonode"
+    for _c in bash uname sed grep cat; do
+        _p="$(command -v "$_c")" && ln -sf "$_p" "$TEST_TMPDIR/nonode/$_c"
+    done
+    # A uv shim that would prove a wrong fall-through to host execution.
+    printf '#!/usr/bin/env bash\necho UV_RAN: "$*"\n' > "$TEST_TMPDIR/nonode/uv"
+    chmod +x "$TEST_TMPDIR/nonode/uv"
+
+    run env -i CYBERSEC_SANDBOX_MODE=kata PATH="$TEST_TMPDIR/nonode" \
+        bash "$PROJECT_ROOT/scripts/mcp-launch.sh"
+    assert_failure
+    assert_output --partial "Node.js"
+    # Never falls through to host execution when the sandbox cannot start.
+    refute_output --partial "UV_RAN:"
+}

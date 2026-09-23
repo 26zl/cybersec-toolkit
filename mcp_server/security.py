@@ -208,6 +208,31 @@ SYSTEM_UTILITIES: frozenset[str] = frozenset(
 # through run_pipeline.
 _DANGEROUS_PATTERNS = re.compile(r"[|`]|\$[({]")
 
+# Environment variables never passed to spawned tools/scripts: the server's own
+# process may hold operator credentials, and an allowlisted tool that can read
+# the environment (e.g. awk's ENVIRON) would otherwise disclose them. A denylist
+# keeps PATH/HOME/LANG/proxy and other benign variables that tools rely on.
+_SENSITIVE_ENV_RE = re.compile(
+    r"(TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|APIKEY"
+    r"|(?:API|ACCESS|PRIVATE|SECRET|SESSION)[_-]?KEY)",
+    re.IGNORECASE,
+)
+_SENSITIVE_ENV_PREFIX_RE = re.compile(
+    r"^(AWS|AZURE|GCP|GOOGLE|GITHUB|GITLAB|STRIPE|SLACK|TWILIO|CLOUDFLARE"
+    r"|DIGITALOCEAN|HEROKU|NPM|PYPI|DOCKER|TF_VAR)_",
+    re.IGNORECASE,
+)
+
+
+def _child_env() -> dict[str, str]:
+    """A copy of the process environment with credential-shaped variables removed."""
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if not _SENSITIVE_ENV_RE.search(key) and not _SENSITIVE_ENV_PREFIX_RE.match(key)
+    }
+
+
 # Execution policy — restrict *what* tools can do, not just *which* tools run
 
 # Flag patterns that are destructive or dangerous in most security tools.
@@ -275,11 +300,10 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^-i"), "sed: in-place file modification"),
         (re.compile(r"^--in-place"), "sed: in-place file modification"),
         # GNU sed's e/r/w script commands run a shell command or read/write files.
-        # Match them at a command position inside the program (start, after ; { }
-        # newline, or a closing address delimiter). Prefer --sandbox at the argv
-        # level for exotic forms; this closes the reachable e/r/w vectors.
-        # Command position = start, or after ; { } newline, a regex-address close
-        # (/), or an address char (digit $ , ~ + !).
+        # Match them at a command position: start, or after ; { } newline, a
+        # regex-address close (/), or an address char (digit $ , ~ + !). Prefer
+        # --sandbox at the argv level for exotic forms; this closes the reachable
+        # e/r/w vectors.
         (re.compile(r"(?:^|[;{}\n/0-9$,~+!])\s*e(?:\s|$)"), "sed: e command (command execution)"),
         (re.compile(r"(?:^|[;{}\n/0-9$,~+!])\s*[wWrR](?:\s|$)"), "sed: r/w file command"),
         (re.compile(r"(?:[^a-zA-Z0-9]|^)s(.).*\1.*\1[a-z0-9]*e"), "sed: s///e execute flag"),
@@ -347,6 +371,9 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "curl": [
         (re.compile(r"^-K"), "curl: config file flag bypasses target validation"),
         (re.compile(r"^--config(?:$|=)"), "curl: config file flag bypasses target validation"),
+        # -T/--upload-file sends an arbitrary host file to the URL (file read → exfil).
+        (re.compile(r"^-T"), "curl: -T uploads an arbitrary host file"),
+        (re.compile(r"^--upload-file(?:$|=)"), "curl: --upload-file reads an arbitrary host file"),
     ],
     "wget": [
         (re.compile(r"^-i"), "wget: URL list from file bypasses target validation"),
@@ -400,6 +427,68 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^--input-file(?:$|=)"), "whatweb: target list from file bypasses target validation"),
     ],
 }
+
+# Parsers that resolve an unambiguous prefix of a long option to the full option
+# (GNU getopt_long, Python argparse/optparse, Ruby OptionParser). For these a
+# blocked long flag can be reached by an abbreviation, so the denylist above,
+# which anchors the full spelling, must also reject prefixes of it.
+_ABBREV_TOOLS = frozenset({"sed", "tar", "gdb", "wget", "zip", "arjun", "whatweb", "sqlmap", "awk", "gawk"})
+
+# Abbreviations that collide with a distinct, safe real option of the same tool.
+# getopt_long resolves an exact match before a prefix, so the tool reads these as
+# the safe option, not the blocked one; blocking them would be a false positive.
+_ABBREV_SAFE: dict[str, frozenset[str]] = {"tar": frozenset({"checkpoint"})}
+
+_LONG_OPT_NAME_RE = re.compile(r"^\^--([a-z0-9][a-z0-9-]*)")
+_LONG_OPT_ARG_RE = re.compile(r"^--([a-z0-9][a-z0-9-]*)(?:=|$)", re.IGNORECASE)
+
+
+def _blocked_long_options(patterns: list[tuple[re.Pattern[str], str]]) -> list[tuple[str, str]]:
+    """Canonical ``--name`` spellings a pattern list blocks, for abbreviation checks."""
+    out: list[tuple[str, str]] = []
+    for pattern, desc in patterns:
+        match = _LONG_OPT_NAME_RE.match(pattern.pattern)
+        if match:
+            out.append((match.group(1), desc))
+    return out
+
+
+# Derived once from the compiled patterns so it cannot drift from TOOL_BLOCKED_FLAGS.
+_ABBREV_BLOCKED: dict[str, list[tuple[str, str]]] = {
+    tool: _blocked_long_options(TOOL_BLOCKED_FLAGS[tool]) for tool in _ABBREV_TOOLS if tool in TOOL_BLOCKED_FLAGS
+}
+# getopt_long resolves a 2-character prefix when unambiguous (e.g. gawk --lo →
+# --load), so 2 is the floor. A prefix that is ambiguous among the tool's own
+# options makes the tool error out, so blocking it is harmless; only an exact
+# safe option (_ABBREV_SAFE) is a real false positive.
+_ABBREV_MIN_LEN = 2
+
+
+def _check_long_option_abbreviations(tool_name: str, binary: str, arg_list: list[str]) -> None:
+    """Reject an abbreviated long flag that resolves to a blocked one.
+
+    Only for parsers in ``_ABBREV_TOOLS``; the exact spelling is already caught by
+    ``TOOL_BLOCKED_FLAGS``. A prefix that is also a distinct safe option
+    (``_ABBREV_SAFE``) is left alone.
+    """
+    blocked: list[tuple[str, str]] = []
+    safe: set[str] = set()
+    for key in (tool_name, binary):
+        blocked += _ABBREV_BLOCKED.get(key, [])
+        safe |= _ABBREV_SAFE.get(key, frozenset())
+    if not blocked:
+        return
+    for arg in arg_list:
+        match = _LONG_OPT_ARG_RE.match(arg)
+        if not match:
+            continue
+        name = match.group(1).lower()
+        if len(name) < _ABBREV_MIN_LEN or name in safe:
+            continue
+        for canonical, desc in blocked:
+            if name != canonical and canonical.startswith(name):
+                raise ValueError(f"Blocked by policy: {desc} (via abbreviation --{name})")
+
 
 # Flags whose values look like a network target to the heuristic but are
 # actually something else for specific tools (e.g. curl's ``-u user:pass``
@@ -1489,6 +1578,27 @@ def _tar_short_bundles(arg_list: list[str]) -> list[str]:
     return bundles
 
 
+def _check_curl_file_reads(tool_name: str, binary: str, arg_list: list[str]) -> None:
+    """Block curl data flags that read a host file via the ``@path`` form.
+
+    ``-d @/etc/passwd`` (and --data/--data-binary/--data-ascii/--data-urlencode)
+    reads the file into the request body; ``--data-raw`` does not interpret ``@``
+    and is left alone. Uploads via ``-T``/``--upload-file`` are blocked separately.
+    """
+    if "curl" not in (tool_name, binary):
+        return
+    values = _flag_values(
+        arg_list,
+        short_flags=frozenset({"-d"}),
+        long_flags=frozenset({"--data", "--data-binary", "--data-ascii", "--data-urlencode"}),
+    )
+    for value in values:
+        # @path, or name@path for --data-urlencode; @- is stdin, not a host file.
+        ref = value.split("@", 1)[1] if "@" in value else ""
+        if ref and ref != "-":
+            raise ValueError("Blocked by policy: curl: @file data reads an arbitrary host file")
+
+
 def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) -> None:
     """Block file-mutating invocations that target a sensitive destination.
 
@@ -1703,10 +1813,15 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
                 if pattern.search(arg):
                     raise ValueError(f"Blocked by policy: {desc}")
 
+    # 1b-ii. A blocked long flag can also be reached by an unambiguous prefix on
+    # parsers that honour abbreviation, so reject those too.
+    _check_long_option_abbreviations(tool_name, binary, arg_list)
+
     # 1c. Block file-mutating utilities (and curl/wget output flags) from writing
     # into dotfiles/shell-rc/cron/system dirs. This is a local-write concern, so
     # it runs regardless of the external-network policy below.
     _check_write_destinations(tool_name, binary, arg_list)
+    _check_curl_file_reads(tool_name, binary, arg_list)
 
     # 2. Network target checks (only for network tools, unless external is allowed)
     if _allow_external():
@@ -1922,9 +2037,8 @@ async def _bounded_communicate(
 
     Returns ``(stdout_bytes, stdout_truncated, stderr_bytes, stderr_truncated)``.
 
-    A process that produces unbounded output no longer risks unbounded memory
-    growth; memory is O(max_stream_bytes) regardless of how much the child
-    writes. The caller is still responsible for timeout + kill on hang.
+    Memory stays O(max_stream_bytes) however much the child writes. The caller
+    is still responsible for timeout + kill on hang.
     """
     stdout_truncated = [False]
     stderr_truncated = [False]
@@ -1978,14 +2092,8 @@ async def _bounded_communicate(
 
 
 def _append_truncation_marker(text: str, max_bytes: int) -> str:
-    """Append the standard truncation marker, keeping total UTF-8 size <= max_bytes.
-
-    Delegates the cut-to-fit + marker to :func:`mcp_server.sanitize.truncate_output`
-    so the two implementations cannot drift (truncate_output is the single source
-    of the marker string and byte budget). This is the production caller of
-    truncate_output. Callers invoke this only when the stream was actually
-    capped, so the marker is forced even in the rare case the captured bytes land
-    just under ``max_bytes`` (e.g. a multibyte boundary).
+    """Append the truncation marker within max_bytes; forced even when the text
+    fits because the stream was capped upstream.
     """
     truncated_text, was_truncated = truncate_output(text, max_bytes)
     if was_truncated:
@@ -2046,6 +2154,11 @@ def sanitize_args(args: str) -> list[str]:
             "Split into multiple tool calls or shorten arguments."
         )
 
+    # A NUL byte truncates the arg at the execve boundary, so reject it rather
+    # than let executil raise a raw ValueError past the policy layer.
+    if "\x00" in args:
+        raise ValueError("Arguments contain a NUL byte")
+
     # Check for dangerous shell metacharacters before parsing
     if _DANGEROUS_PATTERNS.search(args):
         raise ValueError(f"Arguments contain blocked shell metacharacters: {args!r}. Blocked patterns: | ` $( ${{")
@@ -2090,7 +2203,6 @@ async def execute_tool(
             "command": tool_name + (" " + args if args else ""),
         }
 
-    # Clamp timeout to 1-300 seconds
     timeout = max(1, min(timeout, 300))
 
     command = [binary] + arg_list
@@ -2116,6 +2228,7 @@ async def execute_tool(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,  # own process group, so killpg reaps forks
+                env=_child_env(),
             )
 
             try:
@@ -2279,6 +2392,7 @@ async def _run_pipeline_steps(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
+                env=_child_env(),
             )
 
             try:
@@ -2441,13 +2555,20 @@ async def execute_pipeline(
     if len(steps) > MAX_PIPELINE_STEPS:
         return _pipeline_error(f"Pipeline exceeds max {MAX_PIPELINE_STEPS} steps (got {len(steps)})")
 
+    # Validate step shape before logging, which reads each step's fields.
+    for i, step in enumerate(steps):
+        if not isinstance(step, dict):
+            return _pipeline_error(f"Step {i + 1} must be an object with a 'tool' key")
+        if "tool" not in step:
+            return _pipeline_error(f"Step {i + 1} missing required 'tool' key")
+        if not isinstance(step["tool"], str):
+            return _pipeline_error(f"Step {i + 1} 'tool' must be a string")
+
     pipeline_id = log_pipeline_start(steps, timeout)
     pipe_start = time.monotonic()
 
-    # Pre-validate ALL steps before executing any
+    # Pre-validate ALL steps before executing any (shape already checked above).
     for i, step in enumerate(steps):
-        if "tool" not in step:
-            return _pipeline_error(f"Step {i + 1} missing required 'tool' key")
         try:
             binary = validate_tool_for_execution(step["tool"], tools_db)
             args_str = _step_args_to_str(step)
@@ -2457,7 +2578,6 @@ async def execute_pipeline(
             log_blocked(tool_name=step["tool"], args=_step_args_to_str(step), reason=str(e))
             return _pipeline_error(f"Step {i + 1} ({step['tool']}): {e}")
 
-    # Clamp timeout
     timeout = max(1, min(timeout, 300))
 
     # Check rate limit BEFORE acquiring semaphore
@@ -2538,7 +2658,7 @@ async def execute_script(
     Returns dict with: exit_code, stdout, stderr, truncated, language,
     script_file, working_dir.
     """
-    # 1. Env gate
+    # Env gate
     if not _allow_scripts():
         return {
             "exit_code": -1,
@@ -2550,7 +2670,6 @@ async def execute_script(
             "working_dir": "",
         }
 
-    # 2. Validate language
     lang = language.lower().strip()
     if lang not in _SCRIPT_LANGUAGES:
         return {
@@ -2563,7 +2682,6 @@ async def execute_script(
             "working_dir": "",
         }
 
-    # 3. Check code not empty
     if not code or not code.strip():
         return {
             "exit_code": -1,
@@ -2575,7 +2693,7 @@ async def execute_script(
             "working_dir": "",
         }
 
-    # 4. Find interpreter
+    # Find interpreter
     if lang == "python":
         if venv:
             resolved = _resolve_venv_interpreter(venv)
@@ -2607,7 +2725,6 @@ async def execute_script(
                 "working_dir": "",
             }
 
-    # 5. Validate working_dir
     if working_dir:
         wd = Path(working_dir)
         if not wd.is_dir():
@@ -2624,17 +2741,15 @@ async def execute_script(
     else:
         cwd = tempfile.gettempdir()
 
-    # 6. Clamp timeout
     timeout = max(1, min(timeout, 300))
 
-    # 7. Write code to temp file
     suffix = _SCRIPT_LANGUAGES[lang]
     fd, script_path = tempfile.mkstemp(suffix=suffix, prefix="mcp_script_")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(code.encode("utf-8"))
 
-        # 8. Audit log BEFORE execution
+        # Audit log BEFORE execution
         log_script_execution(
             language=lang,
             code=code,
@@ -2644,7 +2759,7 @@ async def execute_script(
         )
         script_start = time.monotonic()
 
-        # 9. Check rate limit BEFORE acquiring semaphore
+        # Check rate limit BEFORE acquiring semaphore
         try:
             await _rate_limiter.acquire()
         except ValueError as e:
@@ -2659,7 +2774,7 @@ async def execute_script(
             }
 
         async with _rate_limiter._semaphore:
-            # 10. Execute
+            # Execute
             try:
                 process = await asyncio.create_subprocess_exec(
                     interpreter,
@@ -2669,6 +2784,7 @@ async def execute_script(
                     stderr=asyncio.subprocess.PIPE,
                     cwd=cwd,
                     start_new_session=True,
+                    env=_child_env(),
                 )
 
                 try:
@@ -2748,7 +2864,7 @@ async def execute_script(
                     "working_dir": cwd,
                 }
     finally:
-        # 13. Cleanup temp file
+        # Cleanup temp file
         try:
             os.unlink(script_path)
         except OSError:
@@ -2809,7 +2925,8 @@ async def execute_tool_remote(
         binary = validate_tool_for_remote_execution(tool_name, tools_db)
         arg_list = sanitize_args(args)
         await asyncio.to_thread(check_policy, tool_name, arg_list, binary)
-        ssh_args = remote_config.get_ssh_base_args(host)
+        # Target validation may block on DNS.
+        ssh_args = await asyncio.to_thread(remote_config.get_ssh_base_args, host)
     except ValueError as e:
         log_blocked(tool_name=tool_name, args=args, reason=str(e), host=host, remote=True)
         return {
@@ -2840,7 +2957,6 @@ async def execute_tool_remote(
     async with _rate_limiter._semaphore:
         result = await execute_remote_command(ssh_args, command, timeout=timeout, max_output=max_output)
 
-    # Sanitize output to strip prompt-injection patterns
     result["stdout"] = sanitize_output(result.get("stdout", ""))
     result["stderr"] = sanitize_output(result.get("stderr", ""))
 

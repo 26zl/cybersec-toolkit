@@ -79,10 +79,8 @@ install_module_misc() {
         install_apt_batch "Heavy tools" "${MISC_HEAVY_PACKAGES[@]}"
     fi
 
-    # Python tools
     install_pipx_batch "Misc - Python" "${MISC_PIPX[@]}"
 
-    # Go tools
     install_go_batch "Misc - Go" "${MISC_GO[@]}"
 
     # Git repos (resources, post-exploitation, CTF)

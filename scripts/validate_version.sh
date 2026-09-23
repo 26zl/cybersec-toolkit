@@ -7,6 +7,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
 v_file="$(tr -d '[:space:]' < VERSION)"
 v_py="$(grep -m1 '^version' mcp_server/pyproject.toml | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
 v_cff="$(grep -m1 '^version:' CITATION.cff | sed -E 's/^version:[[:space:]]*"([^"]+)".*/\1/')"
+v_readme="$(grep -m1 -oE -- '--branch v[0-9]+\.[0-9]+\.[0-9]+' README.md | sed 's/^--branch v//')"
 
 if ! json_versions="$(
     python3 - <<'PY'
@@ -49,8 +50,8 @@ IFS=$'\t' read -r v_plugin v_marketplace v_server v_server_tag <<< "$json_versio
 
 if ! [[ "$v_file" == "$v_py" && "$v_file" == "$v_cff" && "$v_file" == "$v_plugin" \
      && "$v_file" == "$v_marketplace" && "$v_file" == "$v_server" \
-     && "$v_file" == "$v_server_tag" ]]; then
-    echo "::error::Release version mismatch: VERSION=$v_file pyproject=$v_py CITATION=$v_cff plugin=$v_plugin marketplace=$v_marketplace server.json=$v_server image-tag=$v_server_tag" >&2
+     && "$v_file" == "$v_server_tag" && "$v_file" == "$v_readme" ]]; then
+    echo "::error::Release version mismatch: VERSION=$v_file pyproject=$v_py CITATION=$v_cff plugin=$v_plugin marketplace=$v_marketplace server.json=$v_server image-tag=$v_server_tag README=$v_readme" >&2
     exit 1
 fi
-echo "version OK: $v_file (VERSION, pyproject, CITATION, plugin, marketplace, server.json + image tag)"
+echo "version OK: $v_file (VERSION, pyproject, CITATION, plugin, marketplace, server.json + image tag, README)"

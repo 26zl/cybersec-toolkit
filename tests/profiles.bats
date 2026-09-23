@@ -51,8 +51,6 @@ setup() {
     done
 }
 
-# Module name validation
-
 @test "all module names in profiles are valid" {
     for conf in "$PROFILES_DIR"/*.conf; do
         local modules_line
@@ -72,8 +70,6 @@ setup() {
         done
     done
 }
-
-# full.conf includes all 18 modules
 
 @test "full.conf includes all 18 modules" {
     local modules_line
@@ -107,12 +103,11 @@ setup() {
     local modules_value
     modules_value=$(echo "$modules_line" | sed 's/^MODULES="//' | sed 's/"$//')
 
-    # Count modules
     local count=0
     for _ in $modules_value; do
         count=$((count + 1))
     done
-    # lightweight should have fewer modules than full (17)
+    # lightweight should have fewer modules than full
     [[ "$count" -lt 17 ]]
 }
 

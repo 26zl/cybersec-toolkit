@@ -5,11 +5,8 @@
 # Locate project root (one level up from tests/)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Load bats helpers
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
-
-# Mock /etc/os-release for distro detection
 
 # Create a temporary os-release that simulates a given distro.
 # Usage: mock_os_release debian "Debian GNU/Linux 12" 12
@@ -28,8 +25,6 @@ VERSION_ID="$version"
 ID_LIKE="$id_like"
 EOF
 }
-
-# Source project libraries with mocked distro
 
 # Source common.sh (and optionally installers.sh) with distro overrides.
 # Patches /etc/os-release by temporarily redefining detect_distro.
@@ -82,8 +77,6 @@ source_libs() {
     fi
 }
 
-# Cleanup
-
 # Automatically clean up temp files after each test
 teardown() {
     if [[ -n "${MOCK_OS_RELEASE:-}" && -f "${MOCK_OS_RELEASE:-}" ]]; then
@@ -94,7 +87,6 @@ teardown() {
     fi
 }
 
-# Create a temporary directory for test artifacts
 make_test_tmpdir() {
     TEST_TMPDIR="$(mktemp -d)"
     export TEST_TMPDIR

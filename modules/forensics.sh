@@ -36,6 +36,5 @@ install_module_forensics() {
     install_pipx_batch "Forensics - Python" "${FORENSICS_PIPX[@]}"
     install_git_batch "Forensics - Git" "${FORENSICS_GIT[@]}"
 
-    # Binary releases
     install_binary_releases "${BINARY_RELEASES_FORENSICS[@]}"
 }

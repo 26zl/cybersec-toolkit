@@ -3,27 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
+import os
+import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from mcp_server.remote import RemoteHostConfig
-from mcp_server.tools_db import ToolsDatabase
+# Set before any mcp_server import: the audit log is agent-guard's clearance source,
+# and importing the server writes to it.
+_TEST_STATE_DIR = tempfile.mkdtemp(prefix="cybersec-mcp-tests-")
+atexit.register(shutil.rmtree, _TEST_STATE_DIR, True)
+os.environ["CYBERSEC_MCP_AUDIT_LOG"] = os.path.join(_TEST_STATE_DIR, "audit.log")
+os.environ["CYBERSEC_MCP_REMOTE_HOSTS"] = os.path.join(_TEST_STATE_DIR, "remote_hosts.json")
+
+from mcp_server.remote import RemoteHostConfig  # noqa: E402
+from mcp_server.tools_db import ToolsDatabase  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def _bounded_communicate_mock_bridge(monkeypatch):
-    """Route _bounded_communicate through process.communicate() for mock processes.
-
-    Existing tests mock asyncio.create_subprocess_exec to return an AsyncMock with
-    mock_proc.communicate.return_value = (stdout, stderr). The production path now
-    streams from process.stdout/stderr via _bounded_communicate(), which those mocks
-    don't provide. Rather than rewrite every test, this fixture transparently falls
-    back to the mock's .communicate() when the process isn't a real StreamReader —
-    so tests keep asserting on mock_proc.communicate while the bounded path still
-    runs unchanged for real subprocesses (see TestBoundedCommunicate).
+    """Route _bounded_communicate through mock_proc.communicate() when stdout is not a
+    real StreamReader; real subprocesses use the bounded path.
     """
     import mcp_server.security as mod
 

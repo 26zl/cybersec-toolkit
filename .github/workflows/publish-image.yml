@@ -18,7 +18,8 @@ permissions:
 
 concurrency:
   group: publish-image-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a release build midway (a main push must not abort a v* tag build).
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -41,13 +42,6 @@ jobs:
         id: ver
         run: echo "value=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set up Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
@@ -58,7 +52,6 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ steps.ver.outputs.value }},enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=sha,format=short
 
@@ -79,6 +72,14 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+
+      # Logged in only for the push: the build and the scanner never see the credential.
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push all tags to GHCR
         run: docker push --all-tags ghcr.io/${{ github.repository }}

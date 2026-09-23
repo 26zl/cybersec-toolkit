@@ -274,6 +274,7 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=_security._child_env(),
         )
 
         try:
@@ -339,7 +340,6 @@ async def execute_remote_command(
     remote_cmd_str = shlex.join(command)
     full_command = ["ssh"] + ssh_args + [remote_cmd_str]
 
-    # Clamp timeout
     timeout = max(1, min(timeout, 300))
 
     try:
@@ -348,6 +348,7 @@ async def execute_remote_command(
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=_security._child_env(),
         )
 
         try:

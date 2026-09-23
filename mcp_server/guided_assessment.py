@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from mcp_server.advisor_utils import TOOL_ALIASES
 from mcp_server.bounty_advisor import resolve_target_type, suggest_for_bounty
 from mcp_server.ctf_advisor import resolve_category, suggest_for_ctf
-from mcp_server.security import SYSTEM_UTILITIES
+from mcp_server.security import SYSTEM_UTILITIES, _address_is_safe
 from mcp_server.tools_db import C2_TOOLS, ToolsDatabase
 
 MODES = {"companion", "autonomous"}
@@ -233,7 +233,8 @@ def _target_is_external(host: str | None) -> bool:
         # DNS can resolve differently at check vs connect time. Treat hostnames as
         # external until the execution policy validates them at run time.
         return True
-    return not (ip.is_private or ip.is_loopback or ip.is_link_local)
+    # Same verdict as the execution policy, or the plan passes steps it will block.
+    return not _address_is_safe(ip)
 
 
 def _normalize_target(target: str, workflow: str, target_type: str | None) -> dict:
