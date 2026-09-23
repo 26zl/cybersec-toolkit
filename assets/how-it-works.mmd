@@ -3,6 +3,7 @@ flowchart TB
     clients["MCP / Agent Skills clients"]:::actor
     configs["Client configurations"]:::core
     launcher["scripts/mcp-launch.sh<br/>root-aware launcher"]:::core
+    sandbox["sandbox/mcp.mjs<br/>Sandcastle Kata provider · boots the VM (--local skips it)"]:::core
 
     clients --> configs --> launcher
 
@@ -20,7 +21,8 @@ flowchart TB
         governed --> remote
     end
 
-    launcher --> gateway
+    launcher --> sandbox
+    sandbox --> gateway
 
     subgraph INSTALLER["Tool installation"]
         direction TB
