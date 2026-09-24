@@ -38,12 +38,10 @@ __A security toolkit that AI agents can drive, under rules you set.__ One comman
 __1. Install the tools__ on a supported Linux distro or on Termux:
 
 ```bash
-git clone --depth 1 --branch v1.2.1 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
+git clone --depth 1 --branch v1.3.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
 ./install.sh --doctor             # read-only preflight: distro, prerequisites, MCP server, sandbox
 sudo ./install.sh --profile ctf   # one profile; with no flags, all 18 modules
 ```
-
-> v1.2.1 predates the Kata sandbox and runs the MCP server on the host. Clone `main` for the sandboxed launcher until the next release.
 
 __2. Connect an AI client.__ The tracked configs for Claude Code (`.mcp.json`), Codex, Gemini CLI, and OpenCode start the server through `scripts/mcp-launch.sh`, with external targets and script execution disabled. Choose where the tools run:
 
@@ -77,7 +75,7 @@ What runs, and what is gated:
 - __One gate for governed execution__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list and target-injection flags), target and network policy, rate limiting, output caps, and timeouts. The policy knows enough CLI grammar to tell a target from a header, wordlist, output path, or target-list flag. Tool output reaches the model without terminal escape sequences or LLM control markers, and lines addressed to an AI reader are flagged.
 - __Tools run in a disposable VM by default.__ The launcher boots a [Kata Containers](docs/SANDBOX.md) VM with its own kernel, no host filesystem beyond an optional `CYBERSEC_SANDBOX_WORKSPACE` mount, no Docker socket, a non-root user with every capability dropped, and memory, CPU, and process limits. It is destroyed when the client disconnects. Startup fails closed instead of falling back to the host; `--local` is the explicit opt-out.
 - __Know the limits.__ The VM is not a network boundary: it reaches whatever its Docker network reaches, and `CYBERSEC_MCP_ALLOW_EXTERNAL` is a preflight check on resolved addresses, not a firewall (set `CYBERSEC_SANDBOX_NETWORK=none` or use a filtered network). Inside the VM, and on your host in `--local` mode, allowed tools run with the server user's permissions, and some of them spawn child processes or load plugins.
-- __Audit trail without leaks.__ Actions are logged as JSON lines to an owner-only (`0600`), rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never stored, only their SHA256 and length, and credential-shaped strings are redacted from tool arguments. A sandboxed server mirrors its records to the same host log, and records are hash-chained, so an edited or deleted entry shows up in `make audit-verify`.
+- __Audit trail without leaks.__ Actions are logged as JSON lines to an owner-only (`0600`), rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never stored, only their SHA256 and length, and credential-shaped strings are redacted from tool arguments. A sandboxed server mirrors its records to the same host log, and records are hash-chained, so an edited or deleted record inside a chain shows up in `make audit-verify` ([limits](docs/SANDBOX.md#tamper-evidence)).
 - __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds and `pip`/`cargo`/`gem` installs; binary releases are SHA256-verified when checksums are published.
 - __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam` and `full` profiles set it); the MCP layer reflects this and never auto-runs them.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [supply chain model](#supply-chain-model), and the [disclaimer](#disclaimer).
@@ -96,7 +94,7 @@ A supported Linux distro (Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE
 __From the latest release__ (pinned; recommended):
 
 ```bash
-git clone --depth 1 --branch v1.2.1 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
+git clone --depth 1 --branch v1.3.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
 ```
 
 __From `main`__ (newest tools and fixes, including unreleased work):
@@ -139,7 +137,7 @@ sudo ./install.sh --list-sessions       # List install sessions and exit
 sudo ./install.sh --rollback <id|last>  # Roll back tools installed in a session
 sudo ./install.sh --version             # Show installer version and exit
 sudo ./install.sh --enable-docker       # Pull Docker images
-sudo ./install.sh --include-c2          # Include C2 frameworks (needs --enable-docker)
+sudo ./install.sh --include-c2          # Include C2/phishing frameworks (Empire also needs --enable-docker)
 sudo ./install.sh -j 8                  # 8 parallel install jobs (default: 4)
 sudo ./install.sh -v                    # Verbose / debug output
 ```
@@ -304,7 +302,7 @@ If `--enable-docker` is set and Docker is missing, the installer stops and asks 
 
 ### Distro support
 
-__Debian/Ubuntu/Kali is the primary target__: the full 670+ registry is available there, and it has the strongest test coverage. Fedora, Arch, and openSUSE auto-skip ~10-20 distro-specific packages and run in the integration workflow.
+__Debian/Ubuntu/Kali is the primary target__ and has the strongest test coverage: Kali and Parrot get the full apt set, while plain Debian/Ubuntu skip a handful of Kali-only packages. Fedora, Arch, and openSUSE skip the packages their repositories do not carry (the `-` entries in [`lib/distro_compat.tsv`](lib/distro_compat.tsv), several dozen per distro) and run in the integration workflow.
 
 | Platform | Status |
 | -------- | ------ |
