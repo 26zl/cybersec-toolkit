@@ -25,19 +25,19 @@ Expect an initial response within 7 days. Credit is given in the release notes u
 - Command injection, path traversal, or argument-sanitization bypass in the MCP server (`mcp_server/`)
 - VM-boundary bypass or host exposure in the execution sandbox (`sandbox/`, `scripts/mcp-launch.sh`)
 - Supply-chain weaknesses in project bootstrap/runtime or installer logic: unverified downloads, checksum bypasses, dependency update weaknesses, or fetching the wrong upstream artifact through our scripts
-- Secrets leakage in version-controlled files (`.versions`, audit logs, config samples)
+- Secrets leakage in tracked files, config samples, or local state the toolkit writes (`.versions`, audit logs)
 - CI/CD pipeline weaknesses: unpinned actions, missing egress controls, unauthenticated artifact uploads
 
 **Out of scope:**
 
 - Vulnerabilities in the third-party tools this project installs — report those to the respective upstream projects
 - Issues that require a malicious user to already have `sudo` / root on the target machine
-- Known limitations documented in the README's "Known Limitations" and "Supply Chain Model" sections (e.g., `--fast` skipping checksums by design — this is documented behavior, not a vulnerability)
+- Known limitations documented in the README's "Trust & safety" and "Supply chain model" sections (e.g., `--fast` skipping checksums by design — this is documented behavior, not a vulnerability)
 - Attacks against authorized targets (this is a tool for offensive security — misuse by an operator against unauthorized targets is a policy issue, not a vulnerability)
 
 ## Supported versions
 
-Only the latest `main` branch is supported. This project does not maintain backports.
+The latest release and the `main` branch are supported. This project does not maintain backports.
 
 ## Supply-chain hardening (existing protections)
 

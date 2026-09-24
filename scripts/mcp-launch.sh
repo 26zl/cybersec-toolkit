@@ -18,8 +18,8 @@
 # Environment:
 #   CYBERSEC_SANDBOX_MODE        (default: kata) — kata | local
 #   CYBERSEC_MCP_ALLOW_EXTERNAL  (default: 0)    — allow external network targets
-#   CYBERSEC_MCP_ALLOW_SCRIPTS   (default: 0)    — enable unsandboxed script execution
-#   CYBERSEC_INSTALLER_ROOT      (optional)      — override repo root for tools_config.json
+#   CYBERSEC_MCP_ALLOW_SCRIPTS   (default: 0)    — enable run_script (outside the policy layer)
+#   CYBERSEC_INSTALLER_ROOT      (optional)      — override repo root for tools_config.json (--local only)
 #
 # See docs/SANDBOX.md for host prerequisites and sandbox configuration.
 #

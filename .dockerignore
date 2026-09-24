@@ -28,7 +28,14 @@ writeups/
 manual_scripts/
 .agents/
 **/remote_hosts.json
-*.corrupt.*
+**/*.corrupt.*
+**/*.bak
+**/*.backup
+**/*.enc
+**/*.tar.gz
+**/docker-*.tar
+**/.mcp.local.json
+**/audit.log*
 .DS_Store
 **/node_modules/
 .sandcastle/

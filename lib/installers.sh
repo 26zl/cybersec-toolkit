@@ -1,6 +1,6 @@
 #!/bin/bash
 # shellcheck disable=SC2034  # Arrays are consumed by modules and scripts that source this file
-# installers.sh — Install method helpers for cybersec-tools-installer
+# installers.sh — Install method helpers for cybersec-toolkit
 # Provides batch install functions for: apt, pipx, go, cargo, gem, git, binary, docker
 # Source AFTER common.sh
 
@@ -445,6 +445,15 @@ install_ctf_venv() {
     return 0
 }
 
+# _install_staged_bin — copy a builder-built binary into a root-owned bin dir as a
+# fresh root-owned 0755 file; mv would keep builder ownership, letting a user-level
+# process swap a binary root runs later. A symlink is refused, not followed.
+_install_staged_bin() {
+    local src="$1" dest="$2"
+    [[ -f "$src" && ! -L "$src" ]] || return 1
+    install -m 0755 -- "$src" "$dest" && rm -f -- "$src"
+}
+
 install_go_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
@@ -511,7 +520,7 @@ install_go_batch() {
                 _report_tool_start "Go" "$name"
                 # Mark ok only if go install succeeded and (when staged) the binary moved into GOBIN.
                 if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(_builder_cmd go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
-                    && { [[ -z "$_gobin_stage" ]] || { [[ -f "$_gobin_stage/$name" ]] && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"; }; }; then
+                    && { [[ -z "$_gobin_stage" ]] || _install_staged_bin "$_gobin_stage/$name" "$GOBIN/$name"; }; then
                     printf 'ok\nlatest\n' > "$_results_dir/$name"
                     _report_tool_done "Go" "$name" "ok"
                 else
@@ -545,7 +554,7 @@ install_go_batch() {
             _go_gobin_escaped="$(_escape_single_quoted "$_effective_gobin")"
             _go_tool_escaped="$(_escape_single_quoted "$tool")"
             if _as_builder "GOPATH='$_go_gopath_escaped' GOBIN='$_go_gobin_escaped' $(_builder_cmd go) install $_go_tool_escaped" >> "$LOG_FILE" 2>&1 \
-                && { [[ -z "$_gobin_stage" ]] || { [[ -f "$_gobin_stage/$name" ]] && mv "$_gobin_stage/$name" "$GOBIN/$name" && chmod +x "$GOBIN/$name"; }; }; then
+                && { [[ -z "$_gobin_stage" ]] || _install_staged_bin "$_gobin_stage/$name" "$GOBIN/$name"; }; then
                 track_version "$name" "go" "latest"
                 _report_tool_done "Go" "$name" "ok"
             else
@@ -603,9 +612,7 @@ install_cargo_batch() {
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + total))
         return 1
     fi
-    local _cbdir
-    _cbdir="$(_builder_home)/.cargo/bin"
-    export PATH="$_cbdir:$PATH"
+    _path_append "$(_builder_home)/.cargo/bin"
 
     # Try to set up cargo-binstall for faster pre-compiled downloads.
     # cargo-binstall fetches prebuilt binaries (and its QuickInstall fallback) with
@@ -1990,10 +1997,9 @@ ALL_DOCKER_IMAGES=(
 # install_npm_batch — install global npm packages (label + package names).
 # Node/npm is bootstrapped on demand via ensure_node (lib/shared.sh). Skipped
 # under --skip-source and on any host without a working Node toolchain.
-# Installs are unpinned by design (same trust model as go/pipx/cargo/gem): npm
-# verifies each tarball against the registry integrity hash over TLS. OpenSSF
-# Scorecard flags every `npm install` that is not `npm ci` or a git+commit URL,
-# neither of which applies to global CLI installs.
+# Installs are unpinned by design (same trust model as go/pipx/cargo/gem); npm
+# verifies each tarball against the registry integrity hash, and lockfile pinning
+# does not apply to global CLI installs.
 install_npm_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
@@ -2279,22 +2285,19 @@ install_metasploit() {
                 return 1
             fi
             # Verify GPG key fingerprint before trusting
-            # Try --show-keys (GnuPG >= 2.2.8), fall back to --with-fingerprint
-            local _fp=""
+            # Try --show-keys (GnuPG >= 2.2.8), fall back to show-only import (>= 2.1.14)
+            local _fp="" _keys=""
             local _gpg_tmp; _gpg_tmp=$(mktemp -d); _register_cleanup "$_gpg_tmp"
-            _fp=$(gpg --homedir "$_gpg_tmp" --with-colons --show-keys "$_tmp_key" 2>/dev/null \
-                | awk -F: '/^fpr:/{print $10; exit}') || true
-            if [[ -z "$_fp" ]]; then
-                _fp=$(gpg --homedir "$_gpg_tmp" --with-colons --import-options show-only --import "$_tmp_key" 2>/dev/null \
-                    | awk -F: '/^fpr:/{print $10; exit}') || true
-            fi
-            if [[ -z "$_fp" ]]; then
-                _fp=$(gpg --homedir "$_gpg_tmp" --with-fingerprint "$_tmp_key" 2>/dev/null \
-                    | grep -oE '[A-F0-9 ]{40,}' | tr -d ' ' | head -1) || true
-            fi
+            _keys=$(gpg --homedir "$_gpg_tmp" --with-colons --show-keys "$_tmp_key" 2>/dev/null) \
+                || _keys=$(gpg --homedir "$_gpg_tmp" --with-colons --import-options show-only --import "$_tmp_key" 2>/dev/null) \
+                || true
             rm -rf "$_gpg_tmp"
+            # signed-by= trusts every key in the keyring, so the file must hold only the pinned key.
+            if [[ "$(grep -c '^pub:' <<< "$_keys")" == "1" ]]; then
+                _fp=$(awk -F: '/^fpr:/{print $10; exit}' <<< "$_keys")
+            fi
             if [[ -z "$_fp" ]]; then
-                log_error "Could not extract Metasploit GPG key fingerprint — skipping repo setup"
+                log_error "Could not extract a single Metasploit GPG key fingerprint — skipping repo setup"
                 rm -f "$_tmp_key"
                 return 1
             fi

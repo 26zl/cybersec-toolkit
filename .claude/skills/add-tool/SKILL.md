@@ -59,7 +59,7 @@ Append an entry:
 ```json
 {
   "name": "tool-name",
-  "method": "apt|pipx|go|cargo|gem|binary|docker|git|build",
+  "method": "apt|pipx|go|cargo|gem|git|binary|source|docker|npm|snap|special",
   "module": "module-name",
   "url": "https://upstream/url"
 }

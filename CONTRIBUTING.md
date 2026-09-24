@@ -49,13 +49,13 @@ cd mcp_server && uv sync --group dev
 2. Add a matching entry to `tools_config.json`:
 
    ```json
-   {"name": "toolname", "method": "apt|pipx|go|cargo|gem|git|binary|docker", "module": "web", "url": "https://github.com/owner/repo"}
+   {"name": "toolname", "method": "apt|pipx|go|cargo|gem|git|binary|source|docker|npm|snap|special", "module": "web", "url": "https://github.com/owner/repo"}
    ```
 
 3. Validate locally (all three must be clean):
 
    ```bash
-   python3 scripts/validate_tools_config.py        # 0 errors, 0 warnings
+   python3 scripts/validate_tools_config.py --strict   # 0 errors, 0 warnings
    python3 scripts/validate_mcp_sync.py            # if you touched Docker/pipx data shared with MCP
    python3 scripts/validate_distro_compat.py       # if you touched distro_compat.tsv
    ```
@@ -79,7 +79,7 @@ for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done
 ./tests/bats/bin/bats tests/*.bats
 
 # Python validators (gate CI)
-python3 scripts/validate_tools_config.py
+python3 scripts/validate_tools_config.py --strict
 python3 scripts/validate_mcp_sync.py
 python3 scripts/validate_distro_compat.py
 python3 scripts/validate_claude_skills.py

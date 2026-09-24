@@ -301,11 +301,16 @@ A server started without the key — by an older launcher, or by an agent inside
 the VM through `sandbox/guest-mcp.json` — warns and does not mirror; its records
 stay in the in-VM log.
 
+The reverse skew, an image built before records were tagged, mirrors untagged
+lines: every record is rejected and the host log stays empty while the session
+keeps running, even with `CYBERSEC_MCP_AUDIT_REQUIRED=1`. Rebuild the image with
+`make sandbox-image` whenever the checkout moves.
+
 ### Tamper evidence
 
 Every record carries `chain` (one id per server process), `seq`, and `prev` —
 the SHA256 of the previous record in that chain. Editing or dropping a record
-breaks every link after it:
+inside a chain breaks every link after it:
 
 ```bash
 make audit-verify                                   # default host log
@@ -313,9 +318,10 @@ python3 scripts/verify_audit_chain.py path/to.log   # or a specific one
 ```
 
 The chain survives the trip out of the VM because the host appends the guest's
-lines verbatim; the tag is checked on the way in and not stored. Two limits are
+lines verbatim; the tag is checked on the way in and not stored. Three limits are
 inherent and worth stating: records written before this existed are reported as
-unchained rather than flagged, and because the chain is unkeyed, someone who can
+unchained rather than flagged, dropping a chain's last records or a whole chain
+leaves no link to break, and because the chain is unkeyed, someone who can
 read and write the host log can still append a well-formed record. The session
 key keeps forged records from arriving through the VM; the chain detects
 modification and deletion, not forgery by someone with access to the file.
@@ -376,6 +382,7 @@ package as the convenience path, and this document as the isolated one.
 | `failed to connect to the docker API` | The daemon is not running, or the user is not in the `docker` group. |
 | `Kata sandbox requires Node.js 22+` | Install Node.js 22 or newer. |
 | `Install sandbox dependencies` | Run `npm --prefix sandbox ci --ignore-scripts`. |
+| `Rejected unauthenticated audit record` on every record | The sandbox image predates the launcher. Run `make sandbox-image`. |
 
 Report host readiness at any time with:
 

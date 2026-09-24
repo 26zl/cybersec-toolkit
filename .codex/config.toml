@@ -1,4 +1,4 @@
-# Codex MCP configuration for cybersec-tools-installer.
+# Codex MCP configuration for cybersec-toolkit.
 #
 # Codex's primary config is ~/.codex/config.toml. If Codex does not pick up this
 # project-level file, copy the [mcp_servers.cybersec-tools] block into your home

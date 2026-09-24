@@ -190,11 +190,13 @@ if [[ "$SKIP_GO" == "false" ]]; then
                         log_debug "Already latest: $tool_name"
                         GO_LATEST=$((GO_LATEST + 1))
                         rm -f "$_gobin_stage/$tool_name"
-                    else
-                        mv "$_gobin_stage/$tool_name" "$GOBIN/$tool_name" && chmod +x "$GOBIN/$tool_name"
+                    elif _install_staged_bin "$_gobin_stage/$tool_name" "$GOBIN/$tool_name"; then
                         log_success "Updated: $tool_name"
                         GO_UPDATED=$((GO_UPDATED + 1))
                         _track_update "$tool_name" "go" "latest"
+                    else
+                        log_warn "Failed: $tool_name (could not install the rebuilt binary)"
+                        GO_FAILED=$((GO_FAILED + 1))
                     fi
                 else
                     # No staging (Termux or direct GOBIN) — compare installed binary
@@ -229,10 +231,10 @@ echo ""
 if [[ "$SKIP_GIT" == "false" ]]; then
     log_info "Updating GitHub repositories in $GITHUB_TOOL_DIR..."
     if [[ -d "$GITHUB_TOOL_DIR" ]]; then
-        # Only repos this toolkit clones are touched: a hard reset on an unrelated
-        # repo under $GITHUB_TOOL_DIR would drop the owner's unpushed commits.
-        # Build-from-source trees are left to step 10, which has to see the new
-        # commits itself to know that a rebuild is due.
+        # Only repos with a toolkit registry name or git row are touched, and the reset
+        # fallback refuses a repo holding local commits. Build-from-source trees are
+        # left to step 10, which has to see the new commits itself to know that a
+        # rebuild is due.
         declare -A _TOOLKIT_GIT_NAMES=() _BUILD_TREE_NAMES=()
         _upd_git_names=(); _collect_module_arrays "GIT_NAMES" _upd_git_names
         _collect_module_arrays "C2_GIT_NAMES" _upd_git_names
@@ -374,7 +376,7 @@ echo ""
 if [[ "$SKIP_CARGO" == "false" ]]; then
     if command_exists cargo; then
         _cargo_bin_dir="$(_builder_home)/.cargo/bin"
-        export PATH="$_cargo_bin_dir:$HOME/.cargo/bin:$PATH"
+        _path_append "$HOME/.cargo/bin" "$_cargo_bin_dir"
         ALL_CARGO=()
         _collect_module_arrays "CARGO" ALL_CARGO
 
@@ -680,9 +682,10 @@ for _bmod in "${ALL_MODULES[@]}"; do
     for _bname in "${_bnames[@]}"; do
         _bdir="$GITHUB_TOOL_DIR/$_bname"
         [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1)); continue; }
-        # Same rule as step 4: a tree that predates the toolkit is the user's.
-        if _is_preexisting "$_bname"; then
-            log_debug "Skipping build $_bname (present before install)"
+        # A tree that predates the toolkit, or that it never recorded, is the user's:
+        # the reset below discards uncommitted edits.
+        if ! _version_known "$_bname" || _is_preexisting "$_bname"; then
+            log_debug "Skipping build $_bname (not installed by the toolkit)"
             BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1))
             continue
         fi

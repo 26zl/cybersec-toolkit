@@ -39,7 +39,8 @@ install_module_blockchain() {
     # Foundry (forge, cast, anvil, chisel) — installed via foundryup
     if [[ "${SKIP_SOURCE:-false}" == "true" ]]; then
         log_warn "Skipping Foundry (--skip-source)"
-    elif command_exists foundryup; then
+    elif command_exists foundryup || [[ -x "$(_builder_home)/.foundry/bin/foundryup" ]]; then
+        # foundryup installs into the invoking user's home, which is not on root's PATH.
         log_success "Foundry already installed"
         _track_already_present "foundry" "special"
     else

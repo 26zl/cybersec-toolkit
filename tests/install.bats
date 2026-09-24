@@ -205,7 +205,7 @@ EOF
         bash "$copy/install.sh" --rollback 20260101_000000_1 --yes < /dev/null
     assert_failure
     assert_output --partial "Still installed after removal attempt: stuck"
-    ! grep -q '^alpha|' "$copy/.versions"
+    ! grep -q '^alpha|' "$copy/.versions" || false
     grep -q '^stuck|' "$copy/.versions"
     [ -f "$copy/.install_sessions/20260101_000000_1.manifest" ]
 }

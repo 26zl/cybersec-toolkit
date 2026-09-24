@@ -46,7 +46,7 @@ Output:
 
 ### Added a new profile
 
-`profiles/myprof.conf` → set `PROFILE_DESC` and `MODULES` →
+`profiles/myprof.conf` → set the first-line `# Profile:` header and `MODULES` →
 `mcp_server/profiles.py` → add to `PROFILES` dict with same modules list.
 
 ## When you've edited Python → mirror to bash

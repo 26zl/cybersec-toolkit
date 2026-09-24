@@ -75,6 +75,7 @@ docker-*.tar
 # MCP
 .mcp.local.json
 remote_hosts.json
+remote_hosts.json.corrupt.*
 audit.log
 audit.log.*
 

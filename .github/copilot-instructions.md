@@ -16,7 +16,7 @@ repository. For full project guidance, see [`AGENTS.md`](../AGENTS.md).
 ## Validation commands
 
 ```bash
-make check          # everything CI runs
+make check          # core local checks (CI also runs security, CodeQL, integration)
 make lint           # shellcheck + ruff + markdownlint
 make test           # bats + pytest
 make validate       # all data-consistency validators
@@ -27,7 +27,7 @@ make validate       # all data-consistency validators
 - `tools_config.json` is the single tool-registry source of truth.
 - `.claude/skills/` is the single skill source of truth.
 - `.agents/skills/` is a generated mirror — never edit it directly.
-- `AGENTS.md` and `CLAUDE.md` must stay synchronized.
+- `AGENTS.md` owns shared rules; `CLAUDE.md` and `GEMINI.md` import it instead of copying.
 - MCP hardcoded data must match bash sources (validated by `validate_mcp_sync.py`).
 
 ## Safe editing practices

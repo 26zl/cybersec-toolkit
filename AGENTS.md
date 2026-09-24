@@ -89,10 +89,10 @@ falling back to the host.
 
 Audit records leave the VM over stderr and are appended to the host log, which
 is both the operator's durable trail and the clearance source
-`scripts/agent-guard.sh` reads; records are hash-chained so tampering is
-detectable (`make audit-verify`). Only records tagged with the launch's
-per-session HMAC key, which only the server process receives, are appended, so
-nothing else in the VM can add one.
+`scripts/agent-guard.sh` reads; records are hash-chained so editing or deleting
+a record inside a chain is detectable (`make audit-verify`). Only records tagged
+with the launch's per-session HMAC key, which only the server process receives,
+are appended, so nothing else in the VM can add one.
 
 The boundary covers execution, not authorization or network scope: the
 `CYBERSEC_MCP_ALLOW_EXTERNAL` preflight and the operator's engagement scope

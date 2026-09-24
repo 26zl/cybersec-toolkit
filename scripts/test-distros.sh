@@ -104,15 +104,16 @@ declare -A IMAGE=(
     [arch]="docker.io/library/archlinux:latest"
     [opensuse]="registry.opensuse.org/opensuse/tumbleweed:latest"
 )
-# Prereqs cover everything the checks need — notably openssl (backup encryption)
-# and the bats/tar/awk tooling — so a missing tool never masquerades as a failure.
+# Prereqs cover everything the checks need — notably openssl (backup encryption),
+# make (build-tree tests) and the bats/tar/awk tooling — so a missing tool never
+# masquerades as a failure.
 declare -A PREREQ=(
     [ubuntu]='apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq --no-install-recommends \
-        git curl wget sudo ca-certificates python3 openssl tar gzip >/dev/null 2>&1'
-    [fedora]='dnf install -y -q git curl wget sudo which python3 openssl tar gzip findutils gawk >/dev/null 2>&1'
-    [arch]='pacman -Sy --noconfirm --needed git curl wget sudo which python openssl tar gzip >/dev/null 2>&1'
+        git curl wget sudo ca-certificates python3 openssl tar gzip make >/dev/null 2>&1'
+    [fedora]='dnf install -y -q git curl wget sudo which python3 openssl tar gzip findutils gawk make >/dev/null 2>&1'
+    [arch]='pacman -Sy --noconfirm --needed git curl wget sudo which python openssl tar gzip make >/dev/null 2>&1'
     [opensuse]='zypper --non-interactive --gpg-auto-import-keys refresh >/dev/null 2>&1
-        zypper --non-interactive install -y git curl wget sudo which python3 openssl tar gzip gawk findutils >/dev/null 2>&1'
+        zypper --non-interactive install -y git curl wget sudo which python3 openssl tar gzip gawk findutils make >/dev/null 2>&1'
 )
 
 # Build the staging tree once: repo working tree (minus .git and the host's

@@ -107,7 +107,7 @@ def sanitize_output(text: str) -> str:
     - XML-like role injection tags are stripped.
     - Lines starting with known injection prefixes are prefixed with ``[SANITIZED] ``.
     - Lines instructing an AI reader are prefixed with ``[SANITIZED] ``.
-    - All genuine tool output is preserved.
+    - Other output is kept, NFKC-normalized (compatibility characters fold to plain forms).
     """
     if not text:
         return text

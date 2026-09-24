@@ -208,7 +208,7 @@ wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools
 | Analyze files | Yes (MCP + direct read) | Yes (via MCP — user provides path or Claude uses `ls` to find files) |
 | Edit project code | Yes | No |
 
-**IMPORTANT: Claude Desktop HAS filesystem access via MCP tools.** It should NEVER ask users to "upload" or "attach" files. The MCP server runs locally in WSL and can access both WSL files and Windows files (at `/mnt/c/...`).
+**Claude Desktop reaches files through the MCP tools**, so files never need to be uploaded or attached: the server runs locally in WSL and reads both WSL paths and Windows paths under `/mnt/c/...`.
 
 **Working with files in Claude Desktop (CTF/bug bounty workflow):**
 

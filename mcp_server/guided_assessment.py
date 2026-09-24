@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from mcp_server.advisor_utils import TOOL_ALIASES
 from mcp_server.bounty_advisor import resolve_target_type, suggest_for_bounty
 from mcp_server.ctf_advisor import resolve_category, suggest_for_ctf
-from mcp_server.security import SYSTEM_UTILITIES, _address_is_safe
+from mcp_server.security import SYSTEM_UTILITIES, _address_is_safe, _network_target_host
 from mcp_server.tools_db import C2_TOOLS, ToolsDatabase
 
 MODES = {"companion", "autonomous"}
@@ -193,8 +193,9 @@ def _quote(value: str) -> str:
 
 
 def _target_kind(target: str, workflow: str, target_type: str | None) -> str:
+    # Require an authority: a bare IPv6 literal (fd00::1) or host:port also parses with a scheme.
     parsed = urlparse(target)
-    if parsed.scheme:
+    if parsed.scheme and parsed.netloc:
         return "url"
     # Treat as a local file only with an explicit path sigil/separator, so a bare token
     # like "internal-host" isn't misclassified (bypassing network recon and lowering the
@@ -217,7 +218,8 @@ def _host_from_target(target: str, kind: str) -> str | None:
     if kind == "url":
         return urlparse(target).hostname
     if kind == "host":
-        return target.strip("[]")
+        # Same extraction as the execution policy, so [v6]:port and host:port agree with it.
+        return _network_target_host(target)
     return None
 
 
@@ -241,6 +243,8 @@ def _normalize_target(target: str, workflow: str, target_type: str | None) -> di
     clean = target.strip()
     if not clean:
         raise ValueError("target is required")
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in clean):
+        raise ValueError("target contains control characters; pass a bare URL, host, IP, or file path")
 
     kind = _target_kind(clean, workflow, target_type)
     # URLs may contain '&'/';' in query strings; only genuine shell metacharacters

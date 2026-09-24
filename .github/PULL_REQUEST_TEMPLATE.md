@@ -12,7 +12,7 @@ What changed and why?
 
 ## Validation
 
-- [ ] `python3 scripts/validate_tools_config.py`
+- [ ] `python3 scripts/validate_tools_config.py --strict`
 - [ ] `python3 scripts/validate_mcp_sync.py` if MCP-shared data changed
 - [ ] `python3 scripts/validate_distro_compat.py` if distro mappings changed
 - [ ] `bash scripts/validate_profiles.sh` if profiles changed

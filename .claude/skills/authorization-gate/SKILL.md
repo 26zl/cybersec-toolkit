@@ -5,7 +5,7 @@ description: Use as the pre-flight authorization check before any offensive, int
 
 # Authorization gate — clear before you act
 
-This is the shared pre-flight every offensive or intrusive skill runs first. It does not replace the project's global policy in `CLAUDE.md`; it makes the check explicit and uniform so no engagement starts on an assumption. If the gate doesn't pass, the offensive work does not start.
+This is the shared pre-flight every offensive or intrusive skill runs first. It does not replace the project's global policy in `AGENTS.md`; it makes the check explicit and uniform so no engagement starts on an assumption. If the gate doesn't pass, the offensive work does not start.
 
 ## The gate (all must be true)
 

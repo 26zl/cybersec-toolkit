@@ -397,7 +397,7 @@ setup() {
     _SPINNER_PID=$!
     local pid=$_SPINNER_PID
     _global_cleanup
-    ! kill -0 "$pid" 2>/dev/null
+    ! kill -0 "$pid" 2>/dev/null || false
     [[ -z "$_SPINNER_PID" ]]
 }
 
@@ -576,4 +576,37 @@ _bc_setup() {
     _bc_setup
     _builder_cmd gem >/dev/null
     [[ "${_BUILDER_CMD_CACHE[gem]}" == "gem" ]]
+}
+
+@test "_git_safe_reset_to_remote keeps local commits but follows a replaced upstream" {
+    make_test_tmpdir
+    local log="$TEST_TMPDIR/git.log"
+    _bare_repo_with_commit() {
+        git init -q --bare -b main "$1"
+        git clone -q "$1" "$1.work" 2>/dev/null
+        git -C "$1.work" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "$2"
+        git -C "$1.work" push -q origin main
+    }
+    _bare_repo_with_commit "$TEST_TMPDIR/up.git" base
+    _bare_repo_with_commit "$TEST_TMPDIR/replaced.git" replaced
+
+    # A user commit that no remote has must survive.
+    git clone -q "$TEST_TMPDIR/up.git" "$TEST_TMPDIR/mine"
+    git -C "$TEST_TMPDIR/mine" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m mine
+    run _git_safe_reset_to_remote "$TEST_TMPDIR/mine" "$log"
+    assert_failure
+    [[ "$(git -C "$TEST_TMPDIR/mine" log -1 --format=%s)" == "mine" ]]
+
+    # Upstream history replaced: the clone only holds old upstream commits, so it follows.
+    git clone -q "$TEST_TMPDIR/up.git" "$TEST_TMPDIR/theirs"
+    git -C "$TEST_TMPDIR/theirs" remote set-url origin "$TEST_TMPDIR/replaced.git"
+    _git_safe_reset_to_remote "$TEST_TMPDIR/theirs" "$log"
+    [[ "$(git -C "$TEST_TMPDIR/theirs" log -1 --format=%s)" == "replaced" ]]
+}
+
+@test "_path_append appends each directory once and never reorders PATH" {
+    # A builder-owned dir ahead of /usr/bin would let it shadow sha256sum/tar for root.
+    PATH="/usr/bin:/home/u/.local/bin"
+    _path_append /home/u/.cargo/bin /home/u/.local/bin /home/u/.cargo/bin
+    [[ "$PATH" == "/usr/bin:/home/u/.local/bin:/home/u/.cargo/bin" ]]
 }

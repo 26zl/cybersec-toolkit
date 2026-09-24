@@ -5,6 +5,23 @@ setup() {
     load 'test_helper'
 }
 
+@test "_install_staged_bin installs a fresh 0755 file and refuses a symlink" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    mkdir -p "$TEST_TMPDIR/stage" "$TEST_TMPDIR/bin"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/stage/tool"
+    chmod 0600 "$TEST_TMPDIR/stage/tool"
+    _install_staged_bin "$TEST_TMPDIR/stage/tool" "$TEST_TMPDIR/bin/tool"
+    [[ "$(stat -c %a "$TEST_TMPDIR/bin/tool")" == "755" ]]
+    [[ ! -e "$TEST_TMPDIR/stage/tool" ]]
+
+    printf 'secret\n' > "$TEST_TMPDIR/private"
+    ln -s "$TEST_TMPDIR/private" "$TEST_TMPDIR/stage/link"
+    run _install_staged_bin "$TEST_TMPDIR/stage/link" "$TEST_TMPDIR/bin/link"
+    assert_failure
+    [[ ! -e "$TEST_TMPDIR/bin/link" ]]
+}
+
 # release archive validation
 
 @test "release archive validator accepts regular tar contents" {
@@ -1014,7 +1031,7 @@ _run_c2_aggregation() {
     grep -q "^sqlmap|dnf|system|" "$VERSION_FILE"
     grep -q "^nmap|dnf|existing|" "$_SESSION_FILE"
     grep -q "^sqlmap|dnf|existing|" "$_SESSION_FILE"
-    ! grep -q "^nmap|dnf|installed|" "$_SESSION_FILE"
+    ! grep -q "^nmap|dnf|installed|" "$_SESSION_FILE" || false
     ! grep -q "^sqlmap|dnf|installed|" "$_SESSION_FILE"
 }
 
@@ -1056,7 +1073,7 @@ _run_c2_aggregation() {
     install_git_batch "test" "ourtool=https://internal.example/ourtool.git"
 
     grep -q "^ourtool|git|existing|" "$_SESSION_FILE"
-    ! grep -q "^ourtool|git|installed|" "$_SESSION_FILE"
+    ! grep -q "^ourtool|git|installed|" "$_SESSION_FILE" || false
     grep -q "^ourtool|git|HEAD|" "$VERSION_FILE"
 }
 
@@ -1078,7 +1095,7 @@ _run_c2_aggregation() {
         "https://internal.example/ourtool.git" "make"
 
     grep -q "^ourtool|source|existing|" "$_SESSION_FILE"
-    ! grep -q "^ourtool|source|installed|" "$_SESSION_FILE"
+    ! grep -q "^ourtool|source|installed|" "$_SESSION_FILE" || false
     grep -q "^ourtool|source|HEAD|" "$VERSION_FILE"
 }
 
@@ -1114,7 +1131,7 @@ _run_c2_aggregation() {
 
     grep -q "^theirs|cargo|existing|" "$VERSION_FILE"
     grep -q "^ours|cargo|latest|" "$VERSION_FILE"
-    ! grep -q "^ours|cargo|installed|" "$_SESSION_FILE"
+    ! grep -q "^ours|cargo|installed|" "$_SESSION_FILE" || false
     grep -q "^ours|cargo|existing|" "$_SESSION_FILE"
 }
 

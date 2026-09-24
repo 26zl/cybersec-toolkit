@@ -319,15 +319,9 @@ ensure_cargo() {
             && _validate_curl_pipe "$_rustup_tmp" 'rustup' 'RUSTUP' 'sh' \
             && chmod +r "$_rustup_tmp" \
             && _as_builder "sh '$(_escape_single_quoted "$_rustup_tmp")' -y" >> "$LOG_FILE" 2>&1; then
-        # Add cargo to PATH for the current session.
-        # _as_builder installs rustup to $SUDO_USER's home, not root's $HOME.
-        local _cargo_home
-        _cargo_home="$(_builder_home)/.cargo"
-        if [[ -f "$_cargo_home/env" ]]; then
-            # shellcheck disable=SC1090  # Path is dynamic (builder's home)
-            source "$_cargo_home/env"
-        fi
-        export PATH="$_cargo_home/bin:$PATH"
+        # _as_builder installs rustup to $SUDO_USER's home, not root's $HOME. Its
+        # env file is builder-owned, so root must not source it.
+        _path_append "$(_builder_home)/.cargo/bin"
         # cargo moved — drop the memoised resolution (_builder_cmd)
         _BUILDER_CMD_CACHE=()
     fi
@@ -372,9 +366,7 @@ ensure_cargo_binstall() {
             && _validate_curl_pipe "$_binstall_tmp" 'cargo-binstall' 'install' 'github.com' \
             && chmod +r "$_binstall_tmp" \
             && _as_builder "bash '$(_escape_single_quoted "$_binstall_tmp")'" >> "$LOG_FILE" 2>&1; then
-        local _cbdir
-        _cbdir="$(_builder_home)/.cargo/bin"
-        export PATH="$_cbdir:$PATH"
+        _path_append "$(_builder_home)/.cargo/bin"
     fi
     rm -f "$_binstall_tmp"
 
@@ -414,9 +406,7 @@ ensure_uv() {
             && _as_builder "sh '$(_escape_single_quoted "$_uv_tmp")'" >> "$LOG_FILE" 2>&1; then
         # Add the invoking user's bin dir to PATH so the rest of the install
         # finds uv regardless of which user owns it.
-        local _uvdir
-        _uvdir="$(_builder_home)/.local/bin"
-        export PATH="$_uvdir:$HOME/.local/bin:$PATH"
+        _path_append "$HOME/.local/bin" "$(_builder_home)/.local/bin"
     fi
     rm -f "$_uv_tmp"
 

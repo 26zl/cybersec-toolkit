@@ -28,9 +28,8 @@ echo "Syncing MCP server to WSL (${DISTRO:-default distro})..."
 
 # SRC is passed as a positional arg (not interpolated) so a checkout path with
 # spaces, quotes, or $ can't break out of the inner shell; DEST expands $HOME
-# inside WSL so it stays inner-side. Errors are surfaced (no 2>/dev/null) so
-# symlink/copy failures aren't hidden — silent failure here is what produces the
-# "tools_config.json not found" error at MCP server startup.
+# inside WSL so it stays inner-side. Copy errors stay visible: hidden, they only
+# surface later as "tools_config.json not found" at server startup.
 wsl.exe "${WSL_DISTRO_FLAG[@]}" bash -c '
 set -e
 src="$1"
@@ -41,6 +40,8 @@ if compgen -G "$src/mcp_server/tests/*.py" > /dev/null; then
     cp "$src"/mcp_server/tests/*.py "$dest/mcp_server/tests/"
 fi
 cp "$src"/mcp_server/pyproject.toml "$dest/mcp_server/"
+# pyproject.toml declares readme = "README.md"; uv sync fails to build without it.
+cp "$src"/mcp_server/README.md "$dest/mcp_server/"
 if [ -f "$src/mcp_server/uv.lock" ]; then
     cp "$src"/mcp_server/uv.lock "$dest/mcp_server/"
 fi

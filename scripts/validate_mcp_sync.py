@@ -315,10 +315,8 @@ def check_tool_aliases() -> None:
     print(f"TOOL_ALIASES: {len(TOOL_ALIASES)} aliases checked against {len(names)} registry tools")
 
 
-# Advisor tool names that are intentionally NOT registry tools (system utilities
-# or shells assumed present, not installed by a module). Empty today — every
-# advisor tool currently resolves to a registry entry. Add a name here only with
-# a one-line justification if it is genuinely a base system utility.
+# Advisor tool names that are intentionally not registry tools (base system
+# utilities); add one only with a one-line justification.
 _ADVISOR_TOOL_EXCEPTIONS: set[str] = set()
 
 

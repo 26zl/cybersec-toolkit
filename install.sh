@@ -490,13 +490,14 @@ install_single_tool() {
                 _register_cleanup "$_gobin_stage"
                 if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]]; then
                     _chown_for_builder "$_gobin_stage"
+                    mkdir -p "$GOPATH" 2>/dev/null || true
                     chown -R "$SUDO_USER" "$GOPATH" 2>/dev/null || true
                 fi
                 _go_gopath_esc="$(_escape_single_quoted "$GOPATH")"
                 _go_gobin_esc="$(_escape_single_quoted "$_gobin_stage")"
                 _go_pkg_esc="$(_escape_single_quoted "$gopkg")"
                 if _as_builder "GOPATH='$_go_gopath_esc' GOBIN='$_go_gobin_esc' $(_builder_cmd go) install $_go_pkg_esc" >> "$LOG_FILE" 2>&1 \
-                    && [[ -f "$_gobin_stage/$tool" ]] && mv "$_gobin_stage/$tool" "$GOBIN/$tool" && chmod +x "$GOBIN/$tool"; then
+                    && _install_staged_bin "$_gobin_stage/$tool" "$GOBIN/$tool"; then
                     log_success "Installed: $tool"
                     _track_single "go"
                 else
@@ -917,9 +918,8 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
     if [[ ${#RB_SYS_PKGS[@]} -gt 0 ]]; then
         echo ""
         log_info "Removing ${#RB_SYS_PKGS[@]} system package(s) this session installed..."
-        # The manifest stores the generic (Debian) name, but the package is installed
-        # under this distro's translated name, so translate before checking or removing
-        # — matching the install and remove.sh paths.
+        # Rows may hold the Debian name or an already translated one; translating is a
+        # no-op for the latter as long as distro_compat.tsv has no chained mappings.
         declare -a RB_SYS_PRESENT=()
         declare -A RB_SYS_XLATE=()
         for rb_tool in "${RB_SYS_PKGS[@]}"; do

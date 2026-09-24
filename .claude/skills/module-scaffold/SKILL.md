@@ -16,46 +16,35 @@ Pick a short module name and a SCREAMING_SNAKE prefix. Examples already used:
 
 Template:
 
+Mirror an existing module such as `modules/stego.sh`:
+
 ```bash
-#!/usr/bin/env bash
-# Module: <name>
-# Description: <one-line description>
+#!/bin/bash
+# shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
+# Module: <Title>
+# <one-line description>
 
-# shellcheck disable=SC2034
 <PREFIX>_PACKAGES=()
-
-# shellcheck disable=SC2034
 <PREFIX>_PIPX=()
-
-# shellcheck disable=SC2034
-<PREFIX>_GO=()
-# shellcheck disable=SC2034
-<PREFIX>_GO_BINS=()
-
-# shellcheck disable=SC2034
+<PREFIX>_GO=()                # "module/path@latest" entries
+<PREFIX>_GO_BINS=()           # binary name per <PREFIX>_GO entry
 <PREFIX>_CARGO=()
-
-# shellcheck disable=SC2034
 <PREFIX>_GEMS=()
-
-# shellcheck disable=SC2034
-<PREFIX>_GIT=()
-# shellcheck disable=SC2034
-<PREFIX>_GIT_NAMES=()
+<PREFIX>_GIT=()               # "name=https://github.com/owner/repo.git" entries
+<PREFIX>_GIT_NAMES=()         # the names from <PREFIX>_GIT
 
 install_module_<name>() {
-    log_info "Installing <name> module..."
-
-    install_apt_packages "${<PREFIX>_PACKAGES[@]}"
-    install_pipx_packages "${<PREFIX>_PIPX[@]}"
-    install_go_packages "${<PREFIX>_GO[@]}"
-    install_cargo_packages "${<PREFIX>_CARGO[@]}"
-    install_gem_packages "${<PREFIX>_GEMS[@]}"
-    install_git_repos "${<PREFIX>_GIT[@]}"
-
-    log_success "<name> module install complete"
+    install_apt_batch "<Title> - Packages" "${<PREFIX>_PACKAGES[@]}"
+    install_pipx_batch "<Title> - Python" "${<PREFIX>_PIPX[@]}"
+    install_go_batch "<Title> - Go" "${<PREFIX>_GO[@]}"
+    install_cargo_batch "<Title> - Rust" "${<PREFIX>_CARGO[@]}"
+    install_gem_batch "<Title> - Ruby" "${<PREFIX>_GEMS[@]}"
+    install_git_batch "<Title> - Git" "${<PREFIX>_GIT[@]}"
 }
 ```
+
+Binary releases go in `BINARY_RELEASES_<MODULE>` in `lib/installers.sh`, installed with
+`install_binary_releases "${BINARY_RELEASES_<MODULE>[@]}"`.
 
 Mark executable: `chmod +x modules/<name>.sh`.
 
@@ -95,15 +84,16 @@ A module with empty arrays is dead code. Use the `add-tool` skill to add ≥1 to
 If the module deserves its own profile (e.g., `myprofile.conf`):
 
 ```ini
-# profiles/<name>.conf
-PROFILE_DESC="..."
+# Profile: <one-line description>
 MODULES="misc <name>"
-SKIP_HEAVY=0
-ENABLE_DOCKER=1
-INCLUDE_C2=0
+SKIP_HEAVY=true
+ENABLE_DOCKER=false
+INCLUDE_C2=false
 ```
 
-The `validate-profiles` CI job (inline in `.github/workflows/ci.yml`) checks every name in `MODULES=` against `ALL_MODULES`; run that same check locally by sourcing `lib/common.sh` and confirming each `MODULES=` entry appears in `ALL_MODULES`.
+The first-line `# Profile:` header is the description, and the flags must be `true`/`false`.
+Mirror the profile in `mcp_server/profiles.py` (`PROFILES`), then run
+`bash scripts/validate_profiles.sh` and `python3 scripts/validate_mcp_sync.py`.
 
 ## 7. Validate
 

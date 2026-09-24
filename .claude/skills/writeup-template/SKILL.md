@@ -5,7 +5,7 @@ description: Use after completing any substantive security workflow with this pr
 
 # Generate a security workflow writeup
 
-This is **MANDATORY** after every substantive security workflow per `CLAUDE.md`.
+This is **MANDATORY** after every substantive security workflow per `AGENTS.md`.
 Writeups MUST pass markdownlint.
 
 ## File location

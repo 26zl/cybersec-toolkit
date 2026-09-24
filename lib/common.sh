@@ -1,5 +1,5 @@
 #!/bin/bash
-# common.sh — Shared library for cybersec-tools-installer
+# common.sh — Shared library for cybersec-toolkit
 # Source this file: source "$SCRIPT_DIR/lib/common.sh"
 
 # Bash 4.3+ required for local -n (nameref) used throughout the codebase
@@ -551,7 +551,7 @@ detect_pkg_manager() {
     case "$DISTRO_ID" in
         debian|ubuntu|kali|parrot|linuxmint|pop|elementary|zorin|mx)
             PKG_MANAGER="apt" ;;
-        fedora|rhel|centos|rocky|alma|nobara)
+        fedora|rhel|centos|rocky|almalinux|nobara)
             PKG_MANAGER="dnf" ;;
         arch|manjaro|endeavouros|garuda|artix)
             PKG_MANAGER="pacman" ;;
@@ -811,6 +811,16 @@ _chown_for_builder() {
     chown "$SUDO_USER" "$@" 2>/dev/null || true
 }
 
+# _path_append — add directories to the END of PATH, once each. Builder-owned bin
+# dirs are user-writable, so they must never shadow system tools root runs later.
+_path_append() {
+    local dir
+    for dir in "$@"; do
+        [[ ":$PATH:" == *":$dir:"* ]] || PATH="$PATH:$dir"
+    done
+    export PATH
+}
+
 # _builder_home — resolve $SUDO_USER's home directory (not root's $HOME).
 # Returns root's $HOME when not privilege-dropping.
 _builder_home() {
@@ -989,6 +999,15 @@ _git_safe_reset_to_remote() {
     _remote_branch="${_remote_branch%%[[:space:]]*}"
     [[ -z "$_remote_branch" ]] && _remote_branch="main"
     local _branch_escaped; _branch_escaped="$(_escape_single_quoted "origin/$_remote_branch")"
+
+    # Commits no remote-tracking branch has are the user's own work, and reset --hard
+    # would orphan them. Checked before fetch so a rewritten upstream still resets.
+    local _local_commits=""
+    _local_commits=$(_as_builder "git -C '$_repo_escaped' rev-list --count HEAD --not --remotes" 2>/dev/null) || _local_commits=""
+    if [[ "$_local_commits" =~ ^[0-9]+$ ]] && (( _local_commits > 0 )); then
+        log_warn "$(basename "$repo_path") has ${_local_commits} local commit(s) on no remote — leaving it as is"
+        return 1
+    fi
 
     # Stash any local edits (including untracked) so reset --hard doesn't
     # discard real user work. A clean tree makes this a no-op.
@@ -1499,9 +1518,10 @@ detect_wsl() {
     IS_DOCKER=false
     # Docker containers on WSL2 inherit "microsoft" in /proc/version
     # but are not actually WSL — skip the check inside containers
+    # Only the root mount counts: a host running Docker lists its container mounts too.
     if [[ -f /.dockerenv ]] || [[ -f /.containerenv ]] \
        || grep -qsw docker /proc/1/cgroup 2>/dev/null \
-       || grep -qs 'docker\|containerd' /proc/1/mountinfo 2>/dev/null \
+       || awk '$5 == "/" && /docker|containerd/ {f=1} END {exit !f}' /proc/1/mountinfo 2>/dev/null \
        || [[ -n "${container:-}" ]]; then
         IS_DOCKER=true
         export IS_WSL IS_DOCKER

@@ -9,7 +9,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from mcp_server import server
-from mcp_server.guided_assessment import _recommended_next_command, _target_is_external, build_guided_plan
+from mcp_server.guided_assessment import (
+    _normalize_target,
+    _recommended_next_command,
+    _target_is_external,
+    build_guided_plan,
+)
 from mcp_server.security import _address_is_safe
 
 
@@ -613,3 +618,25 @@ def test_typed_file_keeps_plain_file_description() -> None:
 def test_external_verdict_matches_the_execution_policy(ip: str) -> None:
     """A plan that disagrees with the policy passes steps the policy then blocks."""
     assert _target_is_external(ip) is not _address_is_safe(ipaddress.ip_address(ip))
+
+
+@pytest.mark.parametrize(
+    "target,host,external",
+    [
+        ("fd00::1", "fd00::1", False),
+        ("fe80::1", "fe80::1", False),
+        ("dead::beef", "dead::beef", True),
+        ("[fd00::1]:8080", "fd00::1", False),
+        ("localhost:8080", "localhost", False),
+        ("example.com:443", "example.com", True),
+    ],
+)
+def test_bare_ipv6_and_host_port_targets_are_hosts(target: str, host: str, external: bool) -> None:
+    # These parse with a URL scheme but carry no authority, so they must not become URLs without a host.
+    info = _normalize_target(target, "auto", None)
+    assert (info["kind"], info["host"], info["appears_external"]) == ("host", host, external)
+
+
+def test_target_with_control_characters_is_rejected() -> None:
+    with pytest.raises(ValueError, match="control characters"):
+        _normalize_target("10.0.0.1\nrm", "auto", None)
