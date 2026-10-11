@@ -12,9 +12,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Minimal bootstrap — just enough to run install.sh.
 # install.sh → install_shared_deps() handles all runtimes, compilers,
 # and dev libraries automatically via SHARED_BASE_PACKAGES.
+# The base image ships an unpackaged pebble Go binary (known HIGH CVEs) that
+# this project never uses; drop it so image scanners stay clean.
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         git curl wget sudo ca-certificates python3 \
+    && rm -rf /usr/bin/pebble /var/lib/pebble \
     && rm -rf /var/lib/apt/lists/*
 
 # Passwordless sudo — install.sh needs broad root throughout, so this image is a
