@@ -57,6 +57,14 @@ process user's permissions, and disabling `run_script` does not prevent a tool
 from launching child processes or loading plugins. The OS boundary is the Kata
 VM; in `--local` mode that user is the operator and there is none.
 
+The network-scope policy (private/loopback by default) validates tool
+*arguments*. `run_pipeline` pipes one step's stdout into the next step's stdin
+without re-validating it, so a stdin-reading network tool (e.g. `httpx`,
+`dnsx`, `naabu`) can receive an external target produced by an earlier step
+that the argument-level policy would reject on its own. Pipelines are a
+no-shell composition primitive, not a network-scope boundary; set
+`CYBERSEC_MCP_ALLOW_EXTERNAL=1` only for authorized external targets.
+
 ## Automated security checks
 
 These run on every push and PR via `.github/workflows/security.yml`:

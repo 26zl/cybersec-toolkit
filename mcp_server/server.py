@@ -892,6 +892,12 @@ async def run_pipeline(
     no-shell alternative. Each step is validated individually (allowlist,
     argument sanitization, policy checks) before any process starts.
 
+    Policy checks inspect each step's arguments only. A step that takes its
+    target from stdin (what the previous step printed) is not scope-checked on
+    that piped data, so a pipeline can reach an external target that a single
+    run_tool call would reject under CYBERSEC_MCP_ALLOW_EXTERNAL=0. Treat
+    pipelines as command composition, not as a network-scope boundary.
+
     Each step's stdout and stderr are bounded to 200KB as they are read, and an
     intermediate step's bounded stdout is what gets piped into the next step. If
     any step hits that cap, the returned ``truncated`` flag is set and the final

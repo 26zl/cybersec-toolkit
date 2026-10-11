@@ -830,6 +830,25 @@ _NETWORK_TOOLS: set[str] = {
     # SMB / file services
     "smbclient",
     "smbmap",
+    # Directory/content brute-forcers and URL scanners that take an argv target.
+    "dirsearch",
+    "ghauri",
+    "clairvoyance",
+    "graphw00f",
+    "Oralyzer",
+    "nomore403",
+    "x8",
+    "tplmap",
+    # Subdomain / URL enumeration and crawling.
+    "assetfinder",
+    "sublist3r",
+    "waymore",
+    "knock-subdomains",
+    "gospider",
+    "Photon",
+    # Classic external-target scanners not in the registry, covered if added later.
+    "fierce",
+    "dirb",
 }
 
 # Env-configurable: CYBERSEC_MCP_ALLOW_EXTERNAL=1 unlocks external targets.
@@ -2368,7 +2387,12 @@ async def _run_pipeline_steps(
     max_output: int,
     pipeline_id: str = "",
 ) -> dict:
-    """Execute validated pipeline steps, piping stdout→stdin between them."""
+    """Execute validated pipeline steps, piping stdout→stdin between them.
+
+    Piped stdin is not scope-validated: a stdin-reading network tool can be fed
+    an external target produced by a prior step. See execute_pipeline and
+    SECURITY.md.
+    """
     deadline = asyncio.get_event_loop().time() + timeout
     prev_output: bytes | None = None
     commands: list[str] = []
@@ -2552,6 +2576,13 @@ async def execute_pipeline(
 
     Each step is validated (allowlist, sanitize_args, check_policy) before
     any process is started. Uses asyncio.create_subprocess_exec (no shell).
+
+    Scope note: check_policy inspects each step's argv only. A step that reads
+    its targets from stdin (e.g. httpx/dnsx/naabu) is not scope-checked on the
+    piped-in bytes, so a prior step's stdout can carry an external target that
+    the argv-only external-network policy would reject on a lone run_tool call.
+    Pipelines are a no-shell composition primitive, not a network-scope
+    boundary; see SECURITY.md.
 
     Args:
         steps: List of dicts with 'tool' and optional 'args' keys.

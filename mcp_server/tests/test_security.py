@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import signal
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -407,6 +409,39 @@ class TestCheckPolicy:
             "httprobe",
         }
         assert must_cover <= _NETWORK_TOOLS
+
+    def test_network_tools_cover_registry(self) -> None:
+        """Registry tools that take an external host/domain/URL/IP target on the
+        command line must be in _NETWORK_TOOLS; otherwise check_policy returns
+        early and they reach external targets unchecked when
+        CYBERSEC_MCP_ALLOW_EXTERNAL=0. Keep in sync with the registry block in
+        security._NETWORK_TOOLS.
+
+        OSINT-by-identifier tools (email/username/phone) are out of scope here:
+        they expose no host-like argv for the target heuristic to validate.
+        """
+        registry_path = Path(__file__).resolve().parents[2] / "tools_config.json"
+        registry = {t["name"] for t in json.loads(registry_path.read_text(encoding="utf-8"))}
+        target_taking = {
+            "dirsearch",
+            "ghauri",
+            "clairvoyance",
+            "graphw00f",
+            "Oralyzer",
+            "nomore403",
+            "x8",
+            "tplmap",
+            "assetfinder",
+            "sublist3r",
+            "waymore",
+            "knock-subdomains",
+            "gospider",
+            "Photon",
+        }
+        stale = target_taking - registry
+        assert not stale, f"no longer registry tools (renamed/removed?): {sorted(stale)}"
+        uncovered = target_taking - _NETWORK_TOOLS
+        assert not uncovered, f"registry network tools missing from _NETWORK_TOOLS: {sorted(uncovered)}"
 
     def test_sqlmap_os_shell_blocked(self) -> None:
         with pytest.raises(ValueError, match="sqlmap: OS shell access"):
