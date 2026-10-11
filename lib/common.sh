@@ -655,7 +655,15 @@ pkg_install() {
 
 pkg_remove() {
     case "$PKG_MANAGER" in
-        apt)     maybe_sudo apt-get remove -y "$@" && maybe_sudo apt-get autoremove -y ;;
+        apt)
+            # autoremove can cascade into distro-owned packages, so it is opt-in
+            # (PKG_AUTOREMOVE=1, set by remove.sh under --remove-deps).
+            if [[ "${PKG_AUTOREMOVE:-0}" == "1" ]]; then
+                maybe_sudo apt-get remove -y "$@" && maybe_sudo apt-get autoremove -y
+            else
+                maybe_sudo apt-get remove -y "$@"
+            fi
+            ;;
         dnf)     maybe_sudo dnf remove -y "$@" ;;
         pacman)  maybe_sudo pacman -Rns --noconfirm "$@" 2>/dev/null || true ;;
         zypper)  maybe_sudo zypper --non-interactive remove "$@" ;;

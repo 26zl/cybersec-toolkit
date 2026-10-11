@@ -34,16 +34,22 @@ Options:
                        stale symlinks (Go cache, Cargo registry, pip/pipx
                        cache, npm cache, rustup toolchains, log files)
   --yes              Skip confirmation prompt
+  --force-unrecorded Remove listed tools even when no .versions install record
+                       is present — treats every known tool as the toolkit's.
+                       DANGEROUS on distros that ship these tools (e.g. Kali,
+                       Parrot): it can uninstall your system's own nmap/john/etc.
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
 Modules: $(IFS=', '; echo "${ALL_MODULES[*]}")
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
-to include them in the removal (not recommended on production systems).
+to include them in the removal (not recommended on production systems); it
+also enables apt autoremove, which may pull in further dependencies.
 
 Only tools that .versions records as installed by this toolkit are removed;
-tools you installed yourself stay in place.
+tools you installed yourself stay in place.  Without that record (for example
+after a fresh clone) removal refuses to run unless --force-unrecorded is given.
 EOF
     exit 0
 fi
@@ -53,22 +59,32 @@ REMOVE_MODULES=()
 REMOVE_DEPS=false
 DEEP_CLEAN=false
 AUTO_YES=false
+FORCE_UNRECORDED=false
 REMOVAL_FAILURES=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --module)      [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 1; }
-                       REMOVE_MODULES+=("$2"); shift 2 ;;
-        --remove-deps) REMOVE_DEPS=true; shift ;;
-        --deep-clean)  DEEP_CLEAN=true; shift ;;
-        --yes)         AUTO_YES=true; shift ;;
-        -v|--verbose)  VERBOSE=true; shift ;;
-        -h|--help)     exec "$0" --help ;;
-        *)             log_error "Unknown option: $1"; exit 1 ;;
+        --module)            [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 1; }
+                             REMOVE_MODULES+=("$2"); shift 2 ;;
+        --remove-deps)       REMOVE_DEPS=true; shift ;;
+        --deep-clean)        DEEP_CLEAN=true; shift ;;
+        --yes)               AUTO_YES=true; shift ;;
+        --force-unrecorded)  FORCE_UNRECORDED=true; shift ;;
+        -v|--verbose)        VERBOSE=true; shift ;;
+        -h|--help)           exec "$0" --help ;;
+        *)                   log_error "Unknown option: $1"; exit 1 ;;
     esac
 done
 
 export VERBOSE
+
+# autoremove in pkg_remove is dependency cleanup that can cascade into
+# distro-owned packages, so enable it only when the user opted into dep removal.
+if [[ "$REMOVE_DEPS" == "true" ]]; then
+    export PKG_AUTOREMOVE=1
+else
+    export PKG_AUTOREMOVE=0
+fi
 
 if [[ ${#REMOVE_MODULES[@]} -eq 0 ]]; then
     REMOVE_MODULES=("${ALL_MODULES[@]}")
@@ -117,8 +133,13 @@ if [[ -f "$_VERSIONS_FILE" ]]; then
         [[ -z "$_vt" || "$_vt" == \#* || "$_vv" == "existing" ]] && continue
         _TOOLKIT_INSTALLED["$_vt"]=1
     done < "$_VERSIONS_FILE"
+elif [[ "$FORCE_UNRECORDED" == "true" ]]; then
+    log_warn "No install record at $_VERSIONS_FILE — --force-unrecorded set, so every listed tool found on this system will be removed, including copies this toolkit did not install"
 else
-    log_warn "No install record at $_VERSIONS_FILE — every listed tool found on this system will be removed, including copies this toolkit did not install"
+    log_error "No install record at $_VERSIONS_FILE — it is written by install.sh and not tracked in git, so a fresh clone has none."
+    log_error "Without it, removal cannot tell this toolkit's tools from your system's own (e.g. the distro's nmap/john/hydra/wireshark on Kali/Parrot) and could uninstall them."
+    log_error "Re-run from the clone that installed the tools, or pass --force-unrecorded to remove every listed tool regardless of origin."
+    exit 1
 fi
 
 # Confirmation
@@ -147,10 +168,15 @@ START_TIME=$(date +%s)
 # shellcheck disable=SC2076  # Intentional literal match, not regex
 should_remove() { [[ " ${REMOVE_MODULES[*]} " =~ " $1 " ]]; }
 
-# _removable NAME — this toolkit installed NAME, or there is no install record to
-# tell (installs that predate .versions).
+# _removable NAME — true when .versions records NAME as installed by this toolkit.
+# With no record, nothing is removable unless --force-unrecorded opts back in
+# (the no-record case otherwise exits before any removal runs).
 _removable() {
-    [[ ! -f "$_VERSIONS_FILE" || -n "${_TOOLKIT_INSTALLED[$1]:-}" ]]
+    if [[ -f "$_VERSIONS_FILE" ]]; then
+        [[ -n "${_TOOLKIT_INSTALLED[$1]:-}" ]]
+    else
+        [[ "$FORCE_UNRECORDED" == "true" ]]
+    fi
 }
 
 # filter_untracked ARRAY LABEL — drop entries this toolkit did not install.
