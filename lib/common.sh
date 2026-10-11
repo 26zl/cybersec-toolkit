@@ -614,7 +614,9 @@ pkg_update() {
     case "$PKG_MANAGER" in
         apt)     maybe_sudo apt-get update -qq ;;
         dnf)     maybe_sudo dnf check-update --setopt=max_parallel_downloads=10 -q || true ;;
-        pacman)  _enable_pacman_parallel_downloads; maybe_sudo pacman -Sy --noconfirm ;;
+        # -Syu, never -Sy alone: refreshing the DB without upgrading, then installing,
+        # pulls new packages against an un-upgraded system and breaks sonames.
+        pacman)  _enable_pacman_parallel_downloads; maybe_sudo pacman -Syu --noconfirm ;;
         zypper)  _zypper_refresh_with_retries ;;
         pkg)     pkg update -y ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;

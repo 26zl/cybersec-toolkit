@@ -449,6 +449,14 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         local repo="$1" binary="$2" pattern="$3" dest="${4:-$PIPX_BIN_DIR}"
         local archive_binary="${5:-$binary}"
 
+        # Only refresh releases this toolkit installed: an unrecorded or
+        # pre-existing binary on PATH is the user's (e.g. an apt package), so a
+        # re-download into $dest (usually /usr/local/bin) would overshadow it.
+        if ! _version_known "$binary" || _is_preexisting "$binary"; then
+            log_debug "Skipping $binary (not installed by the toolkit)"
+            return 0
+        fi
+
         # Skip if not installed
         command_exists "$binary" || [[ -f "$dest/$binary" ]] || [[ -f "$dest/bin/$binary" ]] || return 0
 
