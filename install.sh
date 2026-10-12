@@ -744,7 +744,9 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
     fi
     check_root
     _acquire_run_lock
-    LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
+    # A separate log: truncating cybersec_install.log would destroy the record of
+    # the very run being rolled back.
+    LOG_FILE="$SCRIPT_DIR/cybersec_rollback.log"
     _init_log_file "$LOG_FILE"
 
     local_session_dir="$SCRIPT_DIR/.install_sessions"

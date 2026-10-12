@@ -887,6 +887,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
 
     # Log files
     for _logfile in "$SCRIPT_DIR/cybersec_install.log" \
+                    "$SCRIPT_DIR/cybersec_rollback.log" \
                     "$SCRIPT_DIR/tool_verification.log" \
                     "$SCRIPT_DIR/tool_update.log" \
                     "$SCRIPT_DIR/tool_removal.log"; do
