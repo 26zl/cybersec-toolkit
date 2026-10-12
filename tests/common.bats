@@ -646,3 +646,24 @@ _pid_dead() {
     wait "$parent" 2>/dev/null || true
     [[ $alive -eq 0 ]]
 }
+
+@test "lazy package index refreshes once, only on the first install (CL-6)" {
+    source_libs archlinux pacman
+    make_test_tmpdir
+    pkg_update() { echo refresh >> "$TEST_TMPDIR/calls"; }
+    maybe_sudo() { echo "install $*" >> "$TEST_TMPDIR/calls"; }
+
+    # Off by default: other install paths refresh up front themselves.
+    pkg_install foo
+    run grep -c refresh "$TEST_TMPDIR/calls"
+    assert_output "0"
+
+    # --tool path: no refresh until something is installed, then exactly once.
+    : > "$TEST_TMPDIR/calls"
+    _PKG_INDEX_LAZY=true
+    _PKG_INDEX_REFRESHED=false
+    pkg_install foo
+    pkg_install bar
+    run grep -c refresh "$TEST_TMPDIR/calls"
+    assert_output "1"
+}

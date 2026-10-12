@@ -656,7 +656,20 @@ pkg_update() {
     esac
 }
 
+# Set by `install.sh --tool`: refresh the package index on the first package
+# install instead of up front, so a mistyped tool name never triggers a refresh
+# (on Arch that refresh is a full `pacman -Syu`). Other paths refresh themselves.
+_PKG_INDEX_LAZY=false
+_PKG_INDEX_REFRESHED=false
+_ensure_pkg_index() {
+    [[ "$_PKG_INDEX_LAZY" == true && "$_PKG_INDEX_REFRESHED" != true ]] || return 0
+    _PKG_INDEX_REFRESHED=true
+    log_info "Refreshing package lists..."
+    pkg_update >> "$LOG_FILE" 2>&1 || log_warn "Package list refresh had errors (check log) — continuing"
+}
+
 pkg_install() {
+    _ensure_pkg_index
     case "$PKG_MANAGER" in
         apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
         dnf)

@@ -80,7 +80,10 @@ Options:
                          pipx tool, Go binary, cargo crate, gem, or repo.
                          Note: --skip-* flags are ignored (forces install).
   --upgrade-system     Upgrade all system packages before installing
-                         (apt upgrade / dnf upgrade / pacman -Syu)
+                         (apt upgrade / dnf upgrade / pacman -Syu).
+                         On Arch every package refresh is already a full
+                         'pacman -Syu' (Arch does not support partial upgrades),
+                         so installing anything there upgrades the system.
   --skip-heavy         Skip large/slow packages defined in HEAVY_PACKAGES arrays
   --skip-pipx          Skip all pipx (Python) tool installs
   --skip-go            Skip all Go tool installs (and the Go SDK bootstrap)
@@ -704,9 +707,10 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     done
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
-    # Fresh containers and hosts may have empty package indexes (the Docker image deletes them).
-    log_info "Refreshing package lists..."
-    pkg_update >> "$LOG_FILE" 2>&1 || log_warn "Package list refresh had errors (check log) — continuing"
+    # Fresh containers and hosts may have empty package indexes (the Docker image
+    # deletes them). Refresh lazily on the first package install, so an unknown
+    # tool name fails before any refresh — on Arch that refresh is a full -Syu.
+    _PKG_INDEX_LAZY=true
     log_info "Installing ${#SELECTED_TOOLS[@]} individual tool(s)..."
     TOOL_FAILED=0
     for tool in "${SELECTED_TOOLS[@]}"; do
@@ -1260,7 +1264,11 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "Checksums req.: $REQUIRE_CHECKSUMS"
     echo "Docker:         $ENABLE_DOCKER"
     echo "C2:             $INCLUDE_C2"
-    echo "System upgrade: $UPGRADE_SYSTEM"
+    if [[ "$PKG_MANAGER" == "pacman" ]]; then
+        echo "System upgrade: true (Arch: the package refresh is a full pacman -Syu)"
+    else
+        echo "System upgrade: $UPGRADE_SYSTEM"
+    fi
     echo "Parallel jobs:  $PARALLEL_JOBS"
     echo "Verbose:        $VERBOSE"
     echo "WSL:            $IS_WSL"
