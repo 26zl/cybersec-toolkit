@@ -138,6 +138,32 @@ PY
     grep -q "^zz-fake-tool|binary|v1|" "$VERSION_FILE"
 }
 
+@test "strict checksum mode wins over an inherited FAST_MODE (SI-8)" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    # update.sh has no --fast/--production exclusivity check, so both can be set.
+    export VERSION_FILE="$TEST_TMPDIR/.versions" FAST_MODE=true REQUIRE_CHECKSUMS=true SYS_ARCH=amd64
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$TEST_TMPDIR/src" "$PIPX_BIN_DIR"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/src/zz-fake-tool"
+    tar -czf "$TEST_TMPDIR/fixture.tar.gz" -C "$TEST_TMPDIR/src" .
+    # The release publishes no checksum file.
+    _gh_api_get() {
+        printf '{"tag_name":"v1","assets":[{"name":"zz-fake-tool_linux_amd64.tar.gz","browser_download_url":"https://example.invalid/zz-fake-tool_linux_amd64.tar.gz"}]}'
+    }
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        cp "$TEST_TMPDIR/fixture.tar.gz" "$out"
+    }
+
+    run download_github_release "example/zz-fake-tool" "zz-fake-tool" "linux_amd64\\.tar\\.gz$" \
+        "$TEST_TMPDIR/opt/zz-fake-tool"
+    assert_failure
+    assert_output --partial "no checksum file"
+    [[ ! -e "$TEST_TMPDIR/opt/zz-fake-tool/zz-fake-tool" ]]
+}
+
 # GitHub release checksum enforcement (offline)
 
 @test "verify_github_checksum accepts a matching checksum" {

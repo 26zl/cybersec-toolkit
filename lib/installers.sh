@@ -1507,7 +1507,12 @@ for asset in data.get('assets', []):
     # --fast skips verification entirely (mutually exclusive with --require-checksums)
     local _action_label="install"
     [[ "$mode" == "update" ]] && _action_label="update"
-    if [[ "${FAST_MODE:-false}" != "true" ]] && ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
+    # Strict mode always verifies: an inherited FAST_MODE must never turn
+    # --require-checksums/--production into an unverified install (update.sh has
+    # no --fast/strict exclusivity check of its own).
+    local _skip_verify=false
+    [[ "${FAST_MODE:-false}" == "true" && "${REQUIRE_CHECKSUMS:-false}" != "true" ]] && _skip_verify=true
+    if [[ "$_skip_verify" != "true" ]] && ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
         if [[ -f "$tmp_dir/.checksum_mismatch" ]]; then
             log_error "Aborting $_action_label of $binary due to checksum mismatch"
             rm -rf "$tmp_dir"

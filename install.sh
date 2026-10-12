@@ -47,9 +47,12 @@ PRODUCTION_MODE="${PRODUCTION_MODE:-false}"
 _CLI_SET_SKIP_HEAVY=false
 _CLI_SET_ENABLE_DOCKER=false
 _CLI_SET_INCLUDE_C2=false
-FAST_MODE="${FAST_MODE:-false}"
+# Flags only, never read from the environment: an inherited FAST_MODE would
+# silently disable checksum verification, and FORCE_YES would skip the
+# confirmation for destructive steps (root shells, containers, sudo -E).
+FAST_MODE=false
 ROLLBACK_TARGET=""
-FORCE_YES="${FORCE_YES:-false}"
+FORCE_YES=false
 
 usage() {
     local _exit_code="${1:-0}"
@@ -126,6 +129,12 @@ Environment variables:
   VERBOSE              Enable verbose/debug output (default: false)
   NO_COLOR             Disable ANSI colors and use ASCII separators
   PARALLEL_JOBS        Number of parallel install jobs (default: 4)
+  ENABLE_DOCKER, INCLUDE_C2, REQUIRE_CHECKSUMS, PRODUCTION_MODE,
+  SKIP_HEAVY, SKIP_PIPX, SKIP_GO, SKIP_CARGO, SKIP_GEMS, SKIP_GIT,
+  SKIP_BINARY, SKIP_SOURCE
+                       Set to "true" to change the default. Precedence:
+                       an explicit flag beats a --profile value, which beats
+                       the environment. --fast and --yes are flags only.
 
 Examples (Linux):
   sudo ./install.sh                              # Full install
