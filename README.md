@@ -317,6 +317,25 @@ __Debian/Ubuntu/Kali is the primary target__ and has the strongest test coverage
 | __macOS__ | The installer is not supported; use the Docker image. The MCP server runs on macOS in host mode (`--local`). |
 | __Other Linux distros__ | Distros without `apt`/`dnf`/`pacman`/`zypper` (NixOS, Gentoo, Void, Alpine, Slackware, …) are detected and blocked with a clear error. Use the [Docker image](#docker-and-podman). |
 
+### What the installer changes
+
+Beyond installing packages, an install can change the system in ways `remove.sh` does not undo:
+
+- __apt sources__: the Metasploit repository (`/etc/apt/sources.list.d/metasploit-framework.list`, key in `/usr/share/keyrings/metasploit-framework.gpg`) and, through NodeSource's setup script, a NodeSource repository and key. apt keeps trusting them after removal; delete them by hand if you no longer want that.
+- __Arch__: `ParallelDownloads` is enabled in `/etc/pacman.conf`.
+- __snapd__ on apt-based distros, for snap-only tools.
+- __Runtimes__: the Go SDK in `/usr/local/go`; rustup, cargo, and uv in the invoking user's home.
+- __Tools__ in `/opt`, `/opt/pipx`, and `/usr/local/bin`.
+
+Data the toolkit keeps, stored only on this machine:
+
+- `.versions`, `.install_sessions/`, and `*.log` in the checkout: install provenance and logs.
+- `~/.local/state/cybersec-tools-mcp/`: the MCP audit log and its rotations, `remote_hosts.json`, and the agent guard's `guard-session` and `guard-denials.log`.
+- `~/cybersec_tools_backup/`: encrypted configuration backups.
+- `writeups/` in the checkout (git-ignored).
+
+`remove.sh --deep-clean` clears caches and the checkout's logs, but not the MCP state directory, backups, or writeups; delete those yourself when you no longer need them.
+
 ### Supply chain model
 
 The installer downloads and runs code from the internet. On Linux it runs as root (`sudo`); on Termux it runs in the app's user sandbox.
