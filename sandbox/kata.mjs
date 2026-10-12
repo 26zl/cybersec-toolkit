@@ -17,7 +17,8 @@
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { createIsolatedSandboxProvider } from '@ai-hero/sandcastle';
@@ -254,6 +255,25 @@ const assertImagePresent = async (image) => {
   }
 };
 
+// a is an ancestor of, or equal to, b.
+const _isAncestorOrSame = (a, b) => b === a || b.startsWith(a.endsWith(sep) ? a : a + sep);
+
+// Mounting these (read-write by default) would hand VM code a host path it could
+// use to escape the VM boundary on the next launch. System trees are blocked in
+// both directions (do not mount /etc, nor /etc/x); $HOME and the checkout are
+// blocked only when the workspace is them or above them, so a case directory
+// *under* $HOME still works.
+const _SYSTEM_TREES = ['/etc', '/usr', '/bin', '/sbin', '/lib', '/lib64', '/boot', '/dev', '/proc', '/sys', '/root'];
+const _CHECKOUT_ROOT = resolve(import.meta.dirname, '..');
+
+const _realpathOrNull = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+};
+
 export const assertWorkspaceUsable = (workspace) => {
   if (!workspace) return;
   let stats;
@@ -263,9 +283,23 @@ export const assertWorkspaceUsable = (workspace) => {
     throw new Error(`Workspace '${workspace}' does not exist on the host.`);
   }
   if (!stats.isDirectory()) throw new Error(`Workspace '${workspace}' is not a directory.`);
-  // The host root would hand the VM every host path, read-write unless _RO is set.
-  if (realpathSync(workspace) === '/') {
-    throw new Error(`Workspace '${workspace}' resolves to the host root; mount a case directory instead.`);
+
+  const real = realpathSync(workspace);
+  const refuse = (why) => {
+    throw new Error(`Workspace '${workspace}' ${why}; mount a dedicated case directory instead.`);
+  };
+
+  if (real === '/') refuse('resolves to the host root');
+  for (const tree of _SYSTEM_TREES) {
+    if (_isAncestorOrSame(real, tree) || _isAncestorOrSame(tree, real)) {
+      refuse(`is within the system directory ${tree}`);
+    }
+  }
+  const home = _realpathOrNull(homedir());
+  if (home && _isAncestorOrSame(real, home)) refuse('is your home directory or an ancestor of it');
+  const checkout = _realpathOrNull(_CHECKOUT_ROOT);
+  if (checkout && _isAncestorOrSame(real, checkout)) {
+    refuse('is the toolkit checkout or an ancestor of it (VM code could rewrite the launcher)');
   }
 };
 

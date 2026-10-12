@@ -273,6 +273,29 @@ run_doctor() {
         _warns=$((_warns + 1))
     fi
 
+    # Report a sandbox image built before the current server/policy sources: the
+    # default launch path would otherwise run stale code with no signal.
+    if command_exists docker && [[ -x "$SCRIPT_DIR/scripts/sandbox-source-hash.sh" ]]; then
+        local _img_id _img_hash _src_hash
+        _img_id=$(docker image inspect cybersec-toolkit-sandbox:latest --format '{{.Id}}' 2>/dev/null || true)
+        if [[ -n "$_img_id" ]]; then
+            _img_hash=$(docker image inspect cybersec-toolkit-sandbox:latest \
+                --format '{{index .Config.Labels "cybersec.sandbox.source_hash"}}' 2>/dev/null || true)
+            _src_hash=$(bash "$SCRIPT_DIR/scripts/sandbox-source-hash.sh" 2>/dev/null || true)
+            if [[ -z "$_img_hash" || "$_img_hash" == "unknown" ]]; then
+                _doctor_row "Sandbox image" "built before staleness tracking — rebuild: make sandbox-image" warn
+                _warns=$((_warns + 1))
+            elif [[ -z "$_src_hash" ]]; then
+                _doctor_row "Sandbox image" "present (cannot compute source hash here)" info
+            elif [[ "$_img_hash" == "$_src_hash" ]]; then
+                _doctor_row "Sandbox image" "up to date with server sources" ok
+            else
+                _doctor_row "Sandbox image" "STALE — rebuild: make sandbox-image" warn
+                _warns=$((_warns + 1))
+            fi
+        fi
+    fi
+
     local _rt
     for _rt in go cargo pipx gem npm docker; do
         if command_exists "$_rt"; then

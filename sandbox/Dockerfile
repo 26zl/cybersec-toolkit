@@ -25,6 +25,11 @@ COPY scripts/ ./scripts/
 COPY sandbox/guest-mcp.json ./sandbox/guest-mcp.json
 RUN uv sync --directory mcp_server --frozen --no-dev --no-editable
 
+# Stamp the image with a hash of the server/policy sources it was built from, so
+# `install.sh --doctor` can report an image built before a later server change.
+ARG SANDBOX_SOURCE_HASH="unknown"
+LABEL cybersec.sandbox.source_hash="${SANDBOX_SOURCE_HASH}"
+
 # Additional tool profiles are installed at build time, before dropping privilege.
 ARG TOOLKIT_PROFILE=""
 RUN if [ -n "$TOOLKIT_PROFILE" ]; then \
@@ -48,4 +53,6 @@ ENV HOME=/home/toolkit \
     CYBERSEC_MCP_AUDIT_LOG=/var/log/cybersec/audit.log
 USER 10001:10001
 WORKDIR /workspace
-ENTRYPOINT ["/opt/cybersec-toolkit/mcp_server/.venv/bin/python", "-m", "mcp_server.server"]
+# -P keeps the /workspace cwd off sys.path so a mounted file cannot shadow a
+# server module (the package is installed non-editable in the venv).
+ENTRYPOINT ["/opt/cybersec-toolkit/mcp_server/.venv/bin/python", "-P", "-m", "mcp_server.server"]

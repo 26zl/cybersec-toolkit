@@ -106,7 +106,9 @@ docker: ## Build the Docker image
 	docker build -t cybersec-toolkit .
 
 sandbox-image: ## Build the Kata sandbox image used by scripts/mcp-launch.sh
-	docker build -f sandbox/Dockerfile -t cybersec-toolkit-sandbox:latest .
+	docker build -f sandbox/Dockerfile \
+		--build-arg SANDBOX_SOURCE_HASH="$$(bash scripts/sandbox-source-hash.sh)" \
+		-t cybersec-toolkit-sandbox:latest .
 
 audit-verify: ## Check the audit log's hash chain (usage: make audit-verify [LOG=path])
 	python3 scripts/verify_audit_chain.py $(LOG)

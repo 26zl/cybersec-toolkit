@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -109,6 +109,20 @@ test('assertWorkspaceUsable refuses the host root, including through a symlink',
     symlinkSync('/', link);
     assert.throws(() => assertWorkspaceUsable('/'), /host root/);
     assert.throws(() => assertWorkspaceUsable(link), /host root/);
+    assert.doesNotThrow(() => assertWorkspaceUsable(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('assertWorkspaceUsable refuses system trees, $HOME and the checkout', () => {
+  assert.throws(() => assertWorkspaceUsable('/etc'), /system directory/);
+  assert.throws(() => assertWorkspaceUsable('/usr'), /system directory/);
+  assert.throws(() => assertWorkspaceUsable(homedir()), /home directory/);
+  assert.throws(() => assertWorkspaceUsable(resolve(import.meta.dirname, '..')), /checkout/);
+  // A dedicated directory outside those trees is fine.
+  const dir = mkdtempSync(join(tmpdir(), 'kata-ws-ok-'));
+  try {
     assert.doesNotThrow(() => assertWorkspaceUsable(dir));
   } finally {
     rmSync(dir, { recursive: true, force: true });
