@@ -64,6 +64,39 @@ _CLEANUP_PATHS=()
 
 _register_cleanup() { _CLEANUP_PATHS+=("$1"); }
 
+# _child_pids <pid> — direct children of <pid>, read from /proc (no procps
+# dependency). comm may contain spaces or parens, so parse after the last ')'.
+_child_pids() {
+    local _stat _line _rest _ppid
+    for _stat in /proc/[0-9]*/stat; do
+        read -r _line < "$_stat" 2>/dev/null || continue
+        _rest="${_line##*) }"                 # "S <ppid> ..." — state, then ppid
+        _ppid="${_rest#* }"; _ppid="${_ppid%% *}"
+        [[ "$_ppid" == "$1" ]] || continue
+        _rest="${_stat#/proc/}"; printf '%s\n' "${_rest%/stat}"
+    done
+}
+
+# _kill_tree <pid> <signal> — signal every descendant of <pid>, children first.
+# Background jobs of a non-interactive shell ignore SIGINT, and per-tool installers
+# are grandchildren, so Ctrl+C alone (or `kill $(jobs -p)`) leaves them running.
+_kill_tree() {
+    local _c
+    for _c in $(_child_pids "$1"); do
+        _kill_tree "$_c" "$2"
+        kill -"$2" "$_c" 2>/dev/null || true
+    done
+}
+
+# _stop_job_tree — on interrupt, stop every descendant of this installer before
+# cleanup: TERM, a grace second, then KILL survivors, then reap.
+_stop_job_tree() {
+    _kill_tree $$ TERM
+    sleep 1
+    _kill_tree $$ KILL
+    wait 2>/dev/null || true
+}
+
 _global_cleanup() {
     # Background jobs ignore SIGINT in a non-interactive shell, so the spinner must be killed explicitly.
     _stop_spinner 2>/dev/null || true

@@ -1471,9 +1471,10 @@ install_modules() {
 
         _init_progress_dir
 
-        # Clean up child processes, semaphore, and progress on interrupt (Ctrl+C / kill)
-        # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
-        trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _stop_progress_display; _global_cleanup; exit 130' INT TERM
+        # On interrupt (Ctrl+C / kill) stop the whole job tree — per-tool installers are
+        # grandchildren that ignore SIGINT — and reap it before cleanup removes the
+        # semaphore/result dirs, so no root installer keeps running unrecorded.
+        trap 'log_warn "Interrupted — stopping all install jobs..."; _stop_job_tree; _stop_progress_display; _global_cleanup; exit 130' INT TERM
 
         # Subshells redirect stdout to /dev/null so log_message() output doesn't interleave on the terminal; the log file and PROGRESS_DIR still get everything via their own explicit redirects.
         local _method_names=()

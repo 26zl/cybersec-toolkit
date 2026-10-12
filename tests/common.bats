@@ -610,3 +610,39 @@ _bc_setup() {
     _path_append /home/u/.cargo/bin /home/u/.local/bin /home/u/.cargo/bin
     [[ "$PATH" == "/usr/bin:/home/u/.local/bin:/home/u/.cargo/bin" ]]
 }
+
+# Dead = gone, or a zombie awaiting reap by its parent.
+_pid_dead() {
+    local line
+    read -r line < "/proc/$1/stat" 2>/dev/null || return 0
+    line="${line##*) }"
+    [[ "${line%% *}" == [ZX] ]]
+}
+
+@test "_kill_tree stops descendants that ignore SIGINT (Ctrl+C orphan case)" {
+    [[ -d /proc/self ]] || skip "needs /proc"
+    source_libs debian apt
+    # Like Stage 3: a background parent whose own background children ignore SIGINT.
+    bash -c 'trap "" INT; sleep 30 & sleep 30 & wait' &
+    local parent=$!
+    local kids="" i
+    for i in $(seq 1 30); do
+        kids=$(_child_pids "$parent")
+        [[ $(wc -w <<<"$kids") -ge 2 ]] && break
+        sleep 0.1
+    done
+    [[ $(wc -w <<<"$kids") -ge 2 ]]
+
+    _kill_tree "$parent" TERM
+    kill -TERM "$parent" 2>/dev/null || true
+
+    local k alive
+    for i in $(seq 1 30); do
+        alive=0
+        for k in $kids; do _pid_dead "$k" || alive=1; done
+        [[ $alive -eq 0 ]] && break
+        sleep 0.1
+    done
+    wait "$parent" 2>/dev/null || true
+    [[ $alive -eq 0 ]]
+}
