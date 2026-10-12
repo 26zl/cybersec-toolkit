@@ -541,3 +541,26 @@ EOF
     assert_failure
     assert_output --partial "cannot be combined with --module"
 }
+
+@test "verify does not report untracked opt-in Docker images missing (CL-7)" {
+    _lifecycle_fixture
+    # A docker stub with no images: the opt-in images were never pulled.
+    printf '#!/bin/sh\nexit 0\n' > "$LC_STUBS/docker"
+    chmod +x "$LC_STUBS/docker"
+
+    _run_lifecycle verify.sh --module blueteam
+
+    refute_output --partial "Docker image NOT found"
+}
+
+@test "verify fails loudly on an unreadable .versions (CL-7)" {
+    [[ $EUID -ne 0 ]] || skip "root reads any file"
+    _lifecycle_fixture
+    chmod 000 "$LC_REPO/.versions"
+
+    _run_lifecycle verify.sh --installed-only
+
+    assert_failure
+    assert_output --partial "Cannot read"
+    chmod 644 "$LC_REPO/.versions"
+}

@@ -67,8 +67,17 @@ fi
 
 # --installed-only: load tracked tools from .versions file
 _INSTALLED_TOOLS=""
+_versions_file="$SCRIPT_DIR/.versions"
+# A present-but-unreadable record (root-owned after `sudo ./install.sh`) would
+# otherwise read as empty: --installed-only would verify nothing and report success.
+if [[ -f "$_versions_file" && ! -r "$_versions_file" ]]; then
+    if [[ "$INSTALLED_ONLY" == "true" ]]; then
+        log_error "Cannot read $_versions_file — re-run with sudo (or make it readable: chmod 644)"
+        exit 1
+    fi
+    log_warn "Cannot read $_versions_file — opt-in Docker images will not be checked (re-run with sudo)"
+fi
 if [[ "$INSTALLED_ONLY" == "true" ]]; then
-    _versions_file="$SCRIPT_DIR/.versions"
     if [[ -f "$_versions_file" ]]; then
         _INSTALLED_TOOLS=$(awk -F'|' '!/^#/{print $1}' "$_versions_file")
         log_info "Filtering by ${_versions_file} ($(echo "$_INSTALLED_TOOLS" | wc -l) tracked tools)"
@@ -737,13 +746,17 @@ if should_verify "llm"; then
     check_cmd "promptfoo" "promptfoo --version" || true
 fi
 
-# Docker images (all modules — uses centralized registry)
+# Docker images (all modules — uses centralized registry). They are opt-in
+# (--enable-docker or a Docker profile), so only an image this toolkit recorded
+# as installed is expected; an untracked one is not reported missing.
 if command_exists docker; then
+    _docker_tracked=""
+    [[ -r "$_versions_file" ]] && _docker_tracked=$(awk -F'|' '!/^#/{print $1}' "$_versions_file")
     echo ""
     log_info "━━━━━ Docker Images ━━━━━"
     for _docker_entry in "${ALL_DOCKER_IMAGES[@]}"; do
         IFS='|' read -r _docker_img _docker_label <<< "$_docker_entry"
-        _is_tracked "$_docker_label" || continue
+        grep -qxF "$_docker_label" <<< "$_docker_tracked" || continue
         TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
         if docker images "${_docker_img%%:*}" -q 2>/dev/null | grep -q .; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))
