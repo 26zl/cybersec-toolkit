@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # Module: Pwn / Exploit Dev
 # Binary exploitation, shellcode, fuzzing, exploit frameworks, payload generation

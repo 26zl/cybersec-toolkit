@@ -181,6 +181,8 @@ setup() {
 @test "pkg_update retries zypper refresh after cleaning stale metadata" {
     source_libs opensuse-tumbleweed zypper
     make_test_tmpdir
+    # Throwaway-container mode: the key auto-import flag is expected here.
+    export CI=true
     export ZYPPER_REFRESH_DELAY=0
     export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
     export REFRESH_COUNT_FILE="$TEST_TMPDIR/zypper.refresh.count"
@@ -214,6 +216,7 @@ setup() {
 @test "pkg_update fails zypper refresh after configured retries are exhausted" {
     source_libs opensuse-tumbleweed zypper
     make_test_tmpdir
+    export CI=true
     export ZYPPER_REFRESH_ATTEMPTS=2
     export ZYPPER_REFRESH_DELAY=0
     export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
@@ -666,4 +669,17 @@ _pid_dead() {
     pkg_install bar
     run grep -c refresh "$TEST_TMPDIR/calls"
     assert_output "1"
+}
+
+@test "zypper refresh does not auto-import repo keys outside CI (SI-10)" {
+    source_libs opensuse-tumbleweed zypper
+    make_test_tmpdir
+    unset CI CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS
+    export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
+    maybe_sudo() { printf '%s\n' "$*" >> "$CALLS_FILE"; return 0; }
+
+    run pkg_update
+    assert_success
+    run cat "$CALLS_FILE"
+    assert_output "zypper --non-interactive refresh --force"
 }

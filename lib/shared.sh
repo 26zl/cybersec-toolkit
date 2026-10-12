@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shared.sh — Shared base dependencies required by all modules.
 # Compilers, runtimes, dev libraries — needed regardless of which modules
 # are selected.  Source AFTER common.sh and installers.sh.

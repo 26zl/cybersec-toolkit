@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # Module: LLM Security
 # LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning

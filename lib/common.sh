@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # common.sh — Shared library for cybersec-toolkit
 # Source this file: source "$SCRIPT_DIR/lib/common.sh"
 
@@ -57,6 +57,11 @@ if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
 elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
     PARALLEL_JOBS=16
 fi
+
+# Keep GITHUB_TOKEN out of every child process's environment: root-run third-party
+# install scripts would otherwise inherit it. The shell variable stays readable for
+# _setup_curl_opts, which hands it to curl only through a 0600 netrc file.
+export -n GITHUB_TOKEN 2>/dev/null || true
 
 # Temp file cleanup registry — tracks all mktemp paths for SIGINT/SIGTERM cleanup.
 # Every mktemp call should be followed by: _register_cleanup "$var"
@@ -628,8 +633,16 @@ _zypper_refresh_with_retries() {
     [[ "$delay" =~ ^[0-9]+$ ]] || delay=15
     (( max_attempts >= 1 )) || max_attempts=1
 
+    # Auto-importing repository keys trusts any new or rotated signing key on
+    # refresh, weakening the distro-signed-repo trust model. Allow it only in CI's
+    # throwaway containers or on explicit opt-in.
+    local -a _keys=()
+    if [[ "${CI:-}" == "true" || "${CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS:-0}" == "1" ]]; then
+        _keys=(--gpg-auto-import-keys)
+    fi
+
     for ((attempt = 1; attempt <= max_attempts; attempt++)); do
-        if maybe_sudo zypper --non-interactive --gpg-auto-import-keys refresh --force; then
+        if maybe_sudo zypper --non-interactive ${_keys[@]+"${_keys[@]}"} refresh --force; then
             return 0
         fi
 
@@ -864,7 +877,9 @@ _builder_cmd() {
 # Usage: _chown_for_builder /opt/toolname [/opt/go ...]
 _chown_for_builder() {
     [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]] || return 0
-    chown "$SUDO_USER" "$@" 2>/dev/null || true
+    # -h: never follow a symlink. Root chowning a user-planted link's target would
+    # hand the user ownership of an arbitrary root-owned path.
+    chown -h "$SUDO_USER" "$@" 2>/dev/null || true
 }
 
 # _path_append — add directories to the END of PATH, once each. Builder-owned bin

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by modules and scripts that source this file
 # installers.sh — Install method helpers for cybersec-toolkit
 # Provides batch install functions for: apt, pipx, go, cargo, gem, git, binary, docker
@@ -404,6 +404,11 @@ install_ctf_venv() {
     local venv_provenance="latest"
     [[ "$(_tree_provenance "ctf-${name}-venv" "$venv_dir")" == "existing" ]] && venv_provenance="existing"
 
+    if [[ -L "$venvs_dir" ]]; then
+        log_error "Refusing a symlinked venv directory: $venvs_dir"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        return 1
+    fi
     if ! mkdir -p "$venvs_dir" 2>/dev/null; then
         log_error "Cannot create venv directory: $venvs_dir"
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))

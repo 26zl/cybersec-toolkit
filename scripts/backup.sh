@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools — Config Backup/Restore Script
 # Backs up and restores tool configurations with ChaCha20 encryption (PBKDF2 key derivation).

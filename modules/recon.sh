@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # Module: Recon / OSINT
 # Subdomain enumeration, intelligence gathering, search engines, OSINT
