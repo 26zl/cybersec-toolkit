@@ -275,6 +275,11 @@ class _TaggedMirrorFormatter(logging.Formatter):
         return f"{AUDIT_STREAM_PREFIX}{audit_record_tag(self._key, line)} {line}"
 
 
+def _audit_required() -> bool:
+    """Whether a missing or failing audit write must fail closed."""
+    return os.environ.get("CYBERSEC_MCP_AUDIT_REQUIRED", "").strip().lower() in ("1", "true", "yes")
+
+
 class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """RotatingFileHandler that keeps the audit log owner-only (0600).
 
@@ -289,6 +294,14 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
         except OSError:
             pass
         return stream
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        # Default logging swallows a write failure (disk full, etc.). When audit
+        # logging is required, re-raise so the call fails closed at runtime, not
+        # only at startup; otherwise keep the best-effort default.
+        if _audit_required():
+            raise
+        super().handleError(record)
 
 
 def get_audit_logger() -> logging.Logger:
@@ -325,7 +338,7 @@ def get_audit_logger() -> logging.Logger:
         )
     except OSError as exc:
         message = f"Audit file logging unavailable at {_AUDIT_LOG_PATH}: {exc}"
-        if os.environ.get("CYBERSEC_MCP_AUDIT_REQUIRED", "").strip().lower() in ("1", "true", "yes"):
+        if _audit_required():
             _logger = None
             raise RuntimeError(message) from exc
         warnings.warn(message + "; audit events will be written to stderr", RuntimeWarning, stacklevel=2)
@@ -386,8 +399,9 @@ def _log(level: int, entry: dict[str, Any]) -> None:
             line = json.dumps(entry)
             _chain_prev = chain_link(entry["prev"], line)
             get_audit_logger().log(level, line)
-    except OSError:
-        pass
+    except OSError as exc:
+        if _audit_required():
+            raise RuntimeError(f"Audit write failed and CYBERSEC_MCP_AUDIT_REQUIRED=1: {exc}") from exc
 
 
 def _ts() -> str:

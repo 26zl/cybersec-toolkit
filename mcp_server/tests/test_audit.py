@@ -809,3 +809,41 @@ class TestAuditLogPermissions:
         assert log_file.exists()
         mode = stat.S_IMODE(os.stat(log_file).st_mode)
         assert mode == 0o600, f"audit.log mode is {oct(mode)}, expected 0o600"
+
+
+class TestAuditRequiredFailsClosedAtRuntime:
+    """CYBERSEC_MCP_AUDIT_REQUIRED=1 must also fail closed on a write that fails
+    after startup, not only when the log cannot be opened (OP-1)."""
+
+    class _Boom:
+        def log(self, *args, **kwargs):
+            raise OSError("no space left on device")
+
+    def test_log_raises_when_required(self, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setattr(mod, "get_audit_logger", lambda: self._Boom())
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", "1")
+        with pytest.raises(RuntimeError, match="AUDIT_REQUIRED"):
+            mod.log_tool_call("run_tool", {"tool": "nmap"})
+
+    def test_log_swallows_when_not_required(self, monkeypatch) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setattr(mod, "get_audit_logger", lambda: self._Boom())
+        monkeypatch.delenv("CYBERSEC_MCP_AUDIT_REQUIRED", raising=False)
+        mod.log_tool_call("run_tool", {"tool": "nmap"})  # best-effort: no raise
+
+    def test_handler_handleerror_reraises_when_required(self, monkeypatch, tmp_path: Path) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", "1")
+        handler = mod._SecureRotatingFileHandler(tmp_path / "a.log", maxBytes=1024, backupCount=1, encoding="utf-8")
+        try:
+            try:
+                raise OSError("boom")
+            except OSError:
+                with pytest.raises(OSError):
+                    handler.handleError(logging.makeLogRecord({"msg": "x"}))
+        finally:
+            handler.close()
