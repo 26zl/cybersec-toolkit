@@ -75,8 +75,10 @@ What runs, and what is gated:
 - __One gate for governed execution__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list and target-injection flags), target and network policy, rate limiting, output caps, and timeouts. The policy knows enough CLI grammar to tell a target from a header, wordlist, output path, or target-list flag. Tool output reaches the model without terminal escape sequences or LLM control markers, and lines addressed to an AI reader are flagged.
 - __Tools run in a disposable VM by default.__ The launcher boots a [Kata Containers](docs/SANDBOX.md) VM with its own kernel, no host filesystem beyond an optional `CYBERSEC_SANDBOX_WORKSPACE` mount, no Docker socket, a non-root user with every capability dropped, and memory, CPU, and process limits. It is destroyed when the client disconnects. Startup fails closed instead of falling back to the host; `--local` is the explicit opt-out.
 - __Know the limits.__ The VM is not a network boundary: it reaches whatever its Docker network reaches, and `CYBERSEC_MCP_ALLOW_EXTERNAL` is a preflight check on resolved addresses, not a firewall (set `CYBERSEC_SANDBOX_NETWORK=none` or use a filtered network). Inside the VM, and on your host in `--local` mode, allowed tools run with the server user's permissions, and some of them spawn child processes or load plugins.
+- __Tool output goes to your model provider.__ Whatever a tool prints — scan results, page content, and any credential or personal data it finds on a target — is returned to the AI client and sent to the model it uses. Only the local audit log is redacted. If an engagement's rules forbid sharing client data with a third party, drive the server from a local model (see [AI clients](docs/AI_CLIENTS.md)).
+- __Repository hooks run automatically.__ Opening this repository in Claude Code runs the tracked hooks in `.claude/settings.json`: `scripts/agent-guard.sh` at session start and before each Bash command. They only emit routing context or a deny decision, make no network calls, and fail open; set `CYBERSEC_AGENT_GUARD=0` to disable them.
 - __Audit trail without leaks.__ Actions are logged as JSON lines to an owner-only (`0600`), rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never stored, only their SHA256 and length, and credential-shaped strings are redacted from tool arguments. A sandboxed server mirrors its records to the same host log, and records are hash-chained, so an edited or deleted record inside a chain shows up in `make audit-verify` ([limits](docs/SANDBOX.md#tamper-evidence)).
-- __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds and `pip`/`cargo`/`gem` installs; binary releases are SHA256-verified when checksums are published.
+- __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds, `go`/`cargo`/`gem` builds, and project setup steps (theHarvester, pwndbg); binary releases are SHA256-verified when checksums are published. `pipx` installs (into the shared `/opt/pipx`) and global `npm` installs still run as root, so their build and install scripts execute with root privileges — see the [supply chain model](#supply-chain-model).
 - __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam` and `full` profiles set it); the MCP layer reflects this and never auto-runs them.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [supply chain model](#supply-chain-model), and the [disclaimer](#disclaimer).
 
@@ -86,7 +88,7 @@ What runs, and what is gated:
 
 A supported Linux distro (Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE) or Termux. Runtimes (Python, Go, Ruby, Java, Rust, Node.js), dev libraries, pipx, and build tools are installed automatically. The installer does not run on macOS or native Windows; use WSL or [Docker](#docker-and-podman).
 
-- __Docker__ is needed only for `--enable-docker` (C2 frameworks, MobSF, BeEF, BloodHound, TheHive, Cortex). Install it yourself: [Docker Engine docs](https://docs.docker.com/engine/install/).
+- __Docker__ is needed for `--enable-docker` (C2 frameworks, MobSF, BeEF, BloodHound, TheHive, Cortex) and for the `blueteam`, `redteam`, `blockchain`, and `mobile` profiles, which enable Docker images by default (see [Profiles](#profiles)). Install it yourself: [Docker Engine docs](https://docs.docker.com/engine/install/).
 - __GitHub authentication__ is recommended. The installer downloads ~50 release binaries and makes ~50+ GitHub API calls; unauthenticated requests are limited to 60 per hour, authenticated ones to 5,000. It uses your `gh auth login` session automatically, also under `sudo`. Alternatively, pass a [personal access token](https://github.com/settings/tokens) (no scopes needed) through `sudo`, which otherwise drops it: `sudo --preserve-env=GITHUB_TOKEN ./install.sh`.
 
 ### Install
@@ -103,7 +105,7 @@ __From `main`__ (newest tools and fixes, including unreleased work):
 git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
 ```
 
-With no flags, the installer covers the standard tools of all 18 modules. C2/phishing tools and Docker images stay opt-in; `--profile full --enable-docker` installs everything the current platform supports. To install a subset:
+With no flags, the installer covers the standard tools of all 18 modules. C2/phishing tools and Docker images stay opt-in unless a profile enables them (the Docker and C2 columns under [Profiles](#profiles)); `--profile full --enable-docker` installs everything the current platform supports. To install a subset:
 
 ```bash
 sudo ./install.sh --profile ctf                      # CTF tools only
@@ -186,22 +188,24 @@ git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
 
 ### Profiles
 
-| Profile | Modules | Description |
-| ------- | ------- | ----------- |
-| `full` | All 18 | Complete security toolkit |
-| `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | CTF competitions |
-| `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | Offensive security |
-| `web` | misc, networking, recon, web, llm | Web application testing |
-| `osint` | misc, recon | OSINT gathering |
-| `forensics` | misc, forensics, blueteam, reversing, stego, cracking | Digital forensics and incident response |
-| `pwn` | misc, pwn, reversing, crypto | Binary exploitation and reverse engineering |
-| `mobile` | misc, mobile, web, reversing | Mobile application security testing |
-| `cloud` | misc, cloud, containers, networking, recon | Cloud and container security auditing |
-| `blockchain` | misc, blockchain, web, crypto | Smart contract auditing and blockchain security |
-| `wireless` | misc, wireless, networking | WiFi, Bluetooth, and SDR security |
-| `lightweight` | misc, networking, recon, web, cracking | Hobby ethical hacking essentials (HTB, THM, bug bounty) |
-| `crackstation` | misc, cracking, crypto | Hash cracking |
-| `blueteam` | misc, blueteam, forensics, reversing, mobile, containers, networking, cloud, recon | Defensive security, IR, malware analysis |
+| Profile | Modules | Docker | C2 | Description |
+| ------- | ------- | ------ | -- | ----------- |
+| `full` | All 18 | — | yes | Complete security toolkit |
+| `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | — | — | CTF competitions |
+| `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | yes | yes | Offensive security |
+| `web` | misc, networking, recon, web, llm | — | — | Web application testing |
+| `osint` | misc, recon | — | — | OSINT gathering |
+| `forensics` | misc, forensics, blueteam, reversing, stego, cracking | — | — | Digital forensics and incident response |
+| `pwn` | misc, pwn, reversing, crypto | — | — | Binary exploitation and reverse engineering |
+| `mobile` | misc, mobile, web, reversing | yes | — | Mobile application security testing |
+| `cloud` | misc, cloud, containers, networking, recon | — | — | Cloud and container security auditing |
+| `blockchain` | misc, blockchain, web, crypto | yes | — | Smart contract auditing and blockchain security |
+| `wireless` | misc, wireless, networking | — | — | WiFi, Bluetooth, and SDR security |
+| `lightweight` | misc, networking, recon, web, cracking | — | — | Hobby ethical hacking essentials (HTB, THM, bug bounty) |
+| `crackstation` | misc, cracking, crypto | — | — | Hash cracking |
+| `blueteam` | misc, blueteam, forensics, reversing, mobile, containers, networking, cloud, recon | yes | — | Defensive security, IR, malware analysis |
+
+Docker and C2 show what each profile enables by default. A profile that enables Docker stops with an error when Docker is not installed; install Docker first, or select the same modules with `--module` instead of the profile.
 
 ### Modules
 
@@ -318,12 +322,12 @@ __Debian/Ubuntu/Kali is the primary target__ and has the strongest test coverage
 The installer downloads and runs code from the internet. On Linux it runs as root (`sudo`); on Termux it runs in the app's user sandbox.
 
 - __System packages__: signed by your distro's repositories (apt, dnf, pacman, zypper, pkg).
-- __pipx/Go/Cargo/Gem/npm__: fetched from their registries without signature verification; pipx tools are isolated in venvs.
+- __pipx/Go/Cargo/Gem/npm__: fetched from their registries without signature verification; pipx tools are isolated in venvs. Go, Cargo, and Gem builds run as the invoking user; pipx and global npm installs run as root, so package build backends and npm lifecycle scripts execute with root privileges.
 - __Binary releases__: SHA256-verified when the release publishes a checksum file, with a hard failure on mismatch. About half of the upstream releases publish none; `--require-checksums` or the `--production` preset fails those tools instead of installing them unverified. `--fast` disables all checksum verification, including for releases that publish checksums, and cannot be combined with the strict flags; keep it out of CI and production.
 - __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
 - __Go SDK__: SHA256-verified against go.dev when the API is reachable; strict mode fails if it is not.
 - __Git repos__: cloned at HEAD; dependencies go into isolated venvs, and `setup.py` is not executed.
-- __Build from source__: runs `make`, as root on Linux. Review what you build.
+- __Build from source__: runs `make` as the invoking user, not root. Review what you build.
 - __MCP Python dependencies__: resolved by `uv` with a 3-day `exclude-newer` window, and Dependabot waits the same 3 days. This does not apply to the security tools themselves, which follow their upstream release channels.
 - __Toolkit Docker images__: Ubuntu and uv are digest-pinned; apt packages resolve from the current signed Ubuntu repositories, so rebuilds are not bit-for-bit reproducible.
 - __Optional tool images__: pulled by mutable tags, several of them `latest`. `--production` does not pin or verify them.
