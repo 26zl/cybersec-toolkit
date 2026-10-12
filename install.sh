@@ -382,8 +382,10 @@ while [[ $# -gt 0 ]]; do
         -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
                            PARALLEL_JOBS="$2"
                            if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
-                               PARALLEL_JOBS=4
+                               log_error "-j/--parallel requires a positive number (got '$2')"
+                               exit 1
                            elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
+                               log_warn "-j $PARALLEL_JOBS is above the maximum — using 16"
                                PARALLEL_JOBS=16
                            fi
                            shift 2 ;;

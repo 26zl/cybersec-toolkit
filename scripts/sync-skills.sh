@@ -20,6 +20,9 @@ DST="$REPO_ROOT/.agents/skills"
 CHECK=0
 if [[ "${1:-}" == "--check" ]]; then
     CHECK=1
+elif [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    echo "usage: $(basename "$0") [--check]"
+    exit 0
 elif [[ -n "${1:-}" ]]; then
     echo "usage: $(basename "$0") [--check]" >&2
     exit 2

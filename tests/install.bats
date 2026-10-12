@@ -284,6 +284,19 @@ EOF
     assert_output --partial "Parallel jobs:  1"
 }
 
+@test "install.sh rejects a non-numeric -j instead of silently using 4" {
+    run bash "$INSTALL_SH" --dry-run -j abc
+    assert_failure
+    assert_output --partial "requires a positive number"
+}
+
+@test "install.sh clamps -j above 16 with a warning" {
+    run bash "$INSTALL_SH" --dry-run -j 99
+    assert_success
+    assert_output --partial "using 16"
+    assert_output --partial "Parallel jobs:  16"
+}
+
 @test "install.sh --help shows -j/--parallel flag" {
     run bash "$INSTALL_SH" --help
     assert_success

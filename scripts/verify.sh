@@ -33,7 +33,7 @@ Options:
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
-Modules: $(IFS=', '; echo "${ALL_MODULES[*]}")
+Modules: $(_m="${ALL_MODULES[*]}"; echo "${_m// /, }")
 EOF
     exit 0
 fi

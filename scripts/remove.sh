@@ -42,7 +42,7 @@ Options:
   -v, --verbose      Enable debug logging and system environment dump
   -h, --help         Show this help and exit
 
-Modules: $(IFS=', '; echo "${ALL_MODULES[*]}")
+Modules: $(_m="${ALL_MODULES[*]}"; echo "${_m// /, }")
 
 By default, base dependencies are preserved.  Use --remove-deps explicitly
 to include them in the removal (not recommended on production systems); it
