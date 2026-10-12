@@ -631,6 +631,8 @@ make check    # lint, validators, bats, pytest, sandbox tests
 
 `make help` lists every target; the raw commands are in [`AGENTS.md`](AGENTS.md). The MCP Python project resolves dependencies with `uv` and `exclude-newer = "3 days"`, so fresh releases are ignored for 72 hours to limit the blast radius of a compromised upload; Dependabot and the weekly uv update workflow use the same cooldown. Run the shell tests on Linux, macOS, or WSL: native Windows checkouts can rewrite the Bats submodules with CRLF and fail with `$'\r'`.
 
+Release notes for every version, including security fixes and upgrade steps, are on the [GitHub Releases](https://github.com/26zl/cybersec-toolkit/releases) page; `git log v1.3.0..` shows what has landed since a release.
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=26zl%2Fcybersec-toolkit&type=date&legend=top-left">
