@@ -2411,13 +2411,20 @@ remove_special_tool() {
             for _bin in foundryup forge cast anvil chisel; do
                 [[ -L "$PIPX_BIN_DIR/$_bin" ]] && rm -f "$PIPX_BIN_DIR/$_bin" 2>/dev/null
             done
-            _dir="$(_builder_home)/.foundry"
-            [[ -d "$_dir" ]] && rm -rf "$_dir"
+            # Remove only the toolkit-installed binaries; keep the rest of
+            # ~/.foundry (keystores, config) so uninstall never destroys wallets.
+            _dir="$(_builder_home)/.foundry/bin"
+            [[ -d "$_dir" ]] && rm -rf "${_dir:?}"
             ;;
         steampipe)
             rm -f "$PIPX_BIN_DIR/steampipe" 2>/dev/null || true
-            _dir="$(_builder_home)/.steampipe"
-            [[ -d "$_dir" ]] && rm -rf "$_dir"
+            # Remove the installed binary; keep ~/.steampipe (connection .spc
+            # configs, which can hold credentials) rather than deleting user data.
+            local _cand
+            for _cand in /usr/local/bin/steampipe "$(_builder_home)/.steampipe/steampipe"; do
+                [[ -e "$_cand" || -L "$_cand" ]] && rm -f "$_cand" 2>/dev/null || true
+            done
+            _dir=""
             ;;
         patator)
             rm -f "$PIPX_BIN_DIR/patator" 2>/dev/null || true

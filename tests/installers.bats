@@ -1303,3 +1303,33 @@ _run_c2_aggregation() {
     assert_success
     assert_output --partial "declare -A"
 }
+
+@test "remove_special_tool foundry removes binaries but keeps keystores" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _builder_home() { echo "$TEST_TMPDIR/home"; }
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$TEST_TMPDIR/home/.foundry/bin" "$TEST_TMPDIR/home/.foundry/keystores" "$PIPX_BIN_DIR"
+    printf 'bin\n' > "$TEST_TMPDIR/home/.foundry/bin/forge"
+    printf 'KEY\n' > "$TEST_TMPDIR/home/.foundry/keystores/wallet.json"
+    ln -s "$TEST_TMPDIR/home/.foundry/bin/forge" "$PIPX_BIN_DIR/forge"
+
+    remove_special_tool foundry
+
+    [[ ! -e "$TEST_TMPDIR/home/.foundry/bin" ]]          # toolkit binaries removed
+    [[ ! -e "$PIPX_BIN_DIR/forge" ]]                      # symlink removed
+    [[ -f "$TEST_TMPDIR/home/.foundry/keystores/wallet.json" ]]  # wallet kept
+}
+
+@test "remove_special_tool steampipe keeps the .steampipe config dir" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _builder_home() { echo "$TEST_TMPDIR/home"; }
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$TEST_TMPDIR/home/.steampipe/config" "$PIPX_BIN_DIR"
+    printf 'conn\n' > "$TEST_TMPDIR/home/.steampipe/config/aws.spc"
+
+    remove_special_tool steampipe
+
+    [[ -f "$TEST_TMPDIR/home/.steampipe/config/aws.spc" ]]  # connection config kept
+}
