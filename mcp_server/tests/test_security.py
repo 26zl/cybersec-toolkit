@@ -472,6 +472,32 @@ class TestCheckPolicy:
         # Legitimate inspection must still work.
         check_policy("gdb", ["-batch", "-ex", "info functions", "/bin/ls"])
 
+    def test_gdb_run_blocked(self) -> None:
+        with pytest.raises(ValueError, match="gdb: run/start"):
+            check_policy("gdb", ["-ex", "run", "/bin/sh"])
+
+    def test_gdb_args_blocked(self) -> None:
+        with pytest.raises(ValueError, match="gdb: --args"):
+            check_policy("gdb", ["--args", "/bin/sh", "-c", "id"])
+
+    def test_gdb_inspection_commands_still_allowed(self) -> None:
+        # Common read-only commands that merely contain 'r'/'run' substrings must pass.
+        check_policy("gdb", ["-batch", "-ex", "info registers", "-ex", "bt", "/bin/ls"])
+
+    def test_strace_launching_program_blocked(self) -> None:
+        with pytest.raises(ValueError, match="launches the program"):
+            check_policy("strace", ["/bin/sh", "-c", "id"])
+
+    def test_ltrace_launching_program_blocked(self) -> None:
+        with pytest.raises(ValueError, match="launches the program"):
+            check_policy("ltrace", ["-f", "python3", "-c", "pass"])
+
+    def test_strace_attach_allowed(self) -> None:
+        # Attaching to an existing PID does not execute a program.
+        check_policy("strace", ["-f", "-p", "1234"])
+        check_policy("strace", ["-p1234"])
+        check_policy("ltrace", ["--attach=1234"])
+
     def test_radare2_shell_escape_blocked(self) -> None:
         with pytest.raises(ValueError, match="radare2: ! shell escape"):
             check_policy("radare2", ["-c", "!id", "/bin/ls"])
@@ -2115,6 +2141,37 @@ class TestExecuteToolOutputBounds:
         assert "[truncated at 4096 bytes]" in result["stdout"]
 
 
+class TestCancellationKillsChild:
+    """A cancelled/disconnected call must SIGKILL the tool's process group, not orphan it."""
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_kills_group_on_cancel(self, monkeypatch, tools_db) -> None:
+        import mcp_server.security as sec
+
+        killed: list[int] = []
+
+        class FakeProc:
+            pid = 4242
+            returncode = None
+
+            def kill(self) -> None:  # pragma: no cover - fallback path
+                killed.append(-1)
+
+        async def fake_exec(*_a, **_k):
+            return FakeProc()
+
+        async def fake_comm(*_a, **_k):
+            raise asyncio.CancelledError()
+
+        monkeypatch.setattr(sec.asyncio, "create_subprocess_exec", fake_exec)
+        monkeypatch.setattr(sec, "_bounded_communicate", fake_comm)
+        monkeypatch.setattr(sec, "_kill_process_group", lambda p: killed.append(p.pid))
+
+        with pytest.raises(asyncio.CancelledError):
+            await sec.execute_tool("cat", "", tools_db)
+        assert killed == [4242]
+
+
 class TestFinalizeStreamBudget:
     """sanitize_output adds [SANITIZED] prefixes, so the byte budget is applied after sanitizing."""
 
@@ -2324,6 +2381,16 @@ class TestChildEnv:
         assert "REDIS_URL" not in env
         assert "APP_DSN" not in env
         assert env.get("SERVICE_URL") == "https://api.internal/v1"
+
+    def test_nonstandard_credential_names_removed(self, monkeypatch):
+        # Provider keys and bare *_KEY/*_PASS names, not just the canonical ones.
+        for k in ("OPENAI_KEY", "GEMINI_KEY", "ANTHROPIC_API_KEY", "FOO_KEY", "DB_PASS", "VAULT_ADDR_TOKEN"):
+            monkeypatch.setenv(k, "x")
+        monkeypatch.setenv("LANG", "en_US.UTF-8")
+        env = _child_env()
+        for k in ("OPENAI_KEY", "GEMINI_KEY", "ANTHROPIC_API_KEY", "FOO_KEY", "DB_PASS", "VAULT_ADDR_TOKEN"):
+            assert k not in env, k
+        assert env.get("LANG") == "en_US.UTF-8"
 
     def test_authenticated_proxy_is_inherited(self, monkeypatch):
         # Tools behind an authenticated proxy need its credentials to reach the network.
