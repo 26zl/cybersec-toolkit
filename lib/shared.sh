@@ -285,15 +285,16 @@ for rel in json.load(sys.stdin):
 # toolchain is configured — `cargo` shim exists but can't actually run.
 ensure_cargo() {
     if command_exists cargo; then
-        # Verify cargo actually works (rustup shim without default toolchain fails)
-        if cargo --version >> "$LOG_FILE" 2>&1; then
+        # Probe/configure as the builder: cargo/rustup may be builder-owned (rustup
+        # shim in ~/.cargo/bin), and root must not execute a builder-writable binary.
+        if _as_builder "cargo --version" >> "$LOG_FILE" 2>&1; then
             log_success "cargo already installed"
             return 0
         fi
         # rustup shim exists but no toolchain — install default
         log_warn "cargo shim found but no default toolchain — running rustup default stable..."
-        if command_exists rustup && rustup default stable >> "$LOG_FILE" 2>&1; then
-            if cargo --version >> "$LOG_FILE" 2>&1; then
+        if command_exists rustup && _as_builder "rustup default stable" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "cargo --version" >> "$LOG_FILE" 2>&1; then
                 log_success "Rust stable toolchain configured"
                 return 0
             fi

@@ -97,7 +97,9 @@ install_module_recon() {
         ensure_uv || true
         if command_exists uv; then
             _start_spinner "Setting up theHarvester with uv..."
-            if (cd "$_th_dir" && uv sync) >> "$LOG_FILE" 2>&1; then
+            # uv sync runs the project's build backend; drop to the builder so this
+            # does not execute as root (the clone dir is builder-owned).
+            if _as_builder "cd '$(_escape_single_quoted "$_th_dir")' && '$(_builder_cmd uv)' sync" >> "$LOG_FILE" 2>&1; then
                 _stop_spinner
                 cat > "$PIPX_BIN_DIR/theHarvester" 2>/dev/null << THWRAP
 #!/bin/bash
