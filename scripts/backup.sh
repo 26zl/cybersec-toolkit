@@ -293,7 +293,14 @@ decrypt_archive() {
             return 1
         fi
     else
-        log_warn "No HMAC tag found ($hmac_file) — legacy backup, integrity cannot be verified"
+        # Restore runs as root and writes configs and /opt trees, so an archive
+        # nobody can authenticate is refused unless the operator opts in.
+        if [[ "${BACKUP_ALLOW_UNVERIFIED:-0}" != "1" ]]; then
+            rm -f "$_PASS_FILE"
+            log_error "No integrity tag ($hmac_file) — refusing an unauthenticated restore. Set BACKUP_ALLOW_UNVERIFIED=1 to restore a legacy backup you trust."
+            return 1
+        fi
+        log_warn "No HMAC tag found ($hmac_file) — legacy backup, integrity cannot be verified (BACKUP_ALLOW_UNVERIFIED=1)"
     fi
 
     if openssl enc -chacha20 -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
@@ -584,6 +591,9 @@ cmd_restore() {
         if ! decrypt_archive "$backup_file" "$tar_file"; then
             exit 1
         fi
+    elif [[ "${BACKUP_ALLOW_UNVERIFIED:-0}" != "1" ]]; then
+        log_error "Refusing an unencrypted, unauthenticated legacy backup. Set BACKUP_ALLOW_UNVERIFIED=1 to restore one you trust."
+        exit 1
     fi
 
     local member_list="$restore_tmpdir/members"
@@ -937,8 +947,11 @@ Commands:
   unschedule                       Remove scheduled backup
 
 Environment:
-  BACKUP_PASSPHRASE                Passphrase for non-interactive/cron encryption
-                                   (must be at least 8 characters)
+  BACKUP_PASSPHRASE                Passphrase for non-interactive/cron backup and
+                                   restore (must be at least 8 characters)
+  BACKUP_ALLOW_UNVERIFIED=1        Restore a legacy backup that has no integrity
+                                   tag (.tar.gz, or .enc without .hmac); refused
+                                   otherwise
 
 Options:
   -h, --help                       Show this help and exit

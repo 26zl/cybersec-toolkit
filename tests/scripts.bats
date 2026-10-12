@@ -166,6 +166,7 @@ _run_guard_on() {
         HOME="$test_home" \
         PREFIX="$TEST_TMPDIR/prefix" \
         TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 \
         bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
 
     assert_failure
@@ -218,6 +219,7 @@ _run_guard_on() {
         HOME="$TEST_TMPDIR/root-home" \
         PREFIX="$TEST_TMPDIR/prefix" \
         TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 \
         PATH="$mock_bin:$PATH" \
         bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
 
@@ -243,6 +245,7 @@ _run_guard_on() {
         HOME="$test_home" \
         PREFIX="$TEST_TMPDIR/prefix" \
         TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 \
         bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
 
     assert_failure
@@ -602,4 +605,23 @@ EOF
     wait "$holder" 2>/dev/null || true
     assert_failure
     assert_output --partial "Another install, update or remove run is active"
+}
+
+@test "restore refuses an unauthenticated legacy archive by default (SI-12)" {
+    local test_home="$TEST_TMPDIR/home"
+    local archive_src="$TEST_TMPDIR/archive-src"
+    local archive="$TEST_TMPDIR/restore.tar.gz"
+    mkdir -p "$test_home" "$archive_src/backup_fixture/network/.nmap"
+    printf 'setting\n' > "$archive_src/backup_fixture/network/.nmap/settings"
+    tar -czf "$archive" -C "$archive_src" backup_fixture
+
+    run env -u SUDO_USER -u BACKUP_ALLOW_UNVERIFIED \
+        HOME="$test_home" \
+        PREFIX="$TEST_TMPDIR/prefix" \
+        TERMUX_VERSION=1 \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
+
+    assert_failure
+    assert_output --partial "BACKUP_ALLOW_UNVERIFIED=1"
+    [[ ! -e "$test_home/.nmap/settings" ]]
 }
