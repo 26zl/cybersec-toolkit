@@ -820,6 +820,9 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
             local _tmp_ver
             _tmp_ver=$(mktemp "${SCRIPT_DIR}/.versions.XXXXXX")
             grep -v "^${_tool}|" "$SCRIPT_DIR/.versions" > "$_tmp_ver" 2>/dev/null || true
+            # mktemp creates 0600; keep .versions readable (0644) so a non-root
+            # MCP server can still read install provenance after a rollback.
+            chmod 644 "$_tmp_ver" 2>/dev/null || true
             mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
         }
         if command -v flock &>/dev/null; then

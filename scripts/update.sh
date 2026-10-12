@@ -622,8 +622,11 @@ if [[ "$SKIP_SPECIAL" == "false" ]]; then
         fi
     fi
 
-    # Steampipe (re-install = self-update) — verify script content before executing
-    if command_exists steampipe; then
+    # Steampipe (re-install = self-update) — verify script content before executing.
+    # Strict mode refuses its unsigned install script, as on install.
+    if command_exists steampipe && [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+        log_warn "Strict mode: skipping Steampipe update — its installer is an unsigned script"
+    elif command_exists steampipe; then
         log_info "Updating Steampipe..."
         _sp_tmp=$(mktemp)
         _register_cleanup "$_sp_tmp"

@@ -537,8 +537,12 @@ ensure_node() {
         log_info "Node.js/npm not found — installing..."
     fi
 
-    # On apt-based systems, use NodeSource for modern Node.js
-    if [[ "$PKG_MANAGER" == "apt" ]]; then
+    # On apt-based systems, use NodeSource for modern Node.js. Its setup script is
+    # unsigned and runs as root, so strict mode (--production/--require-checksums)
+    # uses the distro's signed package below instead.
+    if [[ "$PKG_MANAGER" == "apt" && "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+        log_warn "Strict mode: skipping NodeSource's unsigned setup script — installing the distro's nodejs/npm (may be older)"
+    elif [[ "$PKG_MANAGER" == "apt" ]]; then
         log_info "Installing Node.js ${NODE_MIN_VERSION}.x LTS from NodeSource..."
         local _ns_tmp
         _ns_tmp=$(mktemp); _register_cleanup "$_ns_tmp"

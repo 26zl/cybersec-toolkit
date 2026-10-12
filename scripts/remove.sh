@@ -32,7 +32,8 @@ Options:
                        build-essential, etc.) — DANGEROUS, may break system
   --deep-clean       Remove all caches, module caches, build artifacts, and
                        stale symlinks (Go cache, Cargo registry, pip/pipx
-                       cache, npm cache, rustup toolchains, log files)
+                       cache, npm cache, rustup toolchains, log files).
+                       Full removal only; not combinable with --module.
   -y, --yes          Skip confirmation prompt (required when not on a terminal)
   --force-unrecorded Remove listed tools even when no .versions install record
                        is present — treats every known tool as the toolkit's.
@@ -91,6 +92,12 @@ if [[ ${#REMOVE_MODULES[@]} -eq 0 ]]; then
 else
     # Validate each --module argument is a known module (prevent path traversal / typos)
     _validate_module_names "use --help to see available modules" "${REMOVE_MODULES[@]}"
+    # --deep-clean purges every pipx venv and dangling /usr/local/bin link, not just
+    # the selected modules', which would break tools the user is keeping.
+    if [[ "$DEEP_CLEAN" == "true" ]]; then
+        log_error "--deep-clean cleans up after a full removal and cannot be combined with --module."
+        exit 1
+    fi
 fi
 
 _init_log_file "$SCRIPT_DIR/tool_removal.log"

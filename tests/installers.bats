@@ -1359,3 +1359,33 @@ _run_c2_aggregation() {
 
     [[ -f "$TEST_TMPDIR/home/.steampipe/config/aws.spc" ]]  # connection config kept
 }
+
+@test "zip release assets install without archive group/world-write bits (SI-5)" {
+    command -v unzip >/dev/null || skip "needs unzip"
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions" FAST_MODE=true SYS_ARCH=amd64
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR"
+    # An upstream zip that stores its files world-writable (0777).
+    python3 - "$TEST_TMPDIR/fixture.zip" <<'PY'
+import sys, zipfile
+info = zipfile.ZipInfo("zz-fake-tool")
+info.external_attr = 0o100777 << 16
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    archive.writestr(info, "#!/bin/sh\n")
+PY
+    _gh_api_get() {
+        printf '{"tag_name":"v1","assets":[{"name":"zz-fake-tool_linux_amd64.zip","browser_download_url":"https://example.invalid/zz-fake-tool_linux_amd64.zip"}]}'
+    }
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        cp "$TEST_TMPDIR/fixture.zip" "$out"
+    }
+
+    run download_github_release "example/zz-fake-tool" "zz-fake-tool" "linux_amd64\\.zip$" \
+        "$TEST_TMPDIR/opt/zz-fake-tool"
+    assert_success
+    [[ -z "$(find "$TEST_TMPDIR/opt/zz-fake-tool" -perm /022)" ]]
+}

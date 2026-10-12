@@ -534,3 +534,10 @@ EOF
     _run_lifecycle remove.sh -y
     assert_success
 }
+
+@test "remove refuses --deep-clean combined with --module (CL-3)" {
+    _lifecycle_fixture
+    _run_lifecycle remove.sh --module web --deep-clean --yes
+    assert_failure
+    assert_output --partial "cannot be combined with --module"
+}

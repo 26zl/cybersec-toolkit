@@ -1647,8 +1647,11 @@ WRAPPER
             rm -rf "$tmp_dir"
             return 1
         fi
-        # cp -a keeps extracted modes (and unzip restores archive modes); strip setuid/setgid.
+        # cp -a keeps extracted modes (and unzip restores archive modes); strip setuid/setgid
+        # and group/world write, so an upstream zip stored with 0777 cannot leave
+        # installed files that any local user could replace.
         find "$dest_dir" -xdev -type f -perm /6000 -exec chmod a-s {} + 2>>"$LOG_FILE"
+        chmod -R go-w "$dest_dir" 2>>"$LOG_FILE" || true
         local dest_bin=""
         for candidate in \
             "$dest_dir/bin/$binary" \

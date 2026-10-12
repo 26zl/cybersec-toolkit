@@ -36,7 +36,11 @@ install_module_cloud() {
     install_go_batch "Cloud - Go" "${CLOUD_GO[@]}"
     install_git_batch "Cloud - Git" "${CLOUD_GIT[@]}"
 
-    if [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
+    # Steampipe ships only an unsigned install script (run as root); strict mode
+    # (--production/--require-checksums) refuses it rather than run it unverified.
+    if [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
+        log_warn "Strict mode: skipping Steampipe — its installer is an unsigned script"
+    elif [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
         log_info "Installing Steampipe..."
         local _sp_installer
         _sp_installer=$(mktemp); _register_cleanup "$_sp_installer"
