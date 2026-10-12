@@ -103,6 +103,7 @@ fi
 _init_log_file "$SCRIPT_DIR/tool_removal.log"
 
 check_root
+_acquire_run_lock
 print_banner
 
 # When disk space is critically low, free package cache FIRST so that

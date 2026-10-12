@@ -583,3 +583,23 @@ EOF
     assert_success
     [[ -f "$test_home/.nmap/settings" ]]
 }
+
+@test "a second install/update/remove run refuses while one holds the lock (OP-4)" {
+    command -v flock >/dev/null || skip "needs flock"
+    _lifecycle_fixture
+    # Hold the run lock as a concurrent run would.
+    flock "$LC_REPO/.versions.run.lock" sleep 30 &
+    local holder=$!
+    local i
+    for i in $(seq 1 30); do
+        flock -n "$LC_REPO/.versions.run.lock" true 2>/dev/null || break
+        sleep 0.1
+    done
+
+    _run_lifecycle remove.sh --yes
+
+    kill "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    assert_failure
+    assert_output --partial "Another install, update or remove run is active"
+}

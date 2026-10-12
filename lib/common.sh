@@ -93,6 +93,21 @@ _kill_tree() {
     done
 }
 
+# _acquire_run_lock — one install/update/remove run at a time. Concurrent runs race
+# on the package manager, /opt clones, venvs and the .versions provenance labels
+# that rollback and remove act on. The fd stays open for the process lifetime (and
+# is inherited by its jobs), so the lock lasts until the run and its children end.
+# Best effort where flock (util-linux) is unavailable.
+_acquire_run_lock() {
+    command -v flock &>/dev/null || return 0
+    local _lock="${SCRIPT_DIR}/.versions.run.lock"
+    exec {_RUN_LOCK_FD}>>"$_lock" 2>/dev/null || return 0
+    if ! flock -n "$_RUN_LOCK_FD"; then
+        log_error "Another install, update or remove run is active (lock: $_lock) — wait for it to finish"
+        exit 1
+    fi
+}
+
 # _stop_job_tree — on interrupt, stop every descendant of this installer before
 # cleanup: TERM, a grace second, then KILL survivors, then reap.
 _stop_job_tree() {

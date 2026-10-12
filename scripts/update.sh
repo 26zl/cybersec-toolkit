@@ -80,6 +80,7 @@ export VERBOSE REQUIRE_CHECKSUMS PRODUCTION_MODE
 _init_log_file "$SCRIPT_DIR/tool_update.log"
 
 check_root
+_acquire_run_lock
 print_banner
 
 _check_pkg_manager

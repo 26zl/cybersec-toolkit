@@ -718,6 +718,7 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     done
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
+    _acquire_run_lock
     # Fresh containers and hosts may have empty package indexes (the Docker image
     # deletes them). Refresh lazily on the first package install, so an unknown
     # tool name fails before any refresh — on Arch that refresh is a full -Syu.
@@ -742,6 +743,7 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
         exit 1
     fi
     check_root
+    _acquire_run_lock
     LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
     _init_log_file "$LOG_FILE"
 
@@ -1304,6 +1306,7 @@ main() {
     # Created here, not at file scope, so sourcing install.sh never truncates the log.
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
+    _acquire_run_lock
     trap '_global_cleanup; exit 130' INT TERM
     print_banner
 
