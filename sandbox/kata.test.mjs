@@ -14,9 +14,17 @@ import {
   isKataRuntime,
   registerShutdown,
   resolveOptions,
+  sandboxModeLabel,
   selectRuntime,
   WORKTREE_PATH,
 } from './kata.mjs';
+
+test('sandboxModeLabel claims kata only for a checked Kata VM', () => {
+  assert.equal(sandboxModeLabel('kata', false), 'kata');
+  // The unsafe opt-in skips the boot-ID check, so the boundary is unverified.
+  assert.equal(sandboxModeLabel('kata', true), 'unsafe:kata');
+  assert.equal(sandboxModeLabel('runc', true), 'unsafe:runc');
+});
 
 const flagValues = (args, flag) =>
   args.reduce((found, arg, index) => (arg === flag ? [...found, args[index + 1]] : found), []);
@@ -142,6 +150,7 @@ test('buildRunArgs pins the kata runtime and drops privileges', () => {
   assert.deepEqual(flagValues(args, '--security-opt'), ['no-new-privileges']);
   assert.deepEqual(flagValues(args, '--user'), ['10001:10001']);
   assert.deepEqual(flagValues(args, '--pids-limit'), ['512']);
+  assert.ok(args.includes('--init'), 'an init reaps orphaned processes');
   assert.deepEqual(args.slice(-3), ['sleep', 'toolkit:test', 'infinity']);
 });
 

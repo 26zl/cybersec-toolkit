@@ -43,6 +43,12 @@ const asString = (value) => (value === undefined || value === null ? undefined :
 /** Whether a runtime name denotes Kata, i.e. an actual VM boundary. */
 export const isKataRuntime = (name) => /kata/i.test(name ?? '');
 
+// The sandbox marker the audit trail records. Claim 'kata' only when the VM
+// boundary is checked (Kata runtime, boot-ID check not skipped by the unsafe
+// opt-in); anything else is labelled with the runtime that actually ran.
+export const sandboxModeLabel = (runtime, allowUnsafe) =>
+  isKataRuntime(runtime) && !allowUnsafe ? 'kata' : `unsafe:${runtime}`;
+
 const assertKataRuntime = (name, allowUnsafe) => {
   // A non-Kata runtime is a namespace container sharing the host kernel — the
   // thing this provider exists to avoid — so it is never silently used.
@@ -160,6 +166,9 @@ export const buildRunArgs = ({ name, runtime, options, env }) => {
     'run',
     '--detach',
     '--rm',
+    // An init as PID 1 reaps orphaned tool processes; `sleep infinity` would leave
+    // zombies counting against --pids-limit in long sessions.
+    '--init',
     '--name',
     name,
     '--runtime',
@@ -369,6 +378,11 @@ export const kata = (options = {}) => {
 
       // Registered before `docker run`, which is where the VM boots: a signal
       // in that window must still remove it.
+      const env = { ...options.env, ...createOptions.env };
+      if (env.CYBERSEC_SANDBOX_MODE === 'kata') {
+        env.CYBERSEC_SANDBOX_MODE = sandboxModeLabel(runtime, resolved.allowUnsafeRuntime);
+      }
+
       let booting;
       const unregisterShutdown = registerShutdown(removeSync, () => booting);
       booting = dockerExec(
@@ -376,7 +390,7 @@ export const kata = (options = {}) => {
           name: containerName,
           runtime,
           options: resolved,
-          env: { ...options.env, ...createOptions.env },
+          env,
         }),
       );
       try {

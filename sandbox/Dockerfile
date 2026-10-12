@@ -31,6 +31,9 @@ ARG SANDBOX_SOURCE_HASH="unknown"
 LABEL cybersec.sandbox.source_hash="${SANDBOX_SOURCE_HASH}"
 
 # Additional tool profiles are installed at build time, before dropping privilege.
+# The run_script venvs go to a shared path: the build runs as root (HOME=/root,
+# mode 0700), which the unprivileged runtime user could not reach.
+ENV CYBERSEC_MCP_VENVS_DIR=/opt/ctf-venvs
 ARG TOOLKIT_PROFILE=""
 RUN if [ -n "$TOOLKIT_PROFILE" ]; then \
         bash install.sh --profile "$TOOLKIT_PROFILE" --production --yes; \

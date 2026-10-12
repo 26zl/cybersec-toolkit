@@ -15,7 +15,8 @@
         "type": "stdio"
       },
       "runtimeArguments": [
-        { "type": "named", "name": "--entrypoint", "value": "uv" }
+        { "type": "named", "name": "--entrypoint", "value": "uv" },
+        { "type": "named", "name": "--security-opt", "value": "no-new-privileges" }
       ],
       "packageArguments": [
         { "type": "positional", "value": "run" },
