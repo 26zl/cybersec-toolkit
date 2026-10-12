@@ -23,6 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - not POSIX (native Windows)
+    fcntl = None  # type: ignore[assignment]
+
 # Credential redaction
 
 # Credential patterns must remain idempotent when applied repeatedly.
@@ -294,6 +299,34 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
         except OSError:
             pass
         return stream
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Several server processes may append to one log. Without a shared lock each
+        # rotates on its own: renames race and records are lost below the size cap.
+        # Serialize the rollover check, rotation and write across processes, and
+        # reopen when another process already rotated the file under this stream.
+        if fcntl is None:
+            super().emit(record)
+            return
+        try:
+            lock = open(self.baseFilename + ".lock", "a", encoding="utf-8")  # noqa: SIM115
+        except OSError:
+            super().emit(record)
+            return
+        with lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                if self.stream is not None:
+                    try:
+                        rotated = os.stat(self.baseFilename).st_ino != os.fstat(self.stream.fileno()).st_ino
+                    except OSError:
+                        rotated = True
+                    if rotated:
+                        self.stream.close()
+                        self.stream = self._open()
+                super().emit(record)
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
     def handleError(self, record: logging.LogRecord) -> None:
         # Default logging swallows a write failure (disk full, etc.). When audit
