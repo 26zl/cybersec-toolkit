@@ -19,7 +19,8 @@ _guard_fixture() {
 }
 
 _run_guarded_nmap() {
-    run env \
+    # -u: a developer with the documented escape hatch exported must not see false failures.
+    run env -u CYBERSEC_AGENT_GUARD \
         XDG_STATE_HOME="$XDG_STATE_HOME" \
         CYBERSEC_MCP_AUDIT_LOG="$CYBERSEC_MCP_AUDIT_LOG" \
         bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash \
@@ -70,7 +71,7 @@ _run_guarded_nmap() {
 _run_guard_on() {
     local json
     json=$(python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}}))' "$1")
-    run env \
+    run env -u CYBERSEC_AGENT_GUARD \
         XDG_STATE_HOME="$XDG_STATE_HOME" \
         CYBERSEC_MCP_AUDIT_LOG="$CYBERSEC_MCP_AUDIT_LOG" \
         bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash <<< "$json"
@@ -514,4 +515,22 @@ EOF
     assert_output --partial "Linux host with KVM"
     assert_output --partial "--local"
     refute_output --partial "UV_RAN:"
+}
+
+@test "remove refuses to run non-interactively without --yes" {
+    _lifecycle_fixture
+    # Without a terminal a "cancel" used to exit 0 (silent success in CI/cron).
+    run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_ID_LIKE= DISTRO_NAME=Termux \
+        GITHUB_TOOL_DIR="$TEST_TMPDIR/tools" TMPDIR="$TEST_TMPDIR" TERM=dumb \
+        PATH="$LC_STUBS:$TEST_TMPDIR/prefix/bin:$PATH" \
+        bash "$LC_REPO/scripts/remove.sh" < /dev/null
+    assert_failure
+    assert_output --partial "Re-run with --yes"
+}
+
+@test "remove accepts -y as --yes" {
+    _lifecycle_fixture
+    _run_lifecycle remove.sh -y
+    assert_success
 }

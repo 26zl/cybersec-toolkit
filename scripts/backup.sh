@@ -680,6 +680,10 @@ cmd_delete() {
             log_info "No backups to delete"
             return 0
         fi
+        if [[ ! -t 0 ]]; then
+            log_error "Refusing to delete backups without an interactive confirmation."
+            return 1
+        fi
         read -rp "Delete all $count backup(s) in $BACKUP_DIR? (y/N) " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             log_warn "Cancelled"
@@ -713,6 +717,10 @@ cmd_delete() {
                 return 1
             fi
         fi
+        if [[ ! -t 0 ]]; then
+            log_error "Refusing to delete a backup without an interactive confirmation."
+            return 1
+        fi
         read -rp "Delete $target? (y/N) " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             log_warn "Cancelled"
@@ -721,6 +729,19 @@ cmd_delete() {
         rm -f -- "$target" "${target}.hmac"
         log_success "Deleted: $target"
     fi
+}
+
+# _root_controlled <path> — the path and every ancestor are root-owned and not
+# group/world-writable, so no non-root user can change the code root executes.
+_root_controlled() {
+    local p
+    p=$(realpath -- "$1" 2>/dev/null) || return 1
+    while :; do
+        [[ "$(stat -c '%u' -- "$p" 2>/dev/null)" == "0" ]] || return 1
+        [[ -z "$(find "$p" -maxdepth 0 -perm /022 2>/dev/null)" ]] || return 1
+        [[ "$p" == "/" ]] && return 0
+        p=$(dirname -- "$p")
+    done
 }
 
 cmd_schedule() {
@@ -737,6 +758,9 @@ cmd_schedule() {
     local hour minute
     hour=$(echo "$time" | cut -d: -f1)
     minute=$(echo "$time" | cut -d: -f2)
+    # Force base 10: "08"/"09" are otherwise invalid octal in arithmetic.
+    hour=$((10#$hour))
+    minute=$((10#$minute))
 
     if [[ "$hour" -gt 23 || "$minute" -gt 59 ]]; then
         log_error "Invalid time: hour must be 0-23, minute must be 0-59"
@@ -774,6 +798,17 @@ cmd_schedule() {
         log_error "crontab is not installed"
         exit 1
     fi
+    # Root's crontab will execute backup.sh and lib/common.sh from this checkout.
+    # If a non-root user can modify them (or swap a parent directory), scheduling
+    # would hand that user root on every run.
+    local _p
+    for _p in "$SCRIPT_DIR/scripts/backup.sh" "$SCRIPT_DIR/lib/common.sh"; do
+        if ! _root_controlled "$_p"; then
+            log_error "Refusing to schedule: root's crontab would run $_p, which a non-root user can modify (it or a parent directory is not root-owned and write-protected)."
+            log_error "Keep a root-owned clone for scheduled backups (e.g. /opt/cybersec-toolkit), or run 'backup.sh backup' manually."
+            exit 1
+        fi
+    done
 
     # Write passphrase to a root-only env file instead of embedding in crontab
     # (avoids single-quote injection and keeps secrets out of crontab -l)

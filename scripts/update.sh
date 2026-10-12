@@ -268,7 +268,9 @@ if [[ "$SKIP_GIT" == "false" ]]; then
 
             pull_output=""
             _dir_escaped="$(_escape_single_quoted "$dir")"
-            if pull_output=$(_as_builder "git $_GIT_STALL_OPTS -C '$_dir_escaped' pull" 2>>"$LOG_FILE"); then
+            # LC_ALL=C: the "Already up to date" check below must not depend on the
+            # user's locale (git translates it, which would mark every repo updated).
+            if pull_output=$(_as_builder "LC_ALL=C git $_GIT_STALL_OPTS -C '$_dir_escaped' pull" 2>>"$LOG_FILE"); then
                 if echo "$pull_output" | grep -q "Already up to date"; then
                     log_debug "Already latest: $name"
                     GIT_SKIPPED=$((GIT_SKIPPED + 1))
@@ -703,7 +705,7 @@ for _bmod in "${ALL_MODULES[@]}"; do
         # reapply the idempotent patch before giving up.
         _pull_out=""
         _src_state="failed"
-        if _pull_out=$(_as_builder "git $_GIT_STALL_OPTS -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
+        if _pull_out=$(_as_builder "LC_ALL=C git $_GIT_STALL_OPTS -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
             if echo "$_pull_out" | grep -q "Already up to date"; then _src_state="skip"; else _src_state="changed"; fi
         elif _as_builder "git $_GIT_STALL_OPTS -C '$_bdir_escaped' fetch origin" >> "$LOG_FILE" 2>&1 \
             && _as_builder "git -C '$_bdir_escaped' reset --hard '@{u}'" >> "$LOG_FILE" 2>&1; then

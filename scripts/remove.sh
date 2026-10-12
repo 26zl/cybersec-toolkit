@@ -33,7 +33,7 @@ Options:
   --deep-clean       Remove all caches, module caches, build artifacts, and
                        stale symlinks (Go cache, Cargo registry, pip/pipx
                        cache, npm cache, rustup toolchains, log files)
-  --yes              Skip confirmation prompt
+  -y, --yes          Skip confirmation prompt (required when not on a terminal)
   --force-unrecorded Remove listed tools even when no .versions install record
                        is present — treats every known tool as the toolkit's.
                        DANGEROUS on distros that ship these tools (e.g. Kali,
@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
                              REMOVE_MODULES+=("$2"); shift 2 ;;
         --remove-deps)       REMOVE_DEPS=true; shift ;;
         --deep-clean)        DEEP_CLEAN=true; shift ;;
-        --yes)               AUTO_YES=true; shift ;;
+        -y|--yes)            AUTO_YES=true; shift ;;
         --force-unrecorded)  FORCE_UNRECORDED=true; shift ;;
         -v|--verbose)        VERBOSE=true; shift ;;
         -h|--help)           exec "$0" --help ;;
@@ -155,6 +155,13 @@ if [[ "$AUTO_YES" == "false" ]]; then
         log_warn "--deep-clean: All caches, build artifacts, and stale files WILL be purged!"
     fi
     echo ""
+    # Without a terminal, read gets EOF and a "cancel" would exit 0, so an unattended
+    # run that forgot --yes would report success while removing nothing. Refuse.
+    if [[ ! -t 0 ]]; then
+        log_error "Refusing to remove tools non-interactively without confirmation."
+        log_error "Re-run with --yes (or -y) to proceed unattended."
+        exit 1
+    fi
     read -rp "Proceed with removal? (y/N) " confirm
     echo ""
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
