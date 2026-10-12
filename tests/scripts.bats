@@ -564,3 +564,22 @@ EOF
     assert_output --partial "Cannot read"
     chmod 644 "$LC_REPO/.versions"
 }
+
+@test "restore runs unattended with BACKUP_PASSPHRASE (CL-15)" {
+    local test_home="$TEST_TMPDIR/home"
+    mkdir -p "$test_home/.nmap"
+    printf 'setting\n' > "$test_home/.nmap/settings"
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" backup
+    assert_success
+
+    local -a encrypted=("$test_home"/cybersec_tools_backup/backup_*.tar.gz.enc)
+    rm -rf "$test_home/.nmap"
+    # No terminal: the passphrase must come from the environment.
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "${encrypted[0]}" < /dev/null
+    assert_success
+    [[ -f "$test_home/.nmap/settings" ]]
+}

@@ -66,8 +66,28 @@ _init_backup_storage() {
         return 1
     fi
     _chown_backup_dir || return 1
-    _init_log_file "$BACKUP_DIR/backup.log"
+    # Append, not truncate: a cron schedule keeps the history of earlier runs.
+    # shellcheck disable=SC2034  # LOG_FILE is read by lib/common.sh logging
+    if { : >> "$BACKUP_DIR/backup.log"; } 2>/dev/null; then
+        chmod 600 "$BACKUP_DIR/backup.log" 2>/dev/null || true
+        LOG_FILE="$BACKUP_DIR/backup.log"
+    else
+        LOG_FILE="/dev/null"
+    fi
     _BACKUP_STORAGE_READY=true
+}
+
+# _require_crypto_deps — fail before any work if encryption/verification tools are
+# missing, rather than after the archive is built ("Failed to generate MAC salt").
+_require_crypto_deps() {
+    local _dep _missing=()
+    for _dep in openssl python3 tar; do
+        command_exists "$_dep" || _missing+=("$_dep")
+    done
+    if [[ ${#_missing[@]} -gt 0 ]]; then
+        log_error "Missing required command(s): ${_missing[*]} — install them and retry"
+        exit 1
+    fi
 }
 
 _prompt_passphrase() {
@@ -112,12 +132,16 @@ _prompt_passphrase() {
 # Caller must rm -f "$_PASS_FILE" when done.
 _read_passphrase_to_file() {
     local passphrase
-    if [[ ! -t 0 ]]; then
-        log_error "No terminal available for decryption passphrase input"
+    # BACKUP_PASSPHRASE allows an unattended restore, matching backup's own mode.
+    if [[ -n "${BACKUP_PASSPHRASE:-}" ]]; then
+        passphrase="$BACKUP_PASSPHRASE"
+    elif [[ ! -t 0 ]]; then
+        log_error "No terminal available for decryption passphrase input (set BACKUP_PASSPHRASE for an unattended restore)"
         return 1
+    else
+        read -rsp "Enter decryption passphrase: " passphrase || return 1
+        echo ""
     fi
-    read -rsp "Enter decryption passphrase: " passphrase || return 1
-    echo ""
     if ! _PASS_FILE=$(mktemp) || ! chmod 600 "$_PASS_FILE"; then
         log_error "Failed to create secure passphrase file"
         [[ -n "${_PASS_FILE:-}" ]] && rm -f -- "$_PASS_FILE"
@@ -476,6 +500,7 @@ restore_configs() {
 
 # Commands
 cmd_backup() {
+    _require_crypto_deps
     _init_backup_storage || exit 1
     log_info "Creating backup..."
     if [[ -e "$BACKUP_PATH" || -e "$BACKUP_PATH.tar.gz" || -e "$BACKUP_PATH.tar.gz.enc" ]]; then
@@ -519,6 +544,7 @@ cmd_backup() {
 cmd_restore() {
     local backup_file="$1"
 
+    _require_crypto_deps
     if [[ ! -f "$backup_file" ]]; then
         log_error "Backup file not found: $backup_file"
         exit 1
