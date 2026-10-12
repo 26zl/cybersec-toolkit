@@ -71,9 +71,34 @@ filesystem and network access and are not constrained by CYBERSEC_MCP_ALLOW_EXTE
   this global instruction as a category playbook.
 """
 
+
+def _server_version() -> str:
+    """The toolkit's own version for the MCP handshake.
+
+    Reads the installed package metadata, then falls back to the repo VERSION
+    file, so the handshake reports the project version (1.3.0) rather than
+    FastMCP's.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            return version("cybersec-tools-mcp")
+        except PackageNotFoundError:
+            pass
+    except ImportError:  # pragma: no cover
+        pass
+    for parent in Path(__file__).resolve().parents:
+        version_file = parent / "VERSION"
+        if version_file.is_file():
+            return version_file.read_text(encoding="utf-8").strip()
+    return "0.0.0+unknown"
+
+
 mcp = FastMCP(
     "Cybersec Toolkit",
     instructions=SERVER_INSTRUCTIONS,
+    version=_server_version(),
 )
 
 # Shared database instance (loaded once on server start).
@@ -146,6 +171,8 @@ def list_tools(
         ]
     ] = None,
     installed_only: bool = False,
+    limit: Optional[int] = None,
+    offset: int = 0,
 ) -> dict:
     """List and filter the 670+ cybersecurity tools in the registry.
 
@@ -156,15 +183,20 @@ def list_tools(
     Python-packaged tools, installed_only=True for only what is on this host.
     Start here to discover what exists before check_installed or get_tool_info.
 
+    The full list is large (~670 entries). Pass limit/offset to page through it
+    and keep the response small; omit them to get every matching tool.
+
     Args:
         module: Filter by module (e.g. "web", "pwn", "forensics"). 18 modules available.
         method: Filter by install method. One of apt, pipx, go, cargo, gem, git,
             binary, docker, snap, special, source, npm.
         installed_only: If true, only return tools that are currently installed.
+        limit: Maximum number of tools to return. Omit for all matches.
+        offset: Number of matching tools to skip before returning (for paging).
 
     Returns:
-        A dict with the tool count, the filters still available, and the matching
-        tool entries (each with name, method, module, and url).
+        A dict with the returned count, the total number of matches, the filters
+        still available, and the matching tool entries (name, method, module, url).
     """
     call_id = log_tool_call("list_tools", {"module": module, "method": method, "installed_only": installed_only})
     t0 = time.monotonic()
@@ -182,11 +214,21 @@ def list_tools(
             entry["install_status"] = t["install_status"]
         tool_entries.append(entry)
 
+    total_matched = len(tool_entries)
+    offset = max(0, offset)
+    if limit is not None or offset:
+        end = None if limit is None else offset + max(0, limit)
+        tool_entries = tool_entries[offset:end]
+
     result: dict = {
         "count": len(tool_entries),
+        "total_matched": total_matched,
         "total_in_registry": _db.total_tools,
         "tools": tool_entries,
     }
+    if limit is not None or offset:
+        result["offset"] = offset
+        result["has_more"] = offset + len(tool_entries) < total_matched
 
     if not module and not method:
         result["available_modules"] = _db.modules
@@ -325,13 +367,18 @@ async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
 
     # May shell out to `docker images`, so it runs off the event loop.
     status = await asyncio.to_thread(_db.check_installed, tool_name)
+    # tools_db's "method" is the detection strategy (path/versions_tracked/...);
+    # keep the registry's install method under "method" and expose the strategy
+    # separately, so a consumer mapping "method" to install/update commands is correct.
     result = {
         "tool": tool_name,
         "in_registry": True,
         "module": tool["module"],
         "method": tool["method"],
         "url": tool.get("url", ""),
-        **status,
+        "installed": status.get("installed", False),
+        "details": status.get("details", ""),
+        "detection": status.get("method"),
     }
     log_tool_result(
         "check_installed",
@@ -535,15 +582,20 @@ def list_profiles() -> dict:
 
 
 @mcp.tool(annotations=_ADVISORY)
-async def get_profile_tools(profile: str) -> dict:
+async def get_profile_tools(profile: str, counts_only: bool = False) -> dict:
     """List every tool that a specific profile would install.
 
     Given a profile name, returns the complete list of tools grouped by
     module, with install status for each. This lets you see exactly what
     you get before running the install command.
 
+    A full profile lists hundreds of tools; pass counts_only=True for just the
+    per-module counts and totals when the full tool list is not needed.
+
     Args:
         profile: Profile name (e.g. "ctf", "redteam", "web", "full").
+        counts_only: If true, omit the per-tool entries and return only
+            per-module and overall counts.
 
     Returns:
         All tools in the profile grouped by module, with install status and counts.
@@ -587,14 +639,15 @@ async def get_profile_tools(profile: str) -> dict:
                 _total += 1
                 if status["installed"]:
                     _installed += 1
-            _by_module.append(
-                {
-                    "module": mod,
-                    "description": MODULE_DESCRIPTIONS.get(mod, ""),
-                    "tool_count": len(tool_entries),
-                    "tools": tool_entries,
-                }
-            )
+            module_entry = {
+                "module": mod,
+                "description": MODULE_DESCRIPTIONS.get(mod, ""),
+                "tool_count": len(tool_entries),
+                "installed_count": sum(1 for e in tool_entries if e["installed"]),
+            }
+            if not counts_only:
+                module_entry["tools"] = tool_entries
+            _by_module.append(module_entry)
         return _by_module, _total, _installed
 
     by_module, total, installed = await asyncio.to_thread(_collect)
