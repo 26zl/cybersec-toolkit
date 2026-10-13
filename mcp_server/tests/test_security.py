@@ -484,6 +484,34 @@ class TestCheckPolicy:
         # Common read-only commands that merely contain 'r'/'run' substrings must pass.
         check_policy("gdb", ["-batch", "-ex", "info registers", "-ex", "bt", "/bin/ls"])
 
+    @pytest.mark.parametrize("command", ["print r", "disassemble run", "info functions start", 'echo "text; run"'])
+    @pytest.mark.parametrize("option", ["-ex", "--eval-command", "--eval", "-eval-command"])
+    def test_gdb_execution_words_in_inspection_arguments_allowed(self, command: str, option: str) -> None:
+        check_policy("gdb", ["-batch", option, command, "/tmp/sample"])
+        check_policy("gdb", ["-batch", f"{option}={command}", "/tmp/sample"])
+
+    @pytest.mark.parametrize("command", ["run", "r", "ru", "start", "starti", "run&", "if 1\nrun\nend"])
+    @pytest.mark.parametrize("option", ["-ex", "--eval-command", "--eval", "-eval-command", "-iex"])
+    def test_gdb_execution_command_forms_blocked(self, command: str, option: str) -> None:
+        with pytest.raises(ValueError, match="gdb: run/start"):
+            check_policy("gdb", [option, command, "/tmp/sample"])
+        with pytest.raises(ValueError, match="gdb: run/start"):
+            check_policy("gdb", [f"{option}={command}", "/tmp/sample"])
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            'eval "run"',
+            'interpreter-exec console "run"',
+            'inter mi "-exec-run"',
+            "with pagination off -- run",
+            "alias go = run",
+        ],
+    )
+    def test_gdb_nested_execution_blocked(self, command: str) -> None:
+        with pytest.raises(ValueError, match="gdb: nested command"):
+            check_policy("gdb", ["-ex", command, "/tmp/sample"])
+
     def test_strace_launching_program_blocked(self) -> None:
         with pytest.raises(ValueError, match="launches the program"):
             check_policy("strace", ["/bin/sh", "-c", "id"])
@@ -496,7 +524,58 @@ class TestCheckPolicy:
         # Attaching to an existing PID does not execute a program.
         check_policy("strace", ["-f", "-p", "1234"])
         check_policy("strace", ["-p1234"])
-        check_policy("ltrace", ["--attach=1234"])
+        check_policy("strace", ["--attach=1234"])
+        check_policy("ltrace", ["-p1234"])
+
+    @pytest.mark.parametrize(
+        ("tool", "args"),
+        [
+            ("strace", ["-ffp1234", "-s128", "-e", "trace=file", "-o", "/tmp/trace.txt"]),
+            ("strace", ["-frrTp1234", "-p", "5678,9012"]),
+            ("strace", ["--att=1234", "--trace", "file", "--output=/tmp/trace.txt", "--relative-timestamps=ns"]),
+            ("strace", ["-p1234", "--quiet", "--decode-fds", "--absolute-timestamps", "--"]),
+            ("ltrace", ["-fSp1234", "-e", "malloc", "--library=libc*", "-o/tmp/trace.txt"]),
+            ("ltrace", ["--indent=2", "-p", "1234"]),
+        ],
+    )
+    def test_tracer_attach_options_allowed(self, tool: str, args: list[str]) -> None:
+        check_policy(tool, args)
+
+    @pytest.mark.parametrize("tool", ["strace", "ltrace"])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-p", "2147483647", "/bin/sh", "-c", "true"],
+            ["-fp2147483647", "/bin/sh"],
+            ["-p1234", "--", "/bin/sh"],
+            ["--", "-p1234", "/bin/sh"],
+            ["-o", "-p1234", "/bin/sh"],
+            ["--output=-p1234", "/bin/sh"],
+        ],
+    )
+    def test_tracer_program_operands_blocked_even_with_attach_flags(self, tool: str, args: list[str]) -> None:
+        with pytest.raises(ValueError, match="launches the program"):
+            check_policy(tool, args)
+
+    @pytest.mark.parametrize("args", [["--attach=1234", "/bin/sh"], ["--att", "1234", "--", "/bin/sh"]])
+    def test_strace_program_operands_blocked_with_long_attach(self, args: list[str]) -> None:
+        with pytest.raises(ValueError, match="launches the program"):
+            check_policy("strace", args)
+
+    @pytest.mark.parametrize("tool", ["strace", "ltrace"])
+    @pytest.mark.parametrize("args", [["-p"], ["-p0"], ["-p", "-1"], ["-p1234", "--unknown"]])
+    def test_tracer_unvalidated_options_and_pid_values_blocked(self, tool: str, args: list[str]) -> None:
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy(tool, args)
+
+    @pytest.mark.parametrize("output", ["!printf synthetic", "|printf synthetic"])
+    @pytest.mark.parametrize("option", ["-o", "--output"])
+    def test_strace_output_commands_blocked(self, output: str, option: str) -> None:
+        with pytest.raises(ValueError, match="strace output command"):
+            check_policy("strace", ["-p1234", option, output])
+        joined = f"{option}={output}" if option.startswith("--") else f"{option}{output}"
+        with pytest.raises(ValueError, match="strace output command"):
+            check_policy("strace", ["-p1234", joined])
 
     def test_radare2_shell_escape_blocked(self) -> None:
         with pytest.raises(ValueError, match="radare2: ! shell escape"):

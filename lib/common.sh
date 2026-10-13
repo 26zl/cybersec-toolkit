@@ -74,7 +74,7 @@ _register_cleanup() { _CLEANUP_PATHS+=("$1"); }
 _child_pids() {
     local _stat _line _rest _ppid
     for _stat in /proc/[0-9]*/stat; do
-        read -r _line < "$_stat" 2>/dev/null || continue
+        { read -r _line < "$_stat"; } 2>/dev/null || continue
         _rest="${_line##*) }"                 # "S <ppid> ..." — state, then ppid
         _ppid="${_rest#* }"; _ppid="${_ppid%% *}"
         [[ "$_ppid" == "$1" ]] || continue
@@ -93,6 +93,35 @@ _kill_tree() {
     done
 }
 
+_process_start_time() {
+    local _line
+    { read -r _line < "/proc/$1/stat"; } 2>/dev/null || return 1
+    local -a _fields=()
+    read -r -a _fields <<< "${_line##*) }"
+    [[ ${#_fields[@]} -ge 20 ]] || return 1
+    # starttime is field 22; the fields after comm begin with state at field 3.
+    printf '%s\n' "${_fields[19]}"
+}
+
+# Save identities before signalling parents, because surviving children may be reparented.
+_snapshot_job_tree() {
+    local _root="$1" _pid _start
+    local -n _snapshot_pids="$2" _snapshot_starts="$3"
+    for _pid in $(_child_pids "$_root"); do
+        _start=$(_process_start_time "$_pid") || continue
+        _snapshot_job_tree "$_pid" "$2" "$3"
+        _snapshot_pids+=("$_pid")
+        _snapshot_starts["$_pid"]="$_start"
+    done
+}
+
+_signal_job() {
+    local _pid="$1" _expected_start="$2" _signal="$3" _current_start
+    _current_start=$(_process_start_time "$_pid") || return 0
+    [[ "$_current_start" == "$_expected_start" ]] || return 0
+    kill -s "$_signal" "$_pid" 2>/dev/null || true
+}
+
 # _acquire_run_lock — one install/update/remove run at a time. Concurrent runs race
 # on the package manager, /opt clones, venvs and the .versions provenance labels
 # that rollback and remove act on. The fd stays open for the process lifetime (and
@@ -101,7 +130,7 @@ _kill_tree() {
 _acquire_run_lock() {
     command -v flock &>/dev/null || return 0
     local _lock="${SCRIPT_DIR}/.versions.run.lock"
-    exec {_RUN_LOCK_FD}>>"$_lock" 2>/dev/null || return 0
+    { exec {_RUN_LOCK_FD}>>"$_lock"; } 2>/dev/null || return 0
     if ! flock -n "$_RUN_LOCK_FD"; then
         log_error "Another install, update or remove run is active (lock: $_lock) — wait for it to finish"
         exit 1
@@ -111,9 +140,17 @@ _acquire_run_lock() {
 # _stop_job_tree — on interrupt, stop every descendant of this installer before
 # cleanup: TERM, a grace second, then KILL survivors, then reap.
 _stop_job_tree() {
-    _kill_tree $$ TERM
+    local _owner="$BASHPID" _pid
+    local -a _stop_pids=()
+    local -A _stop_starts=()
+    _snapshot_job_tree "$_owner" _stop_pids _stop_starts
+    for _pid in "${_stop_pids[@]+"${_stop_pids[@]}"}"; do
+        _signal_job "$_pid" "${_stop_starts[$_pid]}" TERM
+    done
     sleep 1
-    _kill_tree $$ KILL
+    for _pid in "${_stop_pids[@]+"${_stop_pids[@]}"}"; do
+        _signal_job "$_pid" "${_stop_starts[$_pid]}" KILL
+    done
     wait 2>/dev/null || true
 }
 

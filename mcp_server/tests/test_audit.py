@@ -882,3 +882,34 @@ class TestConcurrentWriters:
         # 300 lines of ~50 bytes fit well within 6 files x 4000 bytes.
         for tag in ("A", "B"):
             assert sum(1 for line in lines if line.startswith(f"{tag}-")) == 150, tag
+
+    @pytest.mark.parametrize("required", [False, True])
+    def test_rotated_log_recovers_after_reopen_failure(self, monkeypatch, tmp_path: Path, required: bool) -> None:
+        import mcp_server.audit as mod
+
+        if mod.fcntl is None:
+            pytest.skip("Cross-process rotation locking requires POSIX")
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", "1" if required else "0")
+        log_tool_call("list_tools", {"module": "web"})
+        logger = get_audit_logger()
+        handler = next(h for h in logger.handlers if isinstance(h, mod._SecureRotatingFileHandler))
+        original_open = handler._open
+        log = tmp_path / "audit.log"
+        log.rename(tmp_path / "audit.log.1")
+        log.write_text("", encoding="utf-8")
+
+        def fail_once():
+            monkeypatch.setattr(handler, "_open", original_open)
+            raise PermissionError("temporarily unavailable rotated log")
+
+        monkeypatch.setattr(handler, "_open", fail_once)
+        if required:
+            with pytest.raises(RuntimeError, match="AUDIT_REQUIRED"):
+                log_tool_call("list_tools", {"module": "crypto"})
+        else:
+            log_tool_call("list_tools", {"module": "crypto"})
+
+        log_tool_call("list_tools", {"module": "forensics"})
+        records = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        assert len(records) == 1
+        assert records[0]["params"]["module"] == "forensics"

@@ -378,6 +378,196 @@ _run_lifecycle() {
         bash "$LC_REPO/scripts/$script" "$@"
 }
 
+_metasploit_removal_fixture() {
+    _lifecycle_fixture
+    MSF_SOURCE="$TEST_TMPDIR/metasploit-framework.list"
+    MSF_KEY="$TEST_TMPDIR/metasploit-framework.gpg"
+    printf 'deb [signed-by=%s] https://apt.metasploit.com/ xenial main\n' "$MSF_KEY" > "$MSF_SOURCE"
+    printf 'synthetic-key\n' > "$MSF_KEY"
+    printf 'metasploit|pkg|latest|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+    python3 - "$LC_REPO/scripts/remove.sh" "$MSF_SOURCE" "$MSF_KEY" <<'PY'
+from pathlib import Path
+import shlex
+import sys
+
+script, source, key = sys.argv[1:]
+path = Path(script)
+text = path.read_text()
+text = text.replace('_msf_list=/etc/apt/sources.list.d/metasploit-framework.list', '_msf_list=' + shlex.quote(source))
+text = text.replace('_msf_key=/usr/share/keyrings/metasploit-framework.gpg', '_msf_key=' + shlex.quote(key))
+path.write_text(text)
+PY
+    printf '#!/bin/sh\nif [ "$2" = metasploit-framework ] && [ ! -e "%s/metasploit-removed" ]; then\n echo "ii  metasploit-framework 1.0 all fixture"\n exit 0\nfi\nexit 1\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/dpkg"
+    printf '#!/bin/sh\nexit 0\n' > "$LC_STUBS/msfconsole"
+    chmod +x "$LC_STUBS/msfconsole"
+}
+
+@test "failed Metasploit removal keeps its apt source, key and install record" {
+    _metasploit_removal_fixture
+
+    _run_lifecycle remove.sh --yes
+
+    assert_failure
+    assert_output --partial "Failed to remove Metasploit"
+    refute_output --partial "Metasploit removed"
+    [[ -f "$MSF_SOURCE" && -f "$MSF_KEY" ]]
+    run grep -F 'metasploit|pkg|latest|' "$LC_REPO/.versions"
+    assert_success
+}
+
+@test "successful Metasploit removal cleans up its matching apt source and key" {
+    _metasploit_removal_fixture
+    printf '#!/bin/sh\nif [ "$1" = uninstall ]; then : > "%s/metasploit-removed"; fi\nexit 0\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/pkg"
+
+    _run_lifecycle remove.sh --yes
+
+    assert_success
+    assert_output --partial "Removed the apt.metasploit.com source and key"
+    [[ ! -e "$MSF_SOURCE" && ! -e "$MSF_KEY" && ! -e "$LC_REPO/.versions" ]]
+}
+
+@test "Metasploit cleanup preserves source files holding other repositories" {
+    _metasploit_removal_fixture
+    printf 'deb https://packages.example.invalid/ stable main\n' >> "$MSF_SOURCE"
+    printf '#!/bin/sh\nif [ "$1" = uninstall ]; then : > "%s/metasploit-removed"; fi\nexit 0\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/pkg"
+
+    _run_lifecycle remove.sh --yes
+
+    assert_success
+    [[ -f "$MSF_SOURCE" && -f "$MSF_KEY" ]]
+    run grep -F 'packages.example.invalid' "$MSF_SOURCE"
+    assert_success
+}
+
+@test "Metasploit repository cleanup failures preserve the record for a retry" {
+    _metasploit_removal_fixture
+    printf '#!/bin/sh\nif [ "$1" = uninstall ]; then : > "%s/metasploit-removed"; fi\nexit 0\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/pkg"
+    printf '#!/bin/sh\nfor arg do\n [ "$arg" = "%s" ] && exit 1\ndone\nexec "%s" "$@"\n' \
+        "$MSF_SOURCE" "$(command -v rm)" > "$LC_STUBS/rm"
+    chmod +x "$LC_STUBS/rm"
+
+    _run_lifecycle remove.sh --yes
+
+    assert_failure
+    assert_output --partial "Failed to remove the apt.metasploit.com source and key"
+    [[ -f "$MSF_SOURCE" && -f "$MSF_KEY" && -f "$LC_REPO/.versions" ]]
+    rm -f "$LC_STUBS/rm" "$LC_STUBS/msfconsole"
+
+    _run_lifecycle remove.sh --yes
+
+    assert_success
+    [[ ! -e "$MSF_SOURCE" && ! -e "$MSF_KEY" && ! -e "$LC_REPO/.versions" ]]
+}
+
+_backup_schedule_fixture() {
+    _lifecycle_fixture
+    SC_ENV="$TEST_TMPDIR/cybersec-backup.env"
+    SC_CRON="$TEST_TMPDIR/crontab"
+    # Root ownership and the credential destination are simulated; crontab writes stay in the fixture.
+    python3 - "$LC_REPO/scripts/backup.sh" "$SC_ENV" <<'PY'
+from pathlib import Path
+import shlex
+import sys
+
+script, env_file = sys.argv[1:]
+path = Path(script)
+text = path.read_text()
+text = text.replace('if [[ $EUID -ne 0 ]]; then', 'if false; then')
+text = text.replace('local env_file="/etc/cybersec-backup.env"', 'local env_file=' + shlex.quote(env_file))
+path.write_text(text)
+PY
+    printf '#!/bin/sh\nif [ "$1" = -c ] && [ "$2" = "%%u" ]; then echo 0; else exec "%s" "$@"; fi\n' \
+        "$(command -v stat)" > "$LC_STUBS/stat"
+    printf '#!/bin/sh\nif [ "$#" -eq 5 ] && [ "$2" = -maxdepth ] && [ "$3" = 0 ] && [ "$4" = -perm ]; then exit 0; fi\nexec "%s" "$@"\n' \
+        "$(command -v find)" > "$LC_STUBS/find"
+    printf '#!/bin/sh\ncase "$1" in\n -l) cat "%s" ;;\n -) cat > "%s" ;;\n *) exit 1 ;;\nesac\n' \
+        "$SC_CRON" "$SC_CRON" > "$LC_STUBS/crontab"
+    chmod +x "$LC_STUBS/stat" "$LC_STUBS/find" "$LC_STUBS/crontab"
+}
+
+_run_backup_schedule() {
+    local checkout="$1"; shift
+    run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        GITHUB_TOOL_DIR="$TEST_TMPDIR/tools" TMPDIR="$TEST_TMPDIR" TERM=dumb \
+        BACKUP_PASSPHRASE="synthetic-backup-passphrase" \
+        PATH="$LC_STUBS:$TEST_TMPDIR/prefix/bin:$PATH" \
+        bash "$checkout/scripts/backup.sh" "$@"
+}
+
+@test "backup schedule persists its physical checkout and replaces schedules through aliases" {
+    _backup_schedule_fixture
+    ln -s "$LC_REPO" "$TEST_TMPDIR/first-alias"
+    ln -s "$LC_REPO" "$TEST_TMPDIR/second-alias"
+
+    _run_backup_schedule "$TEST_TMPDIR/first-alias" schedule daily 09:08
+
+    assert_success
+    [[ -f "$SC_ENV" && "$(_file_mode "$SC_ENV")" == 600 ]]
+    run grep -F "$LC_REPO/scripts/backup.sh" "$SC_CRON"
+    assert_success
+    refute_output --partial "first-alias"
+
+    _run_backup_schedule "$TEST_TMPDIR/second-alias" schedule daily 10:09
+
+    assert_success
+    [[ "$(grep -cF "$LC_REPO/scripts/backup.sh" "$SC_CRON")" == 1 ]]
+    run cat "$SC_CRON"
+    assert_output --partial "9 10 * * *"
+    refute_output --partial "second-alias"
+
+    _run_backup_schedule "$TEST_TMPDIR/first-alias" unschedule
+
+    assert_success
+    [[ -z "$(cat "$SC_CRON")" && ! -e "$SC_ENV" ]]
+}
+
+@test "backup schedule rejects linked dependencies before storing a passphrase or cron entry" {
+    _backup_schedule_fixture
+    mv "$LC_REPO/lib/common.sh" "$TEST_TMPDIR/common-target.sh"
+    ln -s "$TEST_TMPDIR/common-target.sh" "$LC_REPO/lib/common.sh"
+
+    _run_backup_schedule "$LC_REPO" schedule daily 09:08
+
+    assert_failure
+    assert_output --partial "Refusing to schedule"
+    [[ ! -e "$SC_ENV" && ! -e "$SC_CRON" ]]
+}
+
+@test "backup schedule replaces a legacy alias entry and preserves unrelated cron jobs" {
+    _backup_schedule_fixture
+    printf '15 3 * * * /usr/bin/true\n' > "$SC_CRON"
+    printf "0 1 * * * . '%s' && export BACKUP_PASSPHRASE && '%s/scripts/backup.sh' backup\n" \
+        "$SC_ENV" "$TEST_TMPDIR/legacy-alias" >> "$SC_CRON"
+
+    _run_backup_schedule "$LC_REPO" schedule daily 09:08
+
+    assert_success
+    [[ "$(wc -l < "$SC_CRON")" -eq 2 ]]
+    run cat "$SC_CRON"
+    assert_output --partial "/usr/bin/true"
+    assert_output --partial "$LC_REPO/scripts/backup.sh"
+    refute_output --partial "legacy-alias"
+}
+
+@test "backup unschedule removes legacy alias entries and preserves unrelated cron jobs" {
+    _backup_schedule_fixture
+    printf 'synthetic-env-fixture\n' > "$SC_ENV"
+    printf '15 3 * * * /usr/bin/true\n' > "$SC_CRON"
+    printf "0 1 * * * . '%s' && export BACKUP_PASSPHRASE && '%s/scripts/backup.sh' backup\n" \
+        "$SC_ENV" "$TEST_TMPDIR/legacy-alias" >> "$SC_CRON"
+
+    _run_backup_schedule "$LC_REPO" unschedule
+
+    assert_success
+    [[ ! -e "$SC_ENV" ]]
+    run cat "$SC_CRON"
+    assert_output "15 3 * * * /usr/bin/true"
+}
+
 @test "remove leaves tools this toolkit did not install" {
     _lifecycle_fixture
     printf '#!/bin/sh\ncase "$2" in dnsenum|tor) echo "ii  $2 1.0 all fixture"; exit 0 ;; esac\nexit 1\n' \

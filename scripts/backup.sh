@@ -7,7 +7,7 @@
 set -uo pipefail
 umask 077
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 # Remove registered plaintext files on interruption.
@@ -767,11 +767,13 @@ cmd_delete() {
     fi
 }
 
-# _root_controlled <path> — the path and every ancestor are root-owned and not
+# _root_controlled <path> — the physical path and every ancestor are root-owned and not
 # group/world-writable, so no non-root user can change the code root executes.
 _root_controlled() {
-    local p
-    p=$(realpath -- "$1" 2>/dev/null) || return 1
+    local p="$1" canonical
+    canonical=$(realpath -- "$p" 2>/dev/null) || return 1
+    # Cron must execute the same physical path whose ownership was checked.
+    [[ "$p" == "$canonical" ]] || return 1
     while :; do
         [[ "$(stat -c '%u' -- "$p" 2>/dev/null)" == "0" ]] || return 1
         [[ -z "$(find "$p" -maxdepth 0 -perm /022 2>/dev/null)" ]] || return 1
@@ -837,10 +839,10 @@ cmd_schedule() {
     # Root's crontab will execute backup.sh and lib/common.sh from this checkout.
     # If a non-root user can modify them (or swap a parent directory), scheduling
     # would hand that user root on every run.
-    local _p
-    for _p in "$SCRIPT_DIR/scripts/backup.sh" "$SCRIPT_DIR/lib/common.sh"; do
+    local _p _backup_script="$SCRIPT_DIR/scripts/backup.sh"
+    for _p in "$_backup_script" "$SCRIPT_DIR/lib/common.sh"; do
         if ! _root_controlled "$_p"; then
-            log_error "Refusing to schedule: root's crontab would run $_p, which a non-root user can modify (it or a parent directory is not root-owned and write-protected)."
+            log_error "Refusing to schedule: $_p is linked or is not root-owned with root-owned, write-protected ancestors."
             log_error "Keep a root-owned clone for scheduled backups (e.g. /opt/cybersec-toolkit), or run 'backup.sh backup' manually."
             exit 1
         fi
@@ -879,7 +881,7 @@ cmd_schedule() {
     fi
 
     local _home_escaped; _home_escaped="$(_escape_single_quoted "$HOME_DIR")"
-    local _script_escaped; _script_escaped="$(_escape_single_quoted "$SCRIPT_DIR/scripts/backup.sh")"
+    local _script_escaped; _script_escaped="$(_escape_single_quoted "$_backup_script")"
     local _sudo_export=""
     if [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-}" != "root" ]]; then
         local _sudo_user_escaped; _sudo_user_escaped="$(_escape_single_quoted "$SUDO_USER")"
@@ -887,8 +889,10 @@ cmd_schedule() {
     fi
     # Sourcing only sets a shell variable; export it or the backup child never sees it.
     local cron_cmd="export HOME='$_home_escaped'${_sudo_export} && . '$env_file' && export BACKUP_PASSPHRASE && '$_script_escaped' backup"
+    # The shared credential file identifies older entries that used a checkout alias.
+    local cron_marker=". '$env_file' && export BACKUP_PASSPHRASE &&"
     local new_crontab
-    new_crontab="$(crontab -l 2>/dev/null | grep -vF "$SCRIPT_DIR/scripts/backup.sh"; echo "$cron_schedule $cron_cmd")"
+    new_crontab="$(crontab -l 2>/dev/null | grep -vF -- "$cron_marker"; echo "$cron_schedule $cron_cmd")"
 
     if ! printf '%s\n' "$new_crontab" | crontab -; then
         log_error "Failed to install crontab entry (crontab - returned non-zero)"
@@ -913,9 +917,10 @@ cmd_unschedule() {
 
     local current=""
     local filtered=""
+    local cron_marker=". '$env_file' && export BACKUP_PASSPHRASE &&"
     if current=$(crontab -l 2>/dev/null); then
         filtered=$(printf '%s\n' "$current" \
-            | grep -vF "$SCRIPT_DIR/scripts/backup.sh" || true)
+            | grep -vF -- "$cron_marker" || true)
         if [[ "$filtered" != "$current" ]] \
             && ! printf '%s\n' "$filtered" | crontab -; then
             log_error "Failed to remove backup entry from crontab"

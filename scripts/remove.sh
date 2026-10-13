@@ -578,17 +578,24 @@ fi
 _toolkit_installed() { _version_known "$1" && ! _is_preexisting "$1"; }
 
 # Metasploit (snap or system package)
-if should_remove "pwn" && command_exists msfconsole && _toolkit_installed metasploit; then
+if should_remove "pwn" && _toolkit_installed metasploit; then
     log_info "Removing Metasploit..."
-    remove_snap_tool metasploit
-    log_success "Metasploit removed"
-    # The apt source and key install_metasploit wrote (matched exactly, so a source
-    # added some other way is left alone). Otherwise apt keeps trusting the repo.
-    _msf_list=/etc/apt/sources.list.d/metasploit-framework.list
-    _msf_key=/usr/share/keyrings/metasploit-framework.gpg
-    if [[ -f "$_msf_list" ]] && grep -qxF "deb [signed-by=$_msf_key] https://apt.metasploit.com/ xenial main" "$_msf_list"; then
-        rm -f "$_msf_list" "$_msf_key"
-        log_success "Removed the apt.metasploit.com source and key"
+    if remove_snap_tool metasploit; then
+        log_success "Metasploit removed"
+        # Keep source files the operator changed or expanded with other repositories.
+        _msf_list=/etc/apt/sources.list.d/metasploit-framework.list
+        _msf_key=/usr/share/keyrings/metasploit-framework.gpg
+        if [[ -f "$_msf_list" && "$(cat -- "$_msf_list" 2>/dev/null)" == "deb [signed-by=$_msf_key] https://apt.metasploit.com/ xenial main" ]]; then
+            if rm -f "$_msf_list" "$_msf_key"; then
+                log_success "Removed the apt.metasploit.com source and key"
+            else
+                log_warn "Failed to remove the apt.metasploit.com source and key"
+                REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+            fi
+        fi
+    else
+        log_warn "Failed to remove Metasploit — keeping its apt source and key"
+        REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
     fi
 fi
 

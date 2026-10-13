@@ -365,7 +365,6 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         # run/start commands and --args let gdb execute an arbitrary program. Static
         # analysis (-ex 'info functions' /bin/ls) does not need these and still passes.
         (re.compile(r"^--args$"), "gdb: --args launches an inferior program"),
-        (re.compile(r"(?:^|[;\s'\"])(?:run|r|start|starti)(?:$|[;\s'\"])"), "gdb: run/start executes the inferior"),
     ],
     "tshark": [
         (re.compile(r"^-X$"), "tshark: -X extension (lua_script: command execution)"),
@@ -1839,7 +1838,144 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
 
 # Tracers whose command line names a program to execute; see check_policy 1b-iii.
 _TRACERS_ATTACH_ONLY = frozenset({"strace", "ltrace"})
-_TRACER_ATTACH_FLAG = re.compile(r"^(-p|--attach)(=|\d|$)")
+_TRACER_SHORT_REQUIRED = {
+    "strace": frozenset("abeEIoOpPsSuUX"),
+    "ltrace": frozenset("aADeFlnopsuwx"),
+}
+_TRACER_SHORT_FLAGS = {
+    "strace": frozenset("AcCdDfFhiknNqrtTvVwxyYzZ"),
+    "ltrace": frozenset("bcCfhiLrStTV"),
+}
+_TRACER_LONG_REQUIRED = {
+    "strace": frozenset(
+        "env attach user argv0 detach-on interruptible trace signals status trace-fds trace-path columns "
+        "abbrev verbose raw read write kvm stack-trace-frame-limit syscall-limit "
+        "string-limit output const-print-style decode-pids summary-syscall-overhead "
+        "summary-sort-by summary-columns inject fault".split()
+    ),
+    "ltrace": frozenset("align debug config library indent output where".split()),
+}
+# Version-dependent or optional values must be inline so a program operand cannot be consumed as an option value.
+_TRACER_LONG_OPTIONAL = {
+    "strace": frozenset(
+        "daemonize daemonised daemonized color secontext stack-trace stack-traces relative-timestamps "
+        "absolute-timestamps timestamps syscall-times strings-in-hex tips namespace quiet silent silence "
+        "decode-fds".split()
+    ),
+    "ltrace": frozenset(),
+}
+_TRACER_LONG_FLAGS = {
+    "strace": frozenset(
+        "follow-forks kill-on-exit successful-only failed-only failing-only instruction-pointer syscall-number "
+        "arg-names "
+        "output-append-mode output-separately no-abbrev always-show-pid summary-only summary "
+        "summary-wall-clock debug help seccomp-bpf version pidns-translation".split()
+    ),
+    "ltrace": frozenset("no-signals demangle help version".split()),
+}
+
+
+def _check_tracer_attach_only(binary: str, arg_list: list[str]) -> None:
+    """Reject program operands after parsing the tracer's known options."""
+    launch_error = (
+        f"Blocked by policy: {binary} launches the program named on its command line; "
+        "only attaching to a running process (-p PID) is permitted — use run_script to trace a new program"
+    )
+    attached = False
+    i = 0
+    while i < len(arg_list):
+        arg = arg_list[i]
+        i += 1
+        if arg == "--":
+            if i < len(arg_list):
+                raise ValueError(launch_error)
+            break
+        if not arg.startswith("-") or arg == "-":
+            raise ValueError(launch_error)
+        options: list[tuple[str, str | None]] = []
+        if arg.startswith("--"):
+            name, sep, value = arg[2:].partition("=")
+            known = _TRACER_LONG_REQUIRED[binary] | _TRACER_LONG_OPTIONAL[binary] | _TRACER_LONG_FLAGS[binary]
+            matches = [option for option in known if option.startswith(name)]
+            if name not in known:
+                if not name or len(matches) != 1:
+                    raise ValueError(f"Blocked by policy: {binary} attach-only policy cannot validate option {arg}")
+                name = matches[0]
+            if name in _TRACER_LONG_REQUIRED[binary] and not sep:
+                if i >= len(arg_list):
+                    raise ValueError(f"Blocked by policy: {binary} option --{name} requires a value")
+                value = arg_list[i]
+                i += 1
+            elif name in _TRACER_LONG_FLAGS[binary] and sep:
+                raise ValueError(f"Blocked by policy: {binary} option --{name} does not take a value")
+            options.append((name, value if sep or name in _TRACER_LONG_REQUIRED[binary] else None))
+        else:
+            cluster = arg[1:]
+            for pos, name in enumerate(cluster):
+                if name in _TRACER_SHORT_REQUIRED[binary]:
+                    value = cluster[pos + 1 :]
+                    if not value:
+                        if i >= len(arg_list):
+                            raise ValueError(f"Blocked by policy: {binary} option -{name} requires a value")
+                        value = arg_list[i]
+                        i += 1
+                    options.append((name, value))
+                    break
+                if name not in _TRACER_SHORT_FLAGS[binary]:
+                    raise ValueError(f"Blocked by policy: {binary} attach-only policy cannot validate option -{name}")
+                options.append((name, None))
+        for name, value in options:
+            if name in {"p", "attach"}:
+                pid_pattern = r"[1-9]\d*(?:[,\s]+[1-9]\d*)*" if binary == "strace" else r"[1-9]\d*"
+                if value is None or re.fullmatch(pid_pattern, value) is None:
+                    raise ValueError(f"Blocked by policy: {binary} requires a positive PID for attaching")
+                attached = True
+            if binary == "strace" and name in {"o", "output"} and value and value.startswith(("|", "!")):
+                raise ValueError("Blocked by policy: strace output command executes a shell")
+    if not attached:
+        raise ValueError(launch_error)
+
+
+def _check_gdb_execution_commands(arg_list: list[str]) -> None:
+    """Check evaluation commands without interpreting their symbol arguments as commands."""
+    i = 0
+    while i < len(arg_list):
+        arg = arg_list[i]
+        i += 1
+        if arg == "--":
+            break
+        if not arg.startswith("-"):
+            continue
+        name, sep, command = arg.lstrip("-").partition("=")
+        if name not in {"ex", "iex"} and not (
+            len(name) >= 2 and any(option.startswith(name) for option in ("eval-command", "init-eval-command"))
+        ):
+            continue
+        if not sep:
+            if i >= len(arg_list):
+                continue
+            command = arg_list[i]
+            i += 1
+        # Quoted strings remain single tokens so an echo or print argument cannot
+        # turn a mentioned command into an execution-policy false positive.
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";\r\n")
+        lexer.whitespace = " \t"
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        command_start = True
+        for token in lexer:
+            if token and all(char in ";\r\n" for char in token):
+                command_start = True
+            elif command_start:
+                if re.match(r"(?:r(?:u(?:n)?)?|start(?:i)?)(?:$|[^a-zA-Z0-9_-])", token):
+                    raise ValueError("Blocked by policy: gdb: run/start executes the inferior")
+                if (
+                    token in {"ali", "alia", "alias", "ev", "eva", "eval", "w", "wi", "wit", "with"}
+                    or len(token) >= 3
+                    and "interpreter-exec".startswith(token)
+                ):
+                    raise ValueError("Blocked by policy: gdb: nested command evaluation")
+                command_start = False
 
 
 def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None) -> None:
@@ -1869,14 +2005,11 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
     # 1b-iii. strace/ltrace execute the program named on their command line, which
     # bypasses the tool allowlist (and, via an interpreter, the external-target
     # preflight). Permit only attaching to an existing process (-p/--attach); a
-    # tracer with no attach flag always launches a program.
+    # presence of an attach flag does not prevent a positional program launching.
     if tool_name in _TRACERS_ATTACH_ONLY or binary in _TRACERS_ATTACH_ONLY:
-        if not any(_TRACER_ATTACH_FLAG.match(a) for a in arg_list):
-            raise ValueError(
-                f"Blocked by policy: {binary} launches the program named on its command line; "
-                "only attaching to a running process (-p PID) is permitted — use run_script to "
-                "trace a new program"
-            )
+        _check_tracer_attach_only(binary if binary in _TRACERS_ATTACH_ONLY else tool_name, arg_list)
+    if tool_name == "gdb" or binary == "gdb":
+        _check_gdb_execution_commands(arg_list)
 
     # 1c. Block file-mutating utilities (and curl/wget output flags) from writing
     # into dotfiles/shell-rc/cron/system dirs. This is a local-write concern, so

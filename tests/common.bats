@@ -650,6 +650,106 @@ _pid_dead() {
     [[ $alive -eq 0 ]]
 }
 
+@test "run lock preserves the caller's stderr" {
+    bats_require_minimum_version 1.5.0
+    command -v flock >/dev/null || skip "needs flock"
+    make_test_tmpdir
+    run --separate-stderr bash -c '
+        source "$1/lib/common.sh"
+        SCRIPT_DIR="$2"
+        _acquire_run_lock
+        printf "visible stdout\n"
+        printf "visible stderr\n" >&2
+    ' fixture "$PROJECT_ROOT" "$TEST_TMPDIR"
+    assert_success
+    assert_output "visible stdout"
+    [[ "$stderr" == "visible stderr" ]]
+}
+
+@test "interrupt kills TERM-resistant reparented descendants and releases the run lock" {
+    [[ -d /proc/self ]] || skip "needs /proc"
+    command -v flock >/dev/null || skip "needs flock"
+    make_test_tmpdir
+    run python3 - "$PROJECT_ROOT" "$TEST_TMPDIR" <<'PY'
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+root, fixture = map(Path, sys.argv[1:])
+child = fixture / "child.sh"
+parent = fixture / "parent.sh"
+pidfile = fixture / "child.pid"
+ready = fixture / "ready"
+child.write_text('trap "" TERM\nprintf "%s\\n" "$$" > "$1"\nexec sleep 90\n')
+parent.write_text('bash "$1" "$2" &\nwait\n')
+body = '''
+source "$1/lib/common.sh"
+SCRIPT_DIR="$2"
+_acquire_run_lock
+bash "$3" "$4" "$5" &
+for i in {1..100}; do [[ -s "$5" ]] && break; sleep 0.01; done
+trap '_stop_job_tree; exit 130' TERM
+: > "$6"
+wait
+'''
+process = subprocess.Popen(
+    ["bash", "-c", body, "fixture", str(root), str(fixture), str(parent), str(child), str(pidfile), str(ready)],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+    start_new_session=True,
+)
+pid = None
+try:
+    deadline = time.monotonic() + 5
+    while not ready.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert ready.exists(), "fixture did not become ready"
+    pid = int(pidfile.read_text())
+    process.send_signal(signal.SIGTERM)
+    stdout, stderr = process.communicate(timeout=10)
+    assert process.returncode == 130, (process.returncode, stdout, stderr)
+    stat = Path(f"/proc/{pid}/stat")
+    assert not stat.exists() or stat.read_text().rsplit(") ", 1)[1].split()[0] in {"Z", "X"}
+    retry = subprocess.run(
+        ["bash", "-c", 'source "$1/lib/common.sh"; SCRIPT_DIR="$2"; _acquire_run_lock',
+         "fixture", str(root), str(fixture)],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert retry.returncode == 0, (retry.stdout, retry.stderr)
+finally:
+    if pid is not None:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.communicate(timeout=5)
+PY
+    assert_success
+}
+
+@test "saved job identity does not signal a different process start time" {
+    [[ -d /proc/self ]] || skip "needs /proc"
+    sleep 30 &
+    local pid=$! start
+    start=$(_process_start_time "$pid")
+    _signal_job "$pid" "$((start + 1))" KILL
+    local alive=0
+    kill -0 "$pid" 2>/dev/null && alive=1
+    kill -KILL "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    [[ "$alive" -eq 1 ]]
+}
+
 @test "lazy package index refreshes once, only on the first install (CL-6)" {
     source_libs archlinux pacman
     make_test_tmpdir

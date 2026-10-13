@@ -323,6 +323,7 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
                         rotated = True
                     if rotated:
                         self.stream.close()
+                        self.stream = None
                         self.stream = self._open()
                 super().emit(record)
             finally:
