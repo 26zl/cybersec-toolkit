@@ -55,7 +55,6 @@ ROLLBACK_TARGET=""
 FORCE_YES=false
 
 usage() {
-    local _exit_code="${1:-0}"
     # Build profile and module lists dynamically from filesystem / registry
     local _profiles=""
     for _pf in "$SCRIPT_DIR"/profiles/*.conf; do
@@ -154,7 +153,7 @@ Exit status:
   2    invalid command-line usage
   130  interrupted (Ctrl+C)
 EOF
-    exit "$_exit_code"
+    exit 0
 }
 
 _installation_failed() {
