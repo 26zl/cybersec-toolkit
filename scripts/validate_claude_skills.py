@@ -240,6 +240,9 @@ def _validate_plugin_manifests(skill_dirs: list[Path], errors: list[str]) -> Non
 
 
 def main() -> int:
+    from _cli import check_args
+
+    check_args(set(), "usage: validate_claude_skills.py")
     errors: list[str] = []
     spec_warnings: list[str] = []
 

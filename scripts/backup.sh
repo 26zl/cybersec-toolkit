@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools — Config Backup/Restore Script
 # Backs up and restores tool configurations with ChaCha20 encryption (PBKDF2 key derivation).
@@ -66,8 +66,28 @@ _init_backup_storage() {
         return 1
     fi
     _chown_backup_dir || return 1
-    _init_log_file "$BACKUP_DIR/backup.log"
+    # Append, not truncate: a cron schedule keeps the history of earlier runs.
+    # shellcheck disable=SC2034  # LOG_FILE is read by lib/common.sh logging
+    if { : >> "$BACKUP_DIR/backup.log"; } 2>/dev/null; then
+        chmod 600 "$BACKUP_DIR/backup.log" 2>/dev/null || true
+        LOG_FILE="$BACKUP_DIR/backup.log"
+    else
+        LOG_FILE="/dev/null"
+    fi
     _BACKUP_STORAGE_READY=true
+}
+
+# _require_crypto_deps — fail before any work if encryption/verification tools are
+# missing, rather than after the archive is built ("Failed to generate MAC salt").
+_require_crypto_deps() {
+    local _dep _missing=()
+    for _dep in openssl python3 tar; do
+        command_exists "$_dep" || _missing+=("$_dep")
+    done
+    if [[ ${#_missing[@]} -gt 0 ]]; then
+        log_error "Missing required command(s): ${_missing[*]} — install them and retry"
+        exit 1
+    fi
 }
 
 _prompt_passphrase() {
@@ -112,12 +132,16 @@ _prompt_passphrase() {
 # Caller must rm -f "$_PASS_FILE" when done.
 _read_passphrase_to_file() {
     local passphrase
-    if [[ ! -t 0 ]]; then
-        log_error "No terminal available for decryption passphrase input"
+    # BACKUP_PASSPHRASE allows an unattended restore, matching backup's own mode.
+    if [[ -n "${BACKUP_PASSPHRASE:-}" ]]; then
+        passphrase="$BACKUP_PASSPHRASE"
+    elif [[ ! -t 0 ]]; then
+        log_error "No terminal available for decryption passphrase input (set BACKUP_PASSPHRASE for an unattended restore)"
         return 1
+    else
+        read -rsp "Enter decryption passphrase: " passphrase || return 1
+        echo ""
     fi
-    read -rsp "Enter decryption passphrase: " passphrase || return 1
-    echo ""
     if ! _PASS_FILE=$(mktemp) || ! chmod 600 "$_PASS_FILE"; then
         log_error "Failed to create secure passphrase file"
         [[ -n "${_PASS_FILE:-}" ]] && rm -f -- "$_PASS_FILE"
@@ -269,7 +293,14 @@ decrypt_archive() {
             return 1
         fi
     else
-        log_warn "No HMAC tag found ($hmac_file) — legacy backup, integrity cannot be verified"
+        # Restore runs as root and writes configs and /opt trees, so an archive
+        # nobody can authenticate is refused unless the operator opts in.
+        if [[ "${BACKUP_ALLOW_UNVERIFIED:-0}" != "1" ]]; then
+            rm -f "$_PASS_FILE"
+            log_error "No integrity tag ($hmac_file) — refusing an unauthenticated restore. Set BACKUP_ALLOW_UNVERIFIED=1 to restore a legacy backup you trust."
+            return 1
+        fi
+        log_warn "No HMAC tag found ($hmac_file) — legacy backup, integrity cannot be verified (BACKUP_ALLOW_UNVERIFIED=1)"
     fi
 
     if openssl enc -chacha20 -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
@@ -476,6 +507,7 @@ restore_configs() {
 
 # Commands
 cmd_backup() {
+    _require_crypto_deps
     _init_backup_storage || exit 1
     log_info "Creating backup..."
     if [[ -e "$BACKUP_PATH" || -e "$BACKUP_PATH.tar.gz" || -e "$BACKUP_PATH.tar.gz.enc" ]]; then
@@ -519,6 +551,7 @@ cmd_backup() {
 cmd_restore() {
     local backup_file="$1"
 
+    _require_crypto_deps
     if [[ ! -f "$backup_file" ]]; then
         log_error "Backup file not found: $backup_file"
         exit 1
@@ -558,6 +591,9 @@ cmd_restore() {
         if ! decrypt_archive "$backup_file" "$tar_file"; then
             exit 1
         fi
+    elif [[ "${BACKUP_ALLOW_UNVERIFIED:-0}" != "1" ]]; then
+        log_error "Refusing an unencrypted, unauthenticated legacy backup. Set BACKUP_ALLOW_UNVERIFIED=1 to restore one you trust."
+        exit 1
     fi
 
     local member_list="$restore_tmpdir/members"
@@ -680,6 +716,10 @@ cmd_delete() {
             log_info "No backups to delete"
             return 0
         fi
+        if [[ ! -t 0 ]]; then
+            log_error "Refusing to delete backups without an interactive confirmation."
+            return 1
+        fi
         read -rp "Delete all $count backup(s) in $BACKUP_DIR? (y/N) " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             log_warn "Cancelled"
@@ -713,6 +753,10 @@ cmd_delete() {
                 return 1
             fi
         fi
+        if [[ ! -t 0 ]]; then
+            log_error "Refusing to delete a backup without an interactive confirmation."
+            return 1
+        fi
         read -rp "Delete $target? (y/N) " confirm
         if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
             log_warn "Cancelled"
@@ -721,6 +765,19 @@ cmd_delete() {
         rm -f -- "$target" "${target}.hmac"
         log_success "Deleted: $target"
     fi
+}
+
+# _root_controlled <path> — the path and every ancestor are root-owned and not
+# group/world-writable, so no non-root user can change the code root executes.
+_root_controlled() {
+    local p
+    p=$(realpath -- "$1" 2>/dev/null) || return 1
+    while :; do
+        [[ "$(stat -c '%u' -- "$p" 2>/dev/null)" == "0" ]] || return 1
+        [[ -z "$(find "$p" -maxdepth 0 -perm /022 2>/dev/null)" ]] || return 1
+        [[ "$p" == "/" ]] && return 0
+        p=$(dirname -- "$p")
+    done
 }
 
 cmd_schedule() {
@@ -737,6 +794,9 @@ cmd_schedule() {
     local hour minute
     hour=$(echo "$time" | cut -d: -f1)
     minute=$(echo "$time" | cut -d: -f2)
+    # Force base 10: "08"/"09" are otherwise invalid octal in arithmetic.
+    hour=$((10#$hour))
+    minute=$((10#$minute))
 
     if [[ "$hour" -gt 23 || "$minute" -gt 59 ]]; then
         log_error "Invalid time: hour must be 0-23, minute must be 0-59"
@@ -774,6 +834,17 @@ cmd_schedule() {
         log_error "crontab is not installed"
         exit 1
     fi
+    # Root's crontab will execute backup.sh and lib/common.sh from this checkout.
+    # If a non-root user can modify them (or swap a parent directory), scheduling
+    # would hand that user root on every run.
+    local _p
+    for _p in "$SCRIPT_DIR/scripts/backup.sh" "$SCRIPT_DIR/lib/common.sh"; do
+        if ! _root_controlled "$_p"; then
+            log_error "Refusing to schedule: root's crontab would run $_p, which a non-root user can modify (it or a parent directory is not root-owned and write-protected)."
+            log_error "Keep a root-owned clone for scheduled backups (e.g. /opt/cybersec-toolkit), or run 'backup.sh backup' manually."
+            exit 1
+        fi
+    done
 
     # Write passphrase to a root-only env file instead of embedding in crontab
     # (avoids single-quote injection and keeps secrets out of crontab -l)
@@ -876,11 +947,15 @@ Commands:
   unschedule                       Remove scheduled backup
 
 Environment:
-  BACKUP_PASSPHRASE                Passphrase for non-interactive/cron encryption
-                                   (must be at least 8 characters)
+  BACKUP_PASSPHRASE                Passphrase for non-interactive/cron backup and
+                                   restore (must be at least 8 characters)
+  BACKUP_ALLOW_UNVERIFIED=1        Restore a legacy backup that has no integrity
+                                   tag (.tar.gz, or .enc without .hmac); refused
+                                   otherwise
 
 Options:
   -h, --help                       Show this help and exit
+  --version                        Show the toolkit version and exit
 EOF
 }
 
@@ -901,6 +976,7 @@ case "${1:-}" in
         ;;
     unschedule)  cmd_unschedule ;;
     --help|-h)   show_usage ;;
+    --version)   echo "cybersec-toolkit ${INSTALLER_VERSION:-unknown}" ;;
     "")          cmd_backup ;;
     *)           log_error "Unknown command: ${1:-}"; show_usage; exit 1 ;;
 esac

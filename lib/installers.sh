@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by modules and scripts that source this file
 # installers.sh — Install method helpers for cybersec-toolkit
 # Provides batch install functions for: apt, pipx, go, cargo, gem, git, binary, docker
@@ -404,6 +404,11 @@ install_ctf_venv() {
     local venv_provenance="latest"
     [[ "$(_tree_provenance "ctf-${name}-venv" "$venv_dir")" == "existing" ]] && venv_provenance="existing"
 
+    if [[ -L "$venvs_dir" ]]; then
+        log_error "Refusing a symlinked venv directory: $venvs_dir"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        return 1
+    fi
     if ! mkdir -p "$venvs_dir" 2>/dev/null; then
         log_error "Cannot create venv directory: $venvs_dir"
         TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
@@ -829,9 +834,11 @@ setup_git_repo() {
                 [[ "$_fallback_ok" == "true" ]] && break
             done
             # Last resort: relax pinned versions (== → >=) and retry with system Python.
-            # Only triggers when strict pins exist and all older-Python fallbacks failed.
-            if [[ "$_fallback_ok" != "true" ]] && grep -qE '^[^#].*==' "$dest/requirements.txt" 2>/dev/null; then
-                log_info "Retrying $name with relaxed version pins (== → >=)..."
+            # Only triggers when strict pins exist and all older-Python fallbacks failed,
+            # and never in strict mode, which must not install unpinned versions.
+            if [[ "$_fallback_ok" != "true" ]] && [[ "${REQUIRE_CHECKSUMS:-false}" != "true" ]] \
+                && grep -qE '^[^#].*==' "$dest/requirements.txt" 2>/dev/null; then
+                log_warn "Retrying $name with relaxed version pins (== → >=): newer, unpinned dependency versions"
                 rm -rf "$dest/venv"
                 if _as_builder "python3 -m venv '$_dest_esc/venv'" 2>>"$LOG_FILE"; then
                     _as_builder "'$_dest_esc/venv/bin/pip' install -q --upgrade pip" >> "$LOG_FILE" 2>&1 || true
@@ -1502,7 +1509,12 @@ for asset in data.get('assets', []):
     # --fast skips verification entirely (mutually exclusive with --require-checksums)
     local _action_label="install"
     [[ "$mode" == "update" ]] && _action_label="update"
-    if [[ "${FAST_MODE:-false}" != "true" ]] && ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
+    # Strict mode always verifies: an inherited FAST_MODE must never turn
+    # --require-checksums/--production into an unverified install (update.sh has
+    # no --fast/strict exclusivity check of its own).
+    local _skip_verify=false
+    [[ "${FAST_MODE:-false}" == "true" && "${REQUIRE_CHECKSUMS:-false}" != "true" ]] && _skip_verify=true
+    if [[ "$_skip_verify" != "true" ]] && ! verify_github_checksum "$release_json" "$tmp_dir/$asset_name" "$asset_name"; then
         if [[ -f "$tmp_dir/.checksum_mismatch" ]]; then
             log_error "Aborting $_action_label of $binary due to checksum mismatch"
             rm -rf "$tmp_dir"
@@ -1637,8 +1649,11 @@ WRAPPER
             rm -rf "$tmp_dir"
             return 1
         fi
-        # cp -a keeps extracted modes (and unzip restores archive modes); strip setuid/setgid.
+        # cp -a keeps extracted modes (and unzip restores archive modes); strip setuid/setgid
+        # and group/world write, so an upstream zip stored with 0777 cannot leave
+        # installed files that any local user could replace.
         find "$dest_dir" -xdev -type f -perm /6000 -exec chmod a-s {} + 2>>"$LOG_FILE"
+        chmod -R go-w "$dest_dir" 2>>"$LOG_FILE" || true
         local dest_bin=""
         for candidate in \
             "$dest_dir/bin/$binary" \
@@ -2411,13 +2426,20 @@ remove_special_tool() {
             for _bin in foundryup forge cast anvil chisel; do
                 [[ -L "$PIPX_BIN_DIR/$_bin" ]] && rm -f "$PIPX_BIN_DIR/$_bin" 2>/dev/null
             done
-            _dir="$(_builder_home)/.foundry"
-            [[ -d "$_dir" ]] && rm -rf "$_dir"
+            # Remove only the toolkit-installed binaries; keep the rest of
+            # ~/.foundry (keystores, config) so uninstall never destroys wallets.
+            _dir="$(_builder_home)/.foundry/bin"
+            [[ -d "$_dir" ]] && rm -rf "${_dir:?}"
             ;;
         steampipe)
             rm -f "$PIPX_BIN_DIR/steampipe" 2>/dev/null || true
-            _dir="$(_builder_home)/.steampipe"
-            [[ -d "$_dir" ]] && rm -rf "$_dir"
+            # Remove the installed binary; keep ~/.steampipe (connection .spc
+            # configs, which can hold credentials) rather than deleting user data.
+            local _cand
+            for _cand in /usr/local/bin/steampipe "$(_builder_home)/.steampipe/steampipe"; do
+                [[ -e "$_cand" || -L "$_cand" ]] && rm -f "$_cand" 2>/dev/null || true
+            done
+            _dir=""
             ;;
         patator)
             rm -f "$PIPX_BIN_DIR/patator" 2>/dev/null || true

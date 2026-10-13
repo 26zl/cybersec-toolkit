@@ -149,6 +149,9 @@ def selftest() -> int:
 
 
 def main() -> int:
+    from _cli import check_args
+
+    check_args({"--selftest"}, "usage: validate_agent_docs.py [--selftest]")
     if "--selftest" in sys.argv[1:]:
         return selftest()
 

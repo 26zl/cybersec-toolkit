@@ -22,6 +22,15 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `run_script` | Explicit, unsandboxed Python/Bash execution opt-in. Optional `venv` parameter for per-script interpreter selection |
 | `manage_remote_hosts` | Add, remove, list, and test SSH remote hosts for remote tool execution |
 
+### Result shapes
+
+Every tool returns a JSON object, in one of two families:
+
+- **Advisory tools** (`list_tools`, `check_installed`, `get_tool_info`, `get_module_info`, `get_profile_tools`, `suggest_for_*`, `guided_assessment`, `get_cve_info`, `recommend_install`, `list_profiles`, `manage_remote_hosts`) return their data, or `{"error": "<message>"}` when the request cannot be served (unknown tool, module or profile).
+- **Executors** (`run_tool`, `run_pipeline`, `run_script`) always return `exit_code`, `stdout`, `stderr` and `truncated`. A request refused by policy, validation or the rate limiter has `exit_code: -1` and the reason in `stderr`; it never reaches a process.
+
+In `check_installed`, `method` is the registry install method (`apt`, `pipx`, …) and `detection` is how the tool was found (`path`, `versions_tracked`, …). `list_tools` accepts `limit`/`offset` and `get_profile_tools` accepts `counts_only` to keep large responses small. The MCP handshake reports the toolkit version, not FastMCP's.
+
 ## Setup
 
 ### Prerequisites
@@ -348,3 +357,4 @@ server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md
 | `CYBERSEC_MCP_VENVS_DIR` | `~/.ctf-venvs` | Directory containing named Python venvs for the `venv` parameter |
 | `CYBERSEC_MCP_AUDIT_LOG` | `~/.local/state/cybersec-tools-mcp/audit.log` | Override the rotating JSON-lines audit log path |
 | `CYBERSEC_MCP_AUDIT_REQUIRED` | `""` (disabled) | Set to `1` to fail startup when file audit logging cannot be initialized |
+| `CYBERSEC_MCP_REDACT_OUTPUT` | `""` (disabled) | Set to `1` to redact credential-shaped strings from tool output before it is returned to the client |

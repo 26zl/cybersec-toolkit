@@ -232,6 +232,8 @@ such as `curl` remain normal `run_tool` calls.
 - `CYBERSEC_MCP_REMOTE_HOSTS` — custom remote-host config path (default:
   `~/.local/state/cybersec-tools-mcp/remote_hosts.json`; an existing in-package
   `mcp_server/remote_hosts.json` still takes precedence)
+- `CYBERSEC_MCP_REDACT_OUTPUT=1` — redact credential-shaped strings from tool output
+  before it is returned to the client (and its model provider); off by default
 - `CYBERSEC_MCP_AUDIT_REQUIRED=1` — fail startup instead of falling back to stderr
   when file audit logging is unavailable
 - `CYBERSEC_MCP_AUDIT_STREAM=1` — additionally mirror each audit record to stderr

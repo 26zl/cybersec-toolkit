@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -113,6 +113,34 @@ test('createAuditSink rotates at the 5 MB mark like the Python handler', () => {
 
   assert.equal(existsSync(`${target}.1`), true);
   assert.equal(readFileSync(target, 'utf8').trim(), record('run_tool'));
+});
+
+test('createAuditSink leaves rotation to the sink holding the rotate lock', () => {
+  const target = join(scratch(), 'audit.log');
+  writeFileSync(target, Buffer.alloc(5 * 1024 * 1024, 0x61), { mode: 0o600 });
+  mkdirSync(`${target}.rotate.lock`);
+
+  createAuditSink({ path: target }).write(record('run_tool'));
+
+  // Another sink is rotating: append to the live file, do not shift backups.
+  assert.equal(existsSync(`${target}.1`), false);
+  assert.equal(readFileSync(target, 'utf8').endsWith(`${record('run_tool')}\n`), true);
+});
+
+test('createAuditSink clears a rotate lock left by a crashed holder', () => {
+  const target = join(scratch(), 'audit.log');
+  writeFileSync(target, Buffer.alloc(5 * 1024 * 1024, 0x61), { mode: 0o600 });
+  const lock = `${target}.rotate.lock`;
+  mkdirSync(lock);
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(lock, old, old);
+
+  const sink = createAuditSink({ path: target });
+  sink.write(record('run_tool')); // clears the stale lock
+  sink.write(record('run_pipeline')); // rotates
+
+  assert.equal(existsSync(lock), false);
+  assert.equal(existsSync(`${target}.1`), true);
 });
 
 test('createAuditSink degrades to a single warning when the log is unusable', () => {

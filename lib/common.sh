@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # common.sh — Shared library for cybersec-toolkit
 # Source this file: source "$SCRIPT_DIR/lib/common.sh"
 
@@ -58,11 +58,64 @@ elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
     PARALLEL_JOBS=16
 fi
 
+# Keep GITHUB_TOKEN out of every child process's environment: root-run third-party
+# install scripts would otherwise inherit it. The shell variable stays readable for
+# _setup_curl_opts, which hands it to curl only through a 0600 netrc file.
+export -n GITHUB_TOKEN 2>/dev/null || true
+
 # Temp file cleanup registry — tracks all mktemp paths for SIGINT/SIGTERM cleanup.
 # Every mktemp call should be followed by: _register_cleanup "$var"
 _CLEANUP_PATHS=()
 
 _register_cleanup() { _CLEANUP_PATHS+=("$1"); }
+
+# _child_pids <pid> — direct children of <pid>, read from /proc (no procps
+# dependency). comm may contain spaces or parens, so parse after the last ')'.
+_child_pids() {
+    local _stat _line _rest _ppid
+    for _stat in /proc/[0-9]*/stat; do
+        read -r _line < "$_stat" 2>/dev/null || continue
+        _rest="${_line##*) }"                 # "S <ppid> ..." — state, then ppid
+        _ppid="${_rest#* }"; _ppid="${_ppid%% *}"
+        [[ "$_ppid" == "$1" ]] || continue
+        _rest="${_stat#/proc/}"; printf '%s\n' "${_rest%/stat}"
+    done
+}
+
+# _kill_tree <pid> <signal> — signal every descendant of <pid>, children first.
+# Background jobs of a non-interactive shell ignore SIGINT, and per-tool installers
+# are grandchildren, so Ctrl+C alone (or `kill $(jobs -p)`) leaves them running.
+_kill_tree() {
+    local _c
+    for _c in $(_child_pids "$1"); do
+        _kill_tree "$_c" "$2"
+        kill -"$2" "$_c" 2>/dev/null || true
+    done
+}
+
+# _acquire_run_lock — one install/update/remove run at a time. Concurrent runs race
+# on the package manager, /opt clones, venvs and the .versions provenance labels
+# that rollback and remove act on. The fd stays open for the process lifetime (and
+# is inherited by its jobs), so the lock lasts until the run and its children end.
+# Best effort where flock (util-linux) is unavailable.
+_acquire_run_lock() {
+    command -v flock &>/dev/null || return 0
+    local _lock="${SCRIPT_DIR}/.versions.run.lock"
+    exec {_RUN_LOCK_FD}>>"$_lock" 2>/dev/null || return 0
+    if ! flock -n "$_RUN_LOCK_FD"; then
+        log_error "Another install, update or remove run is active (lock: $_lock) — wait for it to finish"
+        exit 1
+    fi
+}
+
+# _stop_job_tree — on interrupt, stop every descendant of this installer before
+# cleanup: TERM, a grace second, then KILL survivors, then reap.
+_stop_job_tree() {
+    _kill_tree $$ TERM
+    sleep 1
+    _kill_tree $$ KILL
+    wait 2>/dev/null || true
+}
 
 _global_cleanup() {
     # Background jobs ignore SIGINT in a non-interactive shell, so the spinner must be killed explicitly.
@@ -133,7 +186,9 @@ track_session() {
 
 _list_sessions() {
     local session_dir="${SCRIPT_DIR:-.}/.install_sessions"
-    if [[ ! -d "$session_dir" ]] || [[ -z "$(ls -A "$session_dir" 2>/dev/null)" ]]; then
+    # Only manifests count: the directory can also hold .rolled_back markers and
+    # lock files, which would otherwise print an empty table.
+    if ! compgen -G "$session_dir/*.manifest" > /dev/null; then
         echo "No install sessions found."
         return 0
     fi
@@ -595,8 +650,16 @@ _zypper_refresh_with_retries() {
     [[ "$delay" =~ ^[0-9]+$ ]] || delay=15
     (( max_attempts >= 1 )) || max_attempts=1
 
+    # Auto-importing repository keys trusts any new or rotated signing key on
+    # refresh, weakening the distro-signed-repo trust model. Allow it only in CI's
+    # throwaway containers or on explicit opt-in.
+    local -a _keys=()
+    if [[ "${CI:-}" == "true" || "${CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS:-0}" == "1" ]]; then
+        _keys=(--gpg-auto-import-keys)
+    fi
+
     for ((attempt = 1; attempt <= max_attempts; attempt++)); do
-        if maybe_sudo zypper --non-interactive --gpg-auto-import-keys refresh --force; then
+        if maybe_sudo zypper --non-interactive ${_keys[@]+"${_keys[@]}"} refresh --force; then
             return 0
         fi
 
@@ -623,7 +686,20 @@ pkg_update() {
     esac
 }
 
+# Set by `install.sh --tool`: refresh the package index on the first package
+# install instead of up front, so a mistyped tool name never triggers a refresh
+# (on Arch that refresh is a full `pacman -Syu`). Other paths refresh themselves.
+_PKG_INDEX_LAZY=false
+_PKG_INDEX_REFRESHED=false
+_ensure_pkg_index() {
+    [[ "$_PKG_INDEX_LAZY" == true && "$_PKG_INDEX_REFRESHED" != true ]] || return 0
+    _PKG_INDEX_REFRESHED=true
+    log_info "Refreshing package lists..."
+    pkg_update >> "$LOG_FILE" 2>&1 || log_warn "Package list refresh had errors (check log) — continuing"
+}
+
 pkg_install() {
+    _ensure_pkg_index
     case "$PKG_MANAGER" in
         apt)     maybe_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
         dnf)
@@ -818,7 +894,9 @@ _builder_cmd() {
 # Usage: _chown_for_builder /opt/toolname [/opt/go ...]
 _chown_for_builder() {
     [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]] || return 0
-    chown "$SUDO_USER" "$@" 2>/dev/null || true
+    # -h: never follow a symlink. Root chowning a user-planted link's target would
+    # hand the user ownership of an arbitrary root-owned path.
+    chown -h "$SUDO_USER" "$@" 2>/dev/null || true
 }
 
 # _path_append — add directories to the END of PATH, once each. Builder-owned bin

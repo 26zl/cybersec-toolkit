@@ -95,6 +95,19 @@ def validate():
             "pkg": fields[4],
         }
 
+    # Rollback re-translates rows that may already hold a translated name
+    # (install.sh), which is a no-op only if no translated name is translated
+    # again on the same distro column.
+    for debian, cols in entries.items():
+        for col, value in cols.items():
+            if not value or value == "-":
+                continue
+            for token in value.split("+"):
+                target = entries.get(token, {}).get(col, "")
+                if token != debian and target and target not in ("-", token):
+                    print(f"ERROR: chained mapping on {col}: '{debian}' -> '{token}' -> '{target}'")
+                    errors += 1
+
     print(f"\ndistro_compat.tsv: {line_count} entries")
     print(f"Errors: {errors}")
 
@@ -102,6 +115,9 @@ def validate():
 
 
 def main():
+    from _cli import check_args
+
+    check_args(set(), "usage: validate_distro_compat.py")
     sys.exit(validate())
 
 

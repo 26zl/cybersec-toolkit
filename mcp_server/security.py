@@ -32,6 +32,7 @@ from mcp_server.audit import (  # noqa: E402
     log_script_execution,
     log_script_result,
     log_validation,
+    redact_credentials,
 )
 from mcp_server.sanitize import sanitize_output, truncate_output  # noqa: E402
 from mcp_server.tools_db import ToolsDatabase, resolve_binary_name  # noqa: E402
@@ -215,12 +216,17 @@ _DANGEROUS_PATTERNS = re.compile(r"[|`]|\$[({]")
 _SENSITIVE_ENV_RE = re.compile(
     r"(TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|APIKEY|DSN"
     r"|CONNECTION[_-]?STRING"
-    r"|(?:API|ACCESS|PRIVATE|SECRET|SESSION)[_-]?KEY)",
+    r"|(?:API|ACCESS|PRIVATE|SECRET|SESSION)[_-]?KEY"
+    # Any variable named like a key or password under an arbitrary prefix
+    # (OPENAI_KEY, FOO_KEY, DB_PASS) — a credential regardless of the vendor.
+    r"|[_-](?:KEY|PASS)$)",
     re.IGNORECASE,
 )
 _SENSITIVE_ENV_PREFIX_RE = re.compile(
     r"^(AWS|AZURE|GCP|GOOGLE|GITHUB|GITLAB|STRIPE|SLACK|TWILIO|CLOUDFLARE"
-    r"|DIGITALOCEAN|HEROKU|NPM|PYPI|DOCKER|TF_VAR)_",
+    r"|DIGITALOCEAN|HEROKU|NPM|PYPI|DOCKER|TF_VAR"
+    r"|OPENAI|ANTHROPIC|GEMINI|HF|HUGGINGFACE|OPENROUTER|COHERE|MISTRAL|GROQ|PERPLEXITY"
+    r"|VAULT|SENTRY|DATADOG|SNYK|JIRA|SONAR)_",
     re.IGNORECASE,
 )
 # Credential-bearing values under a neutral name (DATABASE_URL, REDIS_URL, a DSN):
@@ -355,6 +361,11 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"(?:^|[\s'\"(])(?:python|py|pi)\b", re.IGNORECASE), "gdb: python/pipe execution"),
         (re.compile(r"system\s*\("), "gdb: call system()"),
         (re.compile(r"(?:^|[\s'\"(])!"), "gdb: shell escape"),
+        # Launching the inferior (vs. static inspection) is an allowlist bypass: the
+        # run/start commands and --args let gdb execute an arbitrary program. Static
+        # analysis (-ex 'info functions' /bin/ls) does not need these and still passes.
+        (re.compile(r"^--args$"), "gdb: --args launches an inferior program"),
+        (re.compile(r"(?:^|[;\s'\"])(?:run|r|start|starti)(?:$|[;\s'\"])"), "gdb: run/start executes the inferior"),
     ],
     "tshark": [
         (re.compile(r"^-X$"), "tshark: -X extension (lua_script: command execution)"),
@@ -1826,6 +1837,11 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
             _raise_sensitive_write(name, path)
 
 
+# Tracers whose command line names a program to execute; see check_policy 1b-iii.
+_TRACERS_ATTACH_ONLY = frozenset({"strace", "ltrace"})
+_TRACER_ATTACH_FLAG = re.compile(r"^(-p|--attach)(=|\d|$)")
+
+
 def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None) -> None:
     """Enforce execution policy on the resolved arguments.
 
@@ -1849,6 +1865,18 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
     # 1b-ii. A blocked long flag can also be reached by an unambiguous prefix on
     # parsers that honour abbreviation, so reject those too.
     _check_long_option_abbreviations(tool_name, binary, arg_list)
+
+    # 1b-iii. strace/ltrace execute the program named on their command line, which
+    # bypasses the tool allowlist (and, via an interpreter, the external-target
+    # preflight). Permit only attaching to an existing process (-p/--attach); a
+    # tracer with no attach flag always launches a program.
+    if tool_name in _TRACERS_ATTACH_ONLY or binary in _TRACERS_ATTACH_ONLY:
+        if not any(_TRACER_ATTACH_FLAG.match(a) for a in arg_list):
+            raise ValueError(
+                f"Blocked by policy: {binary} launches the program named on its command line; "
+                "only attaching to a running process (-p PID) is permitted — use run_script to "
+                "trace a new program"
+            )
 
     # 1c. Block file-mutating utilities (and curl/wget output flags) from writing
     # into dotfiles/shell-rc/cron/system dirs. This is a local-write concern, so
@@ -2143,6 +2171,22 @@ def _append_truncation_marker(text: str, max_bytes: int) -> str:
     return encoded[:cut].decode("utf-8", errors="ignore") + marker
 
 
+def _redact_output_enabled() -> bool:
+    """Opt-in redaction of credential-shaped strings in returned tool output."""
+    return os.environ.get("CYBERSEC_MCP_REDACT_OUTPUT", "").strip() == "1"
+
+
+def _sanitize_for_model(text: str) -> str:
+    """Sanitize output returned to the client, which passes it to its model provider.
+
+    With CYBERSEC_MCP_REDACT_OUTPUT=1, credentials a tool finds on a target are
+    redacted too; by default they are returned as-is because the operator may
+    need them for a proof of concept.
+    """
+    text = sanitize_output(text)
+    return redact_credentials(text) if _redact_output_enabled() else text
+
+
 def _finalize_stream(text: str, max_bytes: int, was_capped: bool) -> str:
     """Sanitize a captured stream, then bound it to ``max_bytes``.
 
@@ -2151,7 +2195,7 @@ def _finalize_stream(text: str, max_bytes: int, was_capped: bool) -> str:
     The budget is applied even when the stream was not capped upstream, for the
     same reason — sanitizing can push an under-limit stream over it.
     """
-    text = sanitize_output(text)
+    text = _sanitize_for_model(text)
     if was_capped:
         return _append_truncation_marker(text, max_bytes)
     bounded, _ = truncate_output(text, max_bytes)
@@ -2292,6 +2336,11 @@ async def execute_tool(
                     "truncated": False,
                     "command": cmd_str,
                 }
+            except asyncio.CancelledError:
+                # The client cancelled or disconnected: SIGKILL the group so the tool
+                # stops running against the target instead of being orphaned.
+                _kill_process_group(process)
+                raise
 
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
@@ -2471,6 +2520,9 @@ async def _run_pipeline_steps(
                     ],
                     "had_failures": True,
                 }
+            except asyncio.CancelledError:
+                _kill_process_group(process)
+                raise
 
             truncated_any = truncated_any or t_read_stdout or t_read_stderr
 
@@ -2485,7 +2537,7 @@ async def _run_pipeline_steps(
                 output_bytes=len(stdout_bytes),
             )
             step_stderr, step_stderr_truncated = truncate_output(
-                sanitize_output(stderr_bytes.decode("utf-8", errors="replace")),
+                _sanitize_for_model(stderr_bytes.decode("utf-8", errors="replace")),
                 4096,
             )
             step_results.append(
@@ -2854,6 +2906,9 @@ async def execute_script(
                         "script_file": script_path,
                         "working_dir": cwd,
                     }
+                except asyncio.CancelledError:
+                    _kill_process_group(process)
+                    raise
 
                 stdout = stdout_bytes.decode("utf-8", errors="replace")
                 stderr = stderr_bytes.decode("utf-8", errors="replace")
@@ -3002,8 +3057,8 @@ async def execute_tool_remote(
     async with _rate_limiter._semaphore:
         result = await execute_remote_command(ssh_args, command, timeout=timeout, max_output=max_output)
 
-    result["stdout"] = sanitize_output(result.get("stdout", ""))
-    result["stderr"] = sanitize_output(result.get("stderr", ""))
+    result["stdout"] = _sanitize_for_model(result.get("stdout", ""))
+    result["stderr"] = _sanitize_for_model(result.get("stderr", ""))
 
     log_execution(
         tool_name=tool_name,

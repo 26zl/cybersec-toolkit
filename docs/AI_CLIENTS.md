@@ -90,6 +90,19 @@ Ollama (model runtime) → OpenCode (MCP client) → cybersec-tools (MCP server)
 Choose any provider and model supported by your client. The MCP integration
 is independent of that choice.
 
+### Where target data goes
+
+Every tool result the server returns — scan output, page content, and any
+credential or personal data a tool finds on a target — becomes part of the
+client's conversation and is sent to the model provider. The server strips
+terminal escapes and flags injection attempts in that output, but by default it
+does not redact secrets from it; only the local audit log is redacted. Set
+`CYBERSEC_MCP_REDACT_OUTPUT=1` to redact credential-shaped strings from returned
+output as well (pattern matching, so not a guarantee). When an
+engagement's rules of engagement or a client contract forbid sharing target
+data with a third party, run the model locally (for example Ollama or LM Studio
+behind an MCP-capable client) so the output never leaves the host.
+
 ## OpenCode
 
 ### Configuration

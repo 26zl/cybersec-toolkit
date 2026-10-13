@@ -114,6 +114,9 @@ def selftest() -> int:
 
 
 def main() -> int:
+    from _cli import check_args
+
+    check_args({"--selftest"}, "usage: verify_audit_chain.py [--selftest] [LOG]", positional=True)
     if "--selftest" in sys.argv[1:]:
         return selftest()
 

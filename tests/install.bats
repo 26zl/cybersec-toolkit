@@ -101,6 +101,13 @@ setup() {
     assert_output --partial "crypto"
 }
 
+@test "install.sh ignores FAST_MODE and FORCE_YES from the environment (CL-10)" {
+    # An inherited FAST_MODE would silently disable checksum verification.
+    run env FAST_MODE=true FORCE_YES=true bash "$INSTALL_SH" --profile ctf --dry-run
+    assert_success
+    assert_output --partial "Fast mode:      false"
+}
+
 @test "install.sh --dry-run shows install functions" {
     run bash "$INSTALL_SH" --profile web --dry-run
     assert_success
@@ -275,6 +282,19 @@ EOF
     run bash "$INSTALL_SH" --dry-run --parallel 1
     assert_success
     assert_output --partial "Parallel jobs:  1"
+}
+
+@test "install.sh rejects a non-numeric -j instead of silently using 4" {
+    run bash "$INSTALL_SH" --dry-run -j abc
+    assert_failure
+    assert_output --partial "requires a positive number"
+}
+
+@test "install.sh clamps -j above 16 with a warning" {
+    run bash "$INSTALL_SH" --dry-run -j 99
+    assert_success
+    assert_output --partial "using 16"
+    assert_output --partial "Parallel jobs:  16"
 }
 
 @test "install.sh --help shows -j/--parallel flag" {

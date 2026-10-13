@@ -21,6 +21,7 @@ import {
   mkdirSync,
   openSync,
   renameSync,
+  rmdirSync,
   statSync,
   unlinkSync,
 } from 'node:fs';
@@ -36,6 +37,8 @@ export const AUDIT_KEY_BYTES = 32;
 const TAG_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_BYTES = 5 * 1024 * 1024;
 const BACKUP_COUNT = 3;
+// A rotation lock older than this was left by a crashed holder.
+const STALE_ROTATE_LOCK_MS = 30_000;
 // A stderr line this long is malformed; flush it rather than buffer forever.
 const MAX_PARTIAL_LINE = 1024 * 1024;
 
@@ -114,6 +117,36 @@ const rotate = (target) => {
   }
   if (size < MAX_BYTES) return;
 
+  // Several sinks (one per Kata session) can share the host log. Rotating at the
+  // same time would shift the backups twice and drop a generation, so one sink
+  // takes a mkdir lock and rotates while the others keep appending.
+  const lock = `${target}.rotate.lock`;
+  try {
+    mkdirSync(lock);
+  } catch {
+    try {
+      if (Date.now() - statSync(lock).mtimeMs > STALE_ROTATE_LOCK_MS) rmdirSync(lock);
+    } catch {
+      // Lock already gone.
+    }
+    return;
+  }
+  try {
+    // Another sink may have rotated between the size check and the lock.
+    if (statSync(target).size < MAX_BYTES) return;
+    shiftBackups(target);
+  } catch {
+    // Rotation is best-effort; a failed rename keeps appending to the target.
+  } finally {
+    try {
+      rmdirSync(lock);
+    } catch {
+      // Already removed.
+    }
+  }
+};
+
+const shiftBackups = (target) => {
   try {
     unlinkSync(`${target}.${BACKUP_COUNT}`);
   } catch {

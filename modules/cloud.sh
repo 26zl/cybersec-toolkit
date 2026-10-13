@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # Module: Cloud Security
 # AWS, Azure, GCP security testing and auditing
@@ -36,11 +36,15 @@ install_module_cloud() {
     install_go_batch "Cloud - Go" "${CLOUD_GO[@]}"
     install_git_batch "Cloud - Git" "${CLOUD_GIT[@]}"
 
-    if [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
+    # Steampipe ships only an unsigned install script (run as root); strict mode
+    # (--production/--require-checksums) refuses it rather than run it unverified.
+    if [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
+        log_warn "Strict mode: skipping Steampipe — its installer is an unsigned script"
+    elif [[ "${SKIP_SOURCE:-false}" != "true" ]] && [[ "$PKG_MANAGER" != "pkg" ]] && ! command_exists steampipe; then
         log_info "Installing Steampipe..."
         local _sp_installer
         _sp_installer=$(mktemp); _register_cleanup "$_sp_installer"
-        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "https://raw.githubusercontent.com/turbot/steampipe/v2.4.4/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE" \
+        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -fsSL "https://raw.githubusercontent.com/turbot/steampipe/v2.4.4/scripts/install.sh" -o "$_sp_installer" 2>>"$LOG_FILE" \
                 && _validate_curl_pipe "$_sp_installer" 'steampipe' 'install'; then
             _start_spinner "Installing Steampipe..."
             if bash "$_sp_installer" >> "$LOG_FILE" 2>&1; then

@@ -543,6 +543,9 @@ def sync():
 
 
 def main():
+    from _cli import check_args
+
+    check_args({"--strict", "--sync"}, "usage: validate_tools_config.py [--strict | --sync]")
     if "--sync" in sys.argv:
         sync()
     else:

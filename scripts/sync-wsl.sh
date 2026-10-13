@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Sync MCP server files from Windows source to WSL-local copy.
 # The WSL copy is needed because uv can't create .venv on NTFS from WSL.
 #

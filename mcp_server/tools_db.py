@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import time
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -226,6 +227,7 @@ class ToolsDatabase:
         self.tools_by_name: dict[str, dict] = {}
         self._versions: dict[str, dict] = {}
         self._versions_ts: float = 0.0  # last reload timestamp
+        self._versions_unreadable_warned = False
         self._docker_refs: set[str] = set()
         self._docker_refs_ts: float = 0.0
         self._load_tools()
@@ -264,10 +266,21 @@ class ToolsDatabase:
                             "version": parts[2],
                             "timestamp": parts[3],
                         }
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
             # Missing, unreadable, corrupt or non-UTF-8 .versions: fall through to
-            # the PATH/pipx/docker checks.
+            # the PATH/pipx/docker checks. A present-but-unreadable file silently
+            # degrades install detection (e.g. root-owned 0600 .versions under a
+            # non-root server), so surface that case once.
             versions = {}
+            if not self._versions_unreadable_warned and isinstance(exc, OSError) and versions_path.exists():
+                self._versions_unreadable_warned = True
+                warnings.warn(
+                    f".versions exists at {versions_path} but is not readable ({exc}); "
+                    "install detection falls back to PATH only. Make it readable by the "
+                    "server user (e.g. chmod 644).",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
         self._versions = versions
         self._versions_ts = now
         return versions

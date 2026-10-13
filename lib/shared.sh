@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shared.sh — Shared base dependencies required by all modules.
 # Compilers, runtimes, dev libraries — needed regardless of which modules
 # are selected.  Source AFTER common.sh and installers.sh.
@@ -262,6 +262,8 @@ for rel in json.load(sys.stdin):
         return 1
     fi
     rm -f "$tmp_tar"
+    # Provenance marker: remove.sh --remove-deps deletes only an SDK this installed.
+    : > "$install_parent/go/.cybersec-toolkit-installed" 2>/dev/null || true
 
     # Prepend to PATH so new Go shadows the old system Go
     export GOROOT="$install_parent/go"
@@ -285,15 +287,16 @@ for rel in json.load(sys.stdin):
 # toolchain is configured — `cargo` shim exists but can't actually run.
 ensure_cargo() {
     if command_exists cargo; then
-        # Verify cargo actually works (rustup shim without default toolchain fails)
-        if cargo --version >> "$LOG_FILE" 2>&1; then
+        # Probe/configure as the builder: cargo/rustup may be builder-owned (rustup
+        # shim in ~/.cargo/bin), and root must not execute a builder-writable binary.
+        if _as_builder "cargo --version" >> "$LOG_FILE" 2>&1; then
             log_success "cargo already installed"
             return 0
         fi
         # rustup shim exists but no toolchain — install default
         log_warn "cargo shim found but no default toolchain — running rustup default stable..."
-        if command_exists rustup && rustup default stable >> "$LOG_FILE" 2>&1; then
-            if cargo --version >> "$LOG_FILE" 2>&1; then
+        if command_exists rustup && _as_builder "rustup default stable" >> "$LOG_FILE" 2>&1; then
+            if _as_builder "cargo --version" >> "$LOG_FILE" 2>&1; then
                 log_success "Rust stable toolchain configured"
                 return 0
             fi
@@ -360,8 +363,10 @@ ensure_cargo_binstall() {
 
     local _binstall_tmp
     _binstall_tmp=$(mktemp); _register_cleanup "$_binstall_tmp"
+    # Pinned to a release tag (like the Steampipe script), not the moving main
+    # branch; bump it deliberately.
     if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -sSf \
-            https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
+            https://raw.githubusercontent.com/cargo-bins/cargo-binstall/v1.25.2/install-from-binstall-release.sh \
             -o "$_binstall_tmp" 2>>"$LOG_FILE" \
             && _validate_curl_pipe "$_binstall_tmp" 'cargo-binstall' 'install' 'github.com' \
             && chmod +r "$_binstall_tmp" \
@@ -407,6 +412,8 @@ ensure_uv() {
         # Add the invoking user's bin dir to PATH so the rest of the install
         # finds uv regardless of which user owns it.
         _path_append "$HOME/.local/bin" "$(_builder_home)/.local/bin"
+        # Provenance marker: remove.sh --remove-deps removes only a uv installed here.
+        _as_builder "mkdir -p \"\$HOME/.local/state/cybersec-toolkit\" && : > \"\$HOME/.local/state/cybersec-toolkit/uv-installed\"" 2>/dev/null || true
     fi
     rm -f "$_uv_tmp"
 
@@ -536,8 +543,12 @@ ensure_node() {
         log_info "Node.js/npm not found — installing..."
     fi
 
-    # On apt-based systems, use NodeSource for modern Node.js
-    if [[ "$PKG_MANAGER" == "apt" ]]; then
+    # On apt-based systems, use NodeSource for modern Node.js. Its setup script is
+    # unsigned and runs as root, so strict mode (--production/--require-checksums)
+    # uses the distro's signed package below instead.
+    if [[ "$PKG_MANAGER" == "apt" && "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+        log_warn "Strict mode: skipping NodeSource's unsigned setup script — installing the distro's nodejs/npm (may be older)"
+    elif [[ "$PKG_MANAGER" == "apt" ]]; then
         log_info "Installing Node.js ${NODE_MIN_VERSION}.x LTS from NodeSource..."
         local _ns_tmp
         _ns_tmp=$(mktemp); _register_cleanup "$_ns_tmp"

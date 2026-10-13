@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # Module: Reverse Engineering
 # Disassembly, decompilation, debugging, binary analysis, emulation
@@ -54,7 +54,8 @@ install_module_reversing() {
 
     if [[ -d "$GITHUB_TOOL_DIR/pwndbg" && -f "$GITHUB_TOOL_DIR/pwndbg/setup.sh" ]]; then
         _start_spinner "Setting up pwndbg..."
-        if (cd "$GITHUB_TOOL_DIR/pwndbg" && ./setup.sh >> "$LOG_FILE" 2>&1); then
+        # setup.sh is upstream code from a clone; run it as the builder, not root.
+        if _as_builder "cd '$(_escape_single_quoted "$GITHUB_TOOL_DIR/pwndbg")' && ./setup.sh" >> "$LOG_FILE" 2>&1; then
             _stop_spinner
             log_success "pwndbg setup complete"
         else

@@ -32,8 +32,13 @@ allow() { exit 0; }
 
 # The interpolated value is restricted to GOVERNED, so it is JSON-safe.
 deny() {
+    local log="$STATE_DIR/guard-denials.log"
+    # Bounded: keep one previous generation once the log passes 1 MiB.
+    if [[ -f "$log" ]] && (( $(wc -c < "$log" 2>/dev/null || echo 0) > 1048576 )); then
+        mv -f "$log" "$log.1" 2>/dev/null || true
+    fi
     printf '%s\t%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" \
-        >> "$STATE_DIR/guard-denials.log" 2>/dev/null || true
+        >> "$log" 2>/dev/null || true
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' \
         "This project routes target work through its MCP server, and '$1' is target work.\\nStart with guided_assessment (or suggest_for_ctf / suggest_for_bounty if you already know the workflow) — it returns the relevant skills, which tools are installed, and any prior writeup.\\nAfter that advisor call this guard stays out of the way for the rest of the session. Repository maintenance is unaffected; only security tooling is gated.\\nOverride for this shell with CYBERSEC_AGENT_GUARD=0."
     exit 0
@@ -198,11 +203,45 @@ raise SystemExit(1)
 PY
 }
 
+# _hook_field <json> <.dotted.path> — print a string field of the hook JSON.
+# jq first (fast, and the toolkit installs it); python3 covers a bare macOS.
+_hook_field() {
+    if command -v jq >/dev/null 2>&1; then
+        jq -r "$2 // empty" <<< "$1" 2>/dev/null
+    else
+        python3 -c 'import json, sys
+try:
+    v = json.loads(sys.stdin.read())
+    for k in sys.argv[1].lstrip(".").split("."):
+        v = v.get(k, "") if isinstance(v, dict) else ""
+    print(v if isinstance(v, str) else "")
+except Exception:
+    pass' "$2" <<< "$1" 2>/dev/null
+    fi
+}
+
+# _session_id <json> — the client's session id when it sends one, restricted to a
+# safe filename component (it names a per-session marker file).
+_session_id() {
+    local sid
+    sid=$(_hook_field "$1" .session_id)
+    [[ "$sid" =~ ^[A-Za-z0-9._-]{1,128}$ ]] && printf '%s\n' "$sid"
+}
+
 case "$MODE" in
 session-start)
-    marker="$STATE_DIR/guard-session"
+    input=""
+    [[ -t 0 ]] || input=$(cat)
     mkdir -p "$STATE_DIR" 2>/dev/null || true
-    date -u '+%Y-%m-%dT%H:%M:%S.000Z' > "$marker" 2>/dev/null || true
+    now=$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')
+    # The shared marker serves clients that send no session id. A per-session
+    # marker keeps a second concurrent session from resetting this one's window.
+    printf '%s\n' "$now" > "$STATE_DIR/guard-session" 2>/dev/null || true
+    sid=$(_session_id "$input")
+    if [[ -n "$sid" ]]; then
+        printf '%s\n' "$now" > "$STATE_DIR/guard-session.$sid" 2>/dev/null || true
+        find "$STATE_DIR" -maxdepth 1 -name 'guard-session.*' -mtime +7 -delete 2>/dev/null || true
+    fi
     emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"cybersec-toolkit contract — touching a TARGET (host, URL, sample, capture, a binary or file you did not write) starts with the cybersec-tools MCP server: guided_assessment, or suggest_for_ctf / suggest_for_bounty when the workflow is known. Then run_tool > run_pipeline > run_script. Editing THIS repository is ordinary work — use normal tools. Substantive security workflows end with a writeup under writeups/."}}'
     exit 0
     ;;
@@ -210,16 +249,12 @@ pre-bash)
     [[ "${CYBERSEC_AGENT_GUARD:-1}" == "0" ]] && allow
     [[ -f "$AUDIT_LOG" ]] || allow              # no MCP server configured; nothing to enforce
 
-    # jq first (fast, and the toolkit installs it); python3 covers a bare macOS.
-    if command -v jq >/dev/null 2>&1; then
-        cmd=$(jq -r '.tool_input.command // empty' 2>/dev/null)
-    elif command -v python3 >/dev/null 2>&1; then
-        cmd=$(python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("tool_input",{}).get("command",""))
-except Exception: pass' 2>/dev/null)
-    else
+    if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
         allow                                   # no JSON reader; never block blindly
     fi
+    input=""
+    [[ -t 0 ]] || input=$(cat)
+    cmd=$(_hook_field "$input" .tool_input.command)
     [[ -n "$cmd" ]] || allow
 
     # Fast path: no governed name anywhere in the command.
@@ -238,7 +273,10 @@ except Exception: pass' 2>/dev/null)
     [[ -n "$hit" ]] || allow
 
     # Has the server been called since this session started?
-    since=$(cat "$STATE_DIR/guard-session" 2>/dev/null) || since=""
+    marker="$STATE_DIR/guard-session"
+    sid=$(_session_id "$input")
+    [[ -n "$sid" && -f "$marker.$sid" ]] && marker="$marker.$sid"
+    since=$(cat "$marker" 2>/dev/null) || since=""
     [[ -n "$since" ]] || allow                  # no marker (first session after install)
     _advised_since "$since" && allow
 

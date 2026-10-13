@@ -241,9 +241,24 @@ class TestReloadVersions:
         versions = tmp_tools_config / ".versions"
         versions.write_text("nmap|apt|7.94|2024-01-01T00:00:00\n", encoding="utf-8")
         db = ToolsDatabase(project_root=tmp_tools_config)
+        # A present-but-unreadable file must warn (DA-1), not silently degrade,
+        # and only once across repeated reads.
         with patch("builtins.open", side_effect=PermissionError("Permission denied")):
-            vers = db.reload_versions()
-        assert vers == {}
+            with pytest.warns(RuntimeWarning, match="not readable"):
+                assert db.reload_versions(ttl=0) == {}
+            import warnings as _w
+
+            with _w.catch_warnings():
+                _w.simplefilter("error")
+                assert db.reload_versions(ttl=0) == {}
+
+    def test_missing_versions_file_does_not_warn(self, tmp_tools_config: Path) -> None:
+        db = ToolsDatabase(project_root=tmp_tools_config)
+        import warnings as _w
+
+        with _w.catch_warnings():
+            _w.simplefilter("error")
+            assert db.reload_versions(ttl=0) == {}
 
     def test_corrupt_non_utf8_versions_file(self, tmp_tools_config: Path) -> None:
         """A non-UTF-8/torn .versions file must degrade gracefully, not crash."""

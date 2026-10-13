@@ -551,6 +551,9 @@ def check_audit_key_env() -> None:
 
 
 def main() -> int:
+    from _cli import check_args
+
+    check_args(set(), "usage: validate_mcp_sync.py")
     print("=== MCP Server Data Sync Check ===\n")
 
     check_module_descriptions()

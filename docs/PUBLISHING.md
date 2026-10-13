@@ -45,6 +45,24 @@ One-time: the first push creates a **private** package. Make it public so
 for everyone: Repo → Packages → `cybersec-toolkit` → Package settings → Change
 visibility → Public.
 
+## Repository settings the workflows depend on
+
+These live in the GitHub UI, not in the repository, so a changed setting fails
+silently until a workflow needs it:
+
+- **Settings → Actions → General → Workflow permissions → "Allow GitHub Actions
+  to create and approve pull requests"** must be on, or the weekly `uv-update`
+  workflow resolves the upgrade but fails at "Create pull request"
+  (`GitHub Actions is not permitted to create or approve pull requests`) and
+  routine Python updates stop. Dependabot security updates are unaffected.
+- **Settings → Rules → "Protect main"** holds the required status checks. The
+  path-filtered Integration workflow, including its sandbox and installer image
+  Trivy scans, is not among them, so its failures do not block a merge.
+- **Packages → `cybersec-toolkit`** visibility must stay public (above).
+
+Verify a published image's provenance with
+`gh attestation verify oci://ghcr.io/26zl/cybersec-toolkit:<version> --repo 26zl/cybersec-toolkit`.
+
 ### Rolling back a bad image
 
 Tags are mutable, so a rollback re-points them at the last good digest (listed

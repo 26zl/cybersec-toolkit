@@ -72,6 +72,7 @@ MODE="${CYBERSEC_SANDBOX_MODE:-kata}"
 case "${1:-}" in
     --local) MODE="local"; shift ;;
     --kata)  MODE="kata";  shift ;;
+    -h|--help) echo "Usage: mcp-launch.sh [--kata|--local]"; exit 0 ;;
     "")      ;;
     *)       usage_error ;;
 esac

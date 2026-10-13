@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # Module: Blockchain Security
 # Smart contract auditing, fuzzing, and analysis
@@ -49,7 +49,7 @@ install_module_blockchain() {
         _foundry_home="$(_builder_home)"
         _foundry_tmp=$(mktemp); _register_cleanup "$_foundry_tmp"
         # Same curl-pipe discipline as rustup/uv: validate the download, run it as $SUDO_USER.
-        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE" \
+        if curl -L --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -fsSL https://foundry.paradigm.xyz -o "$_foundry_tmp" 2>>"$LOG_FILE" \
                 && _validate_curl_pipe "$_foundry_tmp" 'foundry' 'foundryup' \
                 && chmod +r "$_foundry_tmp" \
                 && _as_builder "bash '$(_escape_single_quoted "$_foundry_tmp")'" >> "$LOG_FILE" 2>&1; then

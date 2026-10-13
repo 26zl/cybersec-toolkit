@@ -143,3 +143,63 @@ def test_suggest_for_bounty_docstring_count_and_llm_listed() -> None:
     assert len(BOUNTY_TARGET_MAP) == 7
     assert "llm" in doc
     assert "llm" in BOUNTY_TARGET_MAP
+
+
+# A snapshot of the public tool surface: tool names plus each tool's parameter
+# names and which are required. A rename, a new/removed tool, or a newly-required
+# parameter changes this and fails the test — update it deliberately when the API
+# changes on purpose (API-4: schema-level breaking-change detection).
+EXPECTED_TOOL_SCHEMA = {
+    "check_installed": {"required": ["tool_name"], "params": ["host", "tool_name"]},
+    "get_cve_info": {"required": ["cve"], "params": ["cve"]},
+    "get_module_info": {"required": ["module"], "params": ["module"]},
+    "get_profile_tools": {"required": ["profile"], "params": ["counts_only", "profile"]},
+    "get_tool_info": {"required": ["tool_name"], "params": ["tool_name"]},
+    "guided_assessment": {
+        "required": ["target"],
+        "params": [
+            "authorization_confirmed",
+            "finding",
+            "intensity",
+            "max_steps",
+            "mode",
+            "target",
+            "target_type",
+            "workflow",
+        ],
+    },
+    "list_profiles": {"required": [], "params": []},
+    "list_tools": {"required": [], "params": ["installed_only", "limit", "method", "module", "offset"]},
+    "manage_remote_hosts": {
+        "required": ["action"],
+        "params": [
+            "action",
+            "description",
+            "hostname",
+            "name",
+            "port",
+            "ssh_key",
+            "tool_allowlist",
+            "user",
+        ],
+    },
+    "recommend_install": {"required": ["task"], "params": ["task"]},
+    "run_pipeline": {"required": ["steps"], "params": ["host", "steps", "timeout"]},
+    "run_script": {"required": ["code"], "params": ["code", "language", "timeout", "venv", "working_dir"]},
+    "run_tool": {"required": ["tool_name"], "params": ["args", "host", "timeout", "tool_name"]},
+    "suggest_for_bounty": {"required": ["target_type"], "params": ["target_type"]},
+    "suggest_for_ctf": {"required": ["challenge_type"], "params": ["challenge_type"]},
+}
+
+
+@pytest.mark.asyncio
+async def test_tool_schema_matches_snapshot() -> None:
+    tools = await server.mcp._list_tools()
+    actual = {}
+    for t in tools:
+        schema = getattr(t, "parameters", None) or {}
+        actual[t.name] = {
+            "required": sorted(schema.get("required") or []),
+            "params": sorted((schema.get("properties") or {}).keys()),
+        }
+    assert actual == EXPECTED_TOOL_SCHEMA

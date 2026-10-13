@@ -36,6 +36,7 @@ case "${1:-}" in
   "")           MODE=report ;;
   --check)      MODE=check ;;
   --check-pins) MODE=pins ;;
+  -h|--help) echo "usage: $(basename "$0") [--check | --check-pins]"; exit 0 ;;
   *) echo "usage: $(basename "$0") [--check | --check-pins]" >&2; exit 2 ;;
 esac
 

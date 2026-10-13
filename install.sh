@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools Installer — modular, profile-based.
 # Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux.
@@ -47,9 +47,12 @@ PRODUCTION_MODE="${PRODUCTION_MODE:-false}"
 _CLI_SET_SKIP_HEAVY=false
 _CLI_SET_ENABLE_DOCKER=false
 _CLI_SET_INCLUDE_C2=false
-FAST_MODE="${FAST_MODE:-false}"
+# Flags only, never read from the environment: an inherited FAST_MODE would
+# silently disable checksum verification, and FORCE_YES would skip the
+# confirmation for destructive steps (root shells, containers, sudo -E).
+FAST_MODE=false
 ROLLBACK_TARGET=""
-FORCE_YES="${FORCE_YES:-false}"
+FORCE_YES=false
 
 usage() {
     local _exit_code="${1:-0}"
@@ -80,7 +83,10 @@ Options:
                          pipx tool, Go binary, cargo crate, gem, or repo.
                          Note: --skip-* flags are ignored (forces install).
   --upgrade-system     Upgrade all system packages before installing
-                         (apt upgrade / dnf upgrade / pacman -Syu)
+                         (apt upgrade / dnf upgrade / pacman -Syu).
+                         On Arch every package refresh is already a full
+                         'pacman -Syu' (Arch does not support partial upgrades),
+                         so installing anything there upgrades the system.
   --skip-heavy         Skip large/slow packages defined in HEAVY_PACKAGES arrays
   --skip-pipx          Skip all pipx (Python) tool installs
   --skip-go            Skip all Go tool installs (and the Go SDK bootstrap)
@@ -123,6 +129,12 @@ Environment variables:
   VERBOSE              Enable verbose/debug output (default: false)
   NO_COLOR             Disable ANSI colors and use ASCII separators
   PARALLEL_JOBS        Number of parallel install jobs (default: 4)
+  ENABLE_DOCKER, INCLUDE_C2, REQUIRE_CHECKSUMS, PRODUCTION_MODE,
+  SKIP_HEAVY, SKIP_PIPX, SKIP_GO, SKIP_CARGO, SKIP_GEMS, SKIP_GIT,
+  SKIP_BINARY, SKIP_SOURCE
+                       Set to "true" to change the default. Precedence:
+                       an explicit flag beats a --profile value, which beats
+                       the environment. --fast and --yes are flags only.
 
 Examples (Linux):
   sudo ./install.sh                              # Full install
@@ -135,6 +147,12 @@ Examples (Linux):
 Examples (Termux/Android — no sudo):
   ./install.sh --profile lightweight             # Recommended for Termux
   ./install.sh --module recon --module web        # Specific modules
+
+Exit status:
+  0    success
+  1    one or more tools or steps failed, or a precondition was not met
+  2    invalid command-line usage
+  130  interrupted (Ctrl+C)
 EOF
     exit "$_exit_code"
 }
@@ -273,6 +291,29 @@ run_doctor() {
         _warns=$((_warns + 1))
     fi
 
+    # Report a sandbox image built before the current server/policy sources: the
+    # default launch path would otherwise run stale code with no signal.
+    if command_exists docker && [[ -x "$SCRIPT_DIR/scripts/sandbox-source-hash.sh" ]]; then
+        local _img_id _img_hash _src_hash
+        _img_id=$(docker image inspect cybersec-toolkit-sandbox:latest --format '{{.Id}}' 2>/dev/null || true)
+        if [[ -n "$_img_id" ]]; then
+            _img_hash=$(docker image inspect cybersec-toolkit-sandbox:latest \
+                --format '{{index .Config.Labels "cybersec.sandbox.source_hash"}}' 2>/dev/null || true)
+            _src_hash=$(bash "$SCRIPT_DIR/scripts/sandbox-source-hash.sh" 2>/dev/null || true)
+            if [[ -z "$_img_hash" || "$_img_hash" == "unknown" ]]; then
+                _doctor_row "Sandbox image" "built before staleness tracking — rebuild: make sandbox-image" warn
+                _warns=$((_warns + 1))
+            elif [[ -z "$_src_hash" ]]; then
+                _doctor_row "Sandbox image" "present (cannot compute source hash here)" info
+            elif [[ "$_img_hash" == "$_src_hash" ]]; then
+                _doctor_row "Sandbox image" "up to date with server sources" ok
+            else
+                _doctor_row "Sandbox image" "STALE — rebuild: make sandbox-image" warn
+                _warns=$((_warns + 1))
+            fi
+        fi
+    fi
+
     local _rt
     for _rt in go cargo pipx gem npm docker; do
         if command_exists "$_rt"; then
@@ -347,8 +388,10 @@ while [[ $# -gt 0 ]]; do
         -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
                            PARALLEL_JOBS="$2"
                            if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
-                               PARALLEL_JOBS=4
+                               log_error "-j/--parallel requires a positive number (got '$2')"
+                               exit 1
                            elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
+                               log_warn "-j $PARALLEL_JOBS is above the maximum — using 16"
                                PARALLEL_JOBS=16
                            fi
                            shift 2 ;;
@@ -361,7 +404,9 @@ while [[ $# -gt 0 ]]; do
                            ROLLBACK_TARGET="$2"; shift 2 ;;
         -y|--yes|--force)  FORCE_YES=true; shift ;;
         --version)         echo "cybersec-toolkit ${INSTALLER_VERSION:-unknown}"; exit 0 ;;
-        *)                 log_error "Unknown option: $1"; usage 1 ;;
+        *)                 log_error "Unknown option: $1" >&2
+                           echo "Run ./install.sh --help for usage." >&2
+                           exit 2 ;;
     esac
 done
 
@@ -681,9 +726,11 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     done
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
-    # Fresh containers and hosts may have empty package indexes (the Docker image deletes them).
-    log_info "Refreshing package lists..."
-    pkg_update >> "$LOG_FILE" 2>&1 || log_warn "Package list refresh had errors (check log) — continuing"
+    _acquire_run_lock
+    # Fresh containers and hosts may have empty package indexes (the Docker image
+    # deletes them). Refresh lazily on the first package install, so an unknown
+    # tool name fails before any refresh — on Arch that refresh is a full -Syu.
+    _PKG_INDEX_LAZY=true
     log_info "Installing ${#SELECTED_TOOLS[@]} individual tool(s)..."
     TOOL_FAILED=0
     for tool in "${SELECTED_TOOLS[@]}"; do
@@ -704,7 +751,10 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
         exit 1
     fi
     check_root
-    LOG_FILE="$SCRIPT_DIR/cybersec_install.log"
+    _acquire_run_lock
+    # A separate log: truncating cybersec_install.log would destroy the record of
+    # the very run being rolled back.
+    LOG_FILE="$SCRIPT_DIR/cybersec_rollback.log"
     _init_log_file "$LOG_FILE"
 
     local_session_dir="$SCRIPT_DIR/.install_sessions"
@@ -784,6 +834,9 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
             local _tmp_ver
             _tmp_ver=$(mktemp "${SCRIPT_DIR}/.versions.XXXXXX")
             grep -v "^${_tool}|" "$SCRIPT_DIR/.versions" > "$_tmp_ver" 2>/dev/null || true
+            # mktemp creates 0600; keep .versions readable (0644) so a non-root
+            # MCP server can still read install provenance after a rollback.
+            chmod 644 "$_tmp_ver" 2>/dev/null || true
             mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
         }
         if command -v flock &>/dev/null; then
@@ -1237,7 +1290,11 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "Checksums req.: $REQUIRE_CHECKSUMS"
     echo "Docker:         $ENABLE_DOCKER"
     echo "C2:             $INCLUDE_C2"
-    echo "System upgrade: $UPGRADE_SYSTEM"
+    if [[ "$PKG_MANAGER" == "pacman" ]]; then
+        echo "System upgrade: true (Arch: the package refresh is a full pacman -Syu)"
+    else
+        echo "System upgrade: $UPGRADE_SYSTEM"
+    fi
     echo "Parallel jobs:  $PARALLEL_JOBS"
     echo "Verbose:        $VERBOSE"
     echo "WSL:            $IS_WSL"
@@ -1259,6 +1316,7 @@ main() {
     # Created here, not at file scope, so sourcing install.sh never truncates the log.
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
+    _acquire_run_lock
     trap '_global_cleanup; exit 130' INT TERM
     print_banner
 
@@ -1448,9 +1506,10 @@ install_modules() {
 
         _init_progress_dir
 
-        # Clean up child processes, semaphore, and progress on interrupt (Ctrl+C / kill)
-        # shellcheck disable=SC2046  # Word splitting on jobs -rp is intentional (PIDs)
-        trap 'log_warn "Interrupted — killing background jobs..."; kill $(jobs -rp) 2>/dev/null; _stop_progress_display; _global_cleanup; exit 130' INT TERM
+        # On interrupt (Ctrl+C / kill) stop the whole job tree — per-tool installers are
+        # grandchildren that ignore SIGINT — and reap it before cleanup removes the
+        # semaphore/result dirs, so no root installer keeps running unrecorded.
+        trap 'log_warn "Interrupted — stopping all install jobs..."; _stop_job_tree; _stop_progress_display; _global_cleanup; exit 130' INT TERM
 
         # Subshells redirect stdout to /dev/null so log_message() output doesn't interleave on the terminal; the log file and PROGRESS_DIR still get everything via their own explicit redirects.
         local _method_names=()

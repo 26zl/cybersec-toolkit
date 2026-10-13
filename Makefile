@@ -15,14 +15,15 @@ MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skil
 	validate check-pins check-skills sync-skills curate check doctor bump mcp docker sandbox-image audit-verify clean
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@if [ -t 1 ] && [ -z "$${NO_COLOR+x}" ]; then c='\033[36m'; r='\033[0m'; else c=''; r=''; fi; \
+		grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk -v c="$$c" -v r="$$r" 'BEGIN{FS=":.*?## "}{printf "  %s%-14s%s %s\n", c, $$1, r, $$2}'
 
 setup: ## One-time dev setup: submodules, MCP deps, sandbox deps, skill mirror (Codex-ready)
 	git submodule update --init --recursive
-	cd mcp_server && uv sync --group dev
-	@command -v npm >/dev/null 2>&1 && npm --prefix sandbox ci --ignore-scripts \
-		|| echo "npm not found — skipping sandbox deps (see docs/SANDBOX.md)"
+	cd mcp_server && uv sync --locked --group dev
+	@if command -v npm >/dev/null 2>&1; then npm --prefix sandbox ci --ignore-scripts; \
+		else echo "npm not found — skipping sandbox deps (see docs/SANDBOX.md)"; fi
 	scripts/sync-skills.sh
 
 lint: lint-sh lint-py lint-md ## Run all linters
@@ -106,10 +107,12 @@ docker: ## Build the Docker image
 	docker build -t cybersec-toolkit .
 
 sandbox-image: ## Build the Kata sandbox image used by scripts/mcp-launch.sh
-	docker build -f sandbox/Dockerfile -t cybersec-toolkit-sandbox:latest .
+	docker build -f sandbox/Dockerfile \
+		--build-arg SANDBOX_SOURCE_HASH="$$(bash scripts/sandbox-source-hash.sh)" \
+		-t cybersec-toolkit-sandbox:latest .
 
 audit-verify: ## Check the audit log's hash chain (usage: make audit-verify [LOG=path])
-	python3 scripts/verify_audit_chain.py $(LOG)
+	python3 scripts/verify_audit_chain.py $(if $(LOG),"$(LOG)")
 
 clean: ## Remove Python caches and test artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true

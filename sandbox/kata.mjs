@@ -17,7 +17,8 @@
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { createIsolatedSandboxProvider } from '@ai-hero/sandcastle';
@@ -41,6 +42,12 @@ const asString = (value) => (value === undefined || value === null ? undefined :
 
 /** Whether a runtime name denotes Kata, i.e. an actual VM boundary. */
 export const isKataRuntime = (name) => /kata/i.test(name ?? '');
+
+// The sandbox marker the audit trail records. Claim 'kata' only when the VM
+// boundary is checked (Kata runtime, boot-ID check not skipped by the unsafe
+// opt-in); anything else is labelled with the runtime that actually ran.
+export const sandboxModeLabel = (runtime, allowUnsafe) =>
+  isKataRuntime(runtime) && !allowUnsafe ? 'kata' : `unsafe:${runtime}`;
 
 const assertKataRuntime = (name, allowUnsafe) => {
   // A non-Kata runtime is a namespace container sharing the host kernel — the
@@ -159,6 +166,9 @@ export const buildRunArgs = ({ name, runtime, options, env }) => {
     'run',
     '--detach',
     '--rm',
+    // An init as PID 1 reaps orphaned tool processes; `sleep infinity` would leave
+    // zombies counting against --pids-limit in long sessions.
+    '--init',
     '--name',
     name,
     '--runtime',
@@ -187,7 +197,9 @@ export const buildRunArgs = ({ name, runtime, options, env }) => {
     args.push('--volume', `${options.workspace}:${WORKTREE_PATH}${options.workspaceReadonly ? ':ro' : ''}`);
   }
 
-  for (const [key, value] of Object.entries(env ?? {})) args.push('--env', `${key}=${value}`);
+  // Names only: the values travel in the docker CLI's own environment (see
+  // buildExecEnv), so agent keys never appear in the host's process list.
+  args.push(...buildExecEnv(env ?? {}).args);
 
   args.push('--workdir', WORKTREE_PATH, '--entrypoint', 'sleep', options.image, 'infinity');
   return args;
@@ -222,9 +234,9 @@ export const appendTail = (tail, chunk, limit = MAX_TAIL_CHARS) => {
   return next.length > limit ? next.slice(next.length - limit) : next;
 };
 
-const dockerExec = (args, { maxBuffer = 10 * 1024 * 1024 } = {}) =>
+const dockerExec = (args, { maxBuffer = 10 * 1024 * 1024, env } = {}) =>
   new Promise((resolve, reject) => {
-    execFile('docker', args, { maxBuffer }, (error, stdout, stderr) => {
+    execFile('docker', args, { maxBuffer, env }, (error, stdout, stderr) => {
       if (!error) {
         resolve(stdout.toString());
         return;
@@ -254,6 +266,25 @@ const assertImagePresent = async (image) => {
   }
 };
 
+// a is an ancestor of, or equal to, b.
+const _isAncestorOrSame = (a, b) => b === a || b.startsWith(a.endsWith(sep) ? a : a + sep);
+
+// Mounting these (read-write by default) would hand VM code a host path it could
+// use to escape the VM boundary on the next launch. System trees are blocked in
+// both directions (do not mount /etc, nor /etc/x); $HOME and the checkout are
+// blocked only when the workspace is them or above them, so a case directory
+// *under* $HOME still works.
+const _SYSTEM_TREES = ['/etc', '/usr', '/bin', '/sbin', '/lib', '/lib64', '/boot', '/dev', '/proc', '/sys', '/root'];
+const _CHECKOUT_ROOT = resolve(import.meta.dirname, '..');
+
+const _realpathOrNull = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+};
+
 export const assertWorkspaceUsable = (workspace) => {
   if (!workspace) return;
   let stats;
@@ -263,9 +294,23 @@ export const assertWorkspaceUsable = (workspace) => {
     throw new Error(`Workspace '${workspace}' does not exist on the host.`);
   }
   if (!stats.isDirectory()) throw new Error(`Workspace '${workspace}' is not a directory.`);
-  // The host root would hand the VM every host path, read-write unless _RO is set.
-  if (realpathSync(workspace) === '/') {
-    throw new Error(`Workspace '${workspace}' resolves to the host root; mount a case directory instead.`);
+
+  const real = realpathSync(workspace);
+  const refuse = (why) => {
+    throw new Error(`Workspace '${workspace}' ${why}; mount a dedicated case directory instead.`);
+  };
+
+  if (real === '/') refuse('resolves to the host root');
+  for (const tree of _SYSTEM_TREES) {
+    if (_isAncestorOrSame(real, tree) || _isAncestorOrSame(tree, real)) {
+      refuse(`is within the system directory ${tree}`);
+    }
+  }
+  const home = _realpathOrNull(homedir());
+  if (home && _isAncestorOrSame(real, home)) refuse('is your home directory or an ancestor of it');
+  const checkout = _realpathOrNull(_CHECKOUT_ROOT);
+  if (checkout && _isAncestorOrSame(real, checkout)) {
+    refuse('is the toolkit checkout or an ancestor of it (VM code could rewrite the launcher)');
   }
 };
 
@@ -335,6 +380,11 @@ export const kata = (options = {}) => {
 
       // Registered before `docker run`, which is where the VM boots: a signal
       // in that window must still remove it.
+      const env = { ...options.env, ...createOptions.env };
+      if (env.CYBERSEC_SANDBOX_MODE === 'kata') {
+        env.CYBERSEC_SANDBOX_MODE = sandboxModeLabel(runtime, resolved.allowUnsafeRuntime);
+      }
+
       let booting;
       const unregisterShutdown = registerShutdown(removeSync, () => booting);
       booting = dockerExec(
@@ -342,8 +392,9 @@ export const kata = (options = {}) => {
           name: containerName,
           runtime,
           options: resolved,
-          env: { ...options.env, ...createOptions.env },
+          env,
         }),
+        { env: buildExecEnv(env).env },
       );
       try {
         await booting;

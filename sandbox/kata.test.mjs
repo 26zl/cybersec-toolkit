@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -14,9 +14,17 @@ import {
   isKataRuntime,
   registerShutdown,
   resolveOptions,
+  sandboxModeLabel,
   selectRuntime,
   WORKTREE_PATH,
 } from './kata.mjs';
+
+test('sandboxModeLabel claims kata only for a checked Kata VM', () => {
+  assert.equal(sandboxModeLabel('kata', false), 'kata');
+  // The unsafe opt-in skips the boot-ID check, so the boundary is unverified.
+  assert.equal(sandboxModeLabel('kata', true), 'unsafe:kata');
+  assert.equal(sandboxModeLabel('runc', true), 'unsafe:runc');
+});
 
 const flagValues = (args, flag) =>
   args.reduce((found, arg, index) => (arg === flag ? [...found, args[index + 1]] : found), []);
@@ -115,6 +123,20 @@ test('assertWorkspaceUsable refuses the host root, including through a symlink',
   }
 });
 
+test('assertWorkspaceUsable refuses system trees, $HOME and the checkout', () => {
+  assert.throws(() => assertWorkspaceUsable('/etc'), /system directory/);
+  assert.throws(() => assertWorkspaceUsable('/usr'), /system directory/);
+  assert.throws(() => assertWorkspaceUsable(homedir()), /home directory/);
+  assert.throws(() => assertWorkspaceUsable(resolve(import.meta.dirname, '..')), /checkout/);
+  // A dedicated directory outside those trees is fine.
+  const dir = mkdtempSync(join(tmpdir(), 'kata-ws-ok-'));
+  try {
+    assert.doesNotThrow(() => assertWorkspaceUsable(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('resolveOptions rejects a malformed capability', () => {
   assert.throws(() => resolveOptions({ capAdd: 'net_raw; rm -rf /' }, {}), /Invalid capability/);
   assert.deepEqual(resolveOptions({ capAdd: 'NET_RAW,NET_ADMIN' }, {}).capAdd, ['NET_RAW', 'NET_ADMIN']);
@@ -128,6 +150,7 @@ test('buildRunArgs pins the kata runtime and drops privileges', () => {
   assert.deepEqual(flagValues(args, '--security-opt'), ['no-new-privileges']);
   assert.deepEqual(flagValues(args, '--user'), ['10001:10001']);
   assert.deepEqual(flagValues(args, '--pids-limit'), ['512']);
+  assert.ok(args.includes('--init'), 'an init reaps orphaned processes');
   assert.deepEqual(args.slice(-3), ['sleep', 'toolkit:test', 'infinity']);
 });
 
@@ -157,7 +180,9 @@ test('buildRunArgs forwards the MCP policy environment into the VM', () => {
     options: baseOptions(),
     env: { CYBERSEC_MCP_ALLOW_EXTERNAL: '0', CYBERSEC_MCP_ALLOW_SCRIPTS: '0' },
   });
-  assert.deepEqual(flagValues(args, '--env'), ['CYBERSEC_MCP_ALLOW_EXTERNAL=0', 'CYBERSEC_MCP_ALLOW_SCRIPTS=0']);
+  // Names only; values must not appear on the docker command line.
+  assert.deepEqual(flagValues(args, '--env'), ['CYBERSEC_MCP_ALLOW_EXTERNAL', 'CYBERSEC_MCP_ALLOW_SCRIPTS']);
+  assert.equal(args.some((a) => a.includes('=0')), false);
 });
 
 test('buildRunArgs adds requested capabilities and a network only when set', () => {

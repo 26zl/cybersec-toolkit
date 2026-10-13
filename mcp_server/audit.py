@@ -23,6 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - not POSIX (native Windows)
+    fcntl = None  # type: ignore[assignment]
+
 # Credential redaction
 
 # Credential patterns must remain idempotent when applied repeatedly.
@@ -275,6 +280,11 @@ class _TaggedMirrorFormatter(logging.Formatter):
         return f"{AUDIT_STREAM_PREFIX}{audit_record_tag(self._key, line)} {line}"
 
 
+def _audit_required() -> bool:
+    """Whether a missing or failing audit write must fail closed."""
+    return os.environ.get("CYBERSEC_MCP_AUDIT_REQUIRED", "").strip().lower() in ("1", "true", "yes")
+
+
 class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """RotatingFileHandler that keeps the audit log owner-only (0600).
 
@@ -289,6 +299,42 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
         except OSError:
             pass
         return stream
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Several server processes may append to one log. Without a shared lock each
+        # rotates on its own: renames race and records are lost below the size cap.
+        # Serialize the rollover check, rotation and write across processes, and
+        # reopen when another process already rotated the file under this stream.
+        if fcntl is None:
+            super().emit(record)
+            return
+        try:
+            lock = open(self.baseFilename + ".lock", "a", encoding="utf-8")  # noqa: SIM115
+        except OSError:
+            super().emit(record)
+            return
+        with lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                if self.stream is not None:
+                    try:
+                        rotated = os.stat(self.baseFilename).st_ino != os.fstat(self.stream.fileno()).st_ino
+                    except OSError:
+                        rotated = True
+                    if rotated:
+                        self.stream.close()
+                        self.stream = self._open()
+                super().emit(record)
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        # Default logging swallows a write failure (disk full, etc.). When audit
+        # logging is required, re-raise so the call fails closed at runtime, not
+        # only at startup; otherwise keep the best-effort default.
+        if _audit_required():
+            raise
+        super().handleError(record)
 
 
 def get_audit_logger() -> logging.Logger:
@@ -325,7 +371,7 @@ def get_audit_logger() -> logging.Logger:
         )
     except OSError as exc:
         message = f"Audit file logging unavailable at {_AUDIT_LOG_PATH}: {exc}"
-        if os.environ.get("CYBERSEC_MCP_AUDIT_REQUIRED", "").strip().lower() in ("1", "true", "yes"):
+        if _audit_required():
             _logger = None
             raise RuntimeError(message) from exc
         warnings.warn(message + "; audit events will be written to stderr", RuntimeWarning, stacklevel=2)
@@ -386,8 +432,9 @@ def _log(level: int, entry: dict[str, Any]) -> None:
             line = json.dumps(entry)
             _chain_prev = chain_link(entry["prev"], line)
             get_audit_logger().log(level, line)
-    except OSError:
-        pass
+    except OSError as exc:
+        if _audit_required():
+            raise RuntimeError(f"Audit write failed and CYBERSEC_MCP_AUDIT_REQUIRED=1: {exc}") from exc
 
 
 def _ts() -> str:
@@ -414,6 +461,11 @@ def log_server_start() -> None:
 
 
 # MCP tool call tracking
+
+
+def redact_credentials(text: str) -> str:
+    """Redact likely credentials from free text such as tool output."""
+    return _redact_script_code(text)
 
 
 def _redact_steps(steps: Any) -> Any:

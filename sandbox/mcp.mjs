@@ -31,12 +31,16 @@ try {
     env: {
       CYBERSEC_MCP_ALLOW_EXTERNAL: process.env.CYBERSEC_MCP_ALLOW_EXTERNAL ?? '0',
       CYBERSEC_MCP_ALLOW_SCRIPTS: process.env.CYBERSEC_MCP_ALLOW_SCRIPTS ?? '0',
+      CYBERSEC_MCP_REDACT_OUTPUT: process.env.CYBERSEC_MCP_REDACT_OUTPUT ?? '0',
       CYBERSEC_SANDBOX_MODE: 'kata',
     },
   });
 
   const result = await sandbox.interactiveExec(
-    ['/opt/cybersec-toolkit/mcp_server/.venv/bin/python', '-m', 'mcp_server.server'],
+    // -P: keep the /workspace cwd off sys.path so a mounted sample (json.py,
+    // asyncio/) cannot shadow a server module before the audit key is consumed.
+    // The package is installed non-editable in the venv, so -m still resolves it.
+    ['/opt/cybersec-toolkit/mcp_server/.venv/bin/python', '-P', '-m', 'mcp_server.server'],
     {
       stdin: process.stdin,
       stdout: process.stdout,

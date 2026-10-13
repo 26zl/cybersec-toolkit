@@ -19,7 +19,8 @@ _guard_fixture() {
 }
 
 _run_guarded_nmap() {
-    run env \
+    # -u: a developer with the documented escape hatch exported must not see false failures.
+    run env -u CYBERSEC_AGENT_GUARD \
         XDG_STATE_HOME="$XDG_STATE_HOME" \
         CYBERSEC_MCP_AUDIT_LOG="$CYBERSEC_MCP_AUDIT_LOG" \
         bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash \
@@ -70,7 +71,7 @@ _run_guarded_nmap() {
 _run_guard_on() {
     local json
     json=$(python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}}))' "$1")
-    run env \
+    run env -u CYBERSEC_AGENT_GUARD \
         XDG_STATE_HOME="$XDG_STATE_HOME" \
         CYBERSEC_MCP_AUDIT_LOG="$CYBERSEC_MCP_AUDIT_LOG" \
         bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash <<< "$json"
@@ -165,6 +166,7 @@ _run_guard_on() {
         HOME="$test_home" \
         PREFIX="$TEST_TMPDIR/prefix" \
         TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 \
         bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
 
     assert_failure
@@ -217,6 +219,7 @@ _run_guard_on() {
         HOME="$TEST_TMPDIR/root-home" \
         PREFIX="$TEST_TMPDIR/prefix" \
         TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 \
         PATH="$mock_bin:$PATH" \
         bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
 
@@ -242,6 +245,7 @@ _run_guard_on() {
         HOME="$test_home" \
         PREFIX="$TEST_TMPDIR/prefix" \
         TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 \
         bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
 
     assert_failure
@@ -514,4 +518,168 @@ EOF
     assert_output --partial "Linux host with KVM"
     assert_output --partial "--local"
     refute_output --partial "UV_RAN:"
+}
+
+@test "remove refuses to run non-interactively without --yes" {
+    _lifecycle_fixture
+    # Without a terminal a "cancel" used to exit 0 (silent success in CI/cron).
+    run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_ID_LIKE= DISTRO_NAME=Termux \
+        GITHUB_TOOL_DIR="$TEST_TMPDIR/tools" TMPDIR="$TEST_TMPDIR" TERM=dumb \
+        PATH="$LC_STUBS:$TEST_TMPDIR/prefix/bin:$PATH" \
+        bash "$LC_REPO/scripts/remove.sh" < /dev/null
+    assert_failure
+    assert_output --partial "Re-run with --yes"
+}
+
+@test "remove accepts -y as --yes" {
+    _lifecycle_fixture
+    _run_lifecycle remove.sh -y
+    assert_success
+}
+
+@test "remove refuses --deep-clean combined with --module (CL-3)" {
+    _lifecycle_fixture
+    _run_lifecycle remove.sh --module web --deep-clean --yes
+    assert_failure
+    assert_output --partial "cannot be combined with --module"
+}
+
+@test "verify does not report untracked opt-in Docker images missing (CL-7)" {
+    _lifecycle_fixture
+    # A docker stub with no images: the opt-in images were never pulled.
+    printf '#!/bin/sh\nexit 0\n' > "$LC_STUBS/docker"
+    chmod +x "$LC_STUBS/docker"
+
+    _run_lifecycle verify.sh --module blueteam
+
+    refute_output --partial "Docker image NOT found"
+}
+
+@test "verify fails loudly on an unreadable .versions (CL-7)" {
+    [[ $EUID -ne 0 ]] || skip "root reads any file"
+    _lifecycle_fixture
+    chmod 000 "$LC_REPO/.versions"
+
+    _run_lifecycle verify.sh --installed-only
+
+    assert_failure
+    assert_output --partial "Cannot read"
+    chmod 644 "$LC_REPO/.versions"
+}
+
+@test "restore runs unattended with BACKUP_PASSPHRASE (CL-15)" {
+    local test_home="$TEST_TMPDIR/home"
+    mkdir -p "$test_home/.nmap"
+    printf 'setting\n' > "$test_home/.nmap/settings"
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" backup
+    assert_success
+
+    local -a encrypted=("$test_home"/cybersec_tools_backup/backup_*.tar.gz.enc)
+    rm -rf "$test_home/.nmap"
+    # No terminal: the passphrase must come from the environment.
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "${encrypted[0]}" < /dev/null
+    assert_success
+    [[ -f "$test_home/.nmap/settings" ]]
+}
+
+@test "a second install/update/remove run refuses while one holds the lock (OP-4)" {
+    command -v flock >/dev/null || skip "needs flock"
+    _lifecycle_fixture
+    # Hold the run lock as a concurrent run would.
+    flock "$LC_REPO/.versions.run.lock" sleep 30 &
+    local holder=$!
+    local i
+    for i in $(seq 1 30); do
+        flock -n "$LC_REPO/.versions.run.lock" true 2>/dev/null || break
+        sleep 0.1
+    done
+
+    _run_lifecycle remove.sh --yes
+
+    kill "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    assert_failure
+    assert_output --partial "Another install, update or remove run is active"
+}
+
+@test "restore refuses an unauthenticated legacy archive by default (SI-12)" {
+    local test_home="$TEST_TMPDIR/home"
+    local archive_src="$TEST_TMPDIR/archive-src"
+    local archive="$TEST_TMPDIR/restore.tar.gz"
+    mkdir -p "$test_home" "$archive_src/backup_fixture/network/.nmap"
+    printf 'setting\n' > "$archive_src/backup_fixture/network/.nmap/settings"
+    tar -czf "$archive" -C "$archive_src" backup_fixture
+
+    run env -u SUDO_USER -u BACKUP_ALLOW_UNVERIFIED \
+        HOME="$test_home" \
+        PREFIX="$TEST_TMPDIR/prefix" \
+        TERMUX_VERSION=1 \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
+
+    assert_failure
+    assert_output --partial "BACKUP_ALLOW_UNVERIFIED=1"
+    [[ ! -e "$test_home/.nmap/settings" ]]
+}
+
+@test "remove --remove-deps keeps a uv the user installed and uv's data (SI-11)" {
+    _lifecycle_fixture
+    local home="$TEST_TMPDIR/home"
+    mkdir -p "$home/.local/bin" "$home/.local/share/uv/python"
+    printf '#!/bin/sh\n' > "$home/.local/bin/uv"
+    chmod +x "$home/.local/bin/uv"
+
+    # No provenance marker: this uv is the user's own.
+    _run_lifecycle remove.sh --module recon --remove-deps --yes
+    [[ -x "$home/.local/bin/uv" ]]
+
+    # A uv this toolkit installed: binaries go, the user's uv data stays.
+    mkdir -p "$home/.local/state/cybersec-toolkit"
+    : > "$home/.local/state/cybersec-toolkit/uv-installed"
+    _run_lifecycle remove.sh --module recon --remove-deps --yes
+    [[ ! -e "$home/.local/bin/uv" ]]
+    [[ -d "$home/.local/share/uv/python" ]]
+}
+
+@test "agent guard keeps a separate clearance window per session (CL-17)" {
+    _guard_fixture
+    local dir="$XDG_STATE_HOME/cybersec-tools-mcp"
+    # Session A started, then an advisor call, then session B started.
+    printf '2026-07-28T10:00:00.000Z\n' > "$dir/guard-session.sessA"
+    printf '%s\n' '{"ts":"2026-07-28T10:00:05.000Z","event":"tool_call","tool":"guided_assessment"}' \
+        > "$CYBERSEC_MCP_AUDIT_LOG"
+    printf '2026-07-28T10:00:09.000Z\n' > "$dir/guard-session.sessB"
+    # The shared marker was reset by B's start; A must still be cleared.
+    printf '2026-07-28T10:00:09.000Z\n' > "$dir/guard-session"
+
+    run env -u CYBERSEC_AGENT_GUARD XDG_STATE_HOME="$XDG_STATE_HOME" CYBERSEC_MCP_AUDIT_LOG="$CYBERSEC_MCP_AUDIT_LOG" \
+        bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash \
+        <<< '{"session_id":"sessA","tool_input":{"command":"nmap 192.0.2.10"}}'
+    assert_success
+    refute_output --partial '"permissionDecision":"deny"'
+
+    run env -u CYBERSEC_AGENT_GUARD XDG_STATE_HOME="$XDG_STATE_HOME" CYBERSEC_MCP_AUDIT_LOG="$CYBERSEC_MCP_AUDIT_LOG" \
+        bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash \
+        <<< '{"session_id":"sessB","tool_input":{"command":"nmap 192.0.2.10"}}'
+    assert_output --partial '"permissionDecision":"deny"'
+}
+
+@test "agent guard session-start writes a per-session marker (CL-17)" {
+    _guard_fixture
+    run env -u CYBERSEC_AGENT_GUARD XDG_STATE_HOME="$XDG_STATE_HOME" \
+        bash "$PROJECT_ROOT/scripts/agent-guard.sh" session-start <<< '{"session_id":"abc-123"}'
+    assert_success
+    [[ -s "$XDG_STATE_HOME/cybersec-tools-mcp/guard-session.abc-123" ]]
+    [[ -s "$XDG_STATE_HOME/cybersec-tools-mcp/guard-session" ]]
+
+    # An id that is not a safe filename component is ignored.
+    run env -u CYBERSEC_AGENT_GUARD XDG_STATE_HOME="$XDG_STATE_HOME" \
+        bash "$PROJECT_ROOT/scripts/agent-guard.sh" session-start <<< '{"session_id":"../escape"}'
+    assert_success
+    [[ ! -e "$XDG_STATE_HOME/cybersec-tools-mcp/guard-session.../escape" ]]
+    [[ ! -e "$XDG_STATE_HOME/escape" ]]
 }

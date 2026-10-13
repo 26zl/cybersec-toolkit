@@ -304,7 +304,7 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
         return {
             "success": False,
             "message": f"SSH connection failed (exit code {process.returncode})",
-            "stderr": _security.sanitize_output(stderr),
+            "stderr": _security._sanitize_for_model(stderr),
         }
 
     except FileNotFoundError:

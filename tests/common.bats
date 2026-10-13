@@ -181,6 +181,8 @@ setup() {
 @test "pkg_update retries zypper refresh after cleaning stale metadata" {
     source_libs opensuse-tumbleweed zypper
     make_test_tmpdir
+    # Throwaway-container mode: the key auto-import flag is expected here.
+    export CI=true
     export ZYPPER_REFRESH_DELAY=0
     export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
     export REFRESH_COUNT_FILE="$TEST_TMPDIR/zypper.refresh.count"
@@ -214,6 +216,7 @@ setup() {
 @test "pkg_update fails zypper refresh after configured retries are exhausted" {
     source_libs opensuse-tumbleweed zypper
     make_test_tmpdir
+    export CI=true
     export ZYPPER_REFRESH_ATTEMPTS=2
     export ZYPPER_REFRESH_DELAY=0
     export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
@@ -609,4 +612,74 @@ _bc_setup() {
     PATH="/usr/bin:/home/u/.local/bin"
     _path_append /home/u/.cargo/bin /home/u/.local/bin /home/u/.cargo/bin
     [[ "$PATH" == "/usr/bin:/home/u/.local/bin:/home/u/.cargo/bin" ]]
+}
+
+# Dead = gone, or a zombie awaiting reap by its parent.
+_pid_dead() {
+    local line
+    read -r line < "/proc/$1/stat" 2>/dev/null || return 0
+    line="${line##*) }"
+    [[ "${line%% *}" == [ZX] ]]
+}
+
+@test "_kill_tree stops descendants that ignore SIGINT (Ctrl+C orphan case)" {
+    [[ -d /proc/self ]] || skip "needs /proc"
+    source_libs debian apt
+    # Like Stage 3: a background parent whose own background children ignore SIGINT.
+    bash -c 'trap "" INT; sleep 30 & sleep 30 & wait' &
+    local parent=$!
+    local kids="" i
+    for i in $(seq 1 30); do
+        kids=$(_child_pids "$parent")
+        [[ $(wc -w <<<"$kids") -ge 2 ]] && break
+        sleep 0.1
+    done
+    [[ $(wc -w <<<"$kids") -ge 2 ]]
+
+    _kill_tree "$parent" TERM
+    kill -TERM "$parent" 2>/dev/null || true
+
+    local k alive
+    for i in $(seq 1 30); do
+        alive=0
+        for k in $kids; do _pid_dead "$k" || alive=1; done
+        [[ $alive -eq 0 ]] && break
+        sleep 0.1
+    done
+    wait "$parent" 2>/dev/null || true
+    [[ $alive -eq 0 ]]
+}
+
+@test "lazy package index refreshes once, only on the first install (CL-6)" {
+    source_libs archlinux pacman
+    make_test_tmpdir
+    pkg_update() { echo refresh >> "$TEST_TMPDIR/calls"; }
+    maybe_sudo() { echo "install $*" >> "$TEST_TMPDIR/calls"; }
+
+    # Off by default: other install paths refresh up front themselves.
+    pkg_install foo
+    run grep -c refresh "$TEST_TMPDIR/calls"
+    assert_output "0"
+
+    # --tool path: no refresh until something is installed, then exactly once.
+    : > "$TEST_TMPDIR/calls"
+    _PKG_INDEX_LAZY=true
+    _PKG_INDEX_REFRESHED=false
+    pkg_install foo
+    pkg_install bar
+    run grep -c refresh "$TEST_TMPDIR/calls"
+    assert_output "1"
+}
+
+@test "zypper refresh does not auto-import repo keys outside CI (SI-10)" {
+    source_libs opensuse-tumbleweed zypper
+    make_test_tmpdir
+    unset CI CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS
+    export CALLS_FILE="$TEST_TMPDIR/zypper.calls"
+    maybe_sudo() { printf '%s\n' "$*" >> "$CALLS_FILE"; return 0; }
+
+    run pkg_update
+    assert_success
+    run cat "$CALLS_FILE"
+    assert_output "zypper --non-interactive refresh --force"
 }
