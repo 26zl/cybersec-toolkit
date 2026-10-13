@@ -6,6 +6,9 @@
 
 ENTERPRISE_PACKAGES=()
 
+declare -gA ENTERPRISE_BINARY_ARCHITECTURES=([TeamFiltration]="amd64 arm64")
+declare -gA ENTERPRISE_BINARY_EXCLUSIVE_DIRS=([TeamFiltration]=true)
+
 ENTERPRISE_PIPX=(
     impacket certipy-ad coercer bloodhound mitm6
     lsassy sprayhound ldapdomaindump pypykatz

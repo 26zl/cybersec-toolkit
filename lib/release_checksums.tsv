@@ -1,0 +1,4 @@
+# Reviewed SHA256 values from official HTTPS release assets; these bind exact repo/tag/asset tuples.
+# repo	tag	asset	sha256
+Flangvik/TeamFiltration	v3.5.5	TeamFiltration-v3.5.5-linux-x86_64.zip	28be5d59188af5cdeab7349b49db2991fb59dc8d785055a418c4fa0b56f9c55e
+Flangvik/TeamFiltration	v3.5.5	TeamFiltration-v3.5.5-linux-arm64.zip	c70f0a9e7da23b9505298d92ff5747276ab9f2c0188cb38e0ea04b30d615376c

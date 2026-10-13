@@ -1389,3 +1389,780 @@ PY
     assert_success
     [[ -z "$(find "$TEST_TMPDIR/opt/zz-fake-tool" -perm /022)" ]]
 }
+
+_distro_package_fixture() {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/blueteam.sh"
+    source "$PROJECT_ROOT/modules/forensics.sh"
+    IS_WSL=false
+    IS_ARM=false
+}
+
+@test "OpenSCAP and mat2 compatibility rows match their module package names" {
+    _distro_package_fixture
+    [[ " ${BLUETEAM_PACKAGES[*]} " == *" openscap-scanner "* ]]
+    [[ " ${FORENSICS_PACKAGES[*]} " == *" mat2 "* ]]
+    _load_distro_compat
+    [[ "${_COMPAT_PACMAN[openscap-scanner]}" == openscap ]]
+    [[ "${_COMPAT_ZYPPER[openscap-scanner]}" == openscap-utils ]]
+    [[ "${_COMPAT_ZYPPER[mat2]}" == - ]]
+    [[ "${_COMPAT_PKG[openscap-scanner]}" == - && "${_COMPAT_PKG[mat2]}" == - ]]
+
+    run python3 "$PROJECT_ROOT/scripts/validate_distro_compat.py"
+    assert_success
+    [[ "$output" == *"Errors: 0"* ]]
+}
+
+@test "OpenSCAP and mat2 translate to available package names across package managers" {
+    _distro_package_fixture
+    local distro manager expected
+    while IFS='|' read -r distro manager expected; do
+        DISTRO_ID="$distro"
+        PKG_MANAGER="$manager"
+        local -a packages=(openscap-scanner mat2 curl)
+        fixup_package_names packages
+        [[ "${packages[*]}" == "$expected" ]] || {
+            printf '%s: expected %s, got %s\n' "$distro" "$expected" "${packages[*]}"
+            return 1
+        }
+    done <<'MAPPINGS'
+debian|apt|openscap-scanner mat2 curl
+ubuntu|apt|openscap-scanner mat2 curl
+fedora|dnf|openscap-scanner mat2 curl
+arch|pacman|openscap mat2 curl
+opensuse-tumbleweed|zypper|openscap-utils curl
+termux|pkg|curl
+MAPPINGS
+}
+
+@test "RHEL retains the supported OpenSCAP scanner package name" {
+    _distro_package_fixture
+    DISTRO_ID=rhel
+    PKG_MANAGER=dnf
+    local -a packages=(openscap-scanner curl)
+    fixup_package_names packages
+    [[ "${packages[*]}" == "openscap-scanner curl" ]]
+}
+
+@test "mat2 skip follows RHEL ancestry while Fedora derivatives retain their package" {
+    _distro_package_fixture
+    PKG_MANAGER=dnf
+    DISTRO_ID=synthetic-fedora-derivative
+    DISTRO_ID_LIKE=fedora
+    local -a packages=(mat2)
+    fixup_package_names packages
+    [[ "${packages[*]}" == mat2 ]]
+    DISTRO_ID=synthetic-rhel-derivative
+    DISTRO_ID_LIKE='rhel fedora'
+    packages=(mat2)
+    fixup_package_names packages
+    [[ ${#packages[@]} -eq 0 ]]
+}
+
+@test "mat2 remains available on Fedora and is skipped on RHEL derivatives" {
+    _distro_package_fixture
+    local distro expected
+    PKG_MANAGER=dnf
+    for distro in fedora rhel centos rocky almalinux; do
+        DISTRO_ID="$distro"
+        DISTRO_ID_LIKE=rhel
+        local -a packages=(mat2 openscap-scanner curl)
+        expected="openscap-scanner curl"
+        [[ "$distro" == fedora ]] && expected="mat2 $expected"
+        fixup_package_names packages
+        [[ "${packages[*]}" == "$expected" ]] || {
+            printf '%s: expected %s, got %s\n' "$distro" "$expected" "${packages[*]}"
+            return 1
+        }
+    done
+}
+
+_binary_release_fixture() {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    GITHUB_TOOL_DIR="$TEST_TMPDIR/tools"
+    PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    SYS_ARCH=amd64
+    SYS_ARCH_ALT=x86_64
+    IS_ARM=false
+    VERSION_FILE="$TEST_TMPDIR/.versions"
+    declare -gA MISC_BINARY_ARCHITECTURES=(
+        [fixture-x64]='amd64'
+        [fixture-arm64]='amd64 arm64'
+        [fixture-portable]='amd64 arm64 armv7'
+    )
+    declare -gA MISC_BINARY_EXCLUSIVE_DIRS=(
+        [fixture-release]=true
+        [fixture-bundle]=true
+    )
+    declare -gA MISC_BINARY_RUNTIME_CONFIGS=([fixture-runtime]='{}')
+    declare -gA MISC_BINARY_RUNTIME_RELEASES=([fixture-runtime]='v1.2.3')
+}
+
+@test "binary release patterns select upstream ARM asset names" {
+    _binary_release_fixture
+    SYS_ARCH=arm64
+    SYS_ARCH_ALT=aarch64
+    source "$PROJECT_ROOT/lib/installers.sh"
+    local entry pattern
+    for entry in "${BINARY_RELEASES_ENTERPRISE[@]}"; do
+        [[ "$entry" == *'|TeamFiltration|'* ]] || continue
+        IFS='|' read -r _ _ pattern _ <<< "$entry"
+        [[ TeamFiltration-v3.5.5-linux-arm64.zip =~ $pattern ]]
+        [[ ! TeamFiltration-v3.5.5-linux-x86_64.zip =~ $pattern ]]
+    done
+    SYS_ARCH=armv7
+    SYS_ARCH_ALT=armv7l
+    source "$PROJECT_ROOT/lib/installers.sh"
+    for entry in "${BINARY_RELEASES_FORENSICS[@]}"; do
+        [[ "$entry" == *'|vmkatz|'* ]] || continue
+        IFS='|' read -r _ _ pattern _ <<< "$entry"
+        [[ vmkatz-1.5.1-linux-armv7.tar.gz =~ $pattern ]]
+        [[ ! vmkatz-1.5.1-linux-aarch64.tar.gz =~ $pattern ]]
+    done
+}
+
+@test "single tool install and update skip unsupported binary platforms before network" {
+    _binary_release_fixture
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    SYS_ARCH=armv7
+    download_github_release synthetic/project fixture-arm64 pattern
+    download_github_release_update synthetic/project fixture-x64 pattern
+    PKG_MANAGER=pkg
+    SYS_ARCH=amd64
+    download_github_release synthetic/project fixture-portable pattern
+    [[ ! -e "$TEST_TMPDIR/network" ]]
+    [[ ! -e "$PIPX_BIN_DIR" && -z "$_RELEASE_TAG" ]]
+}
+
+@test "pinned dependency cannot use metadata from another release tag" {
+    _binary_release_fixture
+    command_exists() { return 0; }
+    _gh_api_get() { printf '{"tag_name":"v9.9.9","assets":[]}\n'; }
+    curl() { touch "$TEST_TMPDIR/download"; return 1; }
+    run _download_github_release_impl synthetic/dependency libfixture.so pattern \
+        "$PIPX_BIN_DIR" dependency libfixture.so v1.2.3
+    assert_failure
+    assert_output --partial 'does not match requested tag v1.2.3'
+    [[ ! -e "$TEST_TMPDIR/download" ]]
+}
+
+@test "unreviewed release fails before installing a configured runtime" {
+    _binary_release_fixture
+    run _prepare_binary_runtime fixture-runtime "$TEST_TMPDIR" fixture-executable v9.9.9
+    assert_failure
+    assert_output --partial 'needs a reviewed runtime configuration'
+    [[ ! -e "$TEST_TMPDIR/.runtime" ]]
+}
+
+@test "binary runtime preparation keeps pinned dependencies private and preserves install settings" {
+    _binary_release_fixture
+    local content_root="$TEST_TMPDIR/bundle"
+    mkdir -p "$content_root/bin"
+    printf '#!/bin/sh\nexit 0\n' > "$content_root/bin/fixture-runtime"
+    chmod +x "$content_root/bin/fixture-runtime"
+    MISC_BINARY_RUNTIME_CONFIGS[fixture-runtime]='{"working_directory":".","library_directories":[".runtime"],"required_files":[".runtime/libfixture.so"],"commands":{"inspect":"input:i:p"}}'
+    declare -gA MISC_BINARY_DEPENDENCIES=(
+        [fixture-runtime]='synthetic/dependency|libfixture.so|^fixture.zip$|.runtime|v1.2.3'
+    )
+    REQUIRE_CHECKSUMS=false
+    FAST_MODE=true
+    _download_github_release_impl() {
+        [[ "$1" == synthetic/dependency && "$2" == libfixture.so && "$5" == dependency && "$7" == v1.2.3 ]]
+        [[ "$4" == "$TEST_TMPDIR/bundle/.runtime" && "$PIPX_BIN_DIR" == "$4" ]]
+        [[ "$REQUIRE_CHECKSUMS" == true && "$FAST_MODE" == false ]]
+        mkdir -p "$4"
+        printf 'synthetic library\n' > "$4/libfixture.so"
+    }
+
+    _prepare_binary_runtime fixture-runtime "$content_root" "$content_root/bin/fixture-runtime" v1.2.3
+
+    [[ -x "$content_root/runtime_launcher.py" && -f "$content_root/.runtime/libfixture.so" ]]
+    [[ "$PIPX_BIN_DIR" == "$TEST_TMPDIR/bin" && "$REQUIRE_CHECKSUMS" == false && "$FAST_MODE" == true ]]
+    [[ ! -e "$PIPX_BIN_DIR/libfixture.so" ]]
+    run python3 - "$content_root/.runtime-launcher.json" <<'PYTHON'
+import json
+import sys
+from pathlib import Path
+
+configuration = json.loads(Path(sys.argv[1]).read_text())
+assert configuration["executable"] == "bin/fixture-runtime"
+assert configuration["library_directories"] == [".runtime"]
+assert configuration["commands"] == {"inspect": "input:i:p"}
+PYTHON
+    assert_success
+}
+
+@test "binary runtime rejects unpinned or escaping dependencies before downloading" {
+    _binary_release_fixture
+    declare -gA MISC_BINARY_DEPENDENCIES=()
+    _download_github_release_impl() { touch "$TEST_TMPDIR/download"; return 1; }
+    local specification
+    for specification in \
+        'synthetic/dependency|libfixture.so|pattern|.runtime|' \
+        'synthetic/dependency|libfixture.so|pattern|/outside|v1.2.3' \
+        'synthetic/dependency|libfixture.so|pattern|../outside|v1.2.3' \
+        'synthetic/dependency|libfixture.so|pattern|nested/../../outside|v1.2.3'; do
+        MISC_BINARY_DEPENDENCIES[fixture-runtime]="$specification"
+        run _prepare_binary_runtime fixture-runtime "$TEST_TMPDIR" "$TEST_TMPDIR/fixture-runtime" v1.2.3
+        assert_failure
+        assert_output --partial 'Invalid runtime dependency configuration'
+        [[ ! -e "$TEST_TMPDIR/download" && ! -e "$TEST_TMPDIR/.runtime-launcher.json" ]]
+    done
+}
+
+@test "unsupported binary batch does not record a successful phantom installation" {
+    _binary_release_fixture
+    SYS_ARCH=ppc64le
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    track_version() { touch "$TEST_TMPDIR/tracked"; }
+    install_binary_releases 'synthetic/project|fixture-x64|pattern' \
+        'synthetic/project|fixture-arm64|pattern' 'synthetic/project|fixture-portable|pattern'
+    [[ ! -e "$TEST_TMPDIR/network" && ! -e "$TEST_TMPDIR/tracked" ]]
+}
+
+@test "unsupported binary update leaves the existing version record untouched" {
+    _binary_release_fixture
+    eval "$(sed -n '/^    update_binary()/,/^    }/p' "$PROJECT_ROOT/scripts/update.sh")"
+    SYS_ARCH=armv7
+    _version_known() { touch "$TEST_TMPDIR/version-check"; return 0; }
+    _track_update() { touch "$TEST_TMPDIR/tracked"; }
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    update_binary synthetic/project fixture-arm64 pattern
+    [[ ! -e "$TEST_TMPDIR/version-check" && ! -e "$TEST_TMPDIR/network" && ! -e "$TEST_TMPDIR/tracked" ]]
+}
+
+@test "exclusive release directories preserve untracked and pre-existing user files" {
+    _binary_release_fixture
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    local tool mode
+    for tool in fixture-release fixture-bundle; do
+        mkdir -p "$GITHUB_TOOL_DIR/$tool"
+        printf 'synthetic user research\n' > "$GITHUB_TOOL_DIR/$tool/notes.txt"
+        for mode in install update; do
+            run _download_github_release_impl owner/repo "$tool" pattern "$GITHUB_TOOL_DIR/$tool" "$mode"
+            assert_failure
+            assert_output --partial 'Preserving destination not owned by the toolkit'
+            [[ "$(cat "$GITHUB_TOOL_DIR/$tool/notes.txt")" == 'synthetic user research' ]]
+        done
+        printf '%s|binary|existing|2026-10-13\n' "$tool" > "$VERSION_FILE"
+        run _download_github_release_impl owner/repo "$tool" pattern "$GITHUB_TOOL_DIR/$tool" install
+        assert_failure
+        assert_output --partial 'Preserving destination not owned by the toolkit'
+    done
+    [[ ! -e "$TEST_TMPDIR/network" ]]
+}
+
+@test "exclusive release directories refuse a symlink even with a toolkit version record" {
+    _binary_release_fixture
+    mkdir -p "$GITHUB_TOOL_DIR" "$TEST_TMPDIR/user-files"
+    ln -s "$TEST_TMPDIR/user-files" "$GITHUB_TOOL_DIR/fixture-release"
+    printf 'fixture-release|binary|v1.2.3|2026-10-13\n' > "$VERSION_FILE"
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    run _download_github_release_impl synthetic/project fixture-release pattern "$GITHUB_TOOL_DIR/fixture-release" update
+    assert_failure
+    assert_output --partial 'Preserving existing destination'
+    [[ -L "$GITHUB_TOOL_DIR/fixture-release" && ! -e "$TEST_TMPDIR/network" ]]
+}
+
+@test "owned exclusive release directories permit a refresh without relabeling ownership" {
+    _binary_release_fixture
+    mkdir -p "$GITHUB_TOOL_DIR/fixture-release" "$PIPX_BIN_DIR"
+    printf '#!/bin/sh\nexit 0\n' > "$GITHUB_TOOL_DIR/fixture-release/fixture-release"
+    chmod +x "$GITHUB_TOOL_DIR/fixture-release/fixture-release"
+    ln -s "$GITHUB_TOOL_DIR/fixture-release/fixture-release" "$PIPX_BIN_DIR/fixture-release"
+    printf 'fixture-release|binary|v1.2.3|2026-10-13\n' > "$VERSION_FILE"
+    command_exists() { [[ "$1" == unzip ]]; }
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    run _download_github_release_impl synthetic/project fixture-release pattern "$GITHUB_TOOL_DIR/fixture-release" update
+    assert_failure
+    [[ -e "$TEST_TMPDIR/network" ]]
+    grep -q '^fixture-release|binary|v1.2.3|' "$VERSION_FILE"
+}
+
+@test "exclusive release updates preserve a foreign PATH replacement" {
+    _binary_release_fixture
+    mkdir -p "$PIPX_BIN_DIR" "$GITHUB_TOOL_DIR/fixture-release"
+    printf 'fixture-release|binary|v1.2.3|2026-10-13\n' > "$VERSION_FILE"
+    printf 'synthetic user file\n' > "$PIPX_BIN_DIR/fixture-release"
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    run _download_github_release_impl synthetic/project fixture-release pattern "$GITHUB_TOOL_DIR/fixture-release" update
+    assert_failure
+    assert_output --partial 'Preserving existing executable'
+    [[ "$(cat "$PIPX_BIN_DIR/fixture-release")" == 'synthetic user file' ]]
+    rm "$PIPX_BIN_DIR/fixture-release"
+    ln -s "$TEST_TMPDIR/foreign-program" "$PIPX_BIN_DIR/fixture-release"
+    run _download_github_release_impl synthetic/project fixture-release pattern "$GITHUB_TOOL_DIR/fixture-release" update
+    assert_failure
+    [[ "$(readlink "$PIPX_BIN_DIR/fixture-release")" == "$TEST_TMPDIR/foreign-program" && ! -e "$TEST_TMPDIR/network" ]]
+}
+
+_release_checksum_fixture() {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export SCRIPT_DIR="$TEST_TMPDIR"
+    mkdir -p "$SCRIPT_DIR/lib" "$TEST_TMPDIR/cache"
+    FIXTURE_ASSET="synthetic-tool_linux_amd64.tar.gz"
+    FIXTURE_FILE="$TEST_TMPDIR/$FIXTURE_ASSET"
+    printf 'synthetic release artifact\n' > "$FIXTURE_FILE"
+    FIXTURE_HASH=$(sha256sum "$FIXTURE_FILE" | awk '{print $1}')
+    WRONG_HASH=$(printf '%064d' 0)
+    MOCK_CHECKSUM_BODY=""
+    MOCK_CURL_STATUS=22
+    : > "$TEST_TMPDIR/curl-calls"
+
+    _gh_api_cache_init() {
+        _GH_API_CACHE_DIR="$TEST_TMPDIR/cache"
+    }
+    _setup_curl_opts() {
+        _CURL_OPTS=(-sSL)
+    }
+    curl() {
+        printf '%s\n' "$*" >> "$TEST_TMPDIR/curl-calls"
+        printf '%s' "$MOCK_CHECKSUM_BODY"
+        return "$MOCK_CURL_STATUS"
+    }
+}
+
+_release_fixture() {
+    local digest="${1:-null}" tag="${2:-v1.2.3}" name="${3:-$FIXTURE_ASSET}"
+    local duplicate="${4:-false}" manifest="${5:-false}"
+    python3 - "$digest" "$tag" "$name" "$duplicate" "$manifest" <<'PY'
+import json
+import sys
+
+digest, tag, name, duplicate, manifest = sys.argv[1:]
+asset = {"name": name, "browser_download_url": "https://example.invalid/" + name}
+if digest != "missing":
+    asset["digest"] = json.loads(digest)
+assets = [asset]
+if duplicate == "true":
+    assets.append({**asset, "browser_download_url": "https://example.invalid/duplicate/" + name})
+if manifest == "true":
+    assets.append({"name": "checksums.txt", "browser_download_url": "https://example.invalid/checksums.txt"})
+print(json.dumps({"tag_name": tag, "assets": assets}))
+PY
+}
+
+_reviewed_checksum() {
+    printf 'synthetic/project\tv1.2.3\t%s\t%s\n' "$FIXTURE_ASSET" "${1:-$FIXTURE_HASH}" \
+        > "$SCRIPT_DIR/lib/release_checksums.tsv"
+}
+
+@test "release metadata accepts only the exact asset SHA256 digest" {
+    _release_checksum_fixture
+    local release
+    release=$(_release_fixture '"sha256:'"${FIXTURE_HASH^^}"'"')
+
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_success
+    assert_output --partial "Checksum verified"
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    [[ ! -s "$TEST_TMPDIR/curl-calls" ]]
+}
+
+@test "release digest mismatch is a hard failure even with a matching reviewed checksum" {
+    _release_checksum_fixture
+    _reviewed_checksum
+    local release
+    release=$(_release_fixture '"sha256:'"$WRONG_HASH"'"')
+
+    run verify_github_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+    assert_output --partial "Checksum MISMATCH"
+    refute_output --partial "Checksum verified"
+    [[ -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    [[ ! -s "$TEST_TMPDIR/curl-calls" ]]
+}
+
+@test "invalid missing and non-string release digests do not verify" {
+    _release_checksum_fixture
+    local digest release
+    for digest in missing null 42 '"sha256:invalid"' '"md5:'"$FIXTURE_HASH"'"'; do
+        release=$(_release_fixture "$digest")
+        run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+        assert_failure
+        refute_output --partial "Checksum verified"
+        [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    done
+}
+
+@test "a digest belonging to another asset does not verify the requested artifact" {
+    _release_checksum_fixture
+    local release
+    release=$(_release_fixture '"sha256:'"$FIXTURE_HASH"'"' v1.2.3 other-asset.tar.gz)
+
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+}
+
+@test "reviewed checksum verifies an exact repository tag and asset tuple" {
+    _release_checksum_fixture
+    _reviewed_checksum
+    local release
+    release=$(_release_fixture null)
+
+    run verify_github_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_success
+    assert_output --partial "reviewed checksum"
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    [[ ! -s "$TEST_TMPDIR/curl-calls" ]]
+}
+
+@test "reviewed checksum cannot cross repository tag or asset boundaries" {
+    _release_checksum_fixture
+    _reviewed_checksum
+    local release
+    release=$(_release_fixture null)
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "different/project"
+    assert_failure
+
+    release=$(_release_fixture null v1.2.4)
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+
+    release=$(_release_fixture null v1.2.3 other-asset.tar.gz)
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" other-asset.tar.gz "synthetic/project"
+    assert_failure
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+}
+
+@test "reviewed checksum cannot verify an asset absent from release metadata" {
+    _release_checksum_fixture
+    _reviewed_checksum
+    local release
+    release=$(_release_fixture null v1.2.3 other-asset.tar.gz)
+
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+    refute_output --partial "Checksum verified"
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+}
+
+@test "duplicate release asset names cannot verify through a digest" {
+    _release_checksum_fixture
+    local release
+    release=$(_release_fixture '"sha256:'"$FIXTURE_HASH"'"' v1.2.3 "$FIXTURE_ASSET" true)
+
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+}
+
+@test "duplicate release asset names cannot verify through a reviewed checksum" {
+    _release_checksum_fixture
+    _reviewed_checksum
+    local release
+    release=$(_release_fixture null v1.2.3 "$FIXTURE_ASSET" true)
+
+    run _verify_release_metadata_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+    refute_output --partial "Checksum verified"
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+}
+
+@test "a downloaded manifest mismatch cannot fall back to a matching digest or reviewed checksum" {
+    _release_checksum_fixture
+    _reviewed_checksum
+    MOCK_CHECKSUM_BODY="$WRONG_HASH  $FIXTURE_ASSET"
+    MOCK_CURL_STATUS=0
+    local release
+    release=$(_release_fixture '"sha256:'"$FIXTURE_HASH"'"' v1.2.3 "$FIXTURE_ASSET" false true)
+
+    run verify_github_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+    assert_output --partial "Checksum MISMATCH"
+    refute_output --partial "Checksum verified"
+    [[ -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    [[ $(wc -l < "$TEST_TMPDIR/curl-calls") -eq 1 ]]
+}
+
+@test "an unavailable manifest may use the exact asset digest" {
+    _release_checksum_fixture
+    local release
+    release=$(_release_fixture '"sha256:'"$FIXTURE_HASH"'"' v1.2.3 "$FIXTURE_ASSET" false true)
+
+    run verify_github_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_success
+    assert_output --partial "release digest"
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    [[ $(wc -l < "$TEST_TMPDIR/curl-calls") -eq 1 ]]
+}
+
+@test "an unavailable manifest and absent metadata do not claim verification" {
+    _release_checksum_fixture
+    local release
+    release=$(_release_fixture null v1.2.3 "$FIXTURE_ASSET" false true)
+
+    run verify_github_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_failure
+    assert_output --partial "Failed to download checksums"
+    refute_output --partial "Checksum verified"
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    [[ $(wc -l < "$TEST_TMPDIR/curl-calls") -eq 1 ]]
+}
+
+@test "a matching downloaded manifest is verified without metadata fallback" {
+    _release_checksum_fixture
+    MOCK_CHECKSUM_BODY="$FIXTURE_HASH  $FIXTURE_ASSET"
+    MOCK_CURL_STATUS=0
+    local release
+    release=$(_release_fixture '"sha256:'"$WRONG_HASH"'"' v1.2.3 "$FIXTURE_ASSET" false true)
+
+    run verify_github_checksum "$release" "$FIXTURE_FILE" "$FIXTURE_ASSET" "synthetic/project"
+    assert_success
+    refute_output --partial "release digest or reviewed checksum"
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+    [[ $(wc -l < "$TEST_TMPDIR/curl-calls") -eq 1 ]]
+}
+
+_source_outputs_fixture() {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/reversing.sh"
+    RE_BUILD_NAMES=(fixture-tool)
+    RE_BUILD_URLS[fixture-tool]='https://example.invalid/fixture-tool.git'
+    RE_BUILD_CMDS[fixture-tool]='cmake -S . -B build && cmake --build build --parallel'
+    declare -gA RE_BUILD_BINS=(
+        [fixture-tool]=$'build/fixture-tool|fixture-tool\nbuild/fixture-companion|fixture-companion'
+    )
+    make_test_tmpdir
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/tools with spaces"
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    export SKIP_SOURCE=false
+    export TOTAL_TOOL_FAILURES=0
+    mkdir -p "$GITHUB_TOOL_DIR" "$PIPX_BIN_DIR"
+    _SESSION_FILE=""
+}
+
+_source_artifacts() {
+    mkdir -p "$GITHUB_TOOL_DIR/fixture-tool/build"
+    local binary
+    for binary in fixture-tool fixture-companion; do
+        printf '#!/bin/sh\nprintf "synthetic %s\\n"\n' "$binary" \
+            > "$GITHUB_TOOL_DIR/fixture-tool/build/$binary"
+        chmod +x "$GITHUB_TOOL_DIR/fixture-tool/build/$binary"
+    done
+}
+
+_source_build_fixture() {
+    git_clone_or_pull() { mkdir -p "$2"; }
+    _as_builder() { bash -c "$1"; }
+    mkdir -p "$TEST_TMPDIR/stubs"
+    cat > "$TEST_TMPDIR/stubs/cmake" <<'EOF'
+#!/bin/bash
+case "$1" in
+    -S)
+        [[ "${SOURCE_FIXTURE_FAIL_STAGE:-}" != configure ]] || exit 1
+        mkdir -p build
+        ;;
+    --build)
+        [[ "${SOURCE_FIXTURE_FAIL_STAGE:-}" != build ]] || exit 1
+        for binary in fixture-tool fixture-companion; do
+            [[ "$binary" != "${SOURCE_FIXTURE_OMIT_BINARY:-}" ]] || continue
+            printf '#!/bin/sh\nprintf "synthetic %s\\n"\n' "$binary" > "build/$binary"
+            chmod +x "build/$binary"
+        done
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+    chmod +x "$TEST_TMPDIR/stubs/cmake"
+    export PATH="$TEST_TMPDIR/stubs:$PATH"
+}
+
+@test "source install exposes both executables and records one package" {
+    _source_outputs_fixture
+    _source_build_fixture
+
+    build_from_source fixture-tool "${RE_BUILD_URLS[fixture-tool]}" "${RE_BUILD_CMDS[fixture-tool]}"
+
+    [[ "$(readlink "$PIPX_BIN_DIR/fixture-tool")" == "$GITHUB_TOOL_DIR/fixture-tool/build/fixture-tool" ]]
+    [[ "$(readlink "$PIPX_BIN_DIR/fixture-companion")" == "$GITHUB_TOOL_DIR/fixture-tool/build/fixture-companion" ]]
+    run "$PIPX_BIN_DIR/fixture-companion"
+    assert_success
+    assert_output 'synthetic fixture-companion'
+    [[ "$(awk -F'|' '$1=="fixture-tool" && $2=="source" {n++} END {print n+0}' "$VERSION_FILE")" -eq 1 ]]
+    ! grep -q '^fixture-companion|' "$VERSION_FILE"
+}
+
+@test "source missing secondary executable fails before recording an install" {
+    _source_outputs_fixture
+    _source_build_fixture
+    export SOURCE_FIXTURE_OMIT_BINARY=fixture-companion
+
+    if build_from_source fixture-tool "${RE_BUILD_URLS[fixture-tool]}" "${RE_BUILD_CMDS[fixture-tool]}"; then
+        return 1
+    fi
+
+    [[ "$TOTAL_TOOL_FAILURES" -eq 1 ]]
+    [[ ! -f "$VERSION_FILE" ]]
+}
+
+@test "source configure or compile failure never records success" {
+    _source_outputs_fixture
+    _source_build_fixture
+    local stage
+    for stage in configure build; do
+        export SOURCE_FIXTURE_FAIL_STAGE="$stage"
+        if build_from_source fixture-tool "${RE_BUILD_URLS[fixture-tool]}" "${RE_BUILD_CMDS[fixture-tool]}"; then
+            return 1
+        fi
+    done
+
+    [[ "$TOTAL_TOOL_FAILURES" -eq 2 ]]
+    [[ ! -f "$VERSION_FILE" ]]
+    [[ ! -e "$PIPX_BIN_DIR/fixture-tool" && ! -e "$PIPX_BIN_DIR/fixture-companion" ]]
+}
+
+@test "source successful retry remains owned after a failed first configure" {
+    _source_outputs_fixture
+    _source_build_fixture
+    export SOURCE_FIXTURE_FAIL_STAGE=configure
+    if build_from_source fixture-tool "${RE_BUILD_URLS[fixture-tool]}" "${RE_BUILD_CMDS[fixture-tool]}"; then
+        return 1
+    fi
+    [[ ! -d "$GITHUB_TOOL_DIR/fixture-tool" ]]
+    unset SOURCE_FIXTURE_FAIL_STAGE
+
+    build_from_source fixture-tool "${RE_BUILD_URLS[fixture-tool]}" "${RE_BUILD_CMDS[fixture-tool]}"
+
+    [[ "$TOTAL_TOOL_FAILURES" -eq 1 ]]
+    grep -q '^fixture-tool|source|HEAD|' "$VERSION_FILE"
+    ! grep -q '^fixture-tool|source|existing|' "$VERSION_FILE"
+}
+
+@test "source failed rebuild preserves a pre-existing source tree" {
+    _source_outputs_fixture
+    _source_build_fixture
+    mkdir -p "$GITHUB_TOOL_DIR/fixture-tool"
+    printf 'synthetic user changes\n' > "$GITHUB_TOOL_DIR/fixture-tool/user.txt"
+    export SOURCE_FIXTURE_FAIL_STAGE=configure
+
+    if build_from_source fixture-tool "${RE_BUILD_URLS[fixture-tool]}" "${RE_BUILD_CMDS[fixture-tool]}"; then
+        return 1
+    fi
+
+    [[ "$(cat "$GITHUB_TOOL_DIR/fixture-tool/user.txt")" == 'synthetic user changes' ]]
+    [[ ! -f "$VERSION_FILE" ]]
+}
+
+@test "source setup preserves a foreign executable and foreign symlink" {
+    _source_outputs_fixture
+    _source_artifacts
+    printf '#!/bin/sh\n' > "$PIPX_BIN_DIR/fixture-tool"
+    chmod +x "$PIPX_BIN_DIR/fixture-tool"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/foreign-fixture-companion"
+    chmod +x "$TEST_TMPDIR/foreign-fixture-companion"
+    ln -s "$TEST_TMPDIR/foreign-fixture-companion" "$PIPX_BIN_DIR/fixture-companion"
+
+    run setup_source_build_bins fixture-tool
+
+    assert_failure
+    [[ ! -L "$PIPX_BIN_DIR/fixture-tool" && -x "$PIPX_BIN_DIR/fixture-tool" ]]
+    [[ "$(readlink "$PIPX_BIN_DIR/fixture-companion")" == "$TEST_TMPDIR/foreign-fixture-companion" ]]
+}
+
+@test "source removal drops both owned links and preserves a replaced executable" {
+    _source_outputs_fixture
+    _source_artifacts
+    setup_source_build_bins fixture-tool
+
+    run remove_source_build fixture-tool
+
+    assert_success
+    [[ ! -e "$GITHUB_TOOL_DIR/fixture-tool" ]]
+    [[ ! -L "$PIPX_BIN_DIR/fixture-tool" && ! -L "$PIPX_BIN_DIR/fixture-companion" ]]
+
+    _source_artifacts
+    setup_source_build_bins fixture-tool
+    rm "$PIPX_BIN_DIR/fixture-companion"
+    printf '#!/bin/sh\nprintf "foreign fixture\\n"\n' > "$PIPX_BIN_DIR/fixture-companion"
+    chmod +x "$PIPX_BIN_DIR/fixture-companion"
+
+    run remove_source_build fixture-tool
+
+    assert_success
+    [[ ! -L "$PIPX_BIN_DIR/fixture-tool" ]]
+    run "$PIPX_BIN_DIR/fixture-companion"
+    assert_success
+    assert_output 'foreign fixture'
+}
+
+@test "requested source dependencies use module metadata and distro overrides" {
+    _source_outputs_fixture
+    declare -gA RE_BUILD_PACKAGES=([fixture-tool]='git cmake build-essential')
+    declare -gA RE_BUILD_PACKAGES_ZYPPER=([fixture-tool]='git cmake gcc-c++ make')
+    install_apt_batch() {
+        shift
+        printf '%s\n' "$@" > "$TEST_TMPDIR/dependencies"
+    }
+
+    _ensure_requested_source_deps fixture-tool
+    [[ "$(tr '\n' ' ' < "$TEST_TMPDIR/dependencies")" == 'git cmake build-essential ' ]]
+    PKG_MANAGER=zypper
+    _ensure_requested_source_deps fixture-tool
+    [[ "$(tr '\n' ' ' < "$TEST_TMPDIR/dependencies")" == 'git cmake gcc-c++ make ' ]]
+    rm "$TEST_TMPDIR/dependencies"
+    PKG_MANAGER=pkg
+    _ensure_requested_source_deps fixture-tool
+    [[ ! -e "$TEST_TMPDIR/dependencies" ]]
+    PKG_MANAGER=apt
+    install_apt_batch() { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1)); }
+    run _ensure_requested_source_deps fixture-tool
+    assert_failure
+}
+
+@test "package exclusions and explicit inclusions apply across package managers" {
+    _distro_package_fixture
+    declare -gA MISC_PACKAGE_EXCLUSIONS=([fixture-package]='fixture-blocked')
+    declare -gA MISC_PACKAGE_INCLUSIONS=([fixture-package]='fixture-approved')
+    local manager
+    for manager in apt dnf pacman zypper pkg; do
+        PKG_MANAGER="$manager"
+        DISTRO_ID=fixture-blocked
+        DISTRO_ID_LIKE=''
+        local -a packages=(fixture-package curl)
+        fixup_package_names packages
+        [[ "${packages[*]}" == curl ]]
+        DISTRO_ID=fixture-approved
+        DISTRO_ID_LIKE=fixture-blocked
+        packages=(fixture-package curl)
+        fixup_package_names packages
+        [[ "${packages[*]}" == 'fixture-package curl' ]]
+    done
+}
+
+@test "source install preserves occupied files and symlinks before cloning" {
+    _source_outputs_fixture
+    git_clone_or_pull() { touch "$TEST_TMPDIR/cloned"; return 1; }
+    _start_spinner() { :; }
+    _stop_spinner() { :; }
+    local destination="$GITHUB_TOOL_DIR/fixture-tool" kind status previous_failures
+    mkdir -p "$TEST_TMPDIR/user-directory"
+    printf 'synthetic user research\n' > "$TEST_TMPDIR/user-directory/notes.txt"
+    for kind in file broken-symlink directory-symlink; do
+        case "$kind" in
+            file) printf 'synthetic user file\n' > "$destination" ;;
+            broken-symlink) ln -s "$TEST_TMPDIR/missing-target" "$destination" ;;
+            directory-symlink) ln -s "$TEST_TMPDIR/user-directory" "$destination" ;;
+        esac
+        status=0
+        previous_failures="$TOTAL_TOOL_FAILURES"
+
+        build_from_source fixture-tool "${RE_BUILD_URLS[fixture-tool]}" "${RE_BUILD_CMDS[fixture-tool]}" || status=$?
+
+        [[ "$status" -eq 1 && "$TOTAL_TOOL_FAILURES" -eq $((previous_failures + 1)) ]]
+        [[ ! -e "$TEST_TMPDIR/cloned" && ! -e "$VERSION_FILE" ]]
+        case "$kind" in
+            file) [[ -f "$destination" && "$(cat "$destination")" == 'synthetic user file' ]] ;;
+            broken-symlink) [[ -L "$destination" && "$(readlink "$destination")" == "$TEST_TMPDIR/missing-target" ]] ;;
+            directory-symlink)
+                [[ -L "$destination" && "$(readlink "$destination")" == "$TEST_TMPDIR/user-directory" ]]
+                [[ "$(cat "$TEST_TMPDIR/user-directory/notes.txt")" == 'synthetic user research' ]]
+                ;;
+        esac
+        rm "$destination"
+    done
+}

@@ -272,8 +272,22 @@ check_cmd_any() {
 check_build() {
     local name="$1"
     local dir="$GITHUB_TOOL_DIR/$name"
+    if [[ "$PKG_MANAGER" == pkg && ! -d "$dir" ]] \
+        && ! command_exists "$name"; then
+        return 0
+    fi
     _is_tracked "$name" || return 0
     TOTAL_CHECKED=$((TOTAL_CHECKED + 1))
+
+    local relative binary
+    while IFS='|' read -r relative binary; do
+        [[ -n "$relative" ]] || continue
+        if ! command_exists "$binary" && [[ ! -x "$dir/$relative" ]]; then
+            TOTAL_MISSING=$((TOTAL_MISSING + 1))
+            vlog_error "$name — required executable $binary NOT found"
+            return 1
+        fi
+    done < <(_source_build_bins "$name")
 
     if command_exists "$name"; then
         # Binary is in PATH (e.g. symlinked or installed to /usr/local/bin)
@@ -350,12 +364,53 @@ check_binary_array() {
     local -n _cba_arr="$_arr_name"
     for _entry in "${_cba_arr[@]}"; do
         IFS='|' read -r _ _bin _ <<< "$_entry"
+        _binary_platform_supported "$_bin" || continue
         check_cmd "$_bin" || true
     done
 }
 
 # Batch check helpers
 check_cmds()      { for t in "$@"; do check_cmd "$t" || true; done; }
+check_package_binary() {
+    local package="$1"; shift
+    local -a package_candidates=("$package")
+    fixup_package_names package_candidates
+    [[ ${#package_candidates[@]} -gt 0 ]] || return 0
+    local alias label="$package"
+    local -a aliases=("$package") parts=()
+    for alias in "${_COMPAT_DNF[$package]:-}" "${_COMPAT_PACMAN[$package]:-}" \
+        "${_COMPAT_ZYPPER[$package]:-}" "${_COMPAT_PKG[$package]:-}"; do
+        [[ -n "$alias" && "$alias" != - ]] || continue
+        IFS='+' read -r -a parts <<< "$alias"
+        aliases+=("${parts[@]}")
+    done
+    if [[ "$INSTALLED_ONLY" == true ]]; then
+        label=""
+        for alias in "${aliases[@]}"; do
+            if _is_tracked "$alias"; then
+                label="$alias"
+                break
+            fi
+        done
+        [[ -n "$label" ]] || return 0
+    fi
+    check_cmd_any "$label" "$@"
+}
+check_declared_package_binaries() {
+    local module prefix map_name package
+    local -a commands=()
+    for module in "${VERIFY_MODULES[@]}"; do
+        prefix=$(_module_prefix "$module")
+        map_name="${prefix}_PACKAGE_BIN_NAMES"
+        declare -p "$map_name" &>/dev/null || continue
+        local -n binaries="$map_name"
+        log_info "$module (declared package commands):"
+        for package in "${!binaries[@]}"; do
+            read -r -a commands <<< "${binaries[$package]}"
+            check_package_binary "$package" "${commands[@]}" || true
+        done
+    done
+}
 check_pipx_arr()  { for t in "$@"; do check_pipx "$t" || true; done; }
 check_git_repos() { for n in "$@"; do check_dir "$n" "$GITHUB_TOOL_DIR/$n" || true; done; }
 check_npm_arr()   { for t in "$@"; do check_npm "$t" || true; done; }
@@ -699,6 +754,10 @@ if should_verify "blueteam"; then
     fi
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"
+    log_info "Blue Team (Go):"
+    check_cmds "${BLUETEAM_GO_BINS[@]}"
+    log_info "Blue Team (source builds):"
+    check_builds "${BLUETEAM_BUILD_NAMES[@]}"
     # BLUETEAM_CARGO (yara-x-cli installs binary as 'yr') — see _CARGO_BIN_NAMES
     check_module_cargo "blueteam"
     log_info "Blue Team (Git):"
@@ -750,6 +809,8 @@ if should_verify "llm"; then
     log_info "LLM (npm):"
     check_cmd "promptfoo" "promptfoo --version" || true
 fi
+
+check_declared_package_binaries
 
 # Docker images (all modules — uses centralized registry). They are opt-in
 # (--enable-docker or a Docker profile), so only an image this toolkit recorded

@@ -32,6 +32,348 @@ from mcp_server.security import (
 )
 
 
+class TestCommandPolicies:
+    @pytest.mark.parametrize(
+        "tool,binary,args,reason",
+        [
+            ("registered-alias", "strace", ["sh", "-c", "id"], "only attaching"),
+            ("registered-alias", "gdb", ["-ex", "run"], "executes the inferior"),
+            ("registered-alias", "vt", ["init"], "report lookups"),
+            ("takajo", "vt", ["list-hashes", "-t", "timeline.jsonl"], "report lookups"),
+            ("gdb", "TeamFiltration", ["-ex", "print 1"], "dedicated scope adapter"),
+        ],
+    )
+    def test_resolved_binary_policy_cannot_be_masked_by_registry_name(self, tool, binary, args, reason, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        with pytest.raises(ValueError, match=reason):
+            check_policy(tool, args, binary)
+
+    @pytest.mark.parametrize("args", [[], ["--help"]])
+    @pytest.mark.parametrize("tool,binary", [("TeamFiltration", "TeamFiltration"), ("alias", "TeamFiltration")])
+    def test_teamfiltration_help(self, args, tool, binary, monkeypatch):
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_EXTERNAL", raising=False)
+        check_policy(tool, args, binary)
+
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["--enum", "--domain", "example.org"],
+            ["--spray", "--auto-exfil"],
+            ["--exfil", "--all"],
+            ["--backdoor"],
+            ["--database", "--outpath", "/tmp/synthetic-case"],
+            ["--help", "--password", "synthetic-value"],
+            ["--version"],
+        ],
+    )
+    def test_teamfiltration_cloud_and_database_blocked(self, args, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="dedicated scope adapter"):
+            check_policy("TeamFiltration", args)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["list-hashes", "-t", "timeline.jsonl", "-o", "hashes.csv"],
+            ["automagic", "--timeline", "/tmp/synthetic-timeline.jsonl", "--output", "/tmp/synthetic-case"],
+            ["html-report", "--timeline", "timeline.jsonl", "--output", "report"],
+            ["help", "vt-hash-lookup"],
+        ],
+    )
+    def test_takajo_offline_commands(self, args, monkeypatch):
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_EXTERNAL", raising=False)
+        check_policy("takajo", args)
+
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize("command", ["html-server", "vt-domain-lookup", "vt-hash-lookup", "vt-ip-lookup"])
+    def test_takajo_server_and_external_commands_blocked(self, command, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="persistent servers and VirusTotal"):
+            check_policy("takajo", [command])
+
+    @pytest.mark.parametrize("command", ["html-s", "vt-h", "future-network-command"])
+    def test_takajo_command_abbreviations_and_unknown_commands_blocked(self, command):
+        with pytest.raises(ValueError, match="documented offline"):
+            check_policy("takajo", [command])
+
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize(
+        "command,flags",
+        [
+            ("list-hashes", ["--out", "/etc/cron.d/synthetic"]),
+            ("list-hashes", ["--oUt-Pu_t:/etc/cron.d/synthetic"]),
+            ("list-hashes", ["--OUTPUT=/etc/cron.d/synthetic"]),
+            ("list-hashes", ["-o:/etc/cron.d/synthetic"]),
+            ("list-hashes", ["-o=/etc/cron.d/synthetic"]),
+            ("list-hashes", ["-o/etc/cron.d/synthetic"]),
+            ("list-hashes", ["-sqo/etc/cron.d/synthetic"]),
+            ("html-report", ["--db", "/etc/cron.d/synthetic"]),
+            ("html-report", ["--dB_OuT-Put:/etc/cron.d/synthetic"]),
+            ("html-report", ["-s=/etc/cron.d/synthetic"]),
+            ("html-report", ["-s:/etc/cron.d/synthetic"]),
+            ("html-report", ["-s/etc/cron.d/synthetic"]),
+            ("html-report", ["-qCs=/etc/cron.d/synthetic"]),
+            ("html-report", ["-s", "~/.bashrc"]),
+        ],
+    )
+    def test_takajo_output_aliases_cannot_write_sensitive_paths(self, command, flags, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="sensitive"):
+            check_policy("takajo", [command, "-t", "timeline.jsonl", *flags])
+
+    @pytest.mark.parametrize(
+        "command,flags",
+        [
+            ("list-hashes", ["--out:/tmp/synthetic-hashes.csv", "-s"]),
+            ("list-hashes", ["--oUt-Pu_t=/tmp/synthetic-hashes.csv", "-sq"]),
+            ("list-hashes", ["-sqo/tmp/synthetic-hashes.csv"]),
+            ("list-hashes", ["-s=false", "-o", "/tmp/synthetic-hashes.csv"]),
+            ("stack-users", ["-s", "-o", "/tmp/synthetic-users.csv"]),
+            ("list-ip-addresses", ["-iOso/tmp/synthetic-ips.csv"]),
+            ("html-report", ["--db:/tmp/synthetic-report.duckdb", "--output", "/tmp/synthetic-report"]),
+            ("html-report", ["-qCs:/tmp/synthetic-report.duckdb", "-o:/tmp/synthetic-report"]),
+            ("timeline-logon", ["--output-logoff-events", "--output", "/tmp/synthetic-logon.csv"]),
+        ],
+    )
+    def test_takajo_safe_outputs_and_non_path_short_flags_remain_usable(self, command, flags):
+        check_policy("takajo", [command, "-t", "timeline.jsonl", *flags])
+
+    @pytest.mark.parametrize("command", ["list-ip-addresses", "timeline-logon", "timeline-tasks"])
+    def test_takajo_ambiguous_long_output_prefix_is_rejected(self, command):
+        with pytest.raises(ValueError, match="ambiguous output"):
+            check_policy("takajo", [command, "--out", "/tmp/synthetic-output"])
+
+    @pytest.mark.parametrize(
+        "command,flag",
+        [
+            ("list-hashes", "--output+=/tmp/synthetic"),
+            ("list-hashes", "--out^=/tmp/synthetic"),
+            ("list-hashes", "--output&=/tmp/synthetic"),
+            ("list-hashes", "--output/=/tmp/=/etc/"),
+            ("list-hashes", "-o/=/tmp/=/etc/"),
+            ("html-report", "-s+=/tmp/synthetic.duckdb"),
+        ],
+    )
+    def test_takajo_output_string_updates_are_rejected(self, command, flag):
+        with pytest.raises(ValueError, match="output string update"):
+            check_policy("takajo", [command, flag])
+
+    @pytest.mark.parametrize("route", ["local", "pipeline", "remote"])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            "html-report -t timeline.jsonl -s:/etc/cron.d/synthetic",
+            "vt-hash-lookup -a synthetic-inline-key --output /etc/cron.d/synthetic",
+            "vtHashLook -a synthetic-inline-key --output /etc/cron.d/synthetic",
+        ],
+    )
+    async def test_takajo_policy_applies_before_local_pipeline_and_remote_execution(self, route, args, tools_db):
+        remote_config = MagicMock()
+        remote_config.check_tool_allowed.return_value = True
+        with (
+            patch("mcp_server.security.validate_tool_for_execution", return_value="takajo"),
+            patch("mcp_server.security.validate_tool_for_remote_execution", return_value="takajo"),
+            patch("mcp_server.security.log_pipeline_start") as start,
+            patch("asyncio.create_subprocess_exec") as spawn,
+            patch("mcp_server.remote.execute_remote_command") as remote,
+        ):
+            if route == "local":
+                result = await execute_tool("takajo", args, tools_db)
+            elif route == "pipeline":
+                result = await execute_pipeline([{"tool": "takajo", "args": args}], tools_db)
+                assert "synthetic-inline-key" not in json.dumps(start.call_args.args[0])
+            else:
+                result = await execute_tool_remote("takajo", args, tools_db, remote_config, "synthetic-host")
+                remote_config.get_ssh_base_args.assert_not_called()
+        assert result["exit_code"] == -1
+        assert "synthetic-inline-key" not in json.dumps(result)
+        spawn.assert_not_called()
+        remote.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["--version"],
+            ["-V"],
+            ["info", "profile.xml"],
+            ["info", "--profile", "xccdf_profile_synthetic", "profile.xml"],
+            ["xccdf", "validate", "profile.xml"],
+            ["xccdf", "eval", "--help"],
+            ["oval", "validate", "--definitions", "definitions.xml"],
+            ["oval", "eval", "--results", "/tmp/synthetic-results.xml", "definitions.xml"],
+            ["ds", "sds-validate", "stream.xml"],
+        ],
+    )
+    def test_openscap_readonly_commands(self, args):
+        check_policy("openscap-scanner", args, "oscap")
+
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["xccdf", "eval", "profile.xml"],
+            ["xccdf", "remediate", "results.xml"],
+            ["oval", "eval", "--remediate", "definitions.xml"],
+            ["oval", "eval", "--fetch-remote-resources", "definitions.xml"],
+            ["xccdf", "validate", "--fetch-remote-resources", "profile.xml"],
+            ["info", "https://example.org/profile.xml"],
+            ["oval", "eval", "--results", "/etc/cron.d/synthetic", "definitions.xml"],
+            ["xccdf", "generate", "fix", "profile.xml"],
+        ],
+    )
+    def test_openscap_script_mutation_and_remote_resources_blocked(self, args, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy("openscap-scanner", args, "oscap")
+
+    @pytest.mark.parametrize("args", [[], ["--help"], ["help"], ["version"], ["file", "--help"], ["help", "url"]])
+    def test_vt_help_and_version_without_external_access(self, args, monkeypatch):
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_EXTERNAL", raising=False)
+        check_policy("vt", args)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["file", "a" * 32],
+            ["file", "b" * 40, "c" * 64],
+            ["--format", "json", "file", "c" * 64, "-i", "last_analysis_stats", "-t2"],
+            ["file", "c" * 64, "-xapikey"],
+            ["url", "https://example.org/synthetic"],
+            ["url", "c" * 64],
+            ["ip", "192.0.2.10"],
+            ["ip", "2001:db8::10"],
+            ["domain", "example.org"],
+        ],
+    )
+    def test_vt_report_lookup_with_explicit_external_access(self, args, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        check_policy("vt-cli", args, "vt")
+
+    @pytest.mark.parametrize(
+        "args", [["file", "c" * 64], ["ip", "127.0.0.1"], ["url", "http://127.0.0.1"], ["domain", "example.org"]]
+    )
+    def test_vt_api_requires_external_opt_in_even_for_private_identifiers(self, args, monkeypatch):
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_EXTERNAL", raising=False)
+        with pytest.raises(ValueError, match="external VirusTotal API"):
+            check_policy("vt", args)
+
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["scan", "file", "/tmp/synthetic.bin"],
+            ["scan", "url", "https://example.org"],
+            ["download", "c" * 64],
+            ["monitor", "upload", "/tmp/synthetic.bin"],
+            ["init"],
+            ["file", "-"],
+            ["file", "/tmp/synthetic.bin"],
+            ["file", "comments", "c" * 64],
+            ["domain", "comments", "example.org"],
+            ["url", "file:///etc/passwd"],
+            ["url", "https://synthetic:synthetic@example.org"],
+            ["url", "https://example.org:invalid"],
+            ["ip", "invalid"],
+            ["domain", "example.org/objects"],
+            ["file", "c" * 64, "--host", "example.org"],
+            ["file", "c" * 64, "--verbose"],
+            ["file", "c" * 64, "--threads", "0"],
+        ],
+    )
+    def test_vt_upload_download_mutations_and_scope_bypasses_blocked(self, args, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy("vt", args)
+
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            ["--apikey", "synthetic-value"],
+            ["--apikey=synthetic-value"],
+            ["-k", "synthetic-value"],
+            ["-ksynthetic-value"],
+            ["-sksynthetic-value"],
+        ],
+    )
+    def test_vt_inline_api_keys_blocked(self, flags, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        with pytest.raises(ValueError, match="inline API keys"):
+            check_policy("vt", ["file", "c" * 64, *flags])
+
+    async def test_blocked_short_api_key_is_not_returned_or_audited(self, tools_db, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        with (
+            patch("mcp_server.security.validate_tool_for_execution", return_value="vt"),
+            patch("mcp_server.security.log_blocked") as blocked,
+            patch("asyncio.create_subprocess_exec") as spawn,
+        ):
+            result = await execute_tool("vt", "file " + "c" * 64 + " -ksynthetic-value", tools_db)
+        assert result["exit_code"] == -1
+        assert "synthetic-value" not in json.dumps(result)
+        assert "synthetic-value" not in blocked.call_args.kwargs["args"]
+        spawn.assert_not_called()
+
+    async def test_blocked_api_key_pipeline_is_redacted_before_start_audit(self, tools_db, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        with (
+            patch("mcp_server.security.validate_tool_for_execution", return_value="vt"),
+            patch("mcp_server.security.log_pipeline_start") as start,
+            patch("asyncio.create_subprocess_exec") as spawn,
+        ):
+            result = await execute_pipeline(
+                [{"tool": "vt", "args": ["file", "c" * 64, "-k", "synthetic-value"]}], tools_db
+            )
+        assert result["exit_code"] == -1
+        assert "synthetic-value" not in json.dumps(start.call_args.args[0])
+        spawn.assert_not_called()
+
+    async def test_sanitization_failure_does_not_echo_inline_key(self, tools_db):
+        with patch("mcp_server.security.validate_tool_for_execution", return_value="vt"):
+            result = await execute_tool("vt", "file " + "c" * 64 + " -ksynthetic-value | other", tools_db)
+        assert result["exit_code"] == -1
+        assert "synthetic-value" not in json.dumps(result)
+
+    async def test_vt_execution_pins_host_disables_key_output_and_strips_key_env(self, tools_db, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        monkeypatch.setenv("VTCLI_APIKEY", "synthetic-value")
+        proc = AsyncMock(returncode=0)
+        with (
+            patch("mcp_server.security.validate_tool_for_execution", return_value="vt"),
+            patch("mcp_server.security._bounded_communicate", return_value=(b"{}", False, b"", False)),
+            patch("asyncio.create_subprocess_exec", return_value=proc) as spawn,
+        ):
+            result = await execute_tool("vt", "file " + "c" * 64, tools_db)
+        assert result["exit_code"] == 0
+        assert spawn.call_args.args[-2:] == ("--verbose=false", "--host=www.virustotal.com")
+        assert "VTCLI_APIKEY" not in spawn.call_args.kwargs["env"]
+
+    async def test_vt_pipeline_pins_host_and_disables_key_output(self, tools_db, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        proc = AsyncMock(returncode=0)
+        with (
+            patch("mcp_server.security.validate_tool_for_execution", return_value="vt"),
+            patch("mcp_server.security._bounded_communicate", return_value=(b"{}", False, b"", False)),
+            patch("asyncio.create_subprocess_exec", return_value=proc) as spawn,
+        ):
+            result = await execute_pipeline([{"tool": "vt", "args": "file " + "c" * 64}], tools_db)
+        assert result["exit_code"] == 0
+        assert spawn.call_args.args[-2:] == ("--verbose=false", "--host=www.virustotal.com")
+
+    async def test_vt_remote_execution_pins_host_and_disables_key_output(self, tools_db, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        remote_config = MagicMock()
+        remote_config.check_tool_allowed.return_value = True
+        remote_config.get_ssh_base_args.return_value = ["ssh", "synthetic-host"]
+        with (
+            patch("mcp_server.security.validate_tool_for_remote_execution", return_value="vt"),
+            patch("mcp_server.remote.execute_remote_command", return_value={"exit_code": 0}) as execute,
+        ):
+            result = await execute_tool_remote("vt", "file " + "c" * 64, tools_db, remote_config, "synthetic-host")
+        assert result["exit_code"] == 0
+        assert execute.call_args.args[1][-2:] == ["--verbose=false", "--host=www.virustotal.com"]
+
+
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """Reset the global rate limiter before each test."""

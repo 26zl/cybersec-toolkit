@@ -14,8 +14,11 @@ import socket
 import sys
 import tempfile
 import time
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
@@ -1836,8 +1839,7 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
             _raise_sensitive_write(name, path)
 
 
-# Tracers whose command line names a program to execute; see check_policy 1b-iii.
-_TRACERS_ATTACH_ONLY = frozenset({"strace", "ltrace"})
+# Tracers whose command line names a program to execute.
 _TRACER_SHORT_REQUIRED = {
     "strace": frozenset("abeEIoOpPsSuUX"),
     "ltrace": frozenset("aADeFlnopsuwx"),
@@ -1978,6 +1980,356 @@ def _check_gdb_execution_commands(arg_list: list[str]) -> None:
                 command_start = False
 
 
+_TAKAJO_OFFLINE_COMMANDS = frozenset(
+    "automagic convert-flatten-json extract-credentials extract-scriptblocks html-report "
+    "list-domains list-hashes list-ip-addresses list-undetected-evtx list-unused-rules "
+    "split-csv-timeline split-json-timeline metrics-computers metrics-users "
+    "stack-cmdlines stack-computers stack-dns stack-ip-addresses stack-logons "
+    "stack-processes stack-services stack-tasks stack-users sysmon-process-tree "
+    "timeline-logon timeline-partition-diagnostic timeline-suspicious-processes timeline-tasks "
+    "ttp-summary ttp-visualize ttp-visualize-sigma".split()
+)
+_TAKAJO_RESTRICTED_COMMANDS = frozenset({"html-server", "vt-domain-lookup", "vt-hash-lookup", "vt-ip-lookup"})
+_TAKAJO_BOOLEAN_SHORT_FLAGS = {
+    command: frozenset("h" + flags)
+    for commands, flags in (
+        ("automagic", "sdq"),
+        ("convert-flatten-json extract-credentials", "qs"),
+        (
+            "extract-scriptblocks list-hashes metrics-computers metrics-users stack-dns stack-tasks "
+            "timeline-partition-diagnostic timeline-suspicious-processes timeline-tasks ttp-summary ttp-visualize",
+            "sq",
+        ),
+        ("html-report", "qC"),
+        ("list-domains", "dwsq"),
+        ("list-ip-addresses", "iOspq"),
+        ("list-undetected-evtx list-unused-rules split-json-timeline sysmon-process-tree ttp-visualize-sigma", "q"),
+        ("split-csv-timeline", "mq"),
+        ("stack-cmdlines stack-processes stack-services", "yesq"),
+        ("stack-computers", "csq"),
+        ("stack-ip-addresses", "asq"),
+        ("stack-logons", "lfsq"),
+        ("stack-users", "scfq"),
+        ("timeline-logon", "clasq"),
+    )
+    for command in commands.split()
+}
+_TAKAJO_OUTPUT_PREFIX_CONFLICTS = {
+    "list-ip-addresses": ("outbound",),
+    "timeline-logon": ("outputadminlogonevents", "outputlogoffevents"),
+    "timeline-tasks": ("outputlogoffevents",),
+}
+_VT_LOOKUP_COMMANDS = frozenset({"file", "url", "ip", "domain"})
+_VT_HASH_RE = re.compile(r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\Z")
+_VT_DOMAIN_RE = re.compile(
+    r"(?=.{1,253}\Z)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*"
+    r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.?\Z"
+)
+
+
+def _takajo_output_destinations(command: str, args: list[str]) -> list[str]:
+    path_options = {"output", "dboutput"} if command == "html-report" else {"output"}
+    short_options = {"o", "s"} if command == "html-report" else {"o"}
+    destinations: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        option = None
+        value = ""
+        attached = False
+        if arg.startswith("--"):
+            match = re.fullmatch(r"--([^=:]*)(?:([=:])(.*))?", arg)
+            if match:
+                raw_name, separator, value = match.groups()
+                operation = raw_name[-1:] if raw_name[-1:] in "+&^/" else ""
+                name = re.sub(r"[-_]", "", raw_name.removesuffix(operation)).casefold()
+                matches = [candidate for candidate in path_options if name and candidate.startswith(name)]
+                if matches:
+                    if operation:
+                        raise ValueError("Blocked by policy: takajo: output string update operators are not permitted")
+                    if name not in path_options and any(
+                        candidate.startswith(name) for candidate in _TAKAJO_OUTPUT_PREFIX_CONFLICTS.get(command, ())
+                    ):
+                        raise ValueError("Blocked by policy: takajo: ambiguous output option prefix")
+                    option = matches[0]
+                    attached = separator is not None
+                    value = value or ""
+        elif arg.startswith("-") and arg != "-":
+            for index, letter in enumerate(arg[1:], 1):
+                if letter in short_options:
+                    option = letter
+                    value = arg[index + 1 :]
+                    if re.match(r"^[+&^/][=:]", value):
+                        raise ValueError("Blocked by policy: takajo: output string update operators are not permitted")
+                    attached = bool(value)
+                    if value.startswith(("=", ":")):
+                        value = value[1:]
+                    break
+                if letter not in _TAKAJO_BOOLEAN_SHORT_FLAGS.get(command, frozenset()) or arg[index + 1 :].startswith(
+                    ("=", ":")
+                ):
+                    break
+        if option is not None:
+            if not attached:
+                i += 1
+                if i >= len(args):
+                    raise ValueError("Blocked by policy: takajo: output option requires a value")
+                value = args[i]
+            destinations.append(value)
+        i += 1
+    return destinations
+
+
+def _parse_readonly_options(
+    tool: str, args: list[str], value_flags: set[str], boolean_flags: set[str]
+) -> tuple[list[str], dict[str, str]]:
+    positional: list[str] = []
+    values: dict[str, str] = {}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if not arg.startswith("-"):
+            positional.append(arg)
+            i += 1
+            continue
+        flag, separator, value = arg.partition("=")
+        if not separator and not arg.startswith("--") and len(arg) > 2 and arg[:2] in value_flags:
+            flag, separator, value = arg[:2], "=", arg[2:]
+        if flag in boolean_flags:
+            if separator and value not in {"true", "false"}:
+                raise ValueError(f"Blocked by policy: {tool}: invalid boolean option")
+        elif flag in value_flags:
+            if not separator:
+                i += 1
+                if i >= len(args) or args[i].startswith("-"):
+                    raise ValueError(f"Blocked by policy: {tool}: option requires a value")
+                value = args[i]
+            if not value:
+                raise ValueError(f"Blocked by policy: {tool}: empty option value")
+            values[flag] = value
+        else:
+            raise ValueError(f"Blocked by policy: {tool}: unsupported option for read-only operations")
+        i += 1
+    return positional, values
+
+
+def _check_vt_policy(arg_list: list[str]) -> None:
+    for arg in arg_list:
+        if re.match(r"^--api[-_]?key(?:=|$)", arg, re.IGNORECASE) or re.match(r"^-[sIvP]*k", arg):
+            raise ValueError("Blocked by policy: vt: inline API keys are not permitted; use the operator's ~/.vt.toml")
+    if arg_list in ([], ["--help"], ["-h"], ["help"], ["version"]):
+        return
+    if len(arg_list) == 2 and (
+        arg_list[0] in _VT_LOOKUP_COMMANDS
+        and arg_list[1] in {"--help", "-h"}
+        or arg_list[0] == "help"
+        and arg_list[1] in _VT_LOOKUP_COMMANDS
+    ):
+        return
+    positional, options = _parse_readonly_options(
+        "vt",
+        arg_list,
+        {"--format", "--include", "-i", "--exclude", "-x", "--threads", "-t"},
+        {"--identifiers-only", "-I", "--silent", "-s", "--private", "-P"},
+    )
+    if len(positional) < 2 or positional[0] not in _VT_LOOKUP_COMMANDS:
+        raise ValueError("Blocked by policy: vt: only file/hash, URL, IP, and domain report lookups are permitted")
+    command, *targets = positional
+    if options.get("--format", "yaml") not in {"yaml", "json", "csv"}:
+        raise ValueError("Blocked by policy: vt: unsupported output format")
+    for flag in ("--threads", "-t"):
+        if flag in options and (not options[flag].isdigit() or int(options[flag]) < 1):
+            raise ValueError("Blocked by policy: vt: thread count must be a positive integer")
+    for target in targets:
+        valid = False
+        if command == "file":
+            valid = _VT_HASH_RE.fullmatch(target) is not None
+        elif command == "domain":
+            valid = "." in target.rstrip(".") and _VT_DOMAIN_RE.fullmatch(target) is not None
+        elif command == "ip":
+            try:
+                ipaddress.ip_address(target)
+                valid = True
+            except ValueError:
+                pass
+        elif command == "url":
+            if re.fullmatch(r"[0-9a-fA-F]{64}", target):
+                valid = True
+            else:
+                try:
+                    parsed = urlsplit(target)
+                    valid = (
+                        parsed.scheme in {"http", "https"}
+                        and bool(parsed.hostname)
+                        and parsed.username is None
+                        and parsed.password is None
+                        and parsed.port != 0
+                        and not any(char.isspace() for char in target)
+                    )
+                except ValueError:
+                    pass
+        if not valid:
+            raise ValueError("Blocked by policy: vt: invalid lookup identifier or unbounded stdin/file input")
+    if not _allow_external():
+        raise ValueError(
+            "Blocked by policy: vt: report lookups contact the external VirusTotal API; "
+            "set CYBERSEC_MCP_ALLOW_EXTERNAL=1 for authorized lookups"
+        )
+
+
+def _check_openscap_policy(arg_list: list[str]) -> None:
+    if arg_list in ([], ["--help"], ["-h"], ["--version"], ["-V"], ["version"]):
+        return
+    if (
+        len(arg_list) in {2, 3}
+        and arg_list[-1] in {"--help", "-h"}
+        and arg_list[0] in {"info", "oval", "xccdf", "cpe", "cve", "ds"}
+    ):
+        return
+    if arg_list[:2] in (["xccdf", "eval"], ["xccdf", "remediate"]):
+        raise ValueError(
+            "Blocked by policy: oscap: XCCDF evaluation/remediation can execute profile SCE or fix scripts; "
+            "use validation or read-only OVAL evaluation"
+        )
+    if arg_list[:1] == ["info"]:
+        args = arg_list[1:]
+        value_flags = {"--profile", "--local-files"}
+        boolean_flags = {"--list-rules", "--list-vars"}
+    elif arg_list[:2] == ["oval", "eval"]:
+        args = arg_list[2:]
+        value_flags = {
+            "--id",
+            "--variables",
+            "--directives",
+            "--results",
+            "--report",
+            "--datastream-id",
+            "--oval-id",
+            "--local-files",
+            "--verbose",
+            "--verbose-log-file",
+        }
+        boolean_flags = {"--without-syschar"}
+    elif tuple(arg_list[:2]) in {
+        ("oval", "validate"),
+        ("xccdf", "validate"),
+        ("cpe", "validate"),
+        ("cve", "validate"),
+        ("ds", "sds-validate"),
+        ("ds", "rds-validate"),
+    }:
+        args = arg_list[2:]
+        value_flags = {"--verbose", "--verbose-log-file"}
+        boolean_flags = {"--skip-schematron"}
+        if arg_list[0] == "oval":
+            boolean_flags |= {"--definitions", "--variables", "--syschar", "--results"}
+    else:
+        raise ValueError("Blocked by policy: oscap: only info, validation, and read-only OVAL evaluation are permitted")
+    positional, options = _parse_readonly_options("oscap", args, value_flags, boolean_flags)
+    if len(positional) != 1:
+        raise ValueError("Blocked by policy: oscap: a single local SCAP input file is required")
+    for value in [*positional, *options.values()]:
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", value):
+            raise ValueError("Blocked by policy: oscap: remote resources require a dedicated scope adapter")
+    for flag in ("--results", "--report", "--verbose-log-file"):
+        if flag in options and _is_sensitive_write_target(options[flag]):
+            _raise_sensitive_write("oscap", options[flag])
+
+
+def _check_teamfiltration_policy(arg_list: list[str]) -> None:
+    if arg_list not in ([], ["--help"]):
+        raise ValueError(
+            "Blocked by policy: TeamFiltration: MCP permits only help; config/database-backed cloud actions "
+            "and interactive credential commands need a dedicated scope adapter"
+        )
+
+
+def _check_takajo_policy(arg_list: list[str]) -> None:
+    if arg_list in ([], ["--help"], ["-h"], ["--version"], ["help"]):
+        return
+    if (
+        len(arg_list) == 2
+        and arg_list[0] == "help"
+        and arg_list[1] in (_TAKAJO_OFFLINE_COMMANDS | _TAKAJO_RESTRICTED_COMMANDS)
+    ):
+        return
+    if arg_list[0] in _TAKAJO_RESTRICTED_COMMANDS:
+        raise ValueError("Blocked by policy: takajo: persistent servers and VirusTotal API commands are not permitted")
+    if arg_list[0] not in _TAKAJO_OFFLINE_COMMANDS:
+        raise ValueError("Blocked by policy: takajo: only documented offline analysis commands are permitted")
+    for value in _takajo_output_destinations(arg_list[0], arg_list[1:]):
+        if _is_sensitive_write_target(value):
+            _raise_sensitive_write("takajo", value)
+
+
+_ARGUMENT_POLICIES: dict[str, Callable[[list[str]], None]] = {
+    "strace": partial(_check_tracer_attach_only, "strace"),
+    "ltrace": partial(_check_tracer_attach_only, "ltrace"),
+    "gdb": _check_gdb_execution_commands,
+    "teamfiltration": _check_teamfiltration_policy,
+    "takajo": _check_takajo_policy,
+    "oscap": _check_openscap_policy,
+    "openscap-scanner": _check_openscap_policy,
+    "vt": _check_vt_policy,
+    "vt-cli": _check_vt_policy,
+}
+
+
+def _check_argument_policies(tool_name: str, binary: str, arg_list: list[str]) -> None:
+    applied: set[Callable[[list[str]], None]] = set()
+    for name in (tool_name.casefold(), binary.casefold()):
+        policy = _ARGUMENT_POLICIES.get(name)
+        if policy is not None and policy not in applied:
+            policy(arg_list)
+            applied.add(policy)
+
+
+def _execution_arg_list(tool_name: str, binary: str, arg_list: list[str]) -> list[str]:
+    if {tool_name.casefold(), binary.casefold()} & {"vt", "vt-cli"}:
+        # Viper config can override the API host or enable API-key output unless CLI flags take precedence.
+        return [*arg_list, "--verbose=false", "--host=www.virustotal.com"]
+    return arg_list
+
+
+def _blocked_args_for_logging(tool_name: str, args: str, binary: str | None = None) -> str:
+    if {tool_name.casefold(), (binary or tool_name).casefold()} & {"vt", "vt-cli", "takajo", "teamfiltration"}:
+        return "[REDACTED arguments]"
+    return args
+
+
+def _tool_policy_error(tool_name: str, binary: str, error: ValueError) -> str:
+    reason = str(error)
+    names = {tool_name.casefold(), binary.casefold()}
+    if names & {"vt", "vt-cli", "takajo", "teamfiltration"} and reason.startswith(
+        "Arguments contain blocked shell metacharacters:"
+    ):
+        return "Arguments contain blocked shell metacharacters"
+    return reason
+
+
+def _pipeline_args_for_audit(tool_name: str, args: str) -> str:
+    name = tool_name.casefold()
+    if name == "teamfiltration" and args.strip() not in {"", "--help"}:
+        return "[REDACTED arguments]"
+    if name == "takajo":
+        try:
+            tokens = shlex.split(args)
+        except ValueError:
+            return "[REDACTED arguments]"
+        if tokens and tokens[0] not in _TAKAJO_OFFLINE_COMMANDS:
+            if tokens not in ([], ["--help"], ["-h"], ["--version"], ["help"]) and not (
+                len(tokens) == 2
+                and tokens[0] == "help"
+                and tokens[1] in _TAKAJO_OFFLINE_COMMANDS | _TAKAJO_RESTRICTED_COMMANDS
+            ):
+                return "[REDACTED arguments]"
+    if name in {"vt", "vt-cli"} and re.search(
+        r"(?:^|\s)[\"']?(?:--api[-_]?key(?:=|\s|[\"']|$)|-[sIvP]*k)", args, re.IGNORECASE
+    ):
+        return "[REDACTED arguments]"
+    return args
+
+
 def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None) -> None:
     """Enforce execution policy on the resolved arguments.
 
@@ -2002,14 +2354,8 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
     # parsers that honour abbreviation, so reject those too.
     _check_long_option_abbreviations(tool_name, binary, arg_list)
 
-    # 1b-iii. strace/ltrace execute the program named on their command line, which
-    # bypasses the tool allowlist (and, via an interpreter, the external-target
-    # preflight). Permit only attaching to an existing process (-p/--attach); a
-    # presence of an attach flag does not prevent a positional program launching.
-    if tool_name in _TRACERS_ATTACH_ONLY or binary in _TRACERS_ATTACH_ONLY:
-        _check_tracer_attach_only(binary if binary in _TRACERS_ATTACH_ONLY else tool_name, arg_list)
-    if tool_name == "gdb" or binary == "gdb":
-        _check_gdb_execution_commands(arg_list)
+    # Command semantics are checked for both registry names and resolved binaries before network opt-in.
+    _check_argument_policies(tool_name, binary, arg_list)
 
     # 1c. Block file-mutating utilities (and curl/wget output flags) from writing
     # into dotfiles/shell-rc/cron/system dirs. This is a local-write concern, so
@@ -2393,6 +2739,7 @@ async def execute_tool(
     Returns dict with: exit_code, stdout, stderr, truncated, command.
     """
     exec_start = time.monotonic()
+    binary = tool_name
 
     # Validate, sanitize, and enforce policy — return structured errors
     try:
@@ -2403,19 +2750,21 @@ async def execute_tool(
         await asyncio.to_thread(check_policy, tool_name, arg_list, binary)
         log_validation(tool_name, "policy", True)
     except ValueError as e:
-        log_validation(tool_name, "failed", False, detail=str(e))
-        log_blocked(tool_name=tool_name, args=args, reason=str(e))
+        args = _blocked_args_for_logging(tool_name, args, binary)
+        reason = _tool_policy_error(tool_name, binary, e)
+        log_validation(tool_name, "failed", False, detail=reason)
+        log_blocked(tool_name=tool_name, args=args, reason=reason)
         return {
             "exit_code": -1,
             "stdout": "",
-            "stderr": str(e),
+            "stderr": reason,
             "truncated": False,
             "command": tool_name + (" " + args if args else ""),
         }
 
     timeout = max(1, min(timeout, 300))
 
-    command = [binary] + arg_list
+    command = [binary] + _execution_arg_list(tool_name, binary, arg_list)
 
     # Check rate limit BEFORE acquiring semaphore to avoid holding slots on rate-limit errors
     try:
@@ -2599,7 +2948,7 @@ async def _run_pipeline_steps(
         step_start = time.monotonic()
         binary = validate_tool_for_execution(step["tool"], tools_db)
         arg_list = sanitize_args(_step_args_to_str(step))
-        command = [binary] + arg_list
+        command = [binary] + _execution_arg_list(step["tool"], binary, arg_list)
         cmd_str = shlex.join(command)
         commands.append(cmd_str)
 
@@ -2794,19 +3143,23 @@ async def execute_pipeline(
         if not isinstance(step["tool"], str):
             return _pipeline_error(f"Step {i + 1} 'tool' must be a string")
 
-    pipeline_id = log_pipeline_start(steps, timeout)
+    audit_steps = [{**step, "args": _pipeline_args_for_audit(step["tool"], _step_args_to_str(step))} for step in steps]
+    pipeline_id = log_pipeline_start(audit_steps, timeout)
     pipe_start = time.monotonic()
 
     # Pre-validate ALL steps before executing any (shape already checked above).
     for i, step in enumerate(steps):
+        binary = step["tool"]
         try:
             binary = validate_tool_for_execution(step["tool"], tools_db)
             args_str = _step_args_to_str(step)
             arg_list = sanitize_args(args_str)
             await asyncio.to_thread(check_policy, step["tool"], arg_list, binary)
         except ValueError as e:
-            log_blocked(tool_name=step["tool"], args=_step_args_to_str(step), reason=str(e))
-            return _pipeline_error(f"Step {i + 1} ({step['tool']}): {e}")
+            safe_args = _blocked_args_for_logging(step["tool"], _step_args_to_str(step))
+            reason = _tool_policy_error(step["tool"], binary, e)
+            log_blocked(tool_name=step["tool"], args=safe_args, reason=reason)
+            return _pipeline_error(f"Step {i + 1} ({step['tool']}): {reason}")
 
     timeout = max(1, min(timeout, 300))
 
@@ -3151,6 +3504,7 @@ async def execute_tool_remote(
     from mcp_server.remote import execute_remote_command
 
     # Validate, sanitize, and enforce policy locally
+    binary = tool_name
     try:
         # Allowlist check first
         if not remote_config.check_tool_allowed(host, tool_name):
@@ -3161,17 +3515,19 @@ async def execute_tool_remote(
         # Target validation may block on DNS.
         ssh_args = await asyncio.to_thread(remote_config.get_ssh_base_args, host)
     except ValueError as e:
-        log_blocked(tool_name=tool_name, args=args, reason=str(e), host=host, remote=True)
+        args = _blocked_args_for_logging(tool_name, args, binary)
+        reason = _tool_policy_error(tool_name, binary, e)
+        log_blocked(tool_name=tool_name, args=args, reason=reason, host=host, remote=True)
         return {
             "exit_code": -1,
             "stdout": "",
-            "stderr": str(e),
+            "stderr": reason,
             "truncated": False,
             "command": tool_name + (" " + args if args else ""),
             "remote": True,
         }
 
-    command = [binary] + arg_list
+    command = [binary] + _execution_arg_list(tool_name, binary, arg_list)
 
     # Check rate limit BEFORE acquiring semaphore (consistent with execute_tool)
     try:

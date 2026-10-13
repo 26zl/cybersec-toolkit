@@ -190,7 +190,8 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
           # Also lint the repo-root helper scripts (own ruff.toml at repo root).
-          uv run ruff check ../scripts/
+          uv run ruff check ../scripts/ ../lib/
+          uv run ruff format --check ../lib/
 
   python-tests:
     name: Python Tests (pytest, ${{ matrix.python-version }})

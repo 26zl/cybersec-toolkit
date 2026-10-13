@@ -668,5 +668,13 @@
   {"name": "PoshC2", "method": "git", "module": "misc", "url": "https://github.com/nettitude/PoshC2"},
   {"name": "merlin", "method": "git", "module": "misc", "url": "https://github.com/Ne0nd0g/merlin"},
   {"name": "nemoguardrails", "method": "pipx", "module": "llm", "url": "https://pypi.org/project/nemoguardrails/"},
-  {"name": "PurpleLlama", "method": "git", "module": "llm", "url": "https://github.com/meta-llama/PurpleLlama"}
+  {"name": "PurpleLlama", "method": "git", "module": "llm", "url": "https://github.com/meta-llama/PurpleLlama"},
+  {"name": "openscap-scanner", "method": "apt", "module": "blueteam", "url": "https://github.com/OpenSCAP/openscap"},
+  {"name": "kernel-hardening-checker", "method": "source", "module": "blueteam", "url": "https://github.com/a13xp0p0v/kernel-hardening-checker"},
+  {"name": "takajo", "method": "binary", "module": "blueteam", "url": "https://github.com/Yamato-Security/takajo"},
+  {"name": "vt", "method": "go", "module": "blueteam", "url": "https://github.com/VirusTotal/vt-cli"},
+  {"name": "pycdc", "method": "source", "module": "reversing", "url": "https://github.com/zrax/pycdc"},
+  {"name": "mat2", "method": "apt", "module": "forensics", "url": "https://github.com/jvoisin/mat2"},
+  {"name": "vmkatz", "method": "binary", "module": "forensics", "url": "https://github.com/nikaiw/VMkatz"},
+  {"name": "TeamFiltration", "method": "binary", "module": "enterprise", "url": "https://github.com/Flangvik/TeamFiltration"}
 ]

@@ -63,7 +63,7 @@ def strip_comments(text):
 
 
 def parse_arrays(text):
-    """Parse bash arrays: NAME=( ... ) → {NAME: [entries]}.
+    """Parse indexed bash arrays: NAME=( ... ) → {NAME: [entries]}.
 
     Paren-balanced and quote-aware so a ')' inside a quoted cell does not close
     the array prematurely (which would silently drop trailing entries).
@@ -71,6 +71,10 @@ def parse_arrays(text):
     text = strip_comments(text)
     result = {}
     for m in re.finditer(r'(\w+)\s*=\s*\(', text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        declaration = text[line_start:m.start()]
+        if re.search(r'\bdeclare\s+-[a-zA-Z]*A[a-zA-Z]*\s+', declaration):
+            continue
         name = m.group(1)
         body = balanced_array_body(text, m.end() - 1)
         if body is None:

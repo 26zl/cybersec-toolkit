@@ -225,3 +225,157 @@ _get_prefix() {
         fi
     done
 }
+
+
+_module_install_fixture() {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/blueteam.sh"
+    make_test_tmpdir
+    GITHUB_TOOL_DIR="$TEST_TMPDIR/tools with spaces"
+    PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR"
+    TOTAL_TOOL_FAILURES=0
+    ENABLE_DOCKER=false
+    install_pipx_batch() { :; }
+    install_cargo_batch() { :; }
+    install_git_batch() { :; }
+    install_binary_releases() { :; }
+    _builder_home() { printf '%s\n' "$TEST_TMPDIR"; }
+    _start_spinner() { :; }
+    _stop_spinner() { :; }
+}
+
+@test "Blue Team installs OpenSCAP through packages and VirusTotal through Go" {
+    _module_install_fixture
+    install_apt_batch() { shift; printf '%s\n' "$@" > "$TEST_TMPDIR/packages"; }
+    install_go_batch() { shift; printf '%s\n' "$@" > "$TEST_TMPDIR/go-packages"; }
+    build_module_from_source() { :; }
+
+    install_module_blueteam
+
+    grep -qxF openscap-scanner "$TEST_TMPDIR/packages"
+    local go_package
+    go_package="$(cat "$TEST_TMPDIR/go-packages")"
+    [[ "$go_package" == github.com/VirusTotal/* ]]
+    [[ "$(_go_bin_name "$go_package")" == vt ]]
+}
+
+@test "Blue Team source skip avoids cloning and Python bootstrapping" {
+    _module_install_fixture
+    install_apt_batch() { :; }
+    install_go_batch() { :; }
+    git_clone_or_pull() { touch "$TEST_TMPDIR/cloned"; return 1; }
+    _as_builder() { touch "$TEST_TMPDIR/built"; return 1; }
+    SKIP_SOURCE=true
+
+    run install_module_blueteam
+
+    assert_success
+    [[ ! -e "$TEST_TMPDIR/cloned" && ! -e "$TEST_TMPDIR/built" ]]
+    [[ "$output" == *"kernel-hardening-checker (--skip-source)"* ]]
+}
+
+@test "Blue Team source installation skips Termux before cloning" {
+    _module_install_fixture
+    install_apt_batch() { :; }
+    install_go_batch() { :; }
+    git_clone_or_pull() { touch "$TEST_TMPDIR/cloned"; return 1; }
+    SKIP_SOURCE=false
+    PKG_MANAGER=pkg
+
+    run install_module_blueteam
+
+    assert_success
+    [[ ! -e "$TEST_TMPDIR/cloned" ]]
+    [[ "$output" == *"Skipping build-from-source on Termux: kernel-hardening-checker"* ]]
+}
+
+@test "Kernel Hardening Checker build fails if packaging omits the console entrypoint" {
+    _module_install_fixture
+    git_clone_or_pull() { mkdir -p "$2"; }
+    _tree_provenance() { printf 'latest\n'; }
+    track_version() { touch "$TEST_TMPDIR/tracked"; }
+    _as_builder() { bash -c "$1"; }
+    python3() {
+        [[ "$1" == -m && "$2" == venv && "$3" == .venv ]] || return 1
+        mkdir -p "$3/bin"
+        printf '#!/usr/bin/env bash\nexit 0\n' > "$3/bin/python"
+        chmod +x "$3/bin/python"
+    }
+    export -f python3
+    SKIP_SOURCE=false
+
+    local build_status=0
+    build_from_source kernel-hardening-checker \
+        "${BLUETEAM_BUILD_URLS[kernel-hardening-checker]}" \
+        "${BLUETEAM_BUILD_CMDS[kernel-hardening-checker]}" || build_status=$?
+
+    [[ "$build_status" -eq 1 && "$TOTAL_TOOL_FAILURES" -eq 1 ]]
+    [[ ! -e "$TEST_TMPDIR/tracked" ]]
+    [[ ! -e "$GITHUB_TOOL_DIR/kernel-hardening-checker" ]]
+}
+
+@test "source output metadata names registered builds and safe executable paths" {
+    local module prefix tool relative binary extra
+    for module in "${ALL_MODULES[@]}"; do
+        prefix=$(_module_prefix "$module")
+        declare -p "${prefix}_BUILD_BINS" &>/dev/null || continue
+        local -n outputs="${prefix}_BUILD_BINS"
+        local -n names="${prefix}_BUILD_NAMES"
+        for tool in "${!outputs[@]}"; do
+            [[ " ${names[*]} " == *" $tool "* ]] || {
+                printf '%s: output metadata for an unknown source build\n' "$tool"
+                return 1
+            }
+            while IFS='|' read -r relative binary extra; do
+                [[ -n "$relative" && -n "$binary" && -z "$extra" ]]
+                [[ "$relative" != /* && "/$relative/" != */../* ]]
+                [[ "$binary" =~ ^[[:alnum:]][[:alnum:]._+-]*$ ]]
+            done <<< "${outputs[$tool]}"
+        done
+    done
+}
+
+@test "binary metadata keys match the module release entries" {
+    local module prefix suffix entry tool release_array
+    for module in "${ALL_MODULES[@]}"; do
+        prefix=$(_module_prefix "$module")
+        local -a binaries=()
+        for release_array in "BINARY_RELEASES_${module^^}" "BINARY_RELEASES_${module^^}_C2"; do
+            declare -p "$release_array" &>/dev/null || continue
+            local -n releases="$release_array"
+            for entry in "${releases[@]}"; do
+                IFS='|' read -r _ tool _ <<< "$entry"
+                binaries+=("$tool")
+            done
+        done
+        for suffix in BINARY_ARCHITECTURES BINARY_EXCLUSIVE_DIRS BINARY_RUNTIME_CONFIGS \
+            BINARY_RUNTIME_RELEASES BINARY_DEPENDENCIES; do
+            declare -p "${prefix}_$suffix" &>/dev/null || continue
+            local -n metadata="${prefix}_$suffix"
+            for tool in "${!metadata[@]}"; do
+                [[ " ${binaries[*]} " == *" $tool "* ]] || {
+                    printf '%s: %s has metadata for an unknown binary release\n' "$module" "$suffix"
+                    return 1
+                }
+            done
+        done
+    done
+}
+
+@test "package command metadata targets declared packages and executable names" {
+    local module prefix package command
+    for module in "${ALL_MODULES[@]}"; do
+        prefix=$(_module_prefix "$module")
+        declare -p "${prefix}_PACKAGE_BIN_NAMES" &>/dev/null || continue
+        local -n binaries="${prefix}_PACKAGE_BIN_NAMES"
+        local -n packages="${prefix}_PACKAGES"
+        for package in "${!binaries[@]}"; do
+            [[ " ${packages[*]} " == *" $package "* ]]
+            [[ -n "${binaries[$package]}" ]]
+            for command in ${binaries[$package]}; do
+                [[ "$command" =~ ^[[:alnum:]][[:alnum:]._+-]*$ ]]
+            done
+        done
+    done
+}

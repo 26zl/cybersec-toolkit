@@ -665,6 +665,7 @@ install_single_tool() {
                 local -n _build_urls="${prefix}_BUILD_URLS"
                 local -n _build_cmds="${prefix}_BUILD_CMDS"
                 log_info "Building $tool from source..."
+                _ensure_requested_source_deps "$tool" || return 1
                 build_from_source "$tool" "${_build_urls[$tool]:-}" "${_build_cmds[$tool]:-}"
                 return $?
             fi

@@ -400,6 +400,38 @@ EOF
     assert_output --partial "SOURCE=massdns|https://github.com/blechschmidt/massdns.git|make"
 }
 
+@test "explicit pycdc and kernel checker installs provision their build dependencies" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        LOG_FILE=/dev/null
+        install_apt_batch() { shift; echo "DEPENDENCIES=$*"; }
+        build_from_source() { echo "SOURCE=$1"; }
+        install_single_tool pycdc
+        install_single_tool kernel-hardening-checker
+    '
+    assert_success
+    assert_output --partial 'DEPENDENCIES=git cmake build-essential'
+    assert_output --partial 'DEPENDENCIES=git python3 python3-pip python3-venv'
+    assert_output --partial 'SOURCE=pycdc'
+    assert_output --partial 'SOURCE=kernel-hardening-checker'
+}
+
+@test "explicit source install stops when a required build package fails" {
+    run bash -lc '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$INSTALL_SH"'"
+        LOG_FILE=/dev/null
+        install_apt_batch() { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1)); }
+        build_from_source() { echo SHOULD_NOT_BUILD; }
+        install_single_tool pycdc
+    '
+    assert_failure
+    refute_output --partial SHOULD_NOT_BUILD
+}
+
 @test "install_single_tool resolves INCLUDE_C2-gated git tools (Hoaxshell)" {
     run bash -lc '
         set --

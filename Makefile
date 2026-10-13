@@ -35,7 +35,8 @@ lint-sh: ## shellcheck + bash syntax on all shell scripts
 
 lint-py: ## ruff check on the MCP server and repo-root scripts
 	cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . \
-		&& uv run --group dev ruff check ../scripts/
+		&& uv run --group dev ruff check ../scripts/ ../lib/ \
+		&& uv run --group dev ruff format --check ../lib/
 
 lint-md: ## markdownlint on tracked and untracked docs (mirrors the CI job)
 	git ls-files --cached --others --exclude-standard '*.md' | grep -vE '$(MD_EXCLUDE)' | xargs npx --yes markdownlint-cli2@$(MARKDOWNLINT_VERSION)

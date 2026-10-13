@@ -81,6 +81,7 @@ imagemagick	ImageMagick		ImageMagick
 ffmpeg	ffmpeg-free			
 upx-ucl	upx	upx	upx	upx
 auditd	audit	audit	audit	-
+openscap-scanner		openscap	openscap-utils	-
 stunnel4	stunnel	stunnel	stunnel	
 protobuf-compiler		protobuf	protobuf-devel	
 poppler-utils		poppler	poppler-tools	
@@ -163,6 +164,7 @@ zmap	-		-	-
 rizin	-		-	-
 checksec			-	-
 sonic-visualiser			-	-
+mat2			-	-
 scrcpy	-		-	-
 hcxdumptool	-		-	-
 avrdude	-		-	-

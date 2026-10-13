@@ -64,6 +64,25 @@ cd mcp_server && uv sync --group dev
 
 Full details on the module system, install method hierarchy, and distro handling live in [AGENTS.md](AGENTS.md).
 
+Optional installation metadata belongs in the existing module, using associative arrays keyed by the registered tool name. Shared installer and lifecycle helpers consume these arrays; avoid adding tool-named helper files or branches in common code.
+
+| Module array suffix | Value |
+| --- | --- |
+| `_BUILD_BINS` | Newline-separated `relative/path\|command` outputs, all required for verification |
+| `_BUILD_PACKAGES` | Space-separated build dependency packages for individual installation |
+| `_BUILD_PACKAGES_<MANAGER>` | Optional package-manager override for build dependencies |
+| `_PACKAGE_EXCLUSIONS` / `_PACKAGE_INCLUSIONS` | Space-separated distro IDs; inclusions override inherited exclusions |
+| `_PACKAGE_BIN_NAMES` | Space-separated alternative commands to verify for a package; consumed automatically for selected modules |
+| `_BINARY_ARCHITECTURES` | Space-separated toolkit architecture names for Linux release bundles |
+| `_BINARY_EXCLUSIVE_DIRS` | `true` when a release owns its entire custom destination directory |
+| `_BINARY_DEPENDENCIES` | Newline-separated `repo\|binary\|asset-regex\|relative-directory\|release-tag` |
+| `_BINARY_RUNTIME_CONFIGS` | JSON configuration for the shared `lib/runtime_launcher.py` |
+| `_BINARY_RUNTIME_RELEASES` | Optional space-separated release tags supported by the runtime configuration |
+
+Runtime dependencies use pinned release tags, mandatory checksum verification and private bundle directories. A runtime configuration identifies the relative executable, optional working directory, library directories and required files. It preserves arguments and the caller's working directory by default. `argument_style: "cligen"` enables configured `commands` schemas with `name:short:kind` fields (`p` path, `b` boolean, `v` scalar), `default_outputs`, `conditional_defaults` and `informational_options`; caller-relative paths retain their meaning when the program needs another working directory.
+
+Argument safety checks belong in the MCP server's shared policy registry. Their parsing must match each executable's actual CLI semantics; a common launcher does not replace authorization or scope checks. Keep tests in the existing installer, module and lifecycle suites, using synthetic fixtures for shared behavior.
+
 ## Install method priority
 
 Prefer installation methods in this order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > build from source`. Use the highest-priority method that works. Don't add a git-clone entry for something that's packaged in apt.

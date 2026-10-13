@@ -378,6 +378,102 @@ _run_lifecycle() {
         bash "$LC_REPO/scripts/$script" "$@"
 }
 
+_run_verify_linux() {
+    run env -i HOME="$TEST_TMPDIR/home" PKG_MANAGER=apt DISTRO_ID=debian \
+        DISTRO_ID_LIKE= DISTRO_NAME=Debian GITHUB_TOOL_DIR="$TEST_TMPDIR/tools" \
+        CYBERSEC_FIXTURE_BIN="$LC_STUBS" TMPDIR="$TEST_TMPDIR" TERM=dumb PATH="$LC_STUBS:$PATH" \
+        bash "$LC_REPO/scripts/verify.sh" "$@"
+}
+
+@test "tool array parser ignores associative metadata while retaining indexed tools" {
+    run python3 - "$PROJECT_ROOT" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + '/scripts')
+from validate_tools_config import parse_arrays
+source = '''declare -gA SAMPLE_BINARY_RUNTIME_CONFIGS=(
+    [fixture]='{
+        "working_directory": ".",
+        "commands": {"analyze": "input:i:p output:o:p"}
+    }'
+)
+SAMPLE_PACKAGES=("fixture-package" "other-package")
+'''
+assert parse_arrays(source) == {'SAMPLE_PACKAGES': ['fixture-package', 'other-package']}
+print('Indexed tool arrays retained; associative metadata excluded')
+PY
+    assert_success
+    assert_output 'Indexed tool arrays retained; associative metadata excluded'
+}
+
+@test "source module removal clears all mapped executables" {
+    _lifecycle_fixture
+    _source_fixture_module "$LC_REPO"
+    mkdir -p "$TEST_TMPDIR/tools/fixture-tool/build"
+    local binary
+    for binary in fixture-tool fixture-companion; do
+        printf '#!/bin/sh\nexit 0\n' > "$TEST_TMPDIR/tools/fixture-tool/build/$binary"
+        chmod +x "$TEST_TMPDIR/tools/fixture-tool/build/$binary"
+        ln -s "$TEST_TMPDIR/tools/fixture-tool/build/$binary" "$TEST_TMPDIR/prefix/bin/$binary"
+    done
+    printf 'fixture-tool|source|synthetic|2026-10-13\n' >> "$LC_REPO/.versions"
+    _run_lifecycle remove.sh --module reversing --yes
+    assert_success
+    [[ ! -L "$TEST_TMPDIR/prefix/bin/fixture-tool" && ! -L "$TEST_TMPDIR/prefix/bin/fixture-companion" ]]
+    [[ ! -d "$TEST_TMPDIR/tools/fixture-tool" ]]
+}
+
+@test "installed-only verification recognizes OpenSCAP distro package records" {
+    _lifecycle_fixture
+    printf '#!/bin/sh\nexit 0\n' > "$LC_STUBS/oscap"
+    chmod +x "$LC_STUBS/oscap"
+    local package
+    for package in openscap-scanner openscap openscap-utils; do
+        printf '%s|apt|synthetic|2026-10-13\n' "$package" > "$LC_REPO/.versions"
+        _run_verify_linux --module blueteam --installed-only --summary
+        assert_success
+        assert_output --partial 'Total checked: 1'
+        assert_output --partial 'Found:   1'
+    done
+}
+
+@test "forensics verification detects a missing tracked mat2 command" {
+    _lifecycle_fixture
+    cat >> "$LC_REPO/lib/common.sh" <<'EOF'
+command_exists() {
+    if [[ "$1" == mat2 ]]; then
+        [[ -x "$CYBERSEC_FIXTURE_BIN/mat2" ]]
+    else
+        command -v "$1" &>/dev/null
+    fi
+}
+EOF
+    printf 'mat2|apt|synthetic|2026-10-13\n' > "$LC_REPO/.versions"
+    _run_verify_linux --module forensics --installed-only --summary
+    assert_failure
+    assert_output --partial 'Total checked: 1'
+    assert_output --partial 'Missing: 1'
+
+    printf '#!/bin/sh\nexit 0\n' > "$LC_STUBS/mat2"
+    chmod +x "$LC_STUBS/mat2"
+    _run_verify_linux --module forensics --installed-only --summary
+    assert_success
+    assert_output --partial 'Found:   1'
+}
+
+@test "verification skips new tools unavailable on native Termux" {
+    _lifecycle_fixture
+    printf '%s\n' 'mat2|apt|synthetic|2026-10-13' \
+        'openscap-scanner|apt|synthetic|2026-10-13' 'pycdc|source|synthetic|2026-10-13' \
+        'kernel-hardening-checker|source|synthetic|2026-10-13' 'takajo|binary|synthetic|2026-10-13' \
+        'vmkatz|binary|synthetic|2026-10-13' 'TeamFiltration|binary|synthetic|2026-10-13' \
+        > "$LC_REPO/.versions"
+    _run_lifecycle verify.sh --module blueteam --module forensics --module reversing \
+        --module enterprise --installed-only --summary
+    assert_success
+    assert_output --partial 'Total checked: 0'
+    assert_output --partial 'Missing: 0'
+}
+
 _metasploit_removal_fixture() {
     _lifecycle_fixture
     MSF_SOURCE="$TEST_TMPDIR/metasploit-framework.list"
@@ -872,4 +968,156 @@ EOF
     assert_success
     [[ ! -e "$XDG_STATE_HOME/cybersec-tools-mcp/guard-session.../escape" ]]
     [[ ! -e "$XDG_STATE_HOME/escape" ]]
+}
+
+_source_fixture_module() {
+    cat >> "$1/modules/reversing.sh" <<'EOF'
+RE_BUILD_NAMES=(fixture-tool)
+RE_BUILD_URLS[fixture-tool]='https://example.invalid/fixture-tool.git'
+RE_BUILD_CMDS[fixture-tool]='cmake -S . -B build && cmake --build build --parallel'
+declare -gA RE_BUILD_BINS=(
+    [fixture-tool]=$'build/fixture-tool|fixture-tool\nbuild/fixture-companion|fixture-companion'
+)
+EOF
+}
+
+_source_outputs_fixture() {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/reversing.sh"
+    RE_BUILD_NAMES=(fixture-tool)
+    RE_BUILD_URLS[fixture-tool]='https://example.invalid/fixture-tool.git'
+    RE_BUILD_CMDS[fixture-tool]='cmake -S . -B build && cmake --build build --parallel'
+    declare -gA RE_BUILD_BINS=(
+        [fixture-tool]=$'build/fixture-tool|fixture-tool\nbuild/fixture-companion|fixture-companion'
+    )
+    export GITHUB_TOOL_DIR="$TEST_TMPDIR/tools with spaces"
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    export SKIP_SOURCE=false
+    export TOTAL_TOOL_FAILURES=0
+    mkdir -p "$GITHUB_TOOL_DIR" "$PIPX_BIN_DIR"
+    _SESSION_FILE=""
+}
+
+_source_artifacts() {
+    mkdir -p "$GITHUB_TOOL_DIR/fixture-tool/build"
+    local binary
+    for binary in fixture-tool fixture-companion; do
+        printf '#!/bin/sh\nprintf "synthetic %s\\n"\n' "$binary" \
+            > "$GITHUB_TOOL_DIR/fixture-tool/build/$binary"
+        chmod +x "$GITHUB_TOOL_DIR/fixture-tool/build/$binary"
+    done
+}
+
+_source_update_fixture() {
+    SOURCE_FIXTURE_REPO="$TEST_TMPDIR/repo"
+    SOURCE_FIXTURE_STUBS="$TEST_TMPDIR/stubs"
+    mkdir -p "$SOURCE_FIXTURE_REPO/scripts" "$SOURCE_FIXTURE_STUBS" "$TEST_TMPDIR/home" \
+        "$TEST_TMPDIR/prefix/bin"
+    cp -R "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" "$SOURCE_FIXTURE_REPO/"
+    cp "$PROJECT_ROOT/scripts/update.sh" "$PROJECT_ROOT/scripts/verify.sh" "$SOURCE_FIXTURE_REPO/scripts/"
+    _source_fixture_module "$SOURCE_FIXTURE_REPO"
+    local command
+    for command in pkg dpkg apt-get npm gem cargo pipx docker snap go sudo rustup uv; do
+        printf '#!/bin/sh\nexit 1\n' > "$SOURCE_FIXTURE_STUBS/$command"
+        chmod +x "$SOURCE_FIXTURE_STUBS/$command"
+    done
+    cat > "$SOURCE_FIXTURE_STUBS/cmake" <<'EOF'
+#!/bin/bash
+case "$1" in
+    -S) mkdir -p build ;;
+    --build)
+        for binary in fixture-tool fixture-companion; do
+            printf '#!/bin/sh\nprintf "%s %s\\n"\n' "$binary" "$(cat version.txt)" > "build/$binary"
+            chmod +x "build/$binary"
+        done
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+    chmod +x "$SOURCE_FIXTURE_STUBS/cmake"
+    printf '# tool|method|version|last_updated\nfixture-tool|source|HEAD|2026-01-01 00:00:00\n' \
+        > "$SOURCE_FIXTURE_REPO/.versions"
+}
+
+_source_run_lifecycle() {
+    local script="$1"
+    shift
+    run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_ID_LIKE= DISTRO_NAME=Termux \
+        GITHUB_TOOL_DIR="$GITHUB_TOOL_DIR" TMPDIR="$TEST_TMPDIR" TERM=dumb \
+        PATH="$SOURCE_FIXTURE_STUBS:$TEST_TMPDIR/prefix/bin:$PATH" \
+        bash "$SOURCE_FIXTURE_REPO/scripts/$script" "$@"
+}
+
+_source_run_update() {
+    _source_run_lifecycle update.sh --skip-system --skip-pipx --skip-go \
+        --skip-gems --skip-cargo --skip-binary --skip-special --skip-docker
+}
+
+_source_tracked_clone() {
+    local upstream="$TEST_TMPDIR/upstream"
+    local -a git_identity=(-c user.email=fixture@example.invalid -c user.name=fixture)
+    git init -q "$upstream"
+    printf 'v1\n' > "$upstream/version.txt"
+    git -C "$upstream" add version.txt
+    git -C "$upstream" "${git_identity[@]}" commit -qm v1
+    git clone -q "$upstream" "$GITHUB_TOOL_DIR/fixture-tool"
+}
+
+@test "source update rebuilds both executables and restores their PATH links" {
+    _source_outputs_fixture
+    _source_update_fixture
+    _source_tracked_clone
+    local upstream="$TEST_TMPDIR/upstream"
+    local -a git_identity=(-c user.email=fixture@example.invalid -c user.name=fixture)
+    printf 'v2\n' > "$upstream/version.txt"
+    git -C "$upstream" "${git_identity[@]}" commit -qam v2
+
+    _source_run_update
+
+    assert_success
+    run "$TEST_TMPDIR/prefix/bin/fixture-tool"
+    assert_success
+    assert_output 'fixture-tool v2'
+    run "$TEST_TMPDIR/prefix/bin/fixture-companion"
+    assert_success
+    assert_output 'fixture-companion v2'
+}
+
+@test "unchanged source update repairs links and rejects missing build artifacts" {
+    _source_outputs_fixture
+    _source_update_fixture
+    _source_tracked_clone
+    _source_artifacts
+
+    _source_run_update
+
+    assert_success
+    [[ -L "$TEST_TMPDIR/prefix/bin/fixture-tool" && -L "$TEST_TMPDIR/prefix/bin/fixture-companion" ]]
+
+    rm "$GITHUB_TOOL_DIR/fixture-tool/build/fixture-companion"
+
+    _source_run_update
+
+    assert_failure
+    assert_output --partial 'Failed to expose built executable: fixture-tool'
+}
+
+@test "source verify requires the companion even when the primary executable is in PATH" {
+    _source_outputs_fixture
+    _source_update_fixture
+    _source_artifacts
+    ln -s "$GITHUB_TOOL_DIR/fixture-tool/build/fixture-tool" "$TEST_TMPDIR/prefix/bin/fixture-tool"
+    rm "$GITHUB_TOOL_DIR/fixture-tool/build/fixture-companion"
+
+    _source_run_lifecycle verify.sh --module reversing --installed-only
+
+    assert_failure
+    assert_output --partial 'required executable fixture-companion NOT found'
+    _source_artifacts
+
+    _source_run_lifecycle verify.sh --module reversing --installed-only
+
+    assert_success
 }

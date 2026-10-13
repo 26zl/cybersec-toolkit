@@ -455,6 +455,11 @@ if [[ "$SKIP_BINARY" == "false" ]]; then
         local repo="$1" binary="$2" pattern="$3" dest="${4:-$PIPX_BIN_DIR}"
         local archive_binary="${5:-$binary}"
 
+        if ! _binary_platform_supported "$binary"; then
+            log_debug "Skipping $binary (no supported release for this platform)"
+            return 0
+        fi
+
         # Only refresh releases this toolkit installed: an unrecorded or
         # pre-existing binary on PATH is the user's (e.g. an apt package), so a
         # re-download into $dest (usually /usr/local/bin) would overshadow it.
@@ -731,8 +736,13 @@ for _bmod in "${ALL_MODULES[@]}"; do
         fi
 
         if [[ "$_src_state" == "skip" ]]; then
-            log_debug "Already latest: $_bname"
-            BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
+            if setup_source_build_bins "$_bname" >> "$LOG_FILE" 2>&1; then
+                log_debug "Already latest: $_bname"
+                BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
+            else
+                log_warn "Failed to expose built executable: $_bname"
+                BUILD_FAILED=$((BUILD_FAILED + 1))
+            fi
         elif [[ "$_src_state" == "failed" ]]; then
             log_warn "Failed to update: $_bname"
             BUILD_FAILED=$((BUILD_FAILED + 1))
@@ -761,7 +771,7 @@ for _bmod in "${ALL_MODULES[@]}"; do
                         _rebuilt=1
                     fi
                 fi
-                if [[ "$_rebuilt" == 1 ]]; then
+                if [[ "$_rebuilt" == 1 ]] && setup_source_build_bins "$_bname" >> "$LOG_FILE" 2>&1; then
                     log_success "Rebuilt: $_bname"
                     BUILD_UPDATED=$((BUILD_UPDATED + 1))
                     _track_update "$_bname" "source" "HEAD"

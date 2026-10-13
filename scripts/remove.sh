@@ -479,6 +479,16 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
     for name in "${GIT_NAMES_TO_REMOVE[@]}"; do
         repo_path="$GITHUB_TOOL_DIR/$name"
         if [[ -d "$repo_path" ]]; then
+            if [[ -n "$(_source_build_bins "$name")" ]]; then
+                if remove_source_build "$name"; then
+                    log_success "Removed source build: $name"
+                    git_removed=$((git_removed + 1))
+                else
+                    log_error "Failed to remove source build: $name"
+                    REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+                fi
+                continue
+            fi
             rm -rf "$repo_path"
             _remove_repo_links "$name" "$repo_path"
             log_success "Removed: $repo_path"

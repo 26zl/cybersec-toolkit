@@ -109,6 +109,7 @@ APT_BIN_NAMES: dict[str, str] = {
     "wireshark-common": "tshark",
     "upx-ucl": "upx",
     "dnsutils": "dig",
+    "openscap-scanner": "oscap",
 }
 
 # "special"-method tool name -> primary executable name, for tools installed via

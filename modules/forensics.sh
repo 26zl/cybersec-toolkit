@@ -6,7 +6,7 @@
 FORENSICS_PACKAGES=(
     autopsy sleuthkit foremost scalpel
     dc3dd dcfldd testdisk extundelete
-    bulk-extractor libimage-exiftool-perl
+    bulk-extractor libimage-exiftool-perl mat2
     forensics-extra samdump2 dislocker
     ssdeep unhide hashdeep recoverjpeg
     galleta pasco mac-robber vinetto
@@ -30,6 +30,11 @@ FORENSICS_GIT=(
 )
 
 FORENSICS_GIT_NAMES=(RegRipper Depix dvcs-ripper firefox_decrypt firmware-mod-kit USB-HID-decoders ctf-usb-keyboard-parser)
+
+declare -gA FORENSICS_PACKAGE_EXCLUSIONS=([mat2]="rhel centos rocky almalinux ol scientific")
+declare -gA FORENSICS_PACKAGE_BIN_NAMES=([mat2]=mat2)
+declare -gA FORENSICS_PACKAGE_INCLUSIONS=([mat2]="fedora")
+declare -gA FORENSICS_BINARY_ARCHITECTURES=([vmkatz]="amd64 arm64 armv7")
 
 install_module_forensics() {
     install_apt_batch "Forensics - Packages" "${FORENSICS_PACKAGES[@]}"
