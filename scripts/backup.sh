@@ -77,8 +77,7 @@ _init_backup_storage() {
     _BACKUP_STORAGE_READY=true
 }
 
-# _require_crypto_deps — fail before any work if encryption/verification tools are
-# missing, rather than after the archive is built ("Failed to generate MAC salt").
+# _require_crypto_deps — fail before any work when an encryption or verification tool is missing.
 _require_crypto_deps() {
     local _dep _missing=()
     for _dep in openssl python3 tar; do
@@ -169,15 +168,9 @@ encrypt_archive() {
     printf '%s' "$_PASSPHRASE" > "$pass_file"
     unset _PASSPHRASE
 
-    # Encrypt-then-MAC. ChaCha20 is an unauthenticated stream cipher, so the
-    # ciphertext is malleable and corruption/tampering would silently decrypt
-    # into garbage. We authenticate the ciphertext with HMAC-SHA256 (key
-    # derived from the passphrase via salted PBKDF2) and store the tag alongside;
-    # decryption verifies it first and fails closed on any mismatch.
-    #
-    # A per-backup random salt makes the .hmac sidecar useless as a cheap
-    # offline brute-force oracle: without an expensive salted KDF the tag would
-    # be ~PBKDF2_ITERATIONS× cheaper to attack than the ciphertext.
+    # Encrypt-then-MAC: ChaCha20 is malleable, so the ciphertext is authenticated with
+    # HMAC-SHA256 under a salted-PBKDF2 key; the per-backup salt keeps the .hmac sidecar
+    # from being a cheap offline brute-force oracle. Decryption verifies the tag first.
     local mac_salt
     mac_salt=$(openssl rand -hex 16)
     if [[ -z "$mac_salt" ]]; then
@@ -258,7 +251,7 @@ _ct_equal() {
 
 decrypt_archive() {
     local encrypted_path="$1"
-    local output_path="${2:-${encrypted_path%.enc}}"
+    local output_path="$2"
 
     [[ ! -e "$output_path" ]] || {
         log_error "Refusing to overwrite decrypted output: $output_path"
@@ -280,7 +273,6 @@ decrypt_archive() {
         if [[ -n "$mac_salt" && -n "$expected" ]]; then
             mac_format=v2
         else
-            # v1 legacy: single bare hex line, weak unsalted derivation
             log_warn "Legacy (unsalted) integrity tag detected — weak integrity, re-create this backup to upgrade"
             expected=$(tr -d '[:space:]' < "$hmac_file")
             mac_salt=""
@@ -672,9 +664,11 @@ cmd_restore() {
         exit 1
     fi
 
-    # Legacy format: individually encrypted files. Search the whole backup root —
-    # old backups did not always keep them under encrypted/.
-    if find "$restore_root" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
+    # Legacy format: individually encrypted files inside a plain .tar.gz. Search the
+    # whole backup root — old backups did not always keep them under encrypted/.
+    # A current .tar.gz.enc archive is encrypted whole; *.enc inside it are user files.
+    if [[ "$backup_file" != *.tar.gz.enc ]] \
+        && find "$restore_root" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
         log_info "Legacy encrypted files found — decrypting..."
         decrypt_files_legacy "$restore_root" "$restore_root" || {
             log_error "One or more legacy files could not be decrypted"
@@ -700,7 +694,9 @@ cmd_list() {
         echo "  $f"
         found=true
     done
-    [[ "$found" == "false" ]] && echo "  No backups found"
+    if [[ "$found" == "false" ]]; then
+        echo "  No backups found"
+    fi
 }
 
 cmd_delete() {
@@ -786,13 +782,11 @@ cmd_schedule() {
     local frequency="$1"
     local time="$2"
 
-    # Validate HH:MM format
     if [[ ! "$time" =~ ^[0-9]{1,2}:[0-9]{2}$ ]]; then
         log_error "Invalid time format. Use HH:MM (e.g., 02:00)"
         exit 1
     fi
 
-    # Parse HH:MM
     local hour minute
     hour=$(echo "$time" | cut -d: -f1)
     minute=$(echo "$time" | cut -d: -f2)

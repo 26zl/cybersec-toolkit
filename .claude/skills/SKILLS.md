@@ -235,7 +235,7 @@ This project is MIT-licensed. The vendored skills retain their original licenses
 - Trail of Bits skills: CC-BY-SA 4.0 (`LICENSE-CC-BY-SA-4.0`)
 - mukul975/Anthropic-Cybersecurity-Skills (community project): Apache 2.0 (`LICENSE-Apache-2.0`)
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
-- Karpathy guidelines skill: MIT, source <https://github.com/multica-ai/andrej-karpathy-skills>, commit `2c606141936f1eeef17fa3043a72095b4765b9c2`
+- Karpathy guidelines skill: MIT ([`LICENSE-Karpathy-MIT`](LICENSE-Karpathy-MIT)), source <https://github.com/multica-ai/andrej-karpathy-skills>, commit `2c606141936f1eeef17fa3043a72095b4765b9c2`
 - SnailSploit Claude-Red skills: MIT (`LICENSE-Claude-Red-MIT`)
 - BugHunter (claude-bug-bounty) skills: MIT (`LICENSE-BugHunter-MIT`)
 

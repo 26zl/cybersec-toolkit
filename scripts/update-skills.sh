@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # update-skills.sh — check every vendored skill in .claude/skills/ against its pinned
-# upstream source. Reports drift only; never fetches (re-vendoring is manual).
+# upstream source. Reports drift only: clones each source into a temp dir and never
+# writes .claude/skills/ (re-vendoring is manual).
 #
 # Usage:
 #   scripts/update-skills.sh              report drift for all sources

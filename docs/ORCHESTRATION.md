@@ -14,11 +14,12 @@ host. See [`AGENTS.md`](../AGENTS.md) for the tool contract and
 - **Universality.** Coordination lives in the filesystem, which every client
   already has. Nothing depends on a proprietary fan-out primitive, so the same
   engagement is portable across clients.
-- **Governance stays server-side.** Every agent calls the same server, so every
-  action passes the same policy layer (`CYBERSEC_MCP_ALLOW_EXTERNAL`,
-  `CYBERSEC_MCP_ALLOW_SCRIPTS`) and lands in the same JSON-line audit log. Adding
-  agents does not widen the blast radius; authorization is enforced once, at the
-  server, not per client.
+- **Governance stays server-side.** Each client launches its own server instance
+  (one VM per session by default), and every action passes that server's policy
+  layer and lands in the shared host audit log. Give every agent identical
+  `CYBERSEC_MCP_*` values so they share one scope, and mount the engagement
+  directory with `CYBERSEC_SANDBOX_WORKSPACE` (guest path `/workspace`) so tools
+  in the VM can see it.
 - **Crash tolerance.** Append-only state survives a dead session. A replacement
   agent resumes from the files instead of from lost conversation history.
 

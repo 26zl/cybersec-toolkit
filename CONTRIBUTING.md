@@ -116,7 +116,7 @@ CI runs all of these on every PR. Red in draft is fine; green before merge is re
 
 ## MCP server changes
 
-Absolute imports only (no relative imports) — required for compatibility with both `python -m mcp_server.server` and `fastmcp dev server.py`. See `mcp_server/README.md` for the full rationale.
+Absolute imports only (no relative imports): `server.py` puts the repo root on `sys.path`, so `mcp_server.*` imports resolve both under `python -m mcp_server.server` and when FastMCP loads the file by path (`fastmcp dev inspector server.py`).
 
 Hardcoded data in the MCP server must stay in sync with the bash source:
 

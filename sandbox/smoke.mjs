@@ -72,11 +72,15 @@ const notify = (method, params) =>
 
 const fail = (message) => {
   console.error(`smoke: ${message}`);
-  child.kill('SIGKILL');
-  process.exit(1);
+  if (child.exitCode !== null || child.signalCode !== null) process.exit(1);
+  // SIGTERM lets the launcher remove its VM; SIGKILL alone would orphan the container.
+  child.once('close', () => process.exit(1));
+  child.kill('SIGTERM');
+  setTimeout(() => child.kill('SIGKILL'), 15_000).unref();
 };
 
 child.on('error', (error) => fail(`could not launch ${command}: ${error.message}`));
+child.stdin.on('error', (error) => fail(`server closed its input: ${error.message}`));
 
 try {
   const initialized = await request('initialize', {
@@ -89,21 +93,27 @@ try {
 
   const listed = await request('tools/list', {});
   const tools = listed?.tools ?? [];
-  if (tools.length === 0) fail('server registered no tools');
+  if (tools.length === 0) throw new Error('server registered no tools');
   const names = tools.map((tool) => tool.name);
   for (const required of ['guided_assessment', 'run_tool', 'list_tools']) {
-    if (!names.includes(required)) fail(`tool '${required}' missing from tools/list`);
+    if (!names.includes(required)) throw new Error(`tool '${required}' missing from tools/list`);
   }
 
   child.stdin.end();
-  const exitCode = await new Promise((resolve) => child.on('close', resolve));
+  const exitCode = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('server did not exit after stdin closed')), TIMEOUT_MS);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
 
   const records = readFileSync(auditLog, 'utf8')
     .split('\n')
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line));
   if (!records.some((record) => record.event === 'server_start')) {
-    fail(`no server_start record reached the host audit log (${auditLog})`);
+    throw new Error(`no server_start record reached the host audit log (${auditLog})`);
   }
 
   console.log(

@@ -66,7 +66,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
-            type=sha,format=short
+            # Tag builds rebuild the same commit; a second sha- tag would point at a different image.
+            type=sha,format=short,enable=${{ github.ref_type == 'branch' }}
 
       - name: Build image (load locally for scanning)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0

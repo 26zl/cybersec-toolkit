@@ -49,8 +49,6 @@ _PLACEHOLDER = re.compile(
 
 # Statuses that prove the link is alive even when the body is not returned.
 _ALIVE_STATUS = {200, 201, 203, 204, 206, 301, 302, 303, 307, 308}
-# Statuses that mean "exists but blocked/limited" — cannot confirm rot either way.
-_AMBIGUOUS_STATUS = {401, 403, 405, 406, 408, 429, 500, 502, 503, 504}
 # Statuses that prove the resource is gone.
 _DEAD_STATUS = {404, 410}
 
@@ -83,6 +81,7 @@ def classify(status: int | None, *, network_error: bool = False) -> str:
         return "dead"
     if status in _ALIVE_STATUS:
         return "alive"
+    # Blocked or limited (401/403/429/5xx...): cannot confirm rot either way.
     return "unverified"
 
 

@@ -245,7 +245,7 @@ run_tool("ls", "-la /mnt/c/Users/<username>/Downloads/")     # browse Windows fi
 
 ```bash
 cd mcp_server
-uv run fastmcp dev server.py
+uv run fastmcp dev inspector server.py
 ```
 
 This opens a web-based inspector for interactively testing each tool.
@@ -291,7 +291,7 @@ Once connected via an MCP client:
 
 ```text
 mcp_server/
-  __init__.py          # Package marker
+  __init__.py          # Package marker; re-points __path__ for editable installs
   server.py            # FastMCP server — 15 tool registrations + entry point
   tools_db.py          # ToolsDatabase — loads tools_config.json, checks installs (TTL-cached)
   advisor_utils.py     # Shared alias/install-status helpers for advisor modules
@@ -333,14 +333,14 @@ server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md
 - **Install check**: Tool must be installed and in PATH
 - **Argument sanitization**: Shell injection patterns (`|`, `` ` ``, `$(`, `${`) are blocked. `;`, `&`, `$`, `>`, `<` are allowed — no shell is used (`create_subprocess_exec`, never `shell=True`), so they are literals and tools need them (`;`/`&` in URL query strings, `$` for regex/awk, `>`/`<` for XML/comparisons)
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
-- **Tool-specific flag blocking**: Dangerous per-tool options are blocked — sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `--includefile`, sed `-i` (in-place modification)
+- **Tool-specific flag blocking**: Dangerous per-tool options are blocked, for example sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `--includefile`, sed `-i` (in-place modification)
 - **Tool-aware parsing, not solver hardcoding**: The auto-solver chooses tools from the registry/advisors. The policy layer only knows enough CLI grammar to distinguish targets from headers, wordlists, output files, config files, and target-list flags, so legitimate commands stay usable without letting scope checks be bypassed
 - **Network policy**: Network tools and SSH remote hosts reject targets that do not resolve to private/loopback IPs by default (including single-label hostnames like `google`). This preflight check is not a network sandbox: DNS can change between validation and connection, and tools can follow redirects. Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
 - **Script execution gate**: `run_script` is disabled by default. Enabling `CYBERSEC_MCP_ALLOW_SCRIPTS=1` grants scripts the MCP process user's filesystem and network permissions; `CYBERSEC_MCP_ALLOW_EXTERNAL` does not constrain arbitrary script code
 - **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing. `./install.sh --module crypto` populates the `crypto` venv (pycryptodome, sympy, gmpy2, numpy, z3, fpylll+cysignals, cypari2) — Python libraries ship no console scripts, so pipx cannot install them
 - **Pipeline validation**: `run_pipeline` validates all steps (allowlist, args, policy) before executing any. Max 10 steps per pipeline; `step_results` and `had_failures` expose intermediate non-zero exits while preserving shell-like final exit semantics
 - **Rate limiting**: Max 10 concurrent executions and 60 per minute (sliding window)
-- **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion. Lines that address an AI reader and issue it a directive — the shape a target uses to make a client self-identify or add a header — are prefixed `[SANITIZED]` rather than removed, so the operator sees what the target attempted
+- **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion, and zero-width/bidi control characters are removed, so returned text is not byte-exact: inspect zero-width steganography or homoglyphs through `xxd` output instead. Lines that address an AI reader and issue it a directive — the shape a target uses to make a client self-identify or add a header — are prefixed `[SANITIZED]` rather than removed, so the operator sees what the target attempted
 - **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`. Under the Kata sandbox the in-VM log would die with the VM, so `CYBERSEC_MCP_AUDIT_STREAM=1` mirrors each record to stderr with an HMAC-SHA256 tag under a per-launch key the launcher hands the server alone (`CYBERSEC_MCP_AUDIT_KEY`, removed from the server's environment at startup), and the host launcher appends only records whose tag verifies to the host log ([`../docs/SANDBOX.md`](../docs/SANDBOX.md#authenticated-records))
 - **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)

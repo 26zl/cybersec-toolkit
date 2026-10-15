@@ -79,7 +79,7 @@ remote_hosts.json.corrupt.*
 audit.log
 audit.log.*
 
-# Persisted MCP scripts written by run_script (keep the dir, ignore its contents)
+# Agent-saved helper scripts (AGENTS.md); keep the dir, ignore its contents
 manual_scripts/*
 !manual_scripts/.gitkeep
 

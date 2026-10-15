@@ -342,6 +342,17 @@ class TestExecuteRemoteCommand:
         assert result["remote"] is True
 
     @pytest.mark.asyncio
+    async def test_cancellation_kills_local_ssh_client(self) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.side_effect = asyncio.CancelledError()
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc), pytest.raises(asyncio.CancelledError):
+            await execute_remote_command(["user@host"], ["nmap", "10.0.0.1"])
+
+        mock_proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_output_truncation(self) -> None:
         big_output = b"A" * 60000
         mock_proc = AsyncMock()

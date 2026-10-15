@@ -1103,6 +1103,36 @@ _run_c2_aggregation() {
     grep -q "^ourtool|git|HEAD|" "$VERSION_FILE"
 }
 
+@test "docker_pull records an image the host already had as existing" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    export _SESSION_FILE="$TEST_TMPDIR/manifest"
+    : > "$_SESSION_FILE"
+    docker() { return 0; }
+    command_exists() { [[ "$1" == docker ]]; }
+
+    docker_pull "example/present:latest" "PresentTool"
+
+    grep -q "^PresentTool|docker|existing|" "$VERSION_FILE"
+    ! grep -q "^PresentTool|docker|installed|" "$_SESSION_FILE" || false
+}
+
+@test "docker_pull records a newly pulled image as installed" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    export _SESSION_FILE="$TEST_TMPDIR/manifest"
+    : > "$_SESSION_FILE"
+    docker() { [[ "$1" != image ]]; }
+    command_exists() { [[ "$1" == docker ]]; }
+
+    docker_pull "example/new:latest" "NewTool"
+
+    grep -q "^NewTool|docker|example/new:latest|" "$VERSION_FILE"
+    grep -q "^NewTool|docker|installed|" "$_SESSION_FILE"
+}
+
 @test "source rerun stays out of the new rollback session" {
     source_libs --installers debian apt
     make_test_tmpdir

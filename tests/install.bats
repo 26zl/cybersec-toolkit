@@ -84,9 +84,9 @@ setup() {
 
 # --profile unknown
 
-@test "install.sh --profile unknown exits 1" {
+@test "install.sh --profile unknown exits 2" {
     run bash "$INSTALL_SH" --profile nonexistent_profile_xyz --dry-run
-    assert_failure
+    assert_failure 2
     assert_output --partial "Profile not found"
 }
 

@@ -181,7 +181,6 @@ install_apt_batch() {
 
     # Fast path: try all packages in one transaction (~50-80% faster)
     if pkg_install "${packages[@]}" >> "$LOG_FILE" 2>&1; then
-        # All succeeded — track versions in bulk
         for pkg in "${packages[@]}"; do
             _track_pkg "$pkg"
         done
@@ -219,7 +218,6 @@ install_apt_batch() {
                 group=()
             fi
         done
-        # Handle remaining packages
         if [[ ${#group[@]} -gt 0 ]]; then
             if pkg_install "${group[@]}" >> "$LOG_FILE" 2>&1; then
                 for _g in "${group[@]}"; do
@@ -378,13 +376,8 @@ install_pipx_batch() {
     return 0
 }
 
-# install_ctf_venv — create/populate a named venv under CYBERSEC_MCP_VENVS_DIR
-# (default ~/.ctf-venvs) so the MCP server can hand it to run_script(venv=NAME).
-# Python libraries without console scripts cannot go through pipx at all
-# ("No apps associated with package pycryptodome"), and installing them
-# system-wide fights PEP 668 — a venv is the only path that serves both.
-# One pip call per package: a single library with no wheel for the host
-# Python/arch then fails alone instead of taking the whole set with it.
+# install_ctf_venv — populate <CYBERSEC_MCP_VENVS_DIR or ~/.ctf-venvs>/<name> for run_script(venv=NAME).
+# Libraries without console scripts cannot use pipx; one pip call per package isolates wheel failures.
 install_ctf_venv() {
     local name="$1"; shift
     local -a libs=("$@")
@@ -775,8 +768,8 @@ install_gem_batch() {
 
 # Post-clone setup for git repos
 # Creates isolated venvs for Python repos with requirements.txt.
-# Does NOT execute setup.py/pyproject.toml (supply-chain risk: arbitrary code as root).
-# Only installs pinned dependencies from requirements.txt into the venv.
+# Never runs the repo's own setup.py/pyproject.toml; requirements.txt installs into the venv
+# as $SUDO_USER, where dependency sdists can still build.
 #
 # Wrapper creation cascade (first match wins):
 #   1. Python + requirements.txt → venv + symlink entry points
@@ -798,13 +791,8 @@ setup_git_repo() {
     [[ -f "$PIPX_BIN_DIR/$name_lower" ]] && return 0
 
     # 1. Python project with requirements.txt
-    # The venv and ALL pip operations run as $SUDO_USER via _as_builder (not root).
-    # setup.py is not invoked directly, but `pip install -r requirements.txt` can still
-    # build sdists (running their setup.py/PEP-517 backend) — running as the unprivileged
-    # builder limits the blast radius of a malicious/compromised cloned-repo dependency,
-    # and keeps the venv owned by $SUDO_USER (so later privilege-dropped git pulls work).
-    # The final symlink into $PIPX_BIN_DIR stays as root (system path), matching how
-    # go/cargo/gem stage user-built binaries then symlink as root.
+    # pip runs as the builder so sdist build backends never execute as root; the venv stays
+    # builder-owned for later pulls. Only the link into $PIPX_BIN_DIR is made as root.
     if [[ -f "$dest/requirements.txt" ]]; then
         local _dest_esc; _dest_esc="$(_escape_single_quoted "$dest")"
         if [[ ! -d "$dest/venv" ]]; then
@@ -1916,11 +1904,18 @@ docker_pull() {
         return 1
     fi
 
+    # An image the host already had must not become ours, or rollback would remove it.
+    local _present=false
+    docker image inspect "$image" >/dev/null 2>&1 && _present=true
     _start_spinner "Pulling Docker image: $name..."
     if docker pull "$image" >> "$LOG_FILE" 2>&1; then
         _stop_spinner
         log_success "Docker: $name ready"
-        track_version "$name" "docker" "$image"
+        if [[ "$_present" == "true" ]]; then
+            _track_already_present "$name" "docker"
+        else
+            track_version "$name" "docker" "$image"
+        fi
     else
         _stop_spinner
         log_error "Docker pull failed: $name"
@@ -2087,7 +2082,7 @@ build_from_source() {
         [[ "$is_existing" == "false" ]] && _cleanup_failed_source_build "$name"
         return 1
     fi
-    # Build in a subshell (preserves caller's CWD) via _as_builder (build as user, not root); build_cmd is a trusted *_BUILD_CMDS string passed verbatim to `bash -c` — do NOT quote-escape it, that corrupts its own quotes (e.g. yafu/pemcrack `sed '...'` patches).
+    # build_cmd is a trusted *_BUILD_CMDS string run verbatim by bash -c as the builder; escaping it would break its own quoting.
     if (cd "$dest" && _as_builder "$build_cmd") >> "$LOG_FILE" 2>&1 \
         && setup_source_build_bins "$name" >> "$LOG_FILE" 2>&1; then
         _stop_spinner
@@ -2625,9 +2620,9 @@ install_zap() {
     fi
 }
 
-# Uninstall helpers for non-batch install methods
-# Shared by install.sh --rollback and scripts/remove.sh. Idempotent; return 1 only
-# for a name the helper does not know, so callers can fall through.
+# Uninstall helpers for non-batch install methods, shared by install.sh --rollback and
+# scripts/remove.sh. Idempotent. They return 1 for a name they do not know;
+# remove_snap_tool also returns 1 when the snap survives, remove_special_tool returns 2.
 
 # remove_source_build — build_from_source builds in place under $GITHUB_TOOL_DIR.
 remove_source_build() {

@@ -2,19 +2,7 @@
 # shellcheck disable=SC1090  # Dynamic source paths are intentional (modular architecture)
 # CyberSec Tools Installer — modular, profile-based.
 # Supports Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux.
-#
-# Usage:
-#   sudo ./install.sh                        # Full install (default)
-#   sudo ./install.sh --profile ctf          # Install CTF tools only
-#   sudo ./install.sh --profile redteam      # Red team tools
-#   sudo ./install.sh --module web --module enterprise  # Specific modules
-#   sudo ./install.sh --upgrade-system        # Also upgrade system packages
-#   sudo ./install.sh --list-profiles        # Show available profiles
-#   sudo ./install.sh --list-modules         # Show available modules
-#   ./install.sh --doctor                    # Check environment readiness
-#   sudo ./install.sh --dry-run              # Show what would install
-#   sudo ./install.sh --skip-heavy           # Skip large packages
-#   sudo ./install.sh --enable-docker        # Pull Docker images for C2/etc
+# Usage: ./install.sh --help
 
 set -uo pipefail
 
@@ -22,8 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/shared.sh"
-
-# ALL_MODULES is defined in lib/common.sh
 
 # Argument parsing
 PROFILE=""
@@ -363,11 +349,11 @@ run_doctor() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)         usage ;;
-        --profile)         [[ $# -lt 2 ]] && { log_error "--profile requires an argument"; exit 1; }
+        --profile)         [[ $# -lt 2 ]] && { log_error "--profile requires an argument"; exit 2; }
                            PROFILE="$2"; shift 2 ;;
-        --module)          [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 1; }
+        --module)          [[ $# -lt 2 ]] && { log_error "--module requires an argument"; exit 2; }
                            SELECTED_MODULES+=("$2"); shift 2 ;;
-        --tool)            [[ $# -lt 2 ]] && { log_error "--tool requires a name"; exit 1; }
+        --tool)            [[ $# -lt 2 ]] && { log_error "--tool requires a name"; exit 2; }
                            SELECTED_TOOLS+=("$2"); shift 2 ;;
         --upgrade-system)  UPGRADE_SYSTEM=true; shift ;;
         --skip-heavy)      SKIP_HEAVY=true; _CLI_SET_SKIP_HEAVY=true; shift ;;
@@ -384,11 +370,11 @@ while [[ $# -gt 0 ]]; do
         --enable-docker)   ENABLE_DOCKER=true; _CLI_SET_ENABLE_DOCKER=true; shift ;;
         --include-c2)      INCLUDE_C2=true; _CLI_SET_INCLUDE_C2=true; shift ;;
         --dry-run)         DRY_RUN=true; shift ;;
-        -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 1; }
+        -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 2; }
                            PARALLEL_JOBS="$2"
                            if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
                                log_error "-j/--parallel requires a positive number (got '$2')"
-                               exit 1
+                               exit 2
                            elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
                                log_warn "-j $PARALLEL_JOBS is above the maximum — using 16"
                                PARALLEL_JOBS=16
@@ -399,7 +385,7 @@ while [[ $# -gt 0 ]]; do
         --list-modules)    list_modules ;;
         --list-sessions)   _list_sessions; exit 0 ;;
         --doctor)          run_doctor ;;
-        --rollback)        [[ $# -lt 2 ]] && { log_error "--rollback requires a session ID or 'last'"; exit 1; }
+        --rollback)        [[ $# -lt 2 ]] && { log_error "--rollback requires a session ID or 'last'"; exit 2; }
                            ROLLBACK_TARGET="$2"; shift 2 ;;
         -y|--yes|--force)  FORCE_YES=true; shift ;;
         --version)         echo "cybersec-toolkit ${INSTALLER_VERSION:-unknown}"; exit 0 ;;
@@ -413,13 +399,13 @@ done
 
 if [[ "$FAST_MODE" == "true" && "$REQUIRE_CHECKSUMS" == "true" ]]; then
     log_error "--fast is mutually exclusive with --require-checksums/--production"
-    exit 1
+    exit 2
 fi
 
 # The --tool and --rollback paths act before the dry-run preview, so refuse the combination.
 if [[ "$DRY_RUN" == "true" ]] && [[ ${#SELECTED_TOOLS[@]} -gt 0 || -n "$ROLLBACK_TARGET" ]]; then
     log_error "--dry-run cannot be combined with --tool or --rollback"
-    exit 1
+    exit 2
 fi
 
 # --tool, --rollback, --profile and --module select what to act on and are dispatched
@@ -432,7 +418,7 @@ _active_modes=()
 [[ ${#SELECTED_MODULES[@]} -gt 0 ]] && _active_modes+=("--module")
 if [[ ${#_active_modes[@]} -gt 1 ]]; then
     log_error "Mutually exclusive options: ${_active_modes[*]} — use only one"
-    exit 1
+    exit 2
 fi
 
 # Single-tool install (--tool)
@@ -445,7 +431,7 @@ install_single_tool() {
 
     # Tools present before any toolkit run are recorded "existing" so rollback/remove never uninstall them.
     local _pre=false
-    if command_exists "$tool" && { ! _version_known "$tool" || _is_preexisting "$tool"; }; then
+    if command_exists "${_CARGO_BIN_NAMES[$tool]:-$tool}" && { ! _version_known "$tool" || _is_preexisting "$tool"; }; then
         _pre=true
     fi
     _track_single() {  # $1=method  $2=version when newly installed (default: latest)
@@ -570,8 +556,9 @@ install_single_tool() {
                 return 1
             fi
             local _cargo_bin_dir; _cargo_bin_dir="$(_builder_home)/.cargo/bin"
-            if [[ -f "$_cargo_bin_dir/$tool" ]]; then
-                ln -sf "$_cargo_bin_dir/$tool" "$PIPX_BIN_DIR/$tool" 2>/dev/null || true
+            local _cbin="${_CARGO_BIN_NAMES[$tool]:-$tool}"
+            if [[ -f "$_cargo_bin_dir/$_cbin" ]]; then
+                ln -sf "$_cargo_bin_dir/$_cbin" "$PIPX_BIN_DIR/$_cbin" 2>/dev/null || true
             fi
             return 0
         fi
@@ -724,9 +711,10 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     for mod in "${ALL_MODULES[@]}"; do
         source "$SCRIPT_DIR/modules/${mod}.sh"
     done
-    _init_log_file "$SCRIPT_DIR/cybersec_install.log"
+    # Lock first: a run refused by the lock must not truncate the active run's log.
     check_root
     _acquire_run_lock
+    _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     # Fresh containers and hosts may have empty package indexes (the Docker image
     # deletes them). Refresh lazily on the first package install, so an unknown
     # tool name fails before any refresh — on Arch that refresh is a full -Syu.
@@ -1033,13 +1021,13 @@ MODULES_TO_INSTALL=()
 if [[ -n "$PROFILE" ]]; then
     if [[ "$PROFILE" == */* || "$PROFILE" == *..* ]]; then
         log_error "Invalid profile name (no path components allowed): $PROFILE"
-        exit 1
+        exit 2
     fi
     local_profile="$SCRIPT_DIR/profiles/${PROFILE}.conf"
     if [[ ! -f "$local_profile" ]]; then
         log_error "Profile not found: $PROFILE"
         log_info "Available: $(find "$SCRIPT_DIR/profiles" -maxdepth 1 -name '*.conf' -print0 2>/dev/null | xargs -0 -I{} basename {} .conf | tr '\n' ' ')"
-        exit 1
+        exit 2
     fi
     # Save CLI flag values before sourcing profile
     _cli_skip_heavy="$SKIP_HEAVY"
@@ -1062,7 +1050,14 @@ if [[ -n "$PROFILE" ]]; then
 elif [[ ${#SELECTED_MODULES[@]} -gt 0 ]]; then
     # Validate each --module argument is a known module (prevent path traversal)
     _validate_module_names "use --list-modules to see available modules" "${SELECTED_MODULES[@]}"
-    MODULES_TO_INSTALL=("${SELECTED_MODULES[@]}")
+    # A repeated --module would run two jobs on the same venvs and clones.
+    declare -A _seen_modules=()
+    MODULES_TO_INSTALL=()
+    for _m in "${SELECTED_MODULES[@]}"; do
+        [[ -n "${_seen_modules[$_m]:-}" ]] && continue
+        _seen_modules[$_m]=1
+        MODULES_TO_INSTALL+=("$_m")
+    done
 else
     # Default: full install
     MODULES_TO_INSTALL=("${ALL_MODULES[@]}")
@@ -1227,11 +1222,8 @@ estimate_install_time() {
     echo ""
 }
 
-# _apply_platform_module_filters — apply host-specific module/flag overrides to
-# MODULES_TO_INSTALL and ENABLE_DOCKER. Called from BOTH the dry-run preview and
-# main() so the preview reflects what a real run actually does on Termux/WSL.
-# (The ARM x86-only binary-release filter lives in install_binary_releases,
-# which operates on per-module binary arrays, not on MODULES_TO_INSTALL.)
+# _apply_platform_module_filters — host-specific module/flag overrides (Termux, WSL), shared by
+# the dry-run preview and main(). The ARM binary-release filter lives in install_binary_releases.
 _apply_platform_module_filters() {
     # Termux: Docker and snap are not available
     if [[ "$PKG_MANAGER" == "pkg" ]] && [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
@@ -1260,7 +1252,6 @@ _apply_platform_module_filters() {
     fi
 }
 
-# Dry run
 if [[ "$DRY_RUN" == "true" ]]; then
     # Apply the same host filters main() would, so the preview doesn't overstate
     # what runs on Termux/WSL (e.g. the wireless module under WSL).
@@ -1313,10 +1304,11 @@ fi
 VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {
-    # Created here, not at file scope, so sourcing install.sh never truncates the log.
-    _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     check_root
     _acquire_run_lock
+    # Created here, not at file scope, so sourcing install.sh never truncates the log;
+    # after the lock, so a refused run cannot truncate the active run's log either.
+    _init_log_file "$SCRIPT_DIR/cybersec_install.log"
     trap '_global_cleanup; exit 130' INT TERM
     print_banner
 
@@ -1328,7 +1320,7 @@ main() {
 
     # Docker is the only prerequisite users must install themselves
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]] && ! command_exists docker; then
-        log_error "MISSING: docker — --enable-docker was set but Docker is not installed"
+        log_error "MISSING: docker — Docker images are enabled (--enable-docker${PROFILE:+ or profile '$PROFILE'}) but Docker is not installed"
         log_error "Install Docker: https://docs.docker.com/engine/install/"
         exit 1
     fi
@@ -1506,16 +1498,21 @@ install_modules() {
 
         _init_progress_dir
 
+        # Create the token netrc and API cache here: made inside a batch subshell they are
+        # registered for cleanup only there, and subshells never run the EXIT trap.
+        _setup_curl_opts
+        _gh_api_cache_init
+
         # On interrupt (Ctrl+C / kill) stop the whole job tree — per-tool installers are
         # grandchildren that ignore SIGINT — and reap it before cleanup removes the
         # semaphore/result dirs, so no root installer keeps running unrecorded.
         trap 'log_warn "Interrupted — stopping all install jobs..."; _stop_job_tree; _stop_progress_display; _global_cleanup; exit 130' INT TERM
 
-        # Subshells redirect stdout to /dev/null so log_message() output doesn't interleave on the terminal; the log file and PROGRESS_DIR still get everything via their own explicit redirects.
+        # Batch subshells discard stdout; the log and PROGRESS_DIR use their own redirects.
         local _method_names=()
         local _job_pids=()
 
-        # Pre-write method totals from the main process so the progress display has them immediately; batch subshells later re-write the same values idempotently via a direct PROGRESS_DIR redirect (unaffected by `> /dev/null`).
+        # Totals are written up front so the progress display has them before the batches start.
         if [[ ${#_ALL_PIPX[@]} -gt 0 ]];   then _method_names+=("pipx");   _report_method_total "pipx"   "${#_ALL_PIPX[@]}";   fi
         if [[ ${#_ALL_GO[@]} -gt 0 ]];     then _method_names+=("Go");     _report_method_total "Go"     "${#_ALL_GO[@]}";     fi
         if [[ ${#_ALL_CARGO[@]} -gt 0 ]];  then _method_names+=("Cargo");  _report_method_total "Cargo"  "${#_ALL_CARGO[@]}";  fi
@@ -1610,7 +1607,6 @@ install_modules() {
         done
         _stop_progress_display
 
-        # Clean up global semaphore and restore main signal handler
         _cleanup_global_semaphore
         trap '_global_cleanup; exit 130' INT TERM
 

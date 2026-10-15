@@ -7,7 +7,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
 v_file="$(tr -d '[:space:]' < VERSION)"
 v_py="$(grep -m1 '^version' mcp_server/pyproject.toml | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
 v_cff="$(grep -m1 '^version:' CITATION.cff | sed -E 's/^version:[[:space:]]*"([^"]+)".*/\1/')"
-v_readme="$(grep -m1 -oE -- '--branch v[0-9]+\.[0-9]+\.[0-9]+' README.md | sed 's/^--branch v//')"
+# Every pin must agree; distinct values join with commas and fail the comparison below.
+v_readme="$(grep -oE -- '--branch v[0-9]+\.[0-9]+\.[0-9]+' README.md | sed 's/^--branch v//' | sort -u | paste -sd, -)"
 
 if ! json_versions="$(
     python3 - <<'PY'

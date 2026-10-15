@@ -53,7 +53,6 @@ jobs:
             echo "No dependency updates available."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            # Build a readable summary of what changed
             diff uv.lock.old uv.lock | grep '^[<>].*version' | head -30 > /tmp/diff_summary.txt || true
             {
               echo 'summary<<EOF'

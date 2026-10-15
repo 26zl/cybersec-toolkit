@@ -82,17 +82,6 @@ _child_pids() {
     done
 }
 
-# _kill_tree <pid> <signal> — signal every descendant of <pid>, children first.
-# Background jobs of a non-interactive shell ignore SIGINT, and per-tool installers
-# are grandchildren, so Ctrl+C alone (or `kill $(jobs -p)`) leaves them running.
-_kill_tree() {
-    local _c
-    for _c in $(_child_pids "$1"); do
-        _kill_tree "$_c" "$2"
-        kill -"$2" "$_c" 2>/dev/null || true
-    done
-}
-
 _process_start_time() {
     local _line
     { read -r _line < "/proc/$1/stat"; } 2>/dev/null || return 1
@@ -924,11 +913,7 @@ _builder_cmd() {
     printf '%s\n' "$resolved"
 }
 
-# _chown_for_builder — make directories writable by $SUDO_USER before privilege-dropped operations.
-# Root creates system directories (/opt, /usr/local/bin) but _as_builder runs as $SUDO_USER,
-# who cannot write to root-owned dirs.  Call this after mkdir to hand ownership to the builder.
-# No-op when not privilege-dropping (Termux, direct root login, Docker).
-# Usage: _chown_for_builder /opt/toolname [/opt/go ...]
+# _chown_for_builder — hand root-created dirs to $SUDO_USER before privilege-dropped steps; no-op otherwise.
 _chown_for_builder() {
     [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]] || return 0
     # -h: never follow a symlink. Root chowning a user-planted link's target would
@@ -952,11 +937,7 @@ _builder_home() {
     if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER:-}" != "root" ]] && [[ "$PKG_MANAGER" != "pkg" ]]; then
         local _bh
         _bh=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)
-        # getent may be missing or the NSS lookup may fail — an empty result
-        # would yield /-rooted bogus paths (/.cargo/bin). Fall back to a direct
-        # /etc/passwd lookup, then $HOME, requiring a non-empty absolute path.
-        # SUDO_USER is untrusted: it is passed to awk only as a data variable
-        # (never interpreted by a shell), so it cannot inject commands.
+        # getent may fail; fall back to /etc/passwd, then $HOME. SUDO_USER reaches awk only as data.
         [[ -z "$_bh" ]] && _bh=$(awk -F: -v u="$SUDO_USER" '$1==u{print $6; exit}' /etc/passwd 2>/dev/null)
         if [[ -n "$_bh" ]] && [[ "$_bh" == /* ]]; then
             echo "$_bh"
@@ -1065,11 +1046,11 @@ pipx_install() {
     if [[ -n "${PIPX_DEFAULT_PYTHON:-}" ]] && [[ "$PIPX_DEFAULT_PYTHON" != "python3" ]]; then
         _py_flag=(--python "$PIPX_DEFAULT_PYTHON")
     fi
-    if ! pipx install "${_py_flag[@]}" "$pkg" >> "$LOG_FILE" 2>&1; then
+    if ! pipx install ${_py_flag[@]+"${_py_flag[@]}"} "$pkg" >> "$LOG_FILE" 2>&1; then
         # Retry 1: --force in case of stale venvs
-        if ! pipx install "${_py_flag[@]}" "$pkg" --force >> "$LOG_FILE" 2>&1; then
+        if ! pipx install ${_py_flag[@]+"${_py_flag[@]}"} "$pkg" --force >> "$LOG_FILE" 2>&1; then
             # Retry 2: allow pip to upgrade transitive deps (fixes lxml/Python 3.13 etc.)
-            if pipx install "${_py_flag[@]}" "$pkg" --force --pip-args='--upgrade' >> "$LOG_FILE" 2>&1; then
+            if pipx install ${_py_flag[@]+"${_py_flag[@]}"} "$pkg" --force --pip-args='--upgrade' >> "$LOG_FILE" 2>&1; then
                 return 0
             fi
             # Retry 3: older Python versions (if available)
@@ -1176,6 +1157,11 @@ git_clone_or_pull() {
             fi
         fi
     else
+        # Never hand an existing directory we did not create to the builder; clone would fail anyway.
+        if [[ -e "$dest" ]] && { [[ ! -d "$dest" ]] || [[ -n "$(ls -A -- "$dest" 2>/dev/null)" ]]; }; then
+            log_warn "Not cloning $(basename "$dest"): $dest exists and is not a git clone"
+            return 1
+        fi
         mkdir -p "$dest" 2>/dev/null || true
         _chown_for_builder "$dest"
         log_info "Cloning $(basename "$dest")..."
@@ -1229,7 +1215,6 @@ _SPINNER_PID=""
 
 _start_spinner() {
     local label="$1"
-    # Kill any previous spinner (safety — shouldn't happen in practice)
     _stop_spinner
 
     # Non-interactive terminal (Docker, piped output): print one static line instead
@@ -1606,11 +1591,11 @@ _validate_module_names() {
     for _vmn in "$@"; do
         if [[ "$_vmn" == */* || "$_vmn" == *..* ]]; then
             log_error "Invalid module name (no path components allowed): $_vmn"
-            exit 1
+            exit 2
         fi
         if [[ " ${ALL_MODULES[*]} " != *" $_vmn "* ]]; then
             log_error "Unknown module: $_vmn ($_hint)"
-            exit 1
+            exit 2
         fi
     done
 }

@@ -74,7 +74,6 @@ jobs:
             # 1. Hardcoded IPs (allowlist: loopback, RFC 5737)
             while IFS= read -r match; do
               ip=$(echo "$match" | grep -oP '\d+\.\d+\.\d+\.\d+')
-              # Allowlist
               case "$ip" in
                 127.0.0.1|0.0.0.0) continue ;;
                 192.0.2.*|198.51.100.*|203.0.113.*) continue ;; # RFC 5737
@@ -205,21 +204,19 @@ jobs:
 
           for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
             [[ -f "$wf" ]] || continue
-            # Extract 'uses:' lines, skip local actions (./), docker://, and comment lines
+            # Skip local (./) and docker:// references; the anchored grep never matches a commented line.
             while IFS= read -r line; do
-              # Extract the action reference (after 'uses:')
               ref=$(echo "$line" | grep -oP 'uses:\s*\K\S+')
 
               if echo "$ref" | grep -qE '^\./|^docker://'; then
                 continue
               fi
 
-              # Check if it contains a 40-char hex SHA (commit pin)
               if ! echo "$ref" | grep -qP '@[0-9a-f]{40}'; then
                 echo "::error file=$wf::Action not SHA-pinned: $ref"
                 errors=$((errors + 1))
               fi
-            done < <(grep -n '^\s*-\?\s*uses:' "$wf" | grep -v '^\s*#' || true)
+            done < <(grep -n '^\s*-\?\s*uses:' "$wf" || true)
           done
 
           echo ""

@@ -20,7 +20,7 @@ if _parent not in sys.path:
 from mcp_server.advisor_utils import check_tool_installed  # noqa: E402
 from mcp_server.tools_db import ToolsDatabase  # noqa: E402
 
-CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
+CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE | re.ASCII)
 
 # Common vulnerability nicknames → canonical CVE id (lowercased keys).
 NAME_ALIASES: dict[str, str] = {

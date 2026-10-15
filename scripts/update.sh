@@ -45,7 +45,6 @@ EOF
     exit 0
 fi
 
-# Parse args
 SKIP_SYSTEM=false
 SKIP_PIPX=false
 SKIP_GO=false
@@ -172,6 +171,12 @@ if [[ "$SKIP_GO" == "false" ]]; then
             # Only update tools that are already installed
             if ! command_exists "$tool_name"; then
                 log_debug "Skipping $tool_name (not installed)"
+                GO_NOT_INSTALLED=$((GO_NOT_INSTALLED + 1))
+                continue
+            fi
+            # Same rule as update_binary: a rebuild into $GOBIN would overshadow a binary we did not install.
+            if ! _version_known "$tool_name" || _is_preexisting "$tool_name"; then
+                log_debug "Skipping $tool_name (not installed by the toolkit)"
                 GO_NOT_INSTALLED=$((GO_NOT_INSTALLED + 1))
                 continue
             fi
@@ -334,7 +339,9 @@ if [[ "$SKIP_GEMS" == "false" ]]; then
             installed_gems=$(_as_builder "$(_builder_cmd gem) list --no-details" 2>/dev/null || true)
             GEMS_TO_UPDATE=()
             for _gem in "${ALL_GEMS[@]}"; do
-                if echo "$installed_gems" | grep -q "^${_gem} "; then
+                if ! _version_known "$_gem" || _is_preexisting "$_gem"; then
+                    log_debug "Skipping gem $_gem (not installed by the toolkit)"
+                elif echo "$installed_gems" | grep -q "^${_gem} "; then
                     GEMS_TO_UPDATE+=("$_gem")
                 else
                     log_debug "Skipping gem $_gem (not installed)"
@@ -401,6 +408,11 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                 # Only update crates that are already installed
                 if ! command_exists "$_cargo_bin" && [[ ! -f "$_cargo_bin_dir/$_cargo_bin" ]]; then
                     log_debug "Skipping cargo $crate (not installed)"
+                    CARGO_NOT_INSTALLED=$((CARGO_NOT_INSTALLED + 1))
+                    continue
+                fi
+                if ! _version_known "$crate" || _is_preexisting "$crate"; then
+                    log_debug "Skipping cargo $crate (not installed by the toolkit)"
                     CARGO_NOT_INSTALLED=$((CARGO_NOT_INSTALLED + 1))
                     continue
                 fi
@@ -802,7 +814,9 @@ if command_exists npm; then
         for _npm_pkg in "${ALL_NPM[@]}"; do
             # The global package list is authoritative; many packages install a
             # binary under a name that does not match the package.
-            if npm ls -g --depth=0 "$_npm_pkg" >/dev/null 2>&1; then
+            if ! _version_known "$_npm_pkg" || _is_preexisting "$_npm_pkg"; then
+                log_debug "Skipping npm package $_npm_pkg (not installed by the toolkit)"
+            elif npm ls -g --depth=0 "$_npm_pkg" >/dev/null 2>&1; then
                 NPM_TO_UPDATE+=("$_npm_pkg")
             else
                 log_debug "Skipping npm package $_npm_pkg (not installed)"
@@ -836,7 +850,6 @@ else
 fi
 echo ""
 
-# Done
 disable_debug_trace
 
 _print_completion_banner "$START_TIME" "$UPDATE_FAILURES" \

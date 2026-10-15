@@ -135,14 +135,14 @@ _SCRIPT_SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         re.compile(
             r"""
             (
-                (?:\b|['"])                                 # word or quoted key
+                (?:(?<![a-z0-9])|['"])                      # key start, incl. DB_PASSWORD / ?access_token
                 (?:api[_-]?key|apikey|access[_-]?key|secret[_-]?key|
                    auth[_-]?token|bearer[_-]?token|client[_-]?secret|
                    session[_-]?id|session[_-]?token|private[_-]?key|
                    aws[_-]?secret[_-]?access[_-]?key|aws[_-]?access[_-]?key[_-]?id|
                    github[_-]?token|openai[_-]?api[_-]?key|
                    token|passwd|passphrase|password|secret)
-                ['"]?                                       # optional close quote on key
+                ['"]?\]?                                    # optional close quote / subscript bracket
                 \s*[:=]\s*                                  # assignment
             )
             (?!\[REDACTED\])                                # don't re-match a prior redaction
@@ -314,7 +314,12 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
             super().emit(record)
             return
         with lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            except OSError:
+                # Filesystems without flock (some network mounts): write unlocked, never drop.
+                super().emit(record)
+                return
             try:
                 if self.stream is not None:
                     try:

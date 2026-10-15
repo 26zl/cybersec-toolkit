@@ -39,7 +39,6 @@ EOF
     exit 0
 fi
 
-# Parse args
 VERIFY_MODULES=()
 SUMMARY_ONLY=false
 INSTALLED_ONLY=false
@@ -295,8 +294,7 @@ check_build() {
         vlog_success "$name — built & in PATH"
         return 0
     elif [[ -d "$dir" ]]; then
-        # Directory exists — check for build artifacts (case-insensitive name, .so libs, or any ELF binary in bin/)
-        # shellcheck disable=SC2044
+        # Directory exists — check for build artifacts (case-insensitive name, .so libs, or any executable in bin/)
         if find "$dir" -maxdepth 3 -type f \( -iname "$name" -o -name "*.so" -o -name "afl-fuzz" \) -executable 2>/dev/null | grep -q . \
            || find "$dir/bin" -maxdepth 1 -type f -executable 2>/dev/null | grep -q .; then
             TOTAL_FOUND=$((TOTAL_FOUND + 1))

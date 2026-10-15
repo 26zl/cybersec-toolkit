@@ -1,7 +1,6 @@
 """Shared argument check for the repository's hand-parsed scripts.
 
-Without it a typo such as ``--strcit`` was silently ignored and the script ran in
-its default mode with exit status 0.
+Rejects unknown options so a typo cannot silently fall back to the default mode.
 """
 
 from __future__ import annotations

@@ -107,8 +107,8 @@ cd "$_th_dir" && exec uv run theHarvester "\$@"
 THWRAP
                 chmod +x "$PIPX_BIN_DIR/theHarvester" 2>/dev/null || true
                 log_success "theHarvester installed (uv)"
-                # A clone that predates the toolkit stays "existing" so rollback never deletes it.
-                _is_preexisting "theHarvester" || track_version "theHarvester" "git" "HEAD"
+                # The git batch records provenance at clone time; a clone it never saw predates the toolkit.
+                _version_known "theHarvester" || _track_already_present "theHarvester" "git"
             else
                 _stop_spinner
                 log_error "theHarvester uv sync failed"

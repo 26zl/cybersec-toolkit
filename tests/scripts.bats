@@ -683,6 +683,22 @@ _run_backup_schedule() {
     assert_output "pkg uninstall -y dnsenum"
 }
 
+@test "remove keeps the install record when a special tool survives" {
+    [[ "$(id -u)" -ne 0 ]] || skip "root ignores the read-only directory"
+    _lifecycle_fixture
+    mkdir -p "$TEST_TMPDIR/home/.foundry/bin"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/home/.foundry/bin/forge"
+    chmod 555 "$TEST_TMPDIR/home/.foundry"
+    printf 'foundry|special|latest|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+
+    _run_lifecycle remove.sh --yes
+
+    chmod 755 "$TEST_TMPDIR/home/.foundry"
+    assert_failure
+    assert_output --partial "Failed to remove Foundry"
+    [[ -f "$LC_REPO/.versions" ]]
+}
+
 @test "remove drops a cloned repo's PATH wrapper and multi-field release dirs" {
     _lifecycle_fixture
     printf 'nikto|git|HEAD|2026-01-01 00:00:00\nmemprocfs|binary|v1|2026-01-01 00:00:00\n' \
@@ -744,6 +760,23 @@ _run_backup_schedule() {
     [[ "$(cat "$TEST_TMPDIR/tools/massdns/bin/massdns")" == "v2" ]]
     [[ "$(cat "$TEST_TMPDIR/tools/AFLplusplus/built.txt")" == "v2" ]]
     [[ "$(git -C "$TEST_TMPDIR/tools/codext" log -1 --format=%s)" == "local" ]]
+}
+
+@test "update rebuilds only Go tools the toolkit installed" {
+    _lifecycle_fixture
+    printf '#!/bin/sh\necho "go $*" >> "%s/calls.log"\n[ "$1" = version ] && echo "go version go1.23.0 linux/amd64"\nexit 0\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/go"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/prefix/bin/ffuf"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/prefix/bin/gf"
+    chmod +x "$TEST_TMPDIR/prefix/bin/ffuf" "$TEST_TMPDIR/prefix/bin/gf"
+    printf 'gf|go|latest|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+
+    _run_lifecycle update.sh --skip-system --skip-pipx --skip-git --skip-gems \
+        --skip-cargo --skip-binary --skip-special --skip-docker
+
+    run grep -F "go install" "$TEST_TMPDIR/calls.log"
+    assert_output --partial "github.com/tomnomnom/gf@latest"
+    refute_output --partial "ffuf"
 }
 
 @test "mcp-launch.sh --local runs uv on the host, not the sandbox" {
@@ -808,7 +841,7 @@ EOF
 
 @test "remove refuses to run non-interactively without --yes" {
     _lifecycle_fixture
-    # Without a terminal a "cancel" used to exit 0 (silent success in CI/cron).
+    # Without a terminal, cancelling must exit non-zero so CI and cron cannot read it as success.
     run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
         PKG_MANAGER=pkg DISTRO_ID=android DISTRO_ID_LIKE= DISTRO_NAME=Termux \
         GITHUB_TOOL_DIR="$TEST_TMPDIR/tools" TMPDIR="$TEST_TMPDIR" TERM=dumb \
@@ -873,6 +906,24 @@ EOF
     [[ -f "$test_home/.nmap/settings" ]]
 }
 
+@test "restore keeps user files named *.enc in a current-format backup" {
+    local test_home="$TEST_TMPDIR/home"
+    mkdir -p "$test_home/.msf4/loot"
+    printf 'loot\n' > "$test_home/.msf4/loot/capture.enc"
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" backup
+    assert_success
+
+    local -a encrypted=("$test_home"/cybersec_tools_backup/backup_*.tar.gz.enc)
+    rm -rf "$test_home/.msf4"
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "${encrypted[0]}" < /dev/null
+    assert_success
+    [[ "$(cat "$test_home/.msf4/loot/capture.enc")" == "loot" ]]
+}
+
 @test "a second install/update/remove run refuses while one holds the lock (OP-4)" {
     command -v flock >/dev/null || skip "needs flock"
     _lifecycle_fixture
@@ -891,6 +942,31 @@ EOF
     wait "$holder" 2>/dev/null || true
     assert_failure
     assert_output --partial "Another install, update or remove run is active"
+}
+
+@test "an install refused by the run lock keeps the active run's log" {
+    command -v flock >/dev/null || skip "needs flock"
+    _lifecycle_fixture
+    cp "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/VERSION" "$LC_REPO/"
+    cp -R "$PROJECT_ROOT/profiles" "$LC_REPO/"
+    printf 'line1\nline2\nline3\n' > "$LC_REPO/cybersec_install.log"
+    flock "$LC_REPO/.versions.run.lock" sleep 30 &
+    local holder=$!
+    local i
+    for i in $(seq 1 30); do
+        flock -n "$LC_REPO/.versions.run.lock" true 2>/dev/null || break
+        sleep 0.1
+    done
+
+    run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_ID_LIKE= DISTRO_NAME=Termux TERM=dumb \
+        TMPDIR="$TEST_TMPDIR" PATH="$LC_STUBS:$PATH" bash "$LC_REPO/install.sh" --tool nmap
+
+    kill "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    assert_failure
+    assert_output --partial "Another install, update or remove run is active"
+    [[ "$(wc -l < "$LC_REPO/cybersec_install.log")" -eq 3 ]]
 }
 
 @test "restore refuses an unauthenticated legacy archive by default (SI-12)" {

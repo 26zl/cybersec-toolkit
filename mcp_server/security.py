@@ -953,10 +953,6 @@ class _RateLimiter:
 _rate_limiter = _RateLimiter()
 
 
-# Thread-safe DNS resolution with per-call timeout (avoids process-global
-# socket.setdefaulttimeout which races under concurrent tool executions).
-
-
 # Bounded DNS resolver pool. Target validation runs before the rate limiter and
 # concurrency semaphore, so without a cap a burst of requests would spawn one daemon
 # thread per call. A fixed-size pool caps concurrent getaddrinfo calls; excess
@@ -968,7 +964,11 @@ _dns_executor = concurrent.futures.ThreadPoolExecutor(max_workers=_DNS_MAX_WORKE
 
 
 def _resolve_with_timeout(hostname: str, timeout: float = 5.0) -> list:
-    """Resolve hostname via getaddrinfo with a per-call timeout, through a bounded pool."""
+    """Resolve hostname via getaddrinfo with a per-call timeout, through a bounded pool.
+
+    The timeout is per call because socket.setdefaulttimeout is process-global and
+    would race between concurrent tool executions.
+    """
     start = time.monotonic()
     future = _dns_executor.submit(socket.getaddrinfo, hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     try:
@@ -3326,6 +3326,20 @@ async def execute_script(
 
     timeout = max(1, min(timeout, 300))
 
+    # Rate-limit before the pre-execution audit record, so that record means the script ran.
+    try:
+        await _rate_limiter.acquire()
+    except ValueError as e:
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": str(e),
+            "truncated": False,
+            "language": lang,
+            "script_file": "",
+            "working_dir": cwd,
+        }
+
     suffix = _SCRIPT_LANGUAGES[lang]
     fd, script_path = tempfile.mkstemp(suffix=suffix, prefix="mcp_script_")
     try:
@@ -3341,20 +3355,6 @@ async def execute_script(
             venv=venv or "",
         )
         script_start = time.monotonic()
-
-        # Check rate limit BEFORE acquiring semaphore
-        try:
-            await _rate_limiter.acquire()
-        except ValueError as e:
-            return {
-                "exit_code": -1,
-                "stdout": "",
-                "stderr": str(e),
-                "truncated": False,
-                "language": lang,
-                "script_file": script_path,
-                "working_dir": cwd,
-            }
 
         async with _rate_limiter._semaphore:
             # Execute

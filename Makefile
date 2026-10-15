@@ -102,14 +102,15 @@ bump: ## Bump version across every release surface (usage: make bump VERSION=x.y
 	bash scripts/validate_version.sh
 
 mcp: ## Launch the MCP server inspector (web UI)
-	cd mcp_server && uv run fastmcp dev server.py
+	cd mcp_server && uv run fastmcp dev inspector server.py
 
 docker: ## Build the Docker image
 	docker build -t cybersec-toolkit .
 
-sandbox-image: ## Build the Kata sandbox image used by scripts/mcp-launch.sh
+sandbox-image: ## Build the Kata sandbox image used by scripts/mcp-launch.sh (TOOLKIT_PROFILE=ctf bakes in a profile)
 	docker build -f sandbox/Dockerfile \
 		--build-arg SANDBOX_SOURCE_HASH="$$(bash scripts/sandbox-source-hash.sh)" \
+		$(if $(TOOLKIT_PROFILE),--build-arg TOOLKIT_PROFILE='$(TOOLKIT_PROFILE)') \
 		-t cybersec-toolkit-sandbox:latest .
 
 audit-verify: ## Check the audit log's hash chain (usage: make audit-verify [LOG=path])

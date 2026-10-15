@@ -500,6 +500,20 @@ class TestAuditCrashSafety:
         # Should not raise
         log_execution(tool_name="test2", args="", exit_code=0, command="test2")
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="flock is POSIX-only")
+    def test_record_is_written_when_flock_is_unsupported(self, tmp_path: Path, monkeypatch) -> None:
+        import errno
+
+        import mcp_server.audit as mod
+
+        def no_flock(*args, **kwargs):
+            raise OSError(errno.ENOLCK, "No locks available")
+
+        monkeypatch.setattr(mod.fcntl, "flock", no_flock)
+        log_execution(tool_name="nolock", args="", exit_code=0, command="nolock")
+        records = [json.loads(line) for line in (tmp_path / "audit.log").read_text().splitlines()]
+        assert any(r.get("tool") == "nolock" for r in records)
+
 
 class TestRedactScriptCode:
     """Script content is redacted before being written to the audit log."""
@@ -566,6 +580,23 @@ class TestRedactScriptCode:
         redacted = _redact_script_code(code)
         assert secret not in redacted
         assert "[REDACTED]" in redacted
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "-s https://10.0.0.5/api?access_token=synthval",
+            "-e DB_PASSWORD=synthval 10.0.0.5",
+            "MYSQL_ROOT_PASSWORD=synthval",
+            "refresh_token: synthval",
+            'os.environ["SECRET_KEY"] = "synthval"',
+        ],
+    )
+    def test_compound_credential_names_redacted(self, text: str) -> None:
+        assert "synthval" not in _redact_script_code(text)
+
+    @pytest.mark.parametrize("text", ["max_tokens=100", "my_tokenizer=3", "token_type=bearer", "arr[i] = 3"])
+    def test_names_containing_credential_words_preserved(self, text: str) -> None:
+        assert _redact_script_code(text) == text
 
     def test_benign_code_preserved(self) -> None:
         """Code without secrets should pass through untouched (aside from whitespace)."""

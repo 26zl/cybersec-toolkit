@@ -114,8 +114,7 @@ These are limitations of that nesting layer, not of Kata. On macOS, prefer `--lo
    minimal tool set; to bake in a full profile, pass it as a build argument:
 
    ```bash
-   docker build -f sandbox/Dockerfile --build-arg TOOLKIT_PROFILE=ctf \
-       -t cybersec-toolkit-sandbox:latest .
+   make sandbox-image TOOLKIT_PROFILE=ctf
    ```
 
 4. Install the launcher's Node dependencies:
@@ -173,8 +172,8 @@ to `kata()`.
 | `CYBERSEC_SANDBOX_USER` | `10001:10001` | Guest uid:gid; must match the image. |
 | `CYBERSEC_SANDBOX_CAP_ADD` | none | Comma-separated capabilities, e.g. `NET_RAW` for `nmap -sS`. |
 
-`CYBERSEC_MCP_ALLOW_EXTERNAL` and `CYBERSEC_MCP_ALLOW_SCRIPTS` are forwarded
-into the VM. Host-specific paths such as `CYBERSEC_MCP_AUDIT_LOG` and
+`CYBERSEC_MCP_ALLOW_EXTERNAL`, `CYBERSEC_MCP_ALLOW_SCRIPTS` and
+`CYBERSEC_MCP_REDACT_OUTPUT` are forwarded into the VM. Host-specific paths such as `CYBERSEC_MCP_AUDIT_LOG` and
 `CYBERSEC_MCP_VENVS_DIR` are not: they are baked into the image and must keep
 pointing at guest paths. `CYBERSEC_MCP_AUDIT_LOG` still applies on the host, where
 it names the file the mirrored records are appended to.

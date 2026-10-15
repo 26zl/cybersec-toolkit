@@ -217,15 +217,15 @@ Docker and C2 show what each profile enables by default. A profile that enables 
 | `web` | 60 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | 15 | RSA attacks, cipher analysis, hash attacks, constraint solving |
 | `pwn` | 36 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
-| `reversing` | 33 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | 57 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
-| `enterprise` | 80 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
+| `reversing` | 34 | Disassemblers, debuggers, emulation, Java/Python reversing |
+| `forensics` | 59 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
+| `enterprise` | 81 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | 41 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | 34 | Hash cracking (john, hashcat), brute force, wordlist generation |
 | `stego` | 15 | Image/audio steganography, detection, StegCracker |
 | `cloud` | 22 | AWS/Azure/GCP security auditing, Checkov |
 | `containers` | 15 | Docker/Kubernetes security (Grype, Syft, Kubescape, kubeaudit) |
-| `blueteam` | 36 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
+| `blueteam` | 40 | IDS/IPS, SIEM, incident response, threat intelligence, hardening, malware analysis (YARA, ClamAV, FLOSS, Capa, Loki) |
 | `mobile` | 18 | Android/iOS app testing, APK analysis, MobSF (Docker) |
 | `blockchain` | 15 | Smart contract auditing (Slither, Mythril, Foundry, Aderyn), blockchain forensics, Echidna (Docker) |
 | `llm` | 14 | LLM red teaming, prompt injection, jailbreak testing, AI vulnerability scanning |
@@ -236,11 +236,11 @@ Docker and C2 show what each profile enables by default. A profile that enables 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
 | Git clone | 193 | GitHub repos with auto-setup, resources, wordlists |
-| System packages (apt/dnf/pacman/zypper) | 166 | nmap, wireshark, john, hashcat |
+| System packages (apt/dnf/pacman/zypper) | 168 | nmap, wireshark, john, hashcat |
 | pipx | 137 | sqlmap, impacket, bloodhound, volatility3 |
-| Go install | 62 | nuclei, subfinder, ffuf, httpx |
-| Binary release | 51 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
-| Build from source | 23 | massdns, duplicut, AFLplusplus, honggfuzz |
+| Go install | 63 | nuclei, subfinder, ffuf, httpx |
+| Binary release | 54 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
+| Build from source | 25 | massdns, duplicut, AFLplusplus, honggfuzz |
 | Docker | 13 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
 | Cargo (Rust) | 8 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
@@ -257,10 +257,10 @@ All scripts support `--help` and `--version`. On Linux, `update.sh` and `remove.
 | Script | Purpose | Example |
 | ------ | ------- | ------- |
 | `scripts/verify.sh` | Check which tools are installed | `./scripts/verify.sh --module web --skip-heavy` |
-| `scripts/update.sh` | Update all installed tools | `sudo ./scripts/update.sh --skip-system` |
+| `scripts/update.sh` | Update the tools this toolkit installed | `sudo ./scripts/update.sh --skip-system` |
 | `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module enterprise --yes` |
 | `scripts/remove.sh --deep-clean` | Purge caches and build artifacts | `sudo ./scripts/remove.sh --deep-clean --yes` |
-| `scripts/backup.sh` | Back up and restore tool configs | `sudo ./scripts/backup.sh backup` |
+| `scripts/backup.sh` | Back up and restore tool configs | `./scripts/backup.sh backup` |
 
 `--deep-clean` removes the Go module/build cache, the Cargo registry, pip/pipx/npm/gem caches, orphaned pipx venvs, stale symlinks, and log files. Add `--remove-deps` to also purge Rustup toolchains.
 
@@ -340,12 +340,12 @@ Data the toolkit keeps, stored only on this machine:
 
 The installer downloads and runs code from the internet. On Linux it runs as root (`sudo`); on Termux it runs in the app's user sandbox.
 
-- __System packages__: signed by your distro's repositories (apt, dnf, pacman, zypper, pkg).
+- __System packages__: signed by your distro's repositories (apt, dnf, pacman, zypper, pkg). On openSUSE, `zypper refresh` trusts new or rotated repository keys automatically only when `CI=true` or `CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS=1` is set.
 - __pipx/Go/Cargo/Gem/npm__: fetched from their registries without signature verification; pipx tools are isolated in venvs. Go, Cargo, and Gem builds run as the invoking user; pipx and global npm installs run as root, so package build backends and npm lifecycle scripts execute with root privileges.
 - __Binary releases__: SHA256-verified using upstream checksum files, exact-asset GitHub release digests, or reviewed repository/tag/asset checksums in `lib/release_checksums.tsv`. A mismatch always fails; `--require-checksums` or `--production` also fails when verification data is unavailable. These checks establish download integrity, not independent publisher authentication. `--fast` skips ordinary release verification and cannot be combined with strict flags; private runtime dependencies always require verification.
 - __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
 - __Go SDK__: SHA256-verified against go.dev when the API is reachable; strict mode fails if it is not.
-- __Git repos__: cloned at HEAD; dependencies go into isolated venvs, and `setup.py` is not executed.
+- __Git repos__: cloned at HEAD; the repo's own `setup.py` is never run. `requirements.txt` installs into a per-repo venv as the invoking user, where dependency sdists can still build, and outside strict mode (`--production` or `--require-checksums`) a failed pinned install is retried with `==` relaxed to `>=`.
 - __Build from source__: runs `make` as the invoking user, not root. Review what you build.
 - __MCP Python dependencies__: resolved by `uv` with a 3-day `exclude-newer` window, and Dependabot waits the same 3 days. This does not apply to the security tools themselves, which follow their upstream release channels.
 - __Toolkit Docker images__: Ubuntu and uv are digest-pinned; apt packages resolve from the current signed Ubuntu repositories, so rebuilds are not bit-for-bit reproducible.
@@ -487,7 +487,7 @@ The agent can query every tool and its install state, chain governed tool calls,
 - __The VM has its own tool set.__ The sandbox image ships the MCP server plus `file`, `git`, `binutils`, `nmap`, `curl`, and Python. Tools installed on the host are not visible inside it, and `check_installed` and the advisors report the guest's tools. Bake a profile into the image instead, and rebuild after pulling server changes, because the image carries its own copy of the server:
 
   ```bash
-  docker build -f sandbox/Dockerfile --build-arg TOOLKIT_PROFILE=ctf -t cybersec-toolkit-sandbox:latest .
+  make sandbox-image TOOLKIT_PROFILE=ctf
   ```
 
 - __Files__: the VM sees no host path unless `CYBERSEC_SANDBOX_WORKSPACE` names an absolute directory, which appears as `/workspace` (read-only with `CYBERSEC_SANDBOX_WORKSPACE_RO=1`). Pass guest paths to `run_tool`.
@@ -598,7 +598,7 @@ Reusable helpers the agent writes for you (exploits, multi-step solvers, parsers
 ### Test the server
 
 ```bash
-cd mcp_server && uv run fastmcp dev server.py
+cd mcp_server && uv run fastmcp dev inspector server.py
 ```
 
 This opens the MCP Inspector for exercising each tool interactively. [`mcp_server/README.md`](mcp_server/README.md) covers Claude Desktop setup and the full server reference.
@@ -650,7 +650,7 @@ make check    # lint, validators, bats, pytest, sandbox tests
 
 `make help` lists every target; the raw commands are in [`AGENTS.md`](AGENTS.md). The MCP Python project resolves dependencies with `uv` and `exclude-newer = "3 days"`, so fresh releases are ignored for 72 hours to limit the blast radius of a compromised upload; Dependabot and the weekly uv update workflow use the same cooldown. Run the shell tests on Linux, macOS, or WSL: native Windows checkouts can rewrite the Bats submodules with CRLF and fail with `$'\r'`.
 
-Release notes for every version, including security fixes and upgrade steps, are on the [GitHub Releases](https://github.com/26zl/cybersec-toolkit/releases) page; `git log v1.3.0..` shows what has landed since a release.
+Release notes for every version, including security fixes and upgrade steps, are on the [GitHub Releases](https://github.com/26zl/cybersec-toolkit/releases) page; `git log $(git describe --tags --abbrev=0)..` shows what has landed since the latest release.
 
 ## Star History
 

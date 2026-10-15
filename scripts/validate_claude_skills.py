@@ -145,8 +145,7 @@ def _validate_curation(skill_dirs: list[Path], errors: list[str]) -> None:
             errors.append(f"{CURATION_JSON.relative_to(ROOT)}: extra skill(s): {', '.join(extra[:10])}")
 
     # Freshness: regenerate the curation outputs from the same rules curate_claude_skills.py
-    # uses and compare against the committed files, so stale/hand-edited content fails CI
-    # (the docs promise this validator checks "curation freshness").
+    # uses and compare against the committed files, so stale/hand-edited content fails CI.
     curate = _import_curate()
     if curate is None:
         errors.append("scripts/curate_claude_skills.py: could not import to verify curation freshness")

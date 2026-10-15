@@ -56,7 +56,6 @@ EOF
     exit 0
 fi
 
-# Parse args
 REMOVE_MODULES=()
 REMOVE_DEPS=false
 DEEP_CLEAN=false
@@ -440,7 +439,6 @@ fi
 echo ""
 
 # 5) Go binaries
-# Go binaries are installed to $GOBIN (GOBIN) system-wide
 if [[ ${#GO_BINS_TO_REMOVE[@]} -gt 0 ]]; then
     go_removed=0
     go_skipped=0
@@ -587,6 +585,17 @@ fi
 # they were not present beforehand, so a user's own copy is never uninstalled.
 _toolkit_installed() { _version_known "$1" && ! _is_preexisting "$1"; }
 
+# Count a failed helper so the run cannot report success and drop .versions.
+_remove_counted() {
+    local label="$1"; shift
+    if "$@"; then
+        log_success "Removed $label"
+    else
+        log_warn "Failed to remove $label"
+        REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+    fi
+}
+
 # Metasploit (snap or system package)
 if should_remove "pwn" && _toolkit_installed metasploit; then
     log_info "Removing Metasploit..."
@@ -612,19 +621,18 @@ fi
 # OWASP ZAP (snap)
 if should_remove "web" && snap_available && snap list zaproxy &>/dev/null && _toolkit_installed zaproxy; then
     log_info "Removing OWASP ZAP..."
-    remove_snap_tool zaproxy
-    log_success "OWASP ZAP removed"
+    _remove_counted "OWASP ZAP" remove_snap_tool zaproxy
 fi
 
 # Foundry (forge, cast, anvil, chisel — installed by blockchain module)
 if should_remove "blockchain" && _toolkit_installed foundry; then
-    remove_special_tool foundry && log_success "Removed Foundry"
+    _remove_counted "Foundry" remove_special_tool foundry
 fi
 
 # Steampipe (curl-pipe installer — installed by cloud module)
 if should_remove "cloud" && command_exists steampipe && _toolkit_installed steampipe; then
     log_info "Removing Steampipe..."
-    remove_special_tool steampipe && log_success "Steampipe removed"
+    _remove_counted "Steampipe" remove_special_tool steampipe
 fi
 
 # NetExec (pipx from git, tracked as nxc — installed outside ENTERPRISE_PIPX, modules/enterprise.sh)
@@ -650,7 +658,7 @@ if should_remove "crypto"; then
             log_info "Preserving venv not installed by this toolkit: ctf-crypto-venv"
         else
             log_info "Removing ctf-crypto venv..."
-            remove_special_tool ctf-crypto-venv && log_success "Removed venv: ctf-crypto-venv"
+            _remove_counted "venv: ctf-crypto-venv" remove_special_tool ctf-crypto-venv
         fi
     fi
 fi
@@ -659,7 +667,7 @@ fi
 if should_remove "cracking" && _removable patator; then
     if [[ -d "$GITHUB_TOOL_DIR/patator" ]]; then
         log_info "Removing patator (venv)..."
-        remove_special_tool patator && log_success "Removed venv: patator"
+        _remove_counted "venv: patator" remove_special_tool patator
     fi
     # Installs predating the venv switch put patator under pipx — clean those too
     if command_exists pipx && pipx list --short 2>/dev/null | grep -qi '^patator '; then
@@ -746,7 +754,6 @@ log_info "Cleaning up..."
 
 # Clean up empty PIPX_HOME on full removal
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]] && [[ -d "$PIPX_HOME/venvs" ]]; then
-    # Count remaining venvs — if none left, remove PIPX_HOME
     _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
     if [[ "$_remaining" -eq 0 ]]; then
         rm -rf "$PIPX_HOME"
@@ -880,7 +887,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     _pip_cache="${_user_home}/.cache/pip"
     if [[ -d "$_pip_cache" ]]; then
         _sz=$(du -sm "$_pip_cache" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$_pip_cache"
+        _rm_user_tree "$_pip_cache"
         log_success "Removed pip cache (~/.cache/pip — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi
@@ -888,7 +895,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     _pipx_cache="${_user_home}/.cache/pipx"
     if [[ -d "$_pipx_cache" ]]; then
         _sz=$(du -sm "$_pipx_cache" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$_pipx_cache"
+        _rm_user_tree "$_pipx_cache"
         log_success "Removed pipx cache (~/.cache/pipx — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi
@@ -908,7 +915,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     _gem_cache="${_user_home}/.gem/specs"
     if [[ -d "$_gem_cache" ]]; then
         _sz=$(du -sm "$_gem_cache" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$_gem_cache"
+        _rm_user_tree "$_gem_cache"
         log_success "Removed gem cache (~/.gem/specs — ${_sz}MB)"
         _deep_freed=$((_deep_freed + _sz))
     fi

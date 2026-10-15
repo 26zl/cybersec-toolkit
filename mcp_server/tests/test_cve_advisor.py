@@ -43,6 +43,7 @@ class TestResolveCve:
         assert resolve_cve("not-a-cve") is None
         assert resolve_cve("") is None
         assert resolve_cve("CVE-21-1") is None  # too few digits
+        assert resolve_cve("CVE-٢٠٢١-٤٤٢٢٨") is None  # non-ASCII digits
 
     @pytest.mark.parametrize("partner,primary", list(ID_ALIASES.items()))
     def test_chain_partner_ids_resolve_to_primary(self, partner: str, primary: str) -> None:

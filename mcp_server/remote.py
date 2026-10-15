@@ -370,6 +370,13 @@ async def execute_remote_command(
                 "command": remote_cmd_str,
                 "remote": True,
             }
+        except asyncio.CancelledError:
+            # Client cancelled or disconnected: do not leave the local ssh client running.
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            raise
 
         # Sanitize at the source (ANSI + prompt-injection markers): check_installed
         # and manage_remote_hosts call this directly, not via execute_tool_remote, so

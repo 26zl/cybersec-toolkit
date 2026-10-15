@@ -260,10 +260,12 @@ class TestScriptRateLimiter:
         with (
             patch("mcp_server.security._allow_scripts", return_value=True),
             _patch_exec(proc),
+            patch("mcp_server.security.log_script_execution") as mock_log,
         ):
             result = await execute_script("print('ok')")
         assert result["exit_code"] == -1
         assert "Rate limit" in result["stderr"]
+        mock_log.assert_not_called()
 
 
 class TestScriptAuditLogging:

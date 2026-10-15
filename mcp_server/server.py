@@ -11,8 +11,7 @@ from typing import Literal, Optional
 
 from fastmcp import FastMCP
 
-# Ensure the parent directory is on sys.path so both `python -m mcp_server.server`
-# (relative imports) and `fastmcp dev inspector server.py` (direct imports) work.
+# The absolute `mcp_server.*` imports must also resolve when FastMCP loads this file by path.
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
@@ -76,8 +75,7 @@ def _server_version() -> str:
     """The toolkit's own version for the MCP handshake.
 
     Reads the installed package metadata, then falls back to the repo VERSION
-    file, so the handshake reports the project version (1.3.0) rather than
-    FastMCP's.
+    file, so the handshake reports the project version rather than FastMCP's.
     """
     try:
         from importlib.metadata import PackageNotFoundError, version
@@ -123,12 +121,10 @@ log_server_start()
 # reason about a tool before calling it; they do not change server-side policy.
 #   _ADVISORY       — reads local registry data only.
 #   _ADVISORY_LIVE  — reads, but may reach a remote host (openWorld).
-#   _STATEFUL       — changes state or can act on a target, non-destructively.
 #   _CONFIG         — overwrites or deletes stored configuration (destructive).
 #   _EXEC           — runs governed tools/scripts that may modify a target (destructive).
 _ADVISORY = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}
 _ADVISORY_LIVE = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True}
-_STATEFUL = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True}
 _CONFIG = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}
 _EXEC = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}
 
@@ -242,8 +238,8 @@ def list_tools(
 async def check_installed(tool_name: str, host: Optional[str] = None) -> dict:
     """Check if a specific cybersecurity tool is installed on the system.
 
-    Uses multiple detection strategies: .versions tracking, PATH lookup,
-    pipx binary name fallback, /opt directory check, and docker image check.
+    Uses six detection strategies: .versions tracking, PATH lookup, binary-name
+    fallback, git clone directory, run_script venv, and docker image.
 
     When host is provided, checks installation on the remote host via SSH
     using 'which <binary>'.

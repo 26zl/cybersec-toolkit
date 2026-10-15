@@ -163,8 +163,8 @@ git submodule update --init --recursive
 ```
 
 Test files: `tests/common.bats`, `tests/install.bats`, `tests/installers.bats`,
-`tests/modules.bats`, `tests/profiles.bats`, `tests/scripts.bats`. Helper at
-`tests/test_helper.bash`.
+`tests/modules.bats`, `tests/profiles.bats`, `tests/runtime_launcher.bats`,
+`tests/scripts.bats`. Helper at `tests/test_helper.bash`.
 
 ### MCP Server
 
@@ -173,7 +173,7 @@ Test files: `tests/common.bats`, `tests/install.bats`, `tests/installers.bats`,
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Interactive MCP Inspector (web UI)
-cd mcp_server && uv run fastmcp dev server.py
+cd mcp_server && uv run fastmcp dev inspector server.py
 
 # CLI entrypoint
 cd mcp_server && uv run cybersec-mcp
@@ -296,12 +296,13 @@ Separate Python package (FastMCP), managed with `uv` (`pyproject.toml`), not pip
 
 Key design decisions: absolute imports with `sys.path` fixup (no relative imports);
 `TOOL_ALIASES` in `advisor_utils.py` maps friendly names to registry names; Termux-aware
-(omits `sudo` when `TERMUX_VERSION` is set); all subprocess code uses
+(omits `sudo` when `TERMUX_VERSION` is set); all tool-execution subprocess code uses
 `create_subprocess_exec` (no `shell=True`) and `_bounded_communicate()` (not
 `communicate()`).
 
 **Hardcoded data that must stay in sync with bash sources** (validated by
-`scripts/validate_mcp_sync.py`): `tools_db.py` `PIPX_BIN_NAMES` ↔ `scripts/verify.sh`;
+`scripts/validate_mcp_sync.py`, which also covers the C2, CVE, binary-name, toolchain
+and audit-stream constants), including: `tools_db.py` `PIPX_BIN_NAMES` ↔ `scripts/verify.sh`;
 `tools_db.py` `MODULE_DESCRIPTIONS` ↔ `lib/common.sh`; `tools_db.py` `DOCKER_IMAGES` ↔
 `lib/installers.sh` `ALL_DOCKER_IMAGES`; `profiles.py` `PROFILES` ↔ `profiles/*.conf`;
 `advisor_utils.py` `TOOL_ALIASES` targets ↔ `tools_config.json` tool names.
@@ -364,7 +365,7 @@ skills route through: `finding-triage` (finding → disposition), `security-comm
 
 ## Important Patterns
 
-- All scripts use `set -uo pipefail` (not `-e` — individual tool failures don't abort)
+- Installer and lifecycle scripts use `set -uo pipefail` (not `-e` — individual tool failures don't abort)
 - Empty arrays guarded with `[[ ${#arr[@]} -gt 0 ]]` before expansion (bash `set -u`)
 - Version tracking: `.versions` file with `tool|method|version|timestamp` format
 - Non-system binaries end up in `/usr/local/bin` (Linux) or `$PREFIX/bin` (Termux)

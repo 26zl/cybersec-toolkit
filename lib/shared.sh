@@ -120,10 +120,7 @@ _validate_curl_pipe() {
 GO_MIN_VERSION="${GO_MIN_VERSION:-1.21}"
 
 ensure_go() {
-    # Honor --skip-go: don't bootstrap the Go SDK if Go tool installs are skipped.
-    # Gated on SKIP_GO (not SKIP_SOURCE) — the Go SDK is a checksum-verified binary
-    # tarball, not a build-from-source/curl-pipe install. install_single_tool does
-    # NOT set SKIP_GO, so single Go-tool installs still bootstrap correctly.
+    # Gated on SKIP_GO, not SKIP_SOURCE: the SDK is a checksum-verified tarball, not a curl-pipe install.
     if [[ "${SKIP_GO:-false}" == "true" ]]; then
         log_warn "Skipping Go SDK bootstrap (--skip-go)"
         return 1
@@ -148,6 +145,22 @@ ensure_go() {
     # binary-release Termux guards.
     if [[ "$PKG_MANAGER" == "pkg" ]]; then
         log_warn "Skipping go.dev download on Termux (glibc binaries are not bionic-compatible) — install Go via: pkg install golang"
+        return 1
+    fi
+
+    # Never replace a /usr/local/go this toolkit did not install (remove.sh honours the same marker).
+    local _go_root="/usr/local/go"
+    if [[ -d "$_go_root" && ! -f "$_go_root/.cybersec-toolkit-installed" ]]; then
+        local _own_ver
+        _own_ver=$("$_go_root/bin/go" version 2>/dev/null | awk '{print $3}' | sed 's/^go//')
+        if [[ -n "$_own_ver" ]] && _version_ge "$_own_ver" "$GO_MIN_VERSION"; then
+            export GOROOT="$_go_root"
+            export PATH="$GOROOT/bin:$PATH"
+            _BUILDER_CMD_CACHE=()
+            log_success "Go $_own_ver available in $GOROOT (>= $GO_MIN_VERSION)"
+            return 0
+        fi
+        log_error "$_go_root holds a Go SDK this toolkit did not install (${_own_ver:-unknown version}); upgrade or move it, then re-run"
         return 1
     fi
 
@@ -384,11 +397,7 @@ ensure_cargo_binstall() {
     return 1
 }
 
-# ensure_uv — install uv (astral.sh) for the invoking user.
-# Used by tools that need uv-managed venvs (theHarvester, MCP server, etc.).
-# Installs to $SUDO_USER's ~/.local/bin (not /root/.local/bin) so the user's
-# WSL session can find the binary at $HOME/.local/bin/uv. Same `_as_builder`
-# pattern as ensure_cargo above.
+# ensure_uv — install uv for the invoking user via _as_builder (their ~/.local/bin, not root's).
 ensure_uv() {
     if command_exists uv; then
         log_debug "uv already available"
@@ -426,13 +435,8 @@ ensure_uv() {
     return 1
 }
 
-# ensure_python_modern — install a modern Python (>= PYTHON_MIN_VERSION) alongside
-# the system Python when needed.  Some pipx tools have transitive dependencies
-# requiring Python 3.11+ (e.g., sectools>=1.5.0).  Follows the ensure_go()/
-# ensure_cargo() pattern: detect, install if needed, export PIPX_DEFAULT_PYTHON.
-#
-# Fully dynamic — version range derived from PYTHON_MIN_VERSION / PYTHON_TRY_MAX.
-# Package names constructed per-distro from the version number (no hardcoded names).
+# ensure_python_modern — install Python >= PYTHON_MIN_VERSION beside the system one when needed
+# (some pipx tools need 3.11+); exports PIPX_DEFAULT_PYTHON.
 PYTHON_MIN_VERSION="${PYTHON_MIN_VERSION:-3.11}"
 PYTHON_TRY_MAX="${PYTHON_TRY_MAX:-3.13}"
 
@@ -531,7 +535,6 @@ NODE_MIN_VERSION="${NODE_MIN_VERSION:-22}"
 
 ensure_node() {
     if command_exists node && command_exists npm; then
-        # Check if installed Node.js meets minimum version
         local cur_major
         cur_major=$(node --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)
         if [[ -n "$cur_major" ]] && [[ "$cur_major" -ge "$NODE_MIN_VERSION" ]]; then

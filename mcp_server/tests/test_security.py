@@ -1177,7 +1177,6 @@ class TestRateLimiter:
     @pytest.mark.asyncio
     async def test_concurrent_limit(self) -> None:
         limiter = _RateLimiter(max_concurrent=2, max_per_minute=100)
-        # Acquire 2 semaphore slots
         await limiter._semaphore.acquire()
         await limiter._semaphore.acquire()
         # Third should not be acquirable immediately
