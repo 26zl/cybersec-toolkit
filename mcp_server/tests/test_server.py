@@ -64,11 +64,19 @@ async def test_run_script_reports_unsandboxed_security_scope(monkeypatch: pytest
         "_execute_script",
         AsyncMock(return_value={"exit_code": 0, "stdout": "ok", "stderr": "", "truncated": False}),
     )
+    monkeypatch.setenv("CYBERSEC_SANDBOX_MODE", "local")
     with patch("mcp_server.server.log_tool_result"):
         result = await server.run_script("print('ok')")
 
     assert result["security_scope"]["sandboxed"] is False
     assert result["security_scope"]["external_network_policy_enforced"] is False
+
+    # Only a launcher-verified VM counts; the unsafe runtime opt-in is labelled unsafe:<runtime>.
+    for mode, sandboxed in (("kata", True), ("unsafe:runc", False)):
+        monkeypatch.setenv("CYBERSEC_SANDBOX_MODE", mode)
+        with patch("mcp_server.server.log_tool_result"):
+            result = await server.run_script("print('ok')")
+        assert result["security_scope"]["sandboxed"] is sandboxed
 
 
 # C2 gating reflected in MCP output (uses the real registry)

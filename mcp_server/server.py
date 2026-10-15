@@ -1007,8 +1007,9 @@ async def run_script(
     Writes the code to a temporary file, executes it via python3/bash,
     and returns stdout/stderr. The temp file is deleted after execution.
     Requires CYBERSEC_MCP_ALLOW_SCRIPTS=1. This is an explicit full-code
-    execution opt-in: scripts are not OS-sandboxed and are not constrained by
-    CYBERSEC_MCP_ALLOW_EXTERNAL.
+    execution opt-in: scripts run outside the MCP policy layer and are not
+    constrained by CYBERSEC_MCP_ALLOW_EXTERNAL. Their only OS isolation is the
+    launch mode: the Kata VM by default, none in --local mode.
 
     Use cases:
         - Pwntools exploits: buffer overflows, ROP chains, format strings
@@ -1051,10 +1052,12 @@ async def run_script(
         venv=venv,
     )
     result["security_scope"] = {
-        "sandboxed": False,
+        # "kata" is only recorded when the launcher verified a VM boundary.
+        "sandboxed": os.environ.get("CYBERSEC_SANDBOX_MODE") == "kata",
         "external_network_policy_enforced": False,
         "warning": (
-            "run_script executes with the MCP server user's filesystem and network permissions. "
+            "run_script executes with the MCP server user's filesystem and network permissions "
+            "(inside the Kata VM when sandboxed, on the host otherwise). "
             "Review code and scope before enabling CYBERSEC_MCP_ALLOW_SCRIPTS."
         ),
     }

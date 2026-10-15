@@ -515,6 +515,16 @@ class TestAuditCrashSafety:
         assert any(r.get("tool") == "nolock" for r in records)
 
 
+class TestRecordSize:
+    def test_huge_free_form_values_are_capped_with_a_digest(self, tmp_path: Path) -> None:
+        huge = "\U0001f600" * 90_000
+        log_execution(tool_name="curl", args=f"-H 'X: {huge}' 10.0.0.5", exit_code=0, command="curl")
+        line = (tmp_path / "audit.log").read_text().splitlines()[-1]
+        assert len(line) < 64 * 1024
+        record = json.loads(line)
+        assert "TRUNCATED" in record["args"] and "sha256=" in record["args"]
+
+
 class TestRedactScriptCode:
     """Script content is redacted before being written to the audit log."""
 

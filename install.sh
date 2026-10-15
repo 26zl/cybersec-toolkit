@@ -715,6 +715,8 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     check_root
     _acquire_run_lock
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
+    # A session of its own, so `--rollback last` undoes this run, not the previous one.
+    _init_session "tool" "${SELECTED_TOOLS[*]}"
     # Fresh containers and hosts may have empty package indexes (the Docker image
     # deletes them). Refresh lazily on the first package install, so an unknown
     # tool name fails before any refresh — on Arch that refresh is a full -Syu.
@@ -725,9 +727,11 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
         install_single_tool "$tool" || TOOL_FAILED=$((TOOL_FAILED + 1))
     done
     if [[ "$TOOL_FAILED" -gt 0 ]]; then
+        _finalize_session "partial"
         log_warn "$TOOL_FAILED tool(s) failed"
         exit 1
     fi
+    _finalize_session "complete"
     exit 0
 fi
 
@@ -827,6 +831,7 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
             chmod 644 "$_tmp_ver" 2>/dev/null || true
             mv -f "$_tmp_ver" "$SCRIPT_DIR/.versions"
         }
+        _unlink_if_symlink "${SCRIPT_DIR}/.versions.lock"
         if command -v flock &>/dev/null; then
             ( flock -x 200; _rb_versions_write ) 200>"${SCRIPT_DIR}/.versions.lock"
         else
@@ -850,12 +855,16 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
         # was binstalled rather than compiled. What matters is whether the artifact
         # is actually gone afterwards.
         _rb_ok=true
+        # Metasploit is recorded under the package manager but removed as snap or metasploit-framework.
+        [[ "$rb_tool" == "metasploit" ]] && rb_method=snap
         case "$rb_method" in
             pipx)
                 if command_exists pipx; then
-                    pipx uninstall "$rb_tool" >> "$LOG_FILE" 2>&1 || true
+                    # NetExec is recorded under its binary name; pipx knows the package.
+                    rb_pkg="$rb_tool"; [[ "$rb_tool" == "nxc" ]] && rb_pkg="netexec"
+                    pipx uninstall "$rb_pkg" >> "$LOG_FILE" 2>&1 || true
                     pipx list --short 2>/dev/null |
-                        awk -v t="$rb_tool" 'tolower($1)==tolower(t){f=1} END{exit !f}' && _rb_ok=false
+                        awk -v t="$rb_pkg" 'tolower($1)==tolower(t){f=1} END{exit !f}' && _rb_ok=false
                 fi
                 ;;
             go)
@@ -863,12 +872,14 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                 [[ -e "$GOBIN/$rb_tool" ]] && _rb_ok=false
                 ;;
             cargo)
-                if command_exists cargo; then
-                    cargo uninstall "$rb_tool" >> "$LOG_FILE" 2>&1 || true
+                # Crates live in the builder's CARGO_HOME and may install a differently named binary.
+                rb_bin="${_CARGO_BIN_NAMES[$rb_tool]:-$rb_tool}"
+                if rb_cargo=$(_builder_cmd cargo 2>/dev/null) && [[ -n "$rb_cargo" ]]; then
+                    _as_builder "$rb_cargo uninstall '$(_escape_single_quoted "$rb_tool")'" >> "$LOG_FILE" 2>&1 || true
                 fi
-                rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
-                rm -f "$(_builder_home)/.cargo/bin/$rb_tool" 2>/dev/null || true
-                { [[ -e "$PIPX_BIN_DIR/$rb_tool" ]] || [[ -e "$(_builder_home)/.cargo/bin/$rb_tool" ]]; } && _rb_ok=false
+                rm -f "$PIPX_BIN_DIR/$rb_bin" 2>/dev/null || true
+                rm -f "$(_builder_home)/.cargo/bin/$rb_bin" 2>/dev/null || true
+                { [[ -e "$PIPX_BIN_DIR/$rb_bin" ]] || [[ -e "$(_builder_home)/.cargo/bin/$rb_bin" ]]; } && _rb_ok=false
                 ;;
             gem)
                 if command_exists gem; then
@@ -885,8 +896,13 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                 [[ -e "$rb_dir" ]] && _rb_ok=false
                 ;;
             binary)
-                rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
-                [[ -e "$PIPX_BIN_DIR/$rb_tool" ]] && _rb_ok=false
+                remove_binary_release "$rb_tool"
+                case $? in
+                    0) ;;
+                    1) rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
+                       [[ -e "$PIPX_BIN_DIR/$rb_tool" ]] && _rb_ok=false ;;
+                    *) _rb_ok=false ;;
+                esac
                 ;;
             source)
                 remove_source_build "$rb_tool" || _rb_ok=false
@@ -902,22 +918,24 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
                 esac
                 ;;
             snap)
-                if remove_snap_tool "$rb_tool"; then
-                    :
-                else
-                    log_info "  Skipping $rb_tool (snap — no known uninstaller)"
-                    rb_skipped=$((rb_skipped + 1))
-                    continue
-                fi
+                remove_snap_tool "$rb_tool"
+                case $? in
+                    0) ;;
+                    2) _rb_ok=false ;;
+                    *) log_info "  Skipping $rb_tool (snap — no known uninstaller)"
+                       rb_skipped=$((rb_skipped + 1))
+                       continue ;;
+                esac
                 ;;
             docker)
-                if remove_docker_tool "$rb_tool"; then
-                    :
-                else
-                    log_info "  Skipping $rb_tool (docker — image not in registry)"
-                    rb_skipped=$((rb_skipped + 1))
-                    continue
-                fi
+                remove_docker_tool "$rb_tool"
+                case $? in
+                    0) ;;
+                    2) _rb_ok=false ;;
+                    *) log_info "  Skipping $rb_tool (docker — image not in registry)"
+                       rb_skipped=$((rb_skipped + 1))
+                       continue ;;
+                esac
                 ;;
             apt|dnf|pacman|zypper|pkg)
                 # Schema 1 manifests predate provenance tracking: every package in
@@ -1502,6 +1520,10 @@ install_modules() {
         # registered for cleanup only there, and subshells never run the EXIT trap.
         _setup_curl_opts
         _gh_api_cache_init
+        # Node may need NodeSource + apt; doing it here keeps it out of the binary batch's dpkg runs.
+        if [[ ${#_ALL_NPM[@]} -gt 0 ]]; then
+            ensure_node >> "$LOG_FILE" 2>&1 || true
+        fi
 
         # On interrupt (Ctrl+C / kill) stop the whole job tree — per-tool installers are
         # grandchildren that ignore SIGINT — and reap it before cleanup removes the

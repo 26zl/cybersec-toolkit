@@ -119,6 +119,7 @@ _signal_job() {
 _acquire_run_lock() {
     command -v flock &>/dev/null || return 0
     local _lock="${SCRIPT_DIR}/.versions.run.lock"
+    _unlink_if_symlink "$_lock"
     { exec {_RUN_LOCK_FD}>>"$_lock"; } 2>/dev/null || return 0
     if ! flock -n "$_RUN_LOCK_FD"; then
         log_error "Another install, update or remove run is active (lock: $_lock) — wait for it to finish"
@@ -200,6 +201,7 @@ track_session() {
     local tool="$1" method="$2" action="$3"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    _unlink_if_symlink "${_SESSION_FILE}.lock"
     if command -v flock &>/dev/null; then
         (
             flock -x 200
@@ -279,8 +281,16 @@ disable_debug_trace() {
 # _init_log_file — safely initialize a log file with disk-full fallback.
 # Sets LOG_FILE to /dev/null if the file cannot be created.
 # Usage: _init_log_file "/path/to/logfile.log"
+# _unlink_if_symlink — the checkout is user-owned: a link planted at a fixed path root
+# writes to (log, lock files) would redirect that write onto any file.
+_unlink_if_symlink() {
+    [[ -L "$1" ]] && rm -f -- "$1"
+    return 0
+}
+
 _init_log_file() {
     local path="$1"
+    _unlink_if_symlink "$path"
     if : > "$path" 2>/dev/null; then
         chmod 600 "$path" 2>/dev/null || true
         LOG_FILE="$path"
@@ -757,7 +767,28 @@ pkg_install() {
     esac
 }
 
+# _pkg_remove_dependents — installed packages, beyond the requested ones, that removing "$@"
+# would take along. pacman -Rns already refuses such a removal; Termux pkg has no simulation.
+_pkg_remove_dependents() {
+    case "$PKG_MANAGER" in
+        apt)
+            apt-get -s remove "$@" 2>/dev/null | awk '/^Remv /{sub(/:.*/, "", $2); print $2}' \
+                | grep -vxF -f <(printf '%s\n' "${@%%:*}") || true
+            ;;
+        dnf|zypper)
+            command -v rpm &>/dev/null || return 0
+            rpm -e --test "$@" 2>&1 | sed -n 's/.* is needed by (installed) \(.*\)$/\1/p'
+            ;;
+    esac
+}
+
 pkg_remove() {
+    local _dependents
+    _dependents=$(_pkg_remove_dependents "$@" | sort -u | tr '\n' ' ')
+    if [[ -n "${_dependents// /}" ]]; then
+        log_error "Not removing $*: installed packages depend on it ($_dependents)"
+        return 1
+    fi
     case "$PKG_MANAGER" in
         apt)
             # autoremove can cascade into distro-owned packages, so it is opt-in
@@ -877,6 +908,16 @@ check_root() {
 #   - SUDO_USER is not set (direct root login / Docker)
 #   - Running on Termux (no root)
 # Usage: _as_builder "go install github.com/foo/bar@latest"
+# _strict_refuses_root_bootstrap — in strict mode (--production/--require-checksums), an
+# unsigned curl-pipe bootstrap must not run when _as_builder would run it as root.
+_strict_refuses_root_bootstrap() {
+    [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]] || return 1
+    [[ "$PKG_MANAGER" != "pkg" ]] || return 1
+    [[ -z "${SUDO_USER:-}" || "${SUDO_USER:-}" == "root" ]] || return 1
+    log_warn "Skipping $1 in strict mode: its installer script is unsigned and would run as root (run via sudo from a normal user, or install $1 yourself)"
+    return 0
+}
+
 _as_builder() {
     if [[ "$PKG_MANAGER" == "pkg" ]] || [[ -z "${SUDO_USER:-}" ]] || [[ "${SUDO_USER:-}" == "root" ]]; then
         bash -c "$1"; return $?

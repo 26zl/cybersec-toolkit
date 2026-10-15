@@ -10,6 +10,8 @@ Requirements:
     pip install flask sqlalchemy
 """
 
+import hmac
+import os
 import uuid
 import re
 from datetime import datetime, timezone
@@ -22,7 +24,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 app = Flask(__name__)
 
 DATABASE_URL = "sqlite:///scim_users.db"
-SCIM_BEARER_TOKEN = "replace-with-secure-token"
+SCIM_BEARER_TOKEN = os.environ.get("SCIM_BEARER_TOKEN", "")
 SCIM_BASE_URL = "https://your-app.example.com/scim/v2"
 
 engine = create_engine(DATABASE_URL)
@@ -138,7 +140,7 @@ def require_auth(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer ") or auth[7:] != SCIM_BEARER_TOKEN:
+        if not SCIM_BEARER_TOKEN or not auth.startswith("Bearer ") or not hmac.compare_digest(auth[7:], SCIM_BEARER_TOKEN):
             return scim_error("Authentication required", 401)
         return f(*args, **kwargs)
     return wrapper

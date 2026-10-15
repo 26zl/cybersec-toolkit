@@ -18,7 +18,7 @@ repository. For full project guidance, see [`AGENTS.md`](../AGENTS.md).
 ```bash
 make check          # core local checks (CI also runs security, CodeQL, integration)
 make lint           # shellcheck + ruff + markdownlint
-make test           # bats + pytest
+make test           # bats + pytest + sandbox tests
 make validate       # all data-consistency validators
 ```
 

@@ -28,7 +28,7 @@ sudo apt install shellcheck
 
 # MCP server (requires uv)
 curl -LsSf https://astral.sh/uv/install.sh | sh
-cd mcp_server && uv sync --group dev
+make setup    # submodules, locked MCP deps, sandbox deps, skill mirror
 ```
 
 ## Adding a tool
@@ -52,7 +52,7 @@ cd mcp_server && uv sync --group dev
    {"name": "toolname", "method": "apt|pipx|go|cargo|gem|git|binary|source|docker|npm|snap|special", "module": "web", "url": "https://github.com/owner/repo"}
    ```
 
-3. Validate locally (all three must be clean):
+3. Validate locally (the first must be clean; run the others when their data changed):
 
    ```bash
    python3 scripts/validate_tools_config.py --strict   # 0 errors, 0 warnings
@@ -90,29 +90,12 @@ Prefer installation methods in this order: `apt > pipx > go > cargo > binary > g
 ## Running tests
 
 ```bash
-# Shell (must pass before push)
-shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh
-for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done
-
-# Bats unit tests
-./tests/bats/bin/bats tests/*.bats
-
-# Python validators (gate CI)
-python3 scripts/validate_tools_config.py --strict
-python3 scripts/validate_mcp_sync.py
-python3 scripts/validate_distro_compat.py
-python3 scripts/validate_claude_skills.py
-python3 scripts/audit_skill_dependencies.py --check-declared
-
-# MCP server + repo-root helper scripts
-cd mcp_server
-uv run --group dev ruff check .
-uv run --group dev ruff format --check .
-uv run --group dev ruff check ../scripts/        # repo-root helpers (root ruff.toml)
-uv run --group dev pytest tests/ -q
+make check    # lint (shellcheck, bash -n, ruff, markdownlint), every validator, bats, pytest, sandbox tests
 ```
 
-CI runs all of these on every PR. Red in draft is fine; green before merge is required.
+`make check` is the validation checklist; `make help` lists the narrower targets. The
+sandbox tests need `npm --prefix sandbox ci --ignore-scripts` once (`make setup` does it).
+CI runs the same checks on every PR, plus security scanning, CodeQL and integration. Red in draft is fine; green before merge is required.
 
 ## MCP server changes
 
@@ -126,8 +109,9 @@ Hardcoded data in the MCP server must stay in sync with the bash source:
 | `tools_db.py` → `MODULE_DESCRIPTIONS` | `lib/common.sh` `MODULE_DESCRIPTIONS` |
 | `tools_db.py` → `DOCKER_IMAGES` | `lib/installers.sh` `ALL_DOCKER_IMAGES` |
 | `profiles.py` → `PROFILES` | `profiles/*.conf` |
+| `advisor_utils.py` → `TOOL_ALIASES` targets | `tools_config.json` tool names |
 
-`scripts/validate_mcp_sync.py` enforces this.
+`scripts/validate_mcp_sync.py` enforces these and the other mirrored constants (C2, CVE, binary-name, toolchain and audit-stream data).
 
 ## Pull requests
 

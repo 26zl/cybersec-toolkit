@@ -44,6 +44,16 @@ test('resolveHostAuditPath follows the same precedence as audit.py', () => {
   assert.equal(resolveHostAuditPath({ HOME: '/home/a', CYBERSEC_MCP_AUDIT_LOG: '~/audit.log' }), '/home/a/audit.log');
 });
 
+test('splitAuditLines rejects an oversized audit line and drops its remainder', () => {
+  const huge = `${AUDIT_STREAM_PREFIX}${'x'.repeat(1024 * 1024 + 10)}`;
+  const first = splitAuditLines('', huge);
+  assert.deepEqual(first.audit, []);
+  assert.match(first.passthrough[0], /^Rejected oversized audit record/);
+  const second = splitAuditLines(first.rest, 'tail of the record\nStarting MCP server\n');
+  assert.deepEqual(second.passthrough, ['Starting MCP server']);
+  assert.equal(second.rest, '');
+});
+
 test('splitAuditLines separates mirrored records from ordinary stderr', () => {
   const split = splitAuditLines('', `${AUDIT_STREAM_PREFIX}${record('guided_assessment')}\nStarting MCP server\n`);
   assert.deepEqual(split.audit, [record('guided_assessment')]);

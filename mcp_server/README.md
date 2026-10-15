@@ -19,7 +19,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `list_profiles` | List all 14 installation profiles with tool counts and details |
 | `run_tool` | Execute an installed tool safely (argument sanitization + network policy). Supports remote execution via `host` parameter |
 | `run_pipeline` | Pipe tools together safely without shell (e.g. `strings binary \| grep flag`). Max 10 steps; reports every step's exit status |
-| `run_script` | Explicit, unsandboxed Python/Bash execution opt-in. Optional `venv` parameter for per-script interpreter selection |
+| `run_script` | Explicit Python/Bash execution opt-in outside the policy layer (isolated only by the Kata VM in sandbox mode). Optional `venv` parameter for per-script interpreter selection |
 | `manage_remote_hosts` | Add, remove, list, and test SSH remote hosts for remote tool execution |
 
 ### Result shapes
@@ -276,7 +276,7 @@ Once connected via an MCP client:
 - **Profile contents**: `get_profile_tools("ctf")` — the current profile tools grouped by module
 - **CTF suggestions**: `suggest_for_ctf("web")` — curated tools with descriptions and install status
 - **Bug bounty suggestions**: `suggest_for_bounty("web_app")` — tools, methodology, common vulns, scope warning
-- **Guided assessment**: `guided_assessment("http://10.0.0.1", target_type="web_app")` — default `companion` classifies the target/finding, returns `classification`, `triage_gate`, `recommended_skills`, and `reporting_next_steps`, checks install status, selects tools from all modules/profiles, and recommends the next command; add `mode="autonomous", authorization_confirmed=true` only for the opt-in solver loop, whose helper scripts still require the separate unsandboxed `run_script` capability
+- **Guided assessment**: `guided_assessment("http://10.0.0.1", target_type="web_app")` — default `companion` classifies the target/finding, returns `classification`, `triage_gate`, `recommended_skills`, and `reporting_next_steps`, checks install status, selects tools from all modules/profiles, and recommends the next command; add `mode="autonomous", authorization_confirmed=true` only for the opt-in solver loop, whose helper scripts still require the separate, policy-free `run_script` capability
 - **CVE lookup**: `get_cve_info("log4shell")` — curated skills/tools/modules + live NVD/KEV/EPSS lookup commands (also accepts ids like `CVE-2021-44228`)
 - **What to install**: `recommend_install("I want to do CTF competitions")` — recommends ctf profile
 - **Just a few tools**: `recommend_install("I need nmap and sqlmap")` — recommends individual modules

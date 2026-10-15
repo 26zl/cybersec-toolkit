@@ -12,6 +12,7 @@ What changed and why?
 
 ## Validation
 
+- [ ] `make check` (runs everything below that applies)
 - [ ] `python3 scripts/validate_tools_config.py --strict`
 - [ ] `python3 scripts/validate_mcp_sync.py` if MCP-shared data changed
 - [ ] `python3 scripts/validate_distro_compat.py` if distro mappings changed
@@ -24,7 +25,7 @@ What changed and why?
 - [ ] `shellcheck --severity=warning install.sh lib/*.sh modules/*.sh scripts/*.sh`
 - [ ] `for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do bash -n "$f"; done`
 - [ ] `./tests/bats/bin/bats tests/*.bats`
-- [ ] `cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . && uv run --group dev ruff check ../scripts/ && uv run --group dev pytest tests/ -q`
+- [ ] `cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . && uv run --group dev ruff check ../scripts/ ../lib/ && uv run --group dev pytest tests/ -q`
 - [ ] `node --test sandbox/*.test.mjs` if `sandbox/` changed (after `npm --prefix sandbox ci --ignore-scripts`)
 
 ## Notes

@@ -424,9 +424,28 @@ def chain_link(previous: str, line: str) -> str:
     return hashlib.sha256(f"{previous}{line}".encode()).hexdigest()
 
 
+# Free-form values (tool args, error text) are capped so a record stays far below the
+# sandbox sink's 1 MiB line limit; the SHA256 still correlates the full value.
+_MAX_FIELD_CHARS = 8192
+
+
+def _bound_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        if len(value) <= _MAX_FIELD_CHARS:
+            return value
+        digest = hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
+        return f"{value[:1024]} [TRUNCATED {len(value)} chars sha256={digest}]"
+    if isinstance(value, dict):
+        return {key: _bound_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_bound_strings(item) for item in value]
+    return value
+
+
 def _log(level: int, entry: dict[str, Any]) -> None:
     """Write a JSON audit entry; fail only when required audit setup fails."""
     global _chain_prev, _chain_seq
+    entry = _bound_strings(entry)
     try:
         # The lock keeps the emitted order and the chain order identical.
         with _chain_lock:

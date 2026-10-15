@@ -17,6 +17,7 @@ class TestProjectRootDiscovery:
         workdir = tmp_tools_config / "mcp_server"
         workdir.mkdir()
         monkeypatch.chdir(workdir)
+        monkeypatch.delenv("CYBERSEC_INSTALLER_ROOT", raising=False)
         assert _discover_project_root() == tmp_tools_config.resolve()
 
 

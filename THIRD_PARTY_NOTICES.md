@@ -25,8 +25,8 @@ table's counts against the live inventory.
 | [Transilience community tools](https://github.com/transilienceai/communitytools) | 4 | MIT | [`LICENSE-Transilience-MIT`](.claude/skills/LICENSE-Transilience-MIT) | high-level workflows; commit `58b552ef35029814b95fa53924790e3546a4a146` |
 | [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 | MIT | [`LICENSE-Karpathy-MIT`](.claude/skills/LICENSE-Karpathy-MIT) (upstream declares MIT in README/frontmatter but ships no LICENSE file) | coding-agent workflow; commit `2c606141936f1eeef17fa3043a72095b4765b9c2` |
 
-Local change to Apache-2.0 material: `implementing-scim-provisioning-with-okta/scripts/process.py`
-runs its Flask server with `debug=False` (upstream enables the Werkzeug debugger on all interfaces).
+Changes to the Apache-2.0 skills (§4(b)): repository copies may add `source`/`license` frontmatter and a full per-skill `LICENSE`; content changes are listed here. Local change to Apache-2.0 material: `implementing-scim-provisioning-with-okta/scripts/process.py`
+runs its Flask server with `debug=False` (upstream enables the Werkzeug debugger on all interfaces) and reads its bearer token from `SCIM_BEARER_TOKEN` instead of a literal, rejecting every request when it is unset.
 
 The remaining 31 skills (project developer skills, cross-skill coordinators,
 coverage-gap anchors, CTF methodology, and the `bounty-*` methodology set) are

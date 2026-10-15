@@ -192,7 +192,18 @@ test('buildRunArgs forwards the MCP policy environment into the VM', () => {
   });
   // Names only; values must not appear on the docker command line.
   assert.deepEqual(flagValues(args, '--env'), ['CYBERSEC_MCP_ALLOW_EXTERNAL', 'CYBERSEC_MCP_ALLOW_SCRIPTS']);
-  assert.equal(args.some((a) => a.includes('=0')), false);
+  assert.equal(args.some((a) => /^CYBERSEC_MCP_[A-Z_]+=/.test(a)), false);
+});
+
+test('buildRunArgs makes the root read-only and caps every writable path', () => {
+  const tmpfs = (options) => flagValues(buildRunArgs({ name: 'sbx', runtime: 'kata', options, env: {} }), '--tmpfs');
+  const args = buildRunArgs({ name: 'sbx', runtime: 'kata', options: baseOptions(), env: {} });
+  assert.ok(args.includes('--read-only'));
+  const scratch = tmpfs(baseOptions({ scratchSize: '256m' }));
+  assert.deepEqual(scratch.map((s) => s.split(':')[0]), ['/tmp', '/var/tmp', '/home/toolkit', '/var/log/cybersec', WORKTREE_PATH]);
+  assert.ok(scratch.every((s) => s.includes('size=256m') && s.includes('uid=10001')));
+  // A mounted workspace is the operator's directory, not scratch space.
+  assert.equal(tmpfs(baseOptions({ workspace: '/srv/case' })).some((s) => s.startsWith(`${WORKTREE_PATH}:`)), false);
 });
 
 test('buildRunArgs adds requested capabilities and a network only when set', () => {

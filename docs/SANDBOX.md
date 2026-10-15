@@ -169,6 +169,7 @@ to `kata()`.
 | `CYBERSEC_SANDBOX_MEMORY` | `2g` | Guest memory. |
 | `CYBERSEC_SANDBOX_CPUS` | `2` | Guest vCPUs. |
 | `CYBERSEC_SANDBOX_PIDS_LIMIT` | `512` | Process limit inside the guest. |
+| `CYBERSEC_SANDBOX_SCRATCH_SIZE` | `1g` | Size cap of each writable tmpfs (`/tmp`, `/var/tmp`, `$HOME`, the audit log dir, and `/workspace` when none is mounted). |
 | `CYBERSEC_SANDBOX_USER` | `10001:10001` | Guest uid:gid; must match the image. |
 | `CYBERSEC_SANDBOX_CAP_ADD` | none | Comma-separated capabilities, e.g. `NET_RAW` for `nmap -sS`. |
 
@@ -319,7 +320,8 @@ python3 scripts/verify_audit_chain.py path/to.log   # or a specific one
 The chain survives the trip out of the VM because the host appends the guest's
 lines verbatim; the tag is checked on the way in and not stored. Three limits are
 inherent and worth stating: records written before this existed are reported as
-unchained rather than flagged, dropping a chain's last records or a whole chain
+unchained rather than flagged (one without chain fields after chained records is
+flagged), dropping a chain's last records or a whole chain
 leaves no link to break, and because the chain is unkeyed, someone who can
 read and write the host log can still append a well-formed record. The session
 key keeps forged records from arriving through the VM; the chain detects
@@ -328,7 +330,9 @@ modification and deletion, not forgery by someone with access to the file.
 ## Hardening applied to each VM
 
 `--cap-drop ALL`, `--security-opt no-new-privileges`, a non-root guest user
-(`10001:10001`), `--pids-limit`, and memory/CPU caps. The image drops setuid
+(`10001:10001`), `--pids-limit`, memory/CPU caps, and a read-only root filesystem
+whose only writable paths are size-capped tmpfs mounts, so an unpacked sample
+cannot fill the host's Docker storage. The image drops setuid
 and setgid bits and ships no `sudo`. The container is created with `--rm` and
 labelled `cybersec-toolkit.sandbox=kata`.
 

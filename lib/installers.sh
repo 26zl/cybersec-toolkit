@@ -339,6 +339,8 @@ install_pipx_batch() {
         local _symlinked=0
         for _f in "$_fallback_dir"/*; do
             [[ -f "$_f" ]] && [[ -x "$_f" ]] || continue
+            # Only pipx entry points (links into a pipx venv), not unrelated user binaries.
+            [[ -L "$_f" && "$(readlink -f "$_f")" == */pipx/venvs/* ]] || continue
             local _bname
             _bname=$(basename "$_f")
             if [[ ! -f "$PIPX_BIN_DIR/$_bname" ]] && [[ ! -L "$PIPX_BIN_DIR/$_bname" ]]; then
@@ -1713,7 +1715,7 @@ for asset in data.get('assets', []):
             if [[ "$mode" == "install" ]]; then
                 if command_exists "$binary"; then
                     log_success "Installed: $binary (.deb)"
-                    track_version "$binary" "binary" "${release_tag:-latest}"
+                    _record_release_version "$binary" "$dest_dir" "${release_tag:-latest}"
                 else
                     log_error "Install failed: $binary (.deb) — binary not found after dpkg"
                     return 1
@@ -1744,7 +1746,7 @@ WRAPPER
             rm -rf "$tmp_dir"
             if [[ "$mode" == "install" ]]; then
                 log_success "Installed: $binary (.jar)"
-                track_version "$binary" "binary" "${release_tag:-latest}"
+                _record_release_version "$binary" "$dest_dir" "${release_tag:-latest}"
             fi
             return 0 ;;
         *)
@@ -1956,6 +1958,7 @@ track_version() {
     }
 
     # Use flock when available (parallel safety), fall back to mkdir-based lock
+    _unlink_if_symlink "${version_file}.lock"
     if command -v flock &>/dev/null; then
         (
             flock -x 200
@@ -2300,6 +2303,7 @@ remove_npm_packages() {
     for pkg in "${pkgs[@]}"; do
         if npm ls -g --depth=0 "$pkg" >/dev/null 2>&1; then
             if npm uninstall -g "$pkg" >> "$LOG_FILE" 2>&1; then
+                REMOVED_TOOLS+=("$pkg")
                 removed=$((removed + 1))
             else
                 log_warn "Failed to remove npm package: $pkg"
@@ -2621,8 +2625,8 @@ install_zap() {
 }
 
 # Uninstall helpers for non-batch install methods, shared by install.sh --rollback and
-# scripts/remove.sh. Idempotent. They return 1 for a name they do not know;
-# remove_snap_tool also returns 1 when the snap survives, remove_special_tool returns 2.
+# scripts/remove.sh. Idempotent. They return 0 when the tool is gone, 1 for a name
+# they do not know, and 2 when something survived.
 
 # remove_source_build — build_from_source builds in place under $GITHUB_TOOL_DIR.
 remove_source_build() {
@@ -2658,10 +2662,10 @@ remove_snap_tool() {
     esac
     if snap_available && snap list "$snap_name" &>/dev/null; then
         snap remove "$snap_name" >> "$LOG_FILE" 2>&1 || true
-        snap list "$snap_name" &>/dev/null && return 1
+        snap list "$snap_name" &>/dev/null && return 2
     elif [[ "$snap_name" == "metasploit-framework" ]] && pkg_is_installed "$snap_name"; then
         pkg_remove "$snap_name" >> "$LOG_FILE" 2>&1 || true
-        pkg_is_installed "$snap_name" && return 1
+        pkg_is_installed "$snap_name" && return 2
     fi
     return 0
 }
@@ -2721,10 +2725,71 @@ remove_docker_tool() {
         IFS='|' read -r img lbl <<< "$entry"
         if [[ "$lbl" == "$label" || "${img%%:*}" == "$label" ]]; then
             docker rmi "$img" >> "$LOG_FILE" 2>&1 || true
+            docker image inspect "$img" >/dev/null 2>&1 && return 2
             return 0
         fi
     done
     return 1
+}
+
+# _record_release_version — a parallel child hands its version to the parent through the
+# vtag sidecar, as ordinary binaries do; recording it directly would leave the parent
+# writing "latest" over it and a second manifest row.
+_record_release_version() {
+    if [[ "${_PARALLEL_CHILD:-false}" == "true" ]]; then
+        echo "$3" > "$2/.$1.vtag"
+    else
+        track_version "$1" "binary" "$3"
+    fi
+}
+
+# _binary_release_entry — print the BINARY_RELEASES_* entry (repo|binary|pattern|dest|...) for a binary.
+_binary_release_entry() {
+    local _arr _entry _bin
+    for _arr in ${!BINARY_RELEASES_@}; do
+        declare -n _bre_ref="$_arr"
+        for _entry in "${_bre_ref[@]}"; do
+            IFS='|' read -r _ _bin _ <<< "$_entry"
+            if [[ "$_bin" == "$1" ]]; then
+                printf '%s\n' "$_entry"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# remove_binary_release — undo download_github_release: the PATH entry and version
+# sidecar, a .deb package, and a release directory no other recorded release shares.
+remove_binary_release() {
+    local binary="$1" entry pattern dest _arr _entry _other _odest _path _pkg
+    entry=$(_binary_release_entry "$binary") || return 1
+    IFS='|' read -r _ _ pattern dest _ <<< "$entry"
+    if [[ "$pattern" == *deb* ]] && command_exists dpkg; then
+        _path=$(command -v "$binary" 2>/dev/null) || _path="/usr/bin/$binary"
+        _pkg=$(dpkg -S "$_path" 2>/dev/null | head -1 | cut -d: -f1)
+        if [[ -n "$_pkg" ]]; then
+            maybe_sudo dpkg -r "$_pkg" >> "$LOG_FILE" 2>&1 || true
+            dpkg -s "$_pkg" 2>/dev/null | grep -q '^Status:.* installed' && return 2
+        fi
+    fi
+    rm -f "$PIPX_BIN_DIR/$binary" "$PIPX_BIN_DIR/.$binary.vtag" 2>/dev/null || true
+    [[ -e "$PIPX_BIN_DIR/$binary" ]] && return 2
+    if [[ -n "${dest:-}" && "$dest" != "$PIPX_BIN_DIR" && -d "$dest" ]]; then
+        for _arr in ${!BINARY_RELEASES_@}; do
+            declare -n _rbr_ref="$_arr"
+            for _entry in "${_rbr_ref[@]}"; do
+                IFS='|' read -r _ _other _ _odest _ <<< "$_entry"
+                # A shared directory (cybersec-jars) stays while another recorded release uses it.
+                if [[ "$_other" != "$binary" && "$_odest" == "$dest" ]] && _version_known "$_other"; then
+                    return 0
+                fi
+            done
+        done
+        rm -rf "${dest:?}" 2>/dev/null || true
+        [[ -e "$dest" ]] && return 2
+    fi
+    return 0
 }
 
 # Provenance filter

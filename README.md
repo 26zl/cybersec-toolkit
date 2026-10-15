@@ -78,7 +78,7 @@ What runs, and what is gated:
 - __Tool output goes to your model provider.__ Whatever a tool prints — scan results, page content, and any credential or personal data it finds on a target — is returned to the AI client and sent to the model it uses. By default only the local audit log is redacted; set `CYBERSEC_MCP_REDACT_OUTPUT=1` to also redact credential-shaped strings from what the client receives. If an engagement's rules forbid sharing client data with a third party, drive the server from a local model (see [AI clients](docs/AI_CLIENTS.md)).
 - __Repository hooks run automatically.__ Opening this repository in Claude Code runs the tracked hooks in `.claude/settings.json`: `scripts/agent-guard.sh` at session start and before each Bash command. They only emit routing context or a deny decision, make no network calls, and fail open; set `CYBERSEC_AGENT_GUARD=0` to disable them.
 - __Audit trail without leaks.__ Actions are logged as JSON lines to an owner-only (`0600`), rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never stored, only their SHA256 and length, and credential-shaped strings are redacted from tool arguments. A sandboxed server mirrors its records to the same host log, and records are hash-chained, so an edited or deleted record inside a chain shows up in `make audit-verify` ([limits](docs/SANDBOX.md#tamper-evidence)).
-- __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds, `go`/`cargo`/`gem` builds, and project setup steps (theHarvester, pwndbg); binary releases are SHA256-verified when checksums are published. `pipx` installs (into the shared `/opt/pipx`) and global `npm` installs still run as root, so their build and install scripts execute with root privileges — see the [supply chain model](#supply-chain-model).
+- __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds, `go`/`cargo`/`gem` builds, and project setup steps (theHarvester, pwndbg); binary releases are SHA256-verified when checksums are published. `pipx` installs (into the shared `/opt/pipx`) and global `npm` installs still run as root, so their build and install scripts execute with root privileges — see the [supply chain model](#supply-chain-model). Go binaries are copied into `/usr/local/bin` as root-owned files; cargo, gem, cloned-repo, source-build, patator and Foundry tools are exposed there as links or wrappers into trees the invoking user owns, so that user can change what those commands run.
 - __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam` and `full` profiles set it); the MCP layer reflects this and never auto-runs them.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [supply chain model](#supply-chain-model), and the [disclaimer](#disclaimer).
 
@@ -145,6 +145,8 @@ sudo ./install.sh -v                    # Verbose / debug output
 ```
 
 `--tool` installs only the named tool, without the full dependency setup. Dry-run time estimates count install entries across methods, so they can exceed the de-duplicated 670+ tool registry.
+
+Tuning variables (environment): `GITHUB_TOOL_DIR` (default `/opt`, `~/tools` on Termux) sets where repositories are cloned; `GO_MIN_VERSION` (default `1.21`), `PYTHON_MIN_VERSION` / `PYTHON_TRY_MAX` (`3.11` / `3.13`) and `NODE_MIN_VERSION` (`22`) set the runtime versions the bootstrap accepts; `ZYPPER_REFRESH_ATTEMPTS` / `ZYPPER_REFRESH_DELAY` (`3` / `15` seconds, doubling) tune openSUSE metadata retries; `CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS=1` trusts new repository keys on refresh (see the [supply chain model](#supply-chain-model)); `PKG_AUTOREMOVE=1` adds `apt-get autoremove` to package removal (`remove.sh --remove-deps` sets it).
 
 </details>
 
@@ -343,7 +345,7 @@ The installer downloads and runs code from the internet. On Linux it runs as roo
 - __System packages__: signed by your distro's repositories (apt, dnf, pacman, zypper, pkg). On openSUSE, `zypper refresh` trusts new or rotated repository keys automatically only when `CI=true` or `CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS=1` is set.
 - __pipx/Go/Cargo/Gem/npm__: fetched from their registries without signature verification; pipx tools are isolated in venvs. Go, Cargo, and Gem builds run as the invoking user; pipx and global npm installs run as root, so package build backends and npm lifecycle scripts execute with root privileges.
 - __Binary releases__: SHA256-verified using upstream checksum files, exact-asset GitHub release digests, or reviewed repository/tag/asset checksums in `lib/release_checksums.tsv`. A mismatch always fails; `--require-checksums` or `--production` also fails when verification data is unavailable. These checks establish download integrity, not independent publisher authentication. `--fast` skips ordinary release verification and cannot be combined with strict flags; private runtime dependencies always require verification.
-- __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
+- __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified; in strict mode (`--production`/`--require-checksums`) they are skipped when they would run as root, i.e. without `sudo` from a normal user. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
 - __Go SDK__: SHA256-verified against go.dev when the API is reachable; strict mode fails if it is not.
 - __Git repos__: cloned at HEAD; the repo's own `setup.py` is never run. `requirements.txt` installs into a per-repo venv as the invoking user, where dependency sdists can still build, and outside strict mode (`--production` or `--require-checksums`) a failed pinned install is retried with `==` relaxed to `>=`.
 - __Build from source__: runs `make` as the invoking user, not root. Review what you build.
@@ -379,24 +381,9 @@ The server gives MCP-capable clients read access to the 670+ tool registry, inst
 
 ### Supported clients
 
-| Client | Integration | Status |
-| ------ | ----------- | ------ |
-| Claude Code | `.mcp.json` (tracked) + `.claude/skills/` | Native configuration included |
-| Claude Desktop | `claude_desktop_config.json` | Configuration example documented |
-| OpenCode | `opencode.jsonc` (tracked) + `.agents/skills/` | Live tested |
-| Codex | `.codex/config.toml` (tracked) | Native configuration included |
-| Gemini CLI | `GEMINI.md` + `.gemini/settings.json` (tracked) | Native configuration included |
-| GitHub Copilot | `.mcp.json` (CLI) + `.github/copilot-instructions.md` | CLI live tested; VS Code documented |
-| Hermes Agent | User `~/.hermes/config.yaml` | Live tested |
-| OpenClaw | User `~/.openclaw/openclaw.json` + `.agents/skills/` | Live tested |
-| DeepSeek Harness (dsh) | `$DSH_HOME/settings.yaml` + `.agents/skills/` | Configuration example documented |
-| Cursor / Cline / Goose | Client MCP settings + Agent Skills | Compatible through MCP; skills supported |
-| Continue | Client MCP settings; rules/prompts for context | Compatible through MCP |
-| LM Studio (>=0.3.17) | `mcp.json`; manual or MCP-provided context | Compatible through MCP |
-| Ollama | MCP host in front of it | Compatible through an MCP host |
-| Open WebUI | MCP-to-OpenAPI bridge | Compatible through an MCP host or bridge |
+Claude Code, Codex, Gemini CLI and OpenCode pick up the tracked configs automatically; Claude Desktop, GitHub Copilot, Hermes Agent, OpenClaw, DeepSeek Harness, Cursor, Cline, Goose, Continue and LM Studio connect through their own MCP settings, and Ollama or Open WebUI through an MCP host or bridge. The support matrix, with skill discovery and test status per client, lives in [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md).
 
-Per-client setup is in [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md); coordinating several agents across any MCP client is in [`docs/ORCHESTRATION.md`](docs/ORCHESTRATION.md).
+Coordinating several agents across any MCP client is in [`docs/ORCHESTRATION.md`](docs/ORCHESTRATION.md).
 
 The server is published to the [official MCP Registry](https://registry.modelcontextprotocol.io/) as `io.github.26zl/cybersec-toolkit` and listed on Glama:
 

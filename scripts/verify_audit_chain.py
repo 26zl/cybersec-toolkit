@@ -62,6 +62,10 @@ def verify(lines: list[str]) -> tuple[list[str], dict[str, int]]:
         seq = record.get("seq")
         if not isinstance(chain, str) or not isinstance(prev, str) or not isinstance(seq, int):
             stats["unchained"] += 1
+            # Records predating the chain come first; once chaining has started, the
+            # server always writes chain fields, so a bare record here was inserted.
+            if expected:
+                problems.append(f"line {number}: record without chain fields after chained records")
             continue
 
         if chain not in expected:
@@ -108,6 +112,10 @@ def selftest() -> int:
     assert verify(legacy) == ([], {"records": 1, "chains": 0, "unchained": 1, "anchors": 0}), (
         "selftest: pre-chain records must be reported, not flagged"
     )
+    assert verify(legacy + good)[0] == [], "selftest: pre-chain records ahead of a chain were flagged"
+
+    inserted = [good[0], json.dumps({"event": "tool_call", "tool": "guided_assessment"}), good[1]]
+    assert verify(inserted)[0], "selftest: an unchained record inserted mid-chain was not caught"
 
     print("selftest OK")
     return 0

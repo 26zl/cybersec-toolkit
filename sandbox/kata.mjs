@@ -34,6 +34,9 @@ const DEFAULT_USER = '10001:10001';
 const DEFAULT_MEMORY = '2g';
 const DEFAULT_CPUS = '2';
 const DEFAULT_PIDS_LIMIT = '512';
+const DEFAULT_SCRATCH_SIZE = '1g';
+// The only guest paths left writable once the root filesystem is read-only.
+const SCRATCH_PATHS = ['/tmp', '/var/tmp', '/home/toolkit', '/var/log/cybersec'];
 const MAX_TAIL_CHARS = 64 * 1024;
 // Runtime names Kata registers under, most specific first.
 const KATA_RUNTIME_PREFERENCE = ['kata', 'kata-runtime', 'kata-qemu', 'io.containerd.kata.v2'];
@@ -125,6 +128,7 @@ export const resolveOptions = (options = {}, env = process.env) => {
     memory: pick(options.memory, 'CYBERSEC_SANDBOX_MEMORY') ?? DEFAULT_MEMORY,
     cpus: pick(options.cpus, 'CYBERSEC_SANDBOX_CPUS') ?? DEFAULT_CPUS,
     pidsLimit: pick(options.pidsLimit, 'CYBERSEC_SANDBOX_PIDS_LIMIT') ?? DEFAULT_PIDS_LIMIT,
+    scratchSize: pick(options.scratchSize, 'CYBERSEC_SANDBOX_SCRATCH_SIZE') ?? DEFAULT_SCRATCH_SIZE,
     capAdd: parseCapabilities(options.capAdd ?? env.CYBERSEC_SANDBOX_CAP_ADD),
     allowUnsafeRuntime: (pick(options.allowUnsafeRuntime, 'CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME') ?? '0') === '1',
     workspace,
@@ -188,7 +192,17 @@ export const buildRunArgs = ({ name, runtime, options, env }) => {
     options.memory,
     '--cpus',
     options.cpus,
+    // A read-only root plus size-capped tmpfs keeps an unpacked sample from filling
+    // the host's Docker storage; under Kata the tmpfs also lives in guest memory.
+    '--read-only',
   ];
+
+  const [uid, gid = uid] = options.user.split(':');
+  const scratch = [...SCRATCH_PATHS, ...(options.workspace ? [] : [WORKTREE_PATH])];
+  for (const path of scratch) {
+    const mode = path.endsWith('tmp') ? '1777' : '0700';
+    args.push('--tmpfs', `${path}:rw,nosuid,nodev,size=${options.scratchSize},uid=${uid},gid=${gid},mode=${mode}`);
+  }
 
   for (const cap of options.capAdd) args.push('--cap-add', cap);
   if (options.network) args.push('--network', options.network);

@@ -319,8 +319,11 @@ decrypt_files_legacy() {
         local relative_path="${file#"$source_dir"/}"
         local decrypted_path="$target_dir/${relative_path%.enc}"
         ensure_dir "$(dirname "$decrypted_path")"
+        # The earliest legacy format used openssl's default PBKDF2 iteration count.
         if openssl enc -aes-256-cbc -d -pbkdf2 -iter "$PBKDF2_ITERATIONS" \
-            -in "$file" -out "$decrypted_path" -pass file:"$_PASS_FILE" 2>/dev/null; then
+            -in "$file" -out "$decrypted_path" -pass file:"$_PASS_FILE" 2>/dev/null \
+            || openssl enc -aes-256-cbc -d -pbkdf2 \
+                -in "$file" -out "$decrypted_path" -pass file:"$_PASS_FILE" 2>/dev/null; then
             log_success "Decrypted: $relative_path"
         else
             log_warn "Failed to decrypt: $relative_path"
@@ -350,7 +353,6 @@ backup_configs() {
         "web|$HOME_DIR/.wpscan"
         "web|$HOME_DIR/.mitmproxy"
         # Recon / OSINT (recon-ng keeps keys and workspaces in ~/.recon-ng)
-        "osint|$GITHUB_TOOL_DIR/recon-ng"
         "osint|$HOME_DIR/.recon-ng"
         "osint|$HOME_DIR/.config/subfinder"
         "osint|$HOME_DIR/.config/amass"
@@ -362,7 +364,6 @@ backup_configs() {
         "cracking|$HOME_DIR/.hashcat"
         # Exploitation
         "exploitation|$HOME_DIR/.msf4"
-        "exploitation|$GITHUB_TOOL_DIR/exploitdb"
         # Enterprise / AD
         "enterprise|$HOME_DIR/.netexec"
         # Forensics
@@ -458,7 +459,7 @@ _restore_tree() {
 # Restore config directories to their fixed destinations.
 restore_configs() {
     local src="$1"
-    local failed=0
+    local failed=0 restored=0
 
     # Home dir configs — restore to $HOME_DIR/
     local -a _home_dirs=(
@@ -470,8 +471,8 @@ restore_configs() {
     for dir in "${_home_dirs[@]}"; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
-        if [[ -n "$found" ]] && ! _restore_tree "$found" "$HOME_DIR" "$dir"; then
-            failed=$((failed + 1))
+        if [[ -n "$found" ]]; then
+            if _restore_tree "$found" "$HOME_DIR" "$dir"; then restored=$((restored + 1)); else failed=$((failed + 1)); fi
         fi
     done
 
@@ -480,20 +481,15 @@ restore_configs() {
     for dir in "${_xdg_dirs[@]}"; do
         local found
         found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
-        if [[ -n "$found" ]] \
-            && ! _restore_tree "$found" "$HOME_DIR/.config" ".config/$dir"; then
-            failed=$((failed + 1))
+        if [[ -n "$found" ]]; then
+            if _restore_tree "$found" "$HOME_DIR/.config" ".config/$dir"; then restored=$((restored + 1)); else failed=$((failed + 1)); fi
         fi
     done
 
-    # /opt tool dirs — restore to $GITHUB_TOOL_DIR/
-    for dir in exploitdb recon-ng; do
-        local found
-        found=$(find "$src" -maxdepth 2 -name "$dir" -type d 2>/dev/null | head -1)
-        if [[ -n "$found" ]] && ! _restore_tree "$found" "$GITHUB_TOOL_DIR" "$dir"; then
-            failed=$((failed + 1))
-        fi
-    done
+    if [[ "$restored" -eq 0 && "$failed" -eq 0 ]]; then
+        log_error "No configuration directories found in the backup"
+        return 1
+    fi
     [[ "$failed" -eq 0 ]]
 }
 
@@ -538,6 +534,24 @@ cmd_backup() {
     _chown_backup_dir || exit 1
 
     log_success "Backup created: $BACKUP_PATH.tar.gz.enc"
+    _prune_backups
+}
+
+# _prune_backups — with BACKUP_KEEP=N, keep only the N newest encrypted backups.
+_prune_backups() {
+    [[ "${BACKUP_KEEP:-}" =~ ^[1-9][0-9]*$ ]] || return 0
+    local -a archives=()
+    local f
+    # Names embed a sortable timestamp (backup_YYYYMMDD_HHMMSS), so glob order is age order.
+    for f in "$BACKUP_DIR"/backup_*.tar.gz.enc; do
+        [[ -f "$f" ]] && archives+=("$f")
+    done
+    local excess=$(( ${#archives[@]} - BACKUP_KEEP ))
+    local i
+    for (( i = 0; i < excess; i++ )); do
+        rm -f -- "${archives[$i]}" "${archives[$i]}.hmac"
+        log_info "Pruned old backup: ${archives[$i]}"
+    done
 }
 
 cmd_restore() {
@@ -670,7 +684,10 @@ cmd_restore() {
     if [[ "$backup_file" != *.tar.gz.enc ]] \
         && find "$restore_root" -name "*.enc" -print -quit 2>/dev/null | grep -q .; then
         log_info "Legacy encrypted files found — decrypting..."
-        decrypt_files_legacy "$restore_root" "$restore_root" || {
+        # Legacy archives kept them under encrypted/<category>/<dir>/, mirroring the plain layout.
+        _legacy_src="$restore_root"
+        [[ -d "$restore_root/encrypted" ]] && _legacy_src="$restore_root/encrypted"
+        decrypt_files_legacy "$_legacy_src" "$restore_root" || {
             log_error "One or more legacy files could not be decrypted"
             exit 1
         }
@@ -862,6 +879,12 @@ cmd_schedule() {
         exit 1
     fi
 
+    if [[ "${BACKUP_KEEP:-}" =~ ^[1-9][0-9]*$ ]] && ! printf "export BACKUP_KEEP='%s'\n" "$BACKUP_KEEP" >> "$tmp_env"; then
+        log_error "Failed to write BACKUP_KEEP to $tmp_env"
+        rm -f "$tmp_env"
+        exit 1
+    fi
+
     if ! chmod 600 "$tmp_env"; then
         log_error "Failed to set mode 600 on $tmp_env"
         rm -f "$tmp_env"
@@ -951,6 +974,8 @@ Environment:
   BACKUP_ALLOW_UNVERIFIED=1        Restore a legacy backup that has no integrity
                                    tag (.tar.gz, or .enc without .hmac); refused
                                    otherwise
+  BACKUP_KEEP=N                    Keep only the N newest backups after each backup
+                                   (set it when scheduling to apply to cron runs)
 
 Options:
   -h, --help                       Show this help and exit

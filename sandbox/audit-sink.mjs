@@ -63,8 +63,16 @@ export const resolveHostAuditPath = (env = process.env) => {
  * Returns the trailing partial line so the caller can prepend it to the next
  * chunk; records are only recognised at the start of a complete line.
  */
+// Carried as `rest` after an oversized audit line: drop input until the next newline.
+const DISCARD = '\u0000';
+
 export const splitAuditLines = (buffered, chunk) => {
-  const text = buffered + chunk;
+  let text = buffered + chunk;
+  if (text.startsWith(DISCARD)) {
+    const newline = text.indexOf('\n');
+    if (newline < 0) return { audit: [], passthrough: [], rest: DISCARD };
+    text = text.slice(newline + 1);
+  }
   const parts = text.split('\n');
   let rest = parts.pop() ?? '';
   const audit = [];
@@ -76,8 +84,14 @@ export const splitAuditLines = (buffered, chunk) => {
   }
 
   if (rest.length > MAX_PARTIAL_LINE) {
-    passthrough.push(rest);
-    rest = '';
+    if (rest.startsWith(AUDIT_STREAM_PREFIX)) {
+      // Never authenticated, so never persisted; say so instead of dumping it raw.
+      passthrough.push(`Rejected oversized audit record (over ${MAX_PARTIAL_LINE} chars)`);
+      rest = DISCARD;
+    } else {
+      passthrough.push(rest);
+      rest = '';
+    }
   }
 
   return { audit, passthrough, rest };

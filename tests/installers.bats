@@ -1019,6 +1019,40 @@ _run_c2_aggregation() {
     assert_failure
 }
 
+@test "uninstall helpers report a survivor with status 2" {
+    source_libs --installers debian apt
+    snap_available() { return 0; }
+    snap() { [[ "$1" == list ]]; }
+    docker() { [[ "$1" != rmi ]]; }
+    command_exists() { [[ "$1" == docker ]]; }
+
+    run remove_snap_tool zaproxy
+    assert_failure 2
+    run remove_docker_tool SpiderFoot
+    assert_failure 2
+}
+
+@test "remove_binary_release removes a dedicated release dir but keeps a shared one" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin" VERSION_FILE="$TEST_TMPDIR/.versions"
+    mkdir -p "$PIPX_BIN_DIR" "$TEST_TMPDIR/own" "$TEST_TMPDIR/shared"
+    BINARY_RELEASES_FIXTURE=(
+        "o/own|owntool|x|$TEST_TMPDIR/own"
+        "o/a|jar-a|x|$TEST_TMPDIR/shared"
+        "o/b|jar-b|x|$TEST_TMPDIR/shared"
+    )
+    touch "$PIPX_BIN_DIR/owntool" "$PIPX_BIN_DIR/jar-a"
+    printf 'jar-b|binary|v1|2026-01-01 00:00:00\n' > "$VERSION_FILE"
+
+    run remove_binary_release owntool
+    assert_success
+    [[ ! -e "$TEST_TMPDIR/own" && ! -e "$PIPX_BIN_DIR/owntool" ]]
+    run remove_binary_release jar-a
+    assert_success
+    [[ -d "$TEST_TMPDIR/shared" && ! -e "$PIPX_BIN_DIR/jar-a" ]]
+}
+
 @test "remove_special_tool removes the patator venv and its symlink" {
     source_libs --installers debian apt
     make_test_tmpdir

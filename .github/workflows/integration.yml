@@ -252,6 +252,21 @@ jobs:
       - name: Verify the audit chain that crossed the boundary
         run: python3 scripts/verify_audit_chain.py "$RUNNER_TEMP/sandbox-audit.log"
 
+      # A runtime named like Kata that shares the host kernel must be refused by the boot-id check.
+      - name: Refuse a runc runtime registered under a Kata name
+        run: |
+          conf=/etc/docker/daemon.json
+          [[ -s "$conf" ]] || echo '{}' | sudo tee "$conf" >/dev/null
+          jq '.runtimes["kata-impostor"] = {"path": "runc"}' "$conf" | sudo tee "$conf.new" >/dev/null
+          sudo mv "$conf.new" "$conf"
+          sudo systemctl restart docker
+          if CYBERSEC_SANDBOX_RUNTIME=kata-impostor CYBERSEC_SMOKE_TIMEOUT_MS=60000 \
+              node sandbox/smoke.mjs > "$RUNNER_TEMP/impostor.log" 2>&1; then
+            echo "::error::a runc runtime named like Kata was accepted"
+            exit 1
+          fi
+          grep -q "identical boot id" "$RUNNER_TEMP/impostor.log"
+
       - name: Scan image for fixable HIGH/CRITICAL vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

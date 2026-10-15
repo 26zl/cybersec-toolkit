@@ -474,8 +474,8 @@ if should_verify "misc"; then
     check_git_repos "${MISC_GIT_NAMES[@]}"
     log_info "Misc (Binary):"
     check_binary_array BINARY_RELEASES_MISC
-    # C2 + phishing frameworks install only with INCLUDE_C2 (redteam/full), so check them only when INCLUDE_C2=true to avoid false "missing" elsewhere.
-    if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+    # C2 + phishing frameworks install only with INCLUDE_C2 (redteam/full); --installed-only checks the tracked ones regardless.
+    if [[ "${INCLUDE_C2:-false}" == "true" || "$INSTALLED_ONLY" == "true" ]]; then
         log_info "Misc (C2/Phishing — INCLUDE_C2):"
         check_git_repos "${MISC_C2_GIT_NAMES[@]}"
         check_binary_array BINARY_RELEASES_MISC_C2
@@ -487,9 +487,12 @@ if should_verify "networking"; then
     log_info "━━━━━ Module: networking ━━━━━"
     log_info "Networking (packages):"
     check_cmds nmap masscan netdiscover tcpdump hping3 arp-scan \
-        socat p0f ncrack sslscan nbtscan onesixtyone snmpwalk smbclient \
+        socat p0f ncrack sslscan nbtscan onesixtyone smbclient \
         iodine zmap tshark sslsplit \
-        tor proxychains4 macchanger whois traceroute nc
+        tor proxychains4 macchanger whois traceroute
+    # Packages whose command differs from the package name, which is what .versions records.
+    check_package_binary snmp snmpwalk || true
+    check_package_binary netcat-openbsd nc || true
     log_info "Networking (pipx):"
     check_pipx_arr "${NET_PIPX[@]}"
     log_info "Networking (Go):"
@@ -576,8 +579,8 @@ if should_verify "pwn"; then
     check_module_cargo "pwn"
     log_info "Pwn (Git):"
     check_git_repos "${PWN_GIT_NAMES[@]}"
-    # C2 frameworks install only with INCLUDE_C2 (redteam/full), so check them only when INCLUDE_C2=true to avoid false "missing" elsewhere.
-    if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+    # C2 frameworks install only with INCLUDE_C2 (redteam/full); --installed-only checks the tracked ones regardless.
+    if [[ "${INCLUDE_C2:-false}" == "true" || "$INSTALLED_ONLY" == "true" ]]; then
         log_info "Pwn (C2 — INCLUDE_C2):"
         check_git_repos "${PWN_C2_GIT_NAMES[@]}"
     fi
@@ -591,7 +594,8 @@ if should_verify "reversing"; then
     echo ""
     log_info "━━━━━ Module: reversing ━━━━━"
     log_info "RE (packages):"
-    check_cmds checksec gdb binwalk ltrace strace hexedit upx valgrind
+    check_cmds checksec gdb binwalk ltrace strace hexedit valgrind
+    check_package_binary upx-ucl upx || true
     if [[ "$_is_kali" == "true" ]]; then
         check_cmd "r2" || true
         check_cmd "rizin" || true
@@ -612,7 +616,11 @@ if should_verify "forensics"; then
     echo ""
     log_info "━━━━━ Module: forensics ━━━━━"
     log_info "Forensics (packages):"
-    check_cmds autopsy mmls foremost scalpel dc3dd dcfldd testdisk exiftool pdftotext zbarimg
+    check_cmds autopsy foremost scalpel dc3dd dcfldd testdisk
+    check_package_binary sleuthkit mmls || true
+    check_package_binary libimage-exiftool-perl exiftool || true
+    check_package_binary poppler-utils pdftotext || true
+    check_package_binary zbar-tools zbarimg || true
     [[ "$_is_kali" == "true" ]] && { check_cmd "bulk_extractor" || true; }
     log_info "Forensics (pipx):"
     check_pipx_arr "${FORENSICS_PIPX[@]}"
@@ -745,10 +753,12 @@ if should_verify "blueteam"; then
     echo ""
     log_info "━━━━━ Module: blueteam ━━━━━"
     log_info "Blue Team (packages):"
-    check_cmds suricata fail2ban-client aide ufw lynis rkhunter chkrootkit yara clamscan
+    check_cmds suricata aide ufw lynis rkhunter chkrootkit yara
+    check_package_binary fail2ban fail2ban-client || true
+    check_package_binary clamav clamscan || true
     if [[ "$IS_WSL" != "true" ]]; then
-        check_cmd "auditctl" || true
-        check_cmd "apparmor_parser" || true
+        check_package_binary auditd auditctl || true
+        check_package_binary apparmor-utils apparmor_parser || true
     fi
     log_info "Blue Team (pipx):"
     check_pipx_arr "${BLUETEAM_PIPX[@]}"

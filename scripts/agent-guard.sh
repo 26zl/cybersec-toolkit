@@ -80,8 +80,18 @@ import re
 import shlex
 import sys
 
-SKIP = {"sudo", "env", "exec", "time", "nohup", "maybe_sudo"}
-TAKES_ARG = {"sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"}, "env": {"-u", "-C"}}
+SKIP = {"sudo", "env", "exec", "time", "nohup", "maybe_sudo", "nice", "ionice", "stdbuf", "xargs", "timeout", "setsid"}
+TAKES_ARG = {
+    "sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"},
+    "env": {"-u", "-C"},
+    "nice": {"-n"},
+    "ionice": {"-c", "-n", "-p"},
+    "stdbuf": {"-i", "-o", "-e"},
+    "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "xargs": {"-n", "-I", "-P", "-d", "-a", "-L", "-s", "-E"},
+}
+SHELLS = {"bash", "sh", "dash", "zsh"}
+DURATION = re.compile(r"\d+(\.\d+)?[smhd]?")
 OPS = set(";&|()\n")
 HEREDOC = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 ASSIGN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
@@ -114,11 +124,20 @@ def command_words(text):
     lex.whitespace = " \t\r"
     lex.whitespace_split = True
     lex.commenters = ""
-    words, expect, wrapper, skip_next = [], True, None, False
+    words, expect, wrapper, skip_next, shell_c = [], True, None, False, None
     for tok in lex:
         if tok and set(tok) <= OPS:
-            expect, wrapper, skip_next = True, None, False
+            expect, wrapper, skip_next, shell_c = True, None, False, None
             continue
+        # `bash -c '<script>'`: the script is a command line of its own.
+        if shell_c == "arg":
+            words.extend(command_words(tok))
+            shell_c = None
+            continue
+        if shell_c == "shell" and tok == "-c":
+            shell_c = "arg"
+            continue
+        shell_c = None
         # Command substitution runs even inside double quotes.
         for m in SUBST.finditer(tok):
             words.extend(command_words(m.group(1) if m.group(1) is not None else m.group(2)))
@@ -141,8 +160,13 @@ def command_words(text):
             continue
         if ASSIGN.match(tok):
             continue
-        words.append(tok.rsplit("/", 1)[-1])
+        if wrapper == "timeout" and DURATION.fullmatch(tok):
+            continue
+        word = tok.rsplit("/", 1)[-1]
+        words.append(word)
         expect = False
+        if word in SHELLS:
+            shell_c = "shell"
     return words
 
 
@@ -236,9 +260,14 @@ session-start)
     now=$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')
     # The shared marker serves clients that send no session id. A per-session
     # marker keeps a second concurrent session from resetting this one's window.
-    printf '%s\n' "$now" > "$STATE_DIR/guard-session" 2>/dev/null || true
     sid=$(_session_id "$input")
-    if [[ -n "$sid" ]]; then
+    source=$(_hook_field "$input" .source)
+    # Compaction and resume continue a session; its clearance must survive them.
+    continuing=false
+    [[ -n "$sid" && -f "$STATE_DIR/guard-session.$sid" && ( "$source" == compact || "$source" == resume ) ]] \
+        && continuing=true
+    [[ "$continuing" == true ]] || printf '%s\n' "$now" > "$STATE_DIR/guard-session" 2>/dev/null || true
+    if [[ -n "$sid" && "$continuing" != true ]]; then
         printf '%s\n' "$now" > "$STATE_DIR/guard-session.$sid" 2>/dev/null || true
         find "$STATE_DIR" -maxdepth 1 -name 'guard-session.*' -mtime +7 -delete 2>/dev/null || true
     fi

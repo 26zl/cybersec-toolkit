@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -12,6 +13,11 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - not POSIX (native Windows)
+    fcntl = None  # type: ignore[assignment]
 
 _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
@@ -123,6 +129,17 @@ class RemoteHostConfig:
             _validate_host_entry(name, entry)
         self._hosts = hosts
 
+    @contextlib.contextmanager
+    def _update(self):
+        """Serialize a read-modify-write so concurrent sessions do not drop each other's hosts."""
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._path.with_name(self._path.name + ".lock"), "a", encoding="utf-8") as lock:
+            if fcntl is not None:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            self._load()
+            yield
+            self._save()
+
     def _save(self) -> None:
         """Atomically persist the host table with owner-only permissions."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,8 +206,8 @@ class RemoteHostConfig:
             entry["tool_allowlist"] = list(tool_allowlist)
         _validate_host_entry(name.strip(), entry)
 
-        self._hosts[name.strip()] = entry
-        self._save()
+        with self._update():
+            self._hosts[name.strip()] = entry
         return entry
 
     def check_tool_allowed(self, name: str, tool_name: str) -> bool:
@@ -211,11 +228,9 @@ class RemoteHostConfig:
 
     def remove_host(self, name: str) -> bool:
         """Remove a host by name. Returns True if it existed."""
-        if name in self._hosts:
-            del self._hosts[name]
-            self._save()
-            return True
-        return False
+        with self._update():
+            existed = self._hosts.pop(name, None) is not None
+        return existed
 
     def list_hosts(self) -> dict[str, dict[str, Any]]:
         """Return all hosts."""

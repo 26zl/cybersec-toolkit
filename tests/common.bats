@@ -763,3 +763,42 @@ PY
     [[ ! -e "$TEST_TMPDIR/calls.log" ]]
     [[ -f "$dest/notes.txt" ]]
 }
+
+@test "strict mode refuses an unsigned bootstrap only when it would run as root" {
+    REQUIRE_CHECKSUMS=true PKG_MANAGER=apt SUDO_USER="" run _strict_refuses_root_bootstrap rustup
+    assert_success
+    assert_output --partial "Skipping rustup in strict mode"
+    REQUIRE_CHECKSUMS=true PKG_MANAGER=apt SUDO_USER=builder run _strict_refuses_root_bootstrap rustup
+    assert_failure
+    REQUIRE_CHECKSUMS=false PKG_MANAGER=apt SUDO_USER="" run _strict_refuses_root_bootstrap rustup
+    assert_failure
+}
+
+@test "pkg_remove refuses a removal that would take dependent packages along" {
+    make_test_tmpdir
+    apt-get() {
+        if [[ "$1" == -s ]]; then
+            printf 'Remv nodejs [20.1]\nRemv user-app [1.0]\n'
+        else
+            echo "apt-get $*" >> "$TEST_TMPDIR/calls"
+        fi
+    }
+    maybe_sudo() { env "$@" 2>/dev/null || "$@"; }
+    PKG_MANAGER=apt
+
+    run pkg_remove nodejs
+    assert_failure
+    assert_output --partial "user-app"
+    [[ ! -e "$TEST_TMPDIR/calls" ]]
+}
+
+@test "the install log never writes through a planted symlink" {
+    make_test_tmpdir
+    printf 'keep\n' > "$TEST_TMPDIR/victim"
+    ln -s "$TEST_TMPDIR/victim" "$TEST_TMPDIR/cybersec_install.log"
+
+    _init_log_file "$TEST_TMPDIR/cybersec_install.log"
+
+    [[ "$(cat "$TEST_TMPDIR/victim")" == "keep" ]]
+    [[ ! -L "$TEST_TMPDIR/cybersec_install.log" ]]
+}

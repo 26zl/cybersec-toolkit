@@ -62,6 +62,7 @@ DEEP_CLEAN=false
 AUTO_YES=false
 FORCE_UNRECORDED=false
 REMOVAL_FAILURES=0
+REMOVED_TOOLS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -280,6 +281,7 @@ if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
             _norm="${tool//-/_}"
             if echo "$installed_pipx" | awk -v t="$_norm" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
                 if pipx_remove "$tool" >> "$LOG_FILE" 2>&1; then
+                    REMOVED_TOOLS+=("$tool")
                     log_success "Removed pipx: $tool"
                     pipx_removed=$((pipx_removed + 1))
                 else
@@ -330,6 +332,7 @@ if [[ ${#GEMS_TO_REMOVE[@]} -gt 0 ]] && command_exists gem; then
     for gem_name in "${GEMS_TO_REMOVE[@]}"; do
         if echo "$installed_gems" | awk -v t="$gem_name" '$1==t{f=1} END{exit !f}'; then
             if _as_builder "$(_builder_cmd gem) uninstall -x --force '$(_escape_single_quoted "$gem_name")'" >> "$LOG_FILE" 2>&1; then
+                REMOVED_TOOLS+=("$gem_name")
                 gems_removed=$((gems_removed + 1))
             else
                 log_warn "Failed to remove gem: $gem_name"
@@ -371,6 +374,7 @@ if [[ ${#CARGO_TO_REMOVE[@]} -gt 0 ]]; then
         if [[ -n "$_cargo_cmd" ]]; then
             # cargo uninstalls by CRATE name, not binary name.
             if _as_builder "$_cargo_cmd uninstall '$(_escape_single_quoted "$crate")'" >> "$LOG_FILE" 2>&1; then
+                REMOVED_TOOLS+=("$crate")
                 log_success "Removed cargo: $crate"
             else
                 log_warn "Failed to remove cargo: $crate"
@@ -388,6 +392,7 @@ echo ""
 if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
     # Translate per package so a row under either the Debian name (install.sh --tool)
     # or the distro-specific name (batch installs) counts as installed by this toolkit.
+    _PKGS_REQUESTED=("${PKGS_TO_REMOVE[@]}")
     _pkgs_fixed=()
     _pkgs_untracked=0
     for _pkg_generic in "${PKGS_TO_REMOVE[@]}"; do
@@ -425,6 +430,13 @@ if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
     if [[ ${#PKGS_INSTALLED[@]} -gt 0 ]]; then
         log_info "Removing ${#PKGS_INSTALLED[@]} system packages (${pkgs_skipped} already removed)..."
         if pkg_remove "${PKGS_INSTALLED[@]}" >> "$LOG_FILE" 2>&1; then
+            for pkg in "${PKGS_INSTALLED[@]}"; do
+                pkg_is_installed "$pkg" || REMOVED_TOOLS+=("$pkg")
+            done
+            for _pkg_generic in "${_PKGS_REQUESTED[@]}"; do
+                _pkg_fx=("$_pkg_generic"); fixup_package_names _pkg_fx
+                [[ ${#_pkg_fx[@]} -gt 0 ]] && ! pkg_is_installed "${_pkg_fx[0]}" && REMOVED_TOOLS+=("$_pkg_generic")
+            done
             log_success "System packages: ${#PKGS_INSTALLED[@]} removed"
         else
             log_warn "Some packages failed to remove (check log)"
@@ -445,6 +457,7 @@ if [[ ${#GO_BINS_TO_REMOVE[@]} -gt 0 ]]; then
     for bin in "${GO_BINS_TO_REMOVE[@]}"; do
         if [[ -f "$GOBIN/$bin" ]]; then
             rm -f "$GOBIN/$bin"
+            REMOVED_TOOLS+=("$bin")
             log_success "Removed: $GOBIN/$bin"
             go_removed=$((go_removed + 1))
         else
@@ -479,6 +492,7 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
         if [[ -d "$repo_path" ]]; then
             if [[ -n "$(_source_build_bins "$name")" ]]; then
                 if remove_source_build "$name"; then
+                    REMOVED_TOOLS+=("$name")
                     log_success "Removed source build: $name"
                     git_removed=$((git_removed + 1))
                 else
@@ -488,7 +502,13 @@ if [[ ${#GIT_NAMES_TO_REMOVE[@]} -gt 0 ]]; then
                 continue
             fi
             rm -rf "$repo_path"
+            if [[ -e "$repo_path" ]]; then
+                log_warn "Failed to remove: $repo_path"
+                REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+                continue
+            fi
             _remove_repo_links "$name" "$repo_path"
+            REMOVED_TOOLS+=("$name")
             log_success "Removed: $repo_path"
             git_removed=$((git_removed + 1))
         else
@@ -522,8 +542,20 @@ filter_untracked BINARY_TOOLS "binary releases"
 bin_removed=0
 bin_skipped=0
 for bin in "${BINARY_TOOLS[@]}"; do
-    if [[ -f "$PIPX_BIN_DIR/$bin" ]]; then
+    _br_pattern=$(_binary_release_entry "$bin" | cut -d'|' -f3)
+    if [[ "$_br_pattern" == *deb* ]] && command_exists "$bin"; then
+        # .deb releases are dpkg packages, not files in $PIPX_BIN_DIR.
+        if remove_binary_release "$bin"; then
+            REMOVED_TOOLS+=("$bin")
+            log_success "Removed: $bin (.deb)"
+            bin_removed=$((bin_removed + 1))
+        else
+            log_warn "Failed to remove: $bin (.deb)"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
+    elif [[ -f "$PIPX_BIN_DIR/$bin" ]]; then
         rm -f "$PIPX_BIN_DIR/$bin"
+        REMOVED_TOOLS+=("$bin")
         log_success "Removed: $PIPX_BIN_DIR/$bin"
         bin_removed=$((bin_removed + 1))
     else
@@ -586,9 +618,11 @@ fi
 _toolkit_installed() { _version_known "$1" && ! _is_preexisting "$1"; }
 
 # Count a failed helper so the run cannot report success and drop .versions.
+# Usage: _remove_counted <tool> <label> <command...>
 _remove_counted() {
-    local label="$1"; shift
+    local tool="$1" label="$2"; shift 2
     if "$@"; then
+        REMOVED_TOOLS+=("$tool")
         log_success "Removed $label"
     else
         log_warn "Failed to remove $label"
@@ -600,6 +634,7 @@ _remove_counted() {
 if should_remove "pwn" && _toolkit_installed metasploit; then
     log_info "Removing Metasploit..."
     if remove_snap_tool metasploit; then
+        REMOVED_TOOLS+=(metasploit)
         log_success "Metasploit removed"
         # Keep source files the operator changed or expanded with other repositories.
         _msf_list=/etc/apt/sources.list.d/metasploit-framework.list
@@ -621,18 +656,18 @@ fi
 # OWASP ZAP (snap)
 if should_remove "web" && snap_available && snap list zaproxy &>/dev/null && _toolkit_installed zaproxy; then
     log_info "Removing OWASP ZAP..."
-    _remove_counted "OWASP ZAP" remove_snap_tool zaproxy
+    _remove_counted zaproxy "OWASP ZAP" remove_snap_tool zaproxy
 fi
 
 # Foundry (forge, cast, anvil, chisel — installed by blockchain module)
 if should_remove "blockchain" && _toolkit_installed foundry; then
-    _remove_counted "Foundry" remove_special_tool foundry
+    _remove_counted foundry "Foundry" remove_special_tool foundry
 fi
 
 # Steampipe (curl-pipe installer — installed by cloud module)
 if should_remove "cloud" && command_exists steampipe && _toolkit_installed steampipe; then
     log_info "Removing Steampipe..."
-    _remove_counted "Steampipe" remove_special_tool steampipe
+    _remove_counted steampipe "Steampipe" remove_special_tool steampipe
 fi
 
 # NetExec (pipx from git, tracked as nxc — installed outside ENTERPRISE_PIPX, modules/enterprise.sh)
@@ -640,6 +675,7 @@ if should_remove "enterprise" && command_exists pipx && _toolkit_installed nxc; 
     if pipx list --short 2>/dev/null | grep -qi '^netexec '; then
         log_info "Removing NetExec (pipx)..."
         if pipx_remove netexec >> "$LOG_FILE" 2>&1; then
+            REMOVED_TOOLS+=(nxc)
             log_success "Removed pipx: netexec"
         else
             log_warn "Failed to remove pipx: netexec"
@@ -658,7 +694,7 @@ if should_remove "crypto"; then
             log_info "Preserving venv not installed by this toolkit: ctf-crypto-venv"
         else
             log_info "Removing ctf-crypto venv..."
-            _remove_counted "venv: ctf-crypto-venv" remove_special_tool ctf-crypto-venv
+            _remove_counted ctf-crypto-venv "venv: ctf-crypto-venv" remove_special_tool ctf-crypto-venv
         fi
     fi
 fi
@@ -667,7 +703,7 @@ fi
 if should_remove "cracking" && _removable patator; then
     if [[ -d "$GITHUB_TOOL_DIR/patator" ]]; then
         log_info "Removing patator (venv)..."
-        _remove_counted "venv: patator" remove_special_tool patator
+        _remove_counted patator "venv: patator" remove_special_tool patator
     fi
     # Installs predating the venv switch put patator under pipx — clean those too
     if command_exists pipx && pipx list --short 2>/dev/null | grep -qi '^patator '; then
@@ -712,6 +748,7 @@ if should_remove "llm" && command_exists npm && _toolkit_installed promptfoo; th
     if npm list -g promptfoo &>/dev/null; then
         log_info "Removing promptfoo (npm)..."
         if npm uninstall -g promptfoo >> "$LOG_FILE" 2>&1; then
+            REMOVED_TOOLS+=(promptfoo)
             log_success "Removed npm: promptfoo"
         else
             log_warn "Failed to remove promptfoo via npm"
@@ -773,7 +810,24 @@ else
 fi
 
 # Remove the install record on a clean full removal; after a failure it is the only
-# thing that tells a retry which tools are ours.
+# thing that tells a retry which tools are ours. A partial run drops only the rows of
+# what it removed, so a stale row cannot later claim a tree the user recreated.
+if [[ ${#REMOVE_MODULES[@]} -ne ${#ALL_MODULES[@]} ]] && [[ ${#REMOVED_TOOLS[@]} -gt 0 ]] && [[ -f "$_VERSIONS_FILE" ]]; then
+    _drop_removed_rows() {
+        local _tmp
+        _tmp=$(mktemp "${_VERSIONS_FILE}.XXXXXX")
+        awk -F'|' 'NR==FNR{gone[$0]=1; next} !($1 in gone)' \
+            <(printf '%s\n' "${REMOVED_TOOLS[@]}") "$_VERSIONS_FILE" > "$_tmp"
+        chmod 644 "$_tmp" 2>/dev/null || true
+        mv -f "$_tmp" "$_VERSIONS_FILE"
+    }
+    _unlink_if_symlink "${_VERSIONS_FILE}.lock"
+    if command -v flock &>/dev/null; then
+        ( flock -x 200; _drop_removed_rows ) 200>"${_VERSIONS_FILE}.lock"
+    else
+        _drop_removed_rows
+    fi
+fi
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
     if [[ "$REMOVAL_FAILURES" -eq 0 ]]; then
         [[ -f "$_VERSIONS_FILE" ]] && rm -f "$_VERSIONS_FILE"

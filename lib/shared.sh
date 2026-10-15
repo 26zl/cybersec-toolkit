@@ -326,6 +326,7 @@ ensure_cargo() {
         log_warn "Skipping Rust toolchain install (${_why}) — Cargo tools will not be available"
         return 1
     fi
+    _strict_refuses_root_bootstrap "rustup" && return 1
 
     log_info "Installing Rust toolchain via rustup..."
 
@@ -372,6 +373,7 @@ ensure_cargo_binstall() {
         return 1
     fi
 
+    _strict_refuses_root_bootstrap "cargo-binstall" && return 1
     log_info "Installing cargo-binstall for faster Rust tool downloads..."
 
     local _binstall_tmp
@@ -409,6 +411,7 @@ ensure_uv() {
         log_warn "Skipping uv install (--skip-source) — uv-dependent tools will not be available"
         return 1
     fi
+    _strict_refuses_root_bootstrap "uv" && return 1
 
     log_info "Installing uv (astral.sh) for $(_builder_home | xargs basename)..."
 

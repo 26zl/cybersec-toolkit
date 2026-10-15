@@ -19,6 +19,11 @@ _TEST_STATE_DIR = tempfile.mkdtemp(prefix="cybersec-mcp-tests-")
 atexit.register(shutil.rmtree, _TEST_STATE_DIR, True)
 os.environ["CYBERSEC_MCP_AUDIT_LOG"] = os.path.join(_TEST_STATE_DIR, "audit.log")
 os.environ["CYBERSEC_MCP_REMOTE_HOSTS"] = os.path.join(_TEST_STATE_DIR, "remote_hosts.json")
+# The real registry, but no .versions: install state must not depend on this machine.
+_TEST_ROOT = os.path.join(_TEST_STATE_DIR, "root")
+os.makedirs(_TEST_ROOT)
+os.symlink(Path(__file__).resolve().parents[2] / "tools_config.json", os.path.join(_TEST_ROOT, "tools_config.json"))
+os.environ["CYBERSEC_INSTALLER_ROOT"] = _TEST_ROOT
 
 from mcp_server.remote import RemoteHostConfig  # noqa: E402
 from mcp_server.tools_db import ToolsDatabase  # noqa: E402

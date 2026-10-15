@@ -50,7 +50,7 @@ For context when evaluating a report:
 - **GitHub Actions** — all SHA-pinned with version comments; `step-security/harden-runner` audits egress in every job (audit mode, not blocking)
 - **MCP execution engine** — tool allowlisting, argument sanitization (blocks `|`, backtick, `$(`, `${`; `;` and `&` pass through as literals since no shell is used), protected write destinations, per-tool blocked flags, private/loopback network and SSH scope by default, rate limiting, and audit logging
 - **Execution sandbox** — the launcher starts the MCP server in a per-session Kata Containers VM by default ([`docs/SANDBOX.md`](docs/SANDBOX.md)); `--local` is the explicit host-mode opt-out. Audit records are hash-chained and mirrored out of the VM
-- **MCP script execution** — off by default; `CYBERSEC_MCP_ALLOW_SCRIPTS=1` is an explicit unsandboxed code-execution opt-in and is not constrained by `CYBERSEC_MCP_ALLOW_EXTERNAL`
+- **MCP script execution** — off by default; `CYBERSEC_MCP_ALLOW_SCRIPTS=1` is an explicit code-execution opt-in outside the policy layer (OS isolation only from the Kata VM) and is not constrained by `CYBERSEC_MCP_ALLOW_EXTERNAL`
 
 The MCP execution policy is not an OS sandbox. Allowed tools keep the MCP
 process user's permissions, and disabling `run_script` does not prevent a tool
