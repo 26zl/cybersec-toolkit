@@ -1,0 +1,73 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  :root { --bg:#0b0f14; --panel:#111821; --line:#1f2a36; --fg:#e6edf3; --muted:#8b98a5; --acc:#3fb950; --acc2:#58a6ff; --warn:#d29922; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:1280px; height:640px; background:var(--bg); overflow:hidden; }
+  body { font-family:"Inter","Noto Sans","DejaVu Sans",sans-serif; color:var(--fg); position:relative; }
+  .grid { position:absolute; inset:0;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:40px 40px; opacity:.35;
+    mask-image:radial-gradient(ellipse at 30% 40%,#000 0%,transparent 75%); }
+  .glow { position:absolute; width:700px; height:700px; left:-180px; top:-260px;
+    background:radial-gradient(circle,rgba(63,185,80,.18),transparent 60%); }
+  .glow2 { position:absolute; width:600px; height:600px; right:-200px; bottom:-300px;
+    background:radial-gradient(circle,rgba(88,166,255,.16),transparent 60%); }
+  .wrap { position:absolute; inset:0; padding:40px 72px 92px; display:grid; grid-template-columns:1fr 420px; gap:40px; align-items:center; }
+  .mono { font-variant-ligatures:none; font-family:"JetBrainsMono NF","JetBrains Mono","Hack",monospace; }
+  .eyebrow { font-size:17px; letter-spacing:.18em; text-transform:uppercase; color:var(--acc); font-weight:600; }
+  h1 { font-size:60px; line-height:1.04; font-weight:800; letter-spacing:-.02em; margin-top:18px; }
+  h1 span { color:var(--acc); }
+  .tag { font-size:23px; line-height:1.4; color:#c9d4df; margin-top:20px; max-width:640px; }
+  .tag b { color:var(--fg); }
+  .stats { display:flex; gap:12px; margin-top:30px; }
+  .stat { border:1px solid var(--line); background:rgba(17,24,33,.85); border-radius:12px; padding:12px 16px; flex:1; }
+  .stat .n { font-size:28px; font-weight:800; }
+  .stat .l { font-size:14px; color:var(--muted); margin-top:2px; }
+  .foot { position:absolute; left:72px; right:72px; bottom:38px; font-size:16px; border-top:1px solid var(--line); padding-top:16px; color:var(--muted); }
+  .foot b { color:#c9d4df; font-weight:600; }
+  .side { display:flex; flex-direction:column; gap:20px; justify-content:center; }
+  .owl { font-size:19px; line-height:1.2; color:var(--acc); white-space:pre; text-align:left; opacity:.95; align-self:center; }
+  .term { border:1px solid var(--line); background:var(--panel); border-radius:14px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+  .bar { height:34px; display:flex; align-items:center; gap:8px; padding:0 14px; border-bottom:1px solid var(--line); }
+  .dot { width:11px; height:11px; border-radius:50%; background:#30363d; }
+  .bar .t { margin-left:10px; font-size:13px; color:var(--muted); }
+  .body { padding:16px 18px; font-size:14.5px; line-height:1.7; }
+  .p { color:var(--acc2); } .c { color:var(--fg); } .o { color:var(--muted); } .ok { color:var(--acc); } .w { color:var(--warn); }
+</style></head><body>
+<div class="grid"></div><div class="glow"></div><div class="glow2"></div>
+<div class="wrap">
+  <div>
+    <div class="eyebrow mono">Cybersec Toolkit · by 26zl</div>
+    <h1>The security toolkit<br>AI agents <span>can drive.</span></h1>
+    <p class="tag">One command installs <b>670+ tools</b>. An MCP server runs them in a <b>disposable Kata VM</b> — under rules you set.</p>
+    <div class="stats">
+      <div class="stat"><div class="n">670+</div><div class="l">security tools</div></div>
+      <div class="stat"><div class="n">18</div><div class="l">modules</div></div>
+      <div class="stat"><div class="n">14</div><div class="l">profiles</div></div>
+      <div class="stat"><div class="n">15</div><div class="l">MCP tools</div></div>
+      <div class="stat"><div class="n">872</div><div class="l">agent skills</div></div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="owl mono">    /\   /\
+   (o ) ( o)
+    \ \_/ /
+  &lt;==\   /==&gt;
+     \ V /
+     /_ _\
+      |_|</div>
+    <div class="term mono">
+      <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">~/cybersec-toolkit</span></div>
+      <div class="body">
+        <div><span class="p">$</span> <span class="c">sudo ./install.sh --profile ctf</span></div>
+        <div class="o">[+] pipx · go · cargo · binary · git … done</div>
+        <div><span class="p">$</span> <span class="c">bash scripts/mcp-launch.sh</span></div>
+        <div class="ok">✓ Kata VM booted · own kernel</div>
+        <div class="o">  external targets <span class="w">off</span> · scripts <span class="w">off</span></div>
+        <div class="ok">✓ audit log hash-chained</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="foot">Debian · Ubuntu · Kali · Fedora · Arch · openSUSE · Termux &nbsp;—&nbsp; <b>Claude Code · Codex · Gemini CLI · OpenCode · any MCP client</b></div>
+</body></html>
