@@ -17,33 +17,33 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | T0-router-and-project | 14 |
 | T1-core | 83 |
 | T1-coverage-anchor | 7 |
-| T2-operational | 34 |
-| T3-specialist | 734 |
+| T2-operational | 148 |
+| T3-specialist | 620 |
 
 ## Domain Counts
 
 | Domain | Skills |
 | --- | ---: |
-| agent_workflow | 6 |
-| ai_llm_security | 15 |
-| appsec_web_api | 86 |
-| cloud_security | 92 |
+| agent_workflow | 8 |
+| ai_llm_security | 18 |
+| appsec_web_api | 81 |
+| cloud_security | 89 |
 | code_audit | 14 |
-| crypto_blockchain | 16 |
+| crypto_blockchain | 17 |
 | ctf_bounty | 16 |
-| detection_soc_hunting | 102 |
-| dfir_malware | 114 |
-| general_security | 112 |
-| grc_privacy | 38 |
-| identity_access | 44 |
-| iot_embedded_hardware | 15 |
-| mobile_security | 13 |
-| network_wireless | 47 |
-| ot_ics_security | 15 |
+| detection_soc_hunting | 131 |
+| dfir_malware | 115 |
+| general_security | 34 |
+| grc_privacy | 89 |
+| identity_access | 45 |
+| iot_embedded_hardware | 14 |
+| mobile_security | 9 |
+| network_wireless | 37 |
+| ot_ics_security | 16 |
 | project_tooling | 10 |
-| redteam_pentest | 90 |
+| redteam_pentest | 100 |
 | security_coordination | 4 |
-| supply_chain_prodsec | 20 |
+| supply_chain_prodsec | 22 |
 | telecom_mainframe_sap | 3 |
 
 ## Highest Priority Skills
@@ -90,11 +90,13 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 97 | `karpathy-guidelines` | T1-core | normal |
-| 58 | `extracting-config-from-agent-tesla-rat` | T3-specialist | normal |
-| 58 | `implementing-runtime-application-self-protection` | T3-specialist | normal |
-| 52 | `deploying-edr-agent-with-crowdstrike` | T3-specialist | requires-environment-check |
-| 52 | `implementing-policy-as-code-with-open-policy-agent` | T3-specialist | normal |
-| 52 | `performing-agentless-vulnerability-scanning` | T3-specialist | requires-environment-check |
+| 71 | `analyzing-powershell-empire-artifacts` | T2-operational | normal |
+| 63 | `implementing-endpoint-dlp-controls` | T3-specialist | requires-environment-check |
+| 60 | `deploying-palo-alto-prisma-access-zero-trust` | T3-specialist | requires-environment-check |
+| 60 | `extracting-config-from-agent-tesla-rat` | T3-specialist | sensitive-offensive |
+| 60 | `implementing-runtime-application-self-protection` | T3-specialist | sensitive-offensive |
+| 54 | `implementing-policy-as-code-with-open-policy-agent` | T3-specialist | requires-environment-check |
+| 54 | `performing-agentless-vulnerability-scanning` | T3-specialist | requires-environment-check |
 
 ### ai_llm_security
 
@@ -103,13 +105,13 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | 100 | `ai-llm-security-review` | T1-coverage-anchor | normal |
 | 93 | `offensive-ai-security` | T1-core | sensitive-offensive |
 | 92 | `ai-threat-testing` | T1-core | sensitive-offensive |
-| 66 | `implementing-diamond-model-analysis` | T3-specialist | normal |
-| 62 | `implementing-threat-modeling-with-mitre-attack` | T3-specialist | sensitive-offensive |
-| 61 | `detecting-ai-model-prompt-injection-attacks` | T3-specialist | sensitive-offensive |
-| 61 | `detecting-deepfake-audio-in-vishing-attacks` | T3-specialist | sensitive-offensive |
-| 58 | `implementing-beyondcorp-zero-trust-access-model` | T3-specialist | normal |
-| 58 | `implementing-cisa-zero-trust-maturity-model` | T3-specialist | normal |
-| 58 | `implementing-llm-guardrails-for-security` | T3-specialist | normal |
+| 68 | `implementing-diamond-model-analysis` | T2-operational | normal |
+| 68 | `implementing-llm-guardrails-for-security` | T2-operational | advisory-verify-current-sources |
+| 66 | `implementing-conduit-security-for-ot-remote-access` | T3-specialist | requires-environment-check |
+| 63 | `detecting-ai-model-prompt-injection-attacks` | T3-specialist | sensitive-offensive |
+| 63 | `detecting-deepfake-audio-in-vishing-attacks` | T3-specialist | sensitive-offensive |
+| 63 | `profiling-threat-actor-groups` | T3-specialist | normal |
+| 60 | `executing-red-team-engagement-planning` | T3-specialist | sensitive-offensive |
 
 ### appsec_web_api
 
@@ -131,15 +133,15 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 93 | `offensive-cloud` | T1-core | sensitive-offensive |
-| 69 | `hardening-docker-containers-for-production` | T2-operational | normal |
-| 69 | `hardening-docker-daemon-configuration` | T2-operational | normal |
-| 69 | `securing-aws-iam-permissions` | T2-operational | normal |
-| 69 | `securing-kubernetes-on-cloud` | T2-operational | normal |
-| 68 | `conducting-cloud-incident-response` | T2-operational | normal |
-| 66 | `auditing-aws-s3-bucket-permissions` | T3-specialist | normal |
-| 66 | `auditing-gcp-iam-permissions` | T3-specialist | normal |
-| 66 | `implementing-cloud-security-posture-management` | T3-specialist | normal |
-| 66 | `implementing-cloud-vulnerability-posture-management` | T3-specialist | normal |
+| 71 | `analyzing-cloud-storage-access-patterns` | T2-operational | normal |
+| 71 | `analyzing-linux-elf-malware` | T2-operational | normal |
+| 71 | `detecting-aws-guardduty-findings-automation` | T2-operational | normal |
+| 71 | `detecting-serverless-function-injection` | T2-operational | sensitive-offensive |
+| 71 | `hardening-docker-containers-for-production` | T2-operational | sensitive-offensive |
+| 71 | `hardening-docker-daemon-configuration` | T2-operational | normal |
+| 71 | `implementing-mobile-application-management` | T2-operational | normal |
+| 71 | `securing-aws-iam-permissions` | T2-operational | sensitive-offensive |
+| 71 | `securing-kubernetes-on-cloud` | T2-operational | normal |
 
 ### code_audit
 
@@ -162,14 +164,14 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | ---: | --- | --- | --- |
 | 88 | `meme-coin-audit` | T1-core | sensitive-offensive |
 | 88 | `web3-audit` | T1-core | normal |
+| 71 | `analyzing-ransomware-encryption-mechanisms` | T2-operational | normal |
+| 71 | `implementing-mtls-for-zero-trust-services` | T2-operational | normal |
+| 71 | `managing-intelligence-lifecycle` | T2-operational | normal |
+| 68 | `auditing-tls-certificate-transparency-logs` | T2-operational | sensitive-offensive |
 | 68 | `implementing-rsa-key-pair-management` | T2-operational | normal |
-| 66 | `auditing-tls-certificate-transparency-logs` | T3-specialist | normal |
+| 65 | `performing-post-quantum-cryptography-migration` | T3-specialist | normal |
+| 63 | `analyzing-certificate-transparency-for-phishing` | T3-specialist | sensitive-offensive |
 | 63 | `analyzing-ethereum-smart-contract-vulnerabilities` | T3-specialist | normal |
-| 61 | `analyzing-certificate-transparency-for-phishing` | T3-specialist | sensitive-offensive |
-| 61 | `analyzing-ransomware-payment-wallets` | T3-specialist | normal |
-| 61 | `analyzing-tls-certificate-transparency-logs` | T3-specialist | normal |
-| 60 | `performing-ssl-certificate-lifecycle-management` | T3-specialist | normal |
-| 58 | `implementing-vulnerability-remediation-sla` | T3-specialist | normal |
 
 ### ctf_bounty
 
@@ -190,61 +192,61 @@ Top skills per domain. Use these as the first candidates before searching the lo
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
-| 69 | `hunting-for-persistence-via-wmi-subscriptions` | T2-operational | normal |
-| 63 | `detecting-modbus-protocol-anomalies` | T3-specialist | normal |
-| 63 | `hunting-for-anomalous-powershell-execution` | T3-specialist | normal |
-| 63 | `hunting-for-data-exfiltration-indicators` | T3-specialist | normal |
-| 63 | `hunting-for-defense-evasion-via-timestomping` | T3-specialist | normal |
-| 61 | `analyzing-windows-event-logs-in-splunk` | T3-specialist | normal |
-| 61 | `detecting-anomalies-in-industrial-control-systems` | T3-specialist | requires-environment-check |
-| 61 | `detecting-anomalous-authentication-patterns` | T3-specialist | normal |
-| 61 | `detecting-arp-poisoning-in-network-traffic` | T3-specialist | sensitive-offensive |
-| 61 | `detecting-attacks-on-scada-systems` | T3-specialist | sensitive-offensive |
+| 74 | `analyzing-kubernetes-audit-logs` | T2-operational | normal |
+| 74 | `hunting-advanced-persistent-threats` | T2-operational | normal |
+| 74 | `triaging-security-alerts-in-splunk` | T2-operational | normal |
+| 71 | `analyzing-linux-audit-logs-for-intrusion` | T2-operational | normal |
+| 71 | `automating-ioc-enrichment` | T2-operational | normal |
+| 71 | `building-soc-playbook-for-ransomware` | T2-operational | sensitive-offensive |
+| 71 | `building-vulnerability-scanning-workflow` | T2-operational | normal |
+| 71 | `correlating-security-events-in-qradar` | T2-operational | sensitive-offensive |
+| 71 | `detecting-azure-lateral-movement` | T2-operational | normal |
+| 71 | `hunting-for-persistence-via-wmi-subscriptions` | T2-operational | requires-environment-check |
 
 ### dfir_malware
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 87 | `dfir` | T1-core | sensitive-offensive |
-| 69 | `analyzing-powershell-empire-artifacts` | T2-operational | normal |
-| 69 | `analyzing-ransomware-encryption-mechanisms` | T2-operational | normal |
+| 74 | `analyzing-cyber-kill-chain` | T2-operational | sensitive-offensive |
+| 71 | `analyzing-prefetch-files-for-execution-history` | T2-operational | normal |
+| 71 | `analyzing-uefi-bootkit-persistence` | T2-operational | sensitive-offensive |
+| 71 | `analyzing-windows-amcache-artifacts` | T2-operational | normal |
+| 71 | `building-incident-response-dashboard` | T2-operational | normal |
+| 71 | `generating-threat-intelligence-reports` | T2-operational | normal |
+| 69 | `analyzing-lnk-file-and-jump-list-artifacts` | T2-operational | normal |
+| 68 | `analyzing-memory-forensics-with-lime-and-volatility` | T2-operational | normal |
 | 68 | `conducting-malware-incident-response` | T2-operational | normal |
-| 67 | `analyzing-memory-dumps-with-volatility` | T3-specialist | normal |
-| 66 | `building-incident-response-dashboard` | T3-specialist | normal |
-| 66 | `building-incident-response-playbook` | T3-specialist | normal |
-| 66 | `building-soc-playbook-for-ransomware` | T3-specialist | sensitive-offensive |
-| 66 | `conducting-phishing-incident-response` | T3-specialist | sensitive-offensive |
-| 66 | `conducting-post-incident-lessons-learned` | T3-specialist | normal |
 
 ### general_security
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 74 | `cve-poc-generator` | T2-operational | normal |
-| 69 | `analyzing-prefetch-files-for-execution-history` | T2-operational | normal |
-| 69 | `securing-github-actions-workflows` | T2-operational | normal |
-| 69 | `securing-serverless-functions` | T2-operational | normal |
-| 66 | `building-phishing-reporting-button-workflow` | T3-specialist | sensitive-offensive |
-| 66 | `building-threat-hunt-hypothesis-framework` | T3-specialist | normal |
-| 66 | `building-vulnerability-scanning-workflow` | T3-specialist | normal |
-| 66 | `implementing-anti-phishing-training-program` | T3-specialist | sensitive-offensive |
-| 66 | `implementing-google-workspace-admin-security` | T3-specialist | normal |
-| 66 | `implementing-patch-management-workflow` | T3-specialist | requires-environment-check |
+| 71 | `evaluating-threat-intelligence-platforms` | T2-operational | normal |
+| 68 | `building-phishing-reporting-button-workflow` | T2-operational | sensitive-offensive |
+| 68 | `implementing-anti-phishing-training-program` | T2-operational | sensitive-offensive |
+| 68 | `implementing-patch-management-workflow` | T2-operational | requires-environment-check |
+| 68 | `implementing-threat-intelligence-lifecycle-management` | T2-operational | normal |
+| 68 | `testing-for-business-logic-vulnerabilities` | T2-operational | sensitive-offensive |
+| 67 | `analyzing-windows-prefetch-with-python` | T3-specialist | normal |
+| 67 | `triaging-vulnerabilities-with-ssvc-framework` | T3-specialist | normal |
+| 66 | `analyzing-threat-intelligence-feeds` | T3-specialist | normal |
 
 ### grc_privacy
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 100 | `grc-compliance-privacy-program` | T1-coverage-anchor | advisory-verify-current-sources |
-| 69 | `analyzing-kubernetes-audit-logs` | T2-operational | normal |
-| 69 | `analyzing-linux-audit-logs-for-intrusion` | T2-operational | normal |
-| 69 | `analyzing-office365-audit-logs-for-compromise` | T2-operational | normal |
-| 69 | `detecting-azure-storage-account-misconfigurations` | T2-operational | normal |
-| 68 | `implementing-iso-27001-information-security-management` | T2-operational | normal |
-| 66 | `auditing-kubernetes-cluster-rbac` | T3-specialist | normal |
-| 66 | `auditing-terraform-infrastructure-for-security` | T3-specialist | normal |
-| 66 | `building-identity-governance-lifecycle-process` | T3-specialist | normal |
-| 66 | `implementing-gdpr-data-subject-access-request` | T3-specialist | normal |
+| 71 | `analyzing-office365-audit-logs-for-compromise` | T2-operational | normal |
+| 71 | `analyzing-persistence-mechanisms-in-linux` | T2-operational | normal |
+| 71 | `detecting-azure-storage-account-misconfigurations` | T2-operational | normal |
+| 71 | `detecting-email-account-compromise` | T2-operational | normal |
+| 71 | `detecting-suspicious-oauth-application-consent` | T2-operational | sensitive-offensive |
+| 71 | `hunting-for-dns-based-persistence` | T2-operational | normal |
+| 71 | `implementing-attack-surface-management` | T2-operational | sensitive-offensive |
+| 71 | `implementing-browser-isolation-for-zero-trust` | T2-operational | sensitive-offensive |
+| 71 | `implementing-ebpf-security-monitoring` | T2-operational | normal |
 
 ### identity_access
 
@@ -253,13 +255,13 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | 93 | `offensive-active-directory` | T1-core | sensitive-offensive |
 | 93 | `offensive-jwt` | T1-core | sensitive-offensive |
 | 93 | `offensive-oauth` | T1-core | sensitive-offensive |
+| 68 | `executing-active-directory-attack-simulation` | T2-operational | sensitive-offensive |
 | 68 | `implementing-azure-ad-privileged-identity-management` | T2-operational | normal |
-| 66 | `auditing-azure-active-directory-configuration` | T3-specialist | normal |
-| 66 | `implementing-delinea-secret-server-for-pam` | T3-specialist | normal |
-| 66 | `implementing-pam-for-database-access` | T3-specialist | normal |
-| 62 | `building-vulnerability-dashboard-with-defectdojo` | T3-specialist | normal |
-| 62 | `implementing-privileged-access-management-with-cyberark` | T3-specialist | normal |
-| 62 | `implementing-secrets-management-with-vault` | T3-specialist | requires-environment-check |
+| 68 | `implementing-delinea-secret-server-for-pam` | T2-operational | sensitive-offensive |
+| 68 | `implementing-google-workspace-admin-security` | T2-operational | sensitive-offensive |
+| 68 | `implementing-pam-for-database-access` | T2-operational | sensitive-offensive |
+| 68 | `testing-oauth2-implementation-flaws` | T2-operational | sensitive-offensive |
+| 64 | `building-threat-feed-aggregation-with-misp` | T3-specialist | normal |
 
 ### iot_embedded_hardware
 
@@ -267,29 +269,28 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | ---: | --- | --- | --- |
 | 100 | `iot-embedded-hardware-security-assessment` | T1-coverage-anchor | normal |
 | 90 | `offensive-iot` | T1-core | sensitive-offensive |
-| 63 | `analyzing-macro-malware-in-office-documents` | T3-specialist | normal |
-| 61 | `analyzing-uefi-bootkit-persistence` | T3-specialist | normal |
-| 61 | `detecting-bluetooth-low-energy-attacks` | T3-specialist | sensitive-offensive |
-| 60 | `performing-bluetooth-security-assessment` | T3-specialist | normal |
-| 60 | `performing-iot-security-assessment` | T3-specialist | normal |
-| 60 | `performing-plc-firmware-security-analysis` | T3-specialist | normal |
-| 59 | `analyzing-malicious-pdf-with-peepdf` | T3-specialist | normal |
-| 58 | `implementing-hardware-security-key-authentication` | T3-specialist | normal |
+| 74 | `detecting-bluetooth-low-energy-attacks` | T2-operational | sensitive-offensive |
+| 68 | `implementing-hardware-security-key-authentication` | T2-operational | sensitive-offensive |
+| 63 | `analyzing-bootkit-and-rootkit-samples` | T3-specialist | normal |
+| 63 | `analyzing-macro-malware-in-office-documents` | T3-specialist | sensitive-offensive |
+| 62 | `performing-bluetooth-security-assessment` | T3-specialist | normal |
+| 62 | `performing-firmware-extraction-with-binwalk` | T3-specialist | sensitive-offensive |
+| 62 | `performing-firmware-malware-analysis` | T3-specialist | normal |
+| 62 | `performing-iot-security-assessment` | T3-specialist | sensitive-offensive |
 
 ### mobile_security
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 90 | `offensive-mobile` | T1-core | sensitive-offensive |
-| 66 | `implementing-mobile-application-management` | T3-specialist | normal |
-| 60 | `performing-ios-app-security-assessment` | T3-specialist | normal |
+| 70 | `analyzing-ios-app-security-with-objection` | T2-operational | sensitive-offensive |
+| 65 | `performing-ios-app-security-assessment` | T3-specialist | sensitive-offensive |
+| 63 | `performing-android-app-static-analysis-with-mobsf` | T3-specialist | sensitive-offensive |
+| 62 | `performing-mobile-app-certificate-pinning-bypass` | T3-specialist | sensitive-offensive |
 | 59 | `analyzing-android-malware-with-apktool` | T3-specialist | normal |
-| 59 | `analyzing-ios-app-security-with-objection` | T3-specialist | normal |
-| 58 | `conducting-mobile-app-penetration-test` | T3-specialist | sensitive-offensive |
-| 58 | `testing-android-intents-for-vulnerabilities` | T3-specialist | normal |
-| 54 | `intercepting-mobile-traffic-with-burpsuite` | T3-specialist | normal |
-| 54 | `reverse-engineering-android-malware-with-jadx` | T3-specialist | normal |
-| 54 | `reverse-engineering-ios-app-with-frida` | T3-specialist | normal |
+| 59 | `reverse-engineering-ios-app-with-frida` | T3-specialist | sensitive-offensive |
+| 57 | `performing-dynamic-analysis-of-android-app` | T3-specialist | sensitive-offensive |
+| 56 | `reverse-engineering-android-malware-with-jadx` | T3-specialist | sensitive-offensive |
 
 ### network_wireless
 
@@ -310,16 +311,16 @@ Top skills per domain. Use these as the first candidates before searching the lo
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
-| 69 | `securing-historian-server-in-ot-environment` | T2-operational | normal |
-| 66 | `implementing-patch-management-for-ot-systems` | T3-specialist | normal |
-| 61 | `detecting-attacks-on-historian-servers` | T3-specialist | sensitive-offensive |
-| 61 | `securing-remote-access-to-ot-environment` | T3-specialist | normal |
-| 60 | `performing-ot-network-security-assessment` | T3-specialist | normal |
-| 60 | `performing-ot-vulnerability-assessment-with-claroty` | T3-specialist | normal |
-| 60 | `performing-scada-hmi-security-assessment` | T3-specialist | normal |
-| 58 | `implementing-dragos-platform-for-ot-monitoring` | T3-specialist | normal |
-| 58 | `implementing-network-segmentation-for-ot` | T3-specialist | normal |
-| 58 | `monitoring-scada-modbus-traffic-anomalies` | T3-specialist | normal |
+| 71 | `securing-historian-server-in-ot-environment` | T2-operational | advisory-verify-current-sources |
+| 68 | `implementing-ot-incident-response-playbook` | T2-operational | normal |
+| 68 | `implementing-patch-management-for-ot-systems` | T2-operational | normal |
+| 63 | `detecting-anomalies-in-industrial-control-systems` | T3-specialist | requires-environment-check |
+| 63 | `detecting-attacks-on-historian-servers` | T3-specialist | sensitive-offensive |
+| 63 | `detecting-attacks-on-scada-systems` | T3-specialist | sensitive-offensive |
+| 63 | `detecting-dnp3-protocol-anomalies` | T3-specialist | normal |
+| 63 | `detecting-modbus-command-injection-attacks` | T3-specialist | sensitive-offensive |
+| 62 | `performing-ot-network-security-assessment` | T3-specialist | sensitive-offensive |
+| 62 | `performing-ot-vulnerability-assessment-with-claroty` | T3-specialist | normal |
 
 ### project_tooling
 
@@ -365,15 +366,15 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 100 | `supply-chain-prodsec-hardening` | T1-coverage-anchor | normal |
-| 67 | `detecting-supply-chain-attacks-in-ci-cd` | T3-specialist | sensitive-offensive |
-| 61 | `analyzing-sbom-for-supply-chain-vulnerabilities` | T3-specialist | normal |
-| 61 | `detecting-typosquatting-packages-in-npm-pypi` | T3-specialist | sensitive-offensive |
-| 61 | `hunting-for-supply-chain-compromise` | T3-specialist | normal |
-| 61 | `securing-container-registry-images` | T3-specialist | normal |
-| 58 | `implementing-devsecops-security-scanning` | T3-specialist | normal |
-| 58 | `implementing-secrets-scanning-in-ci-cd` | T3-specialist | normal |
-| 58 | `implementing-semgrep-for-custom-sast-rules` | T3-specialist | normal |
-| 58 | `implementing-sigstore-for-software-signing` | T3-specialist | normal |
+| 72 | `detecting-supply-chain-attacks-in-ci-cd` | T2-operational | sensitive-offensive |
+| 71 | `analyzing-sbom-for-supply-chain-vulnerabilities` | T2-operational | advisory-verify-current-sources |
+| 68 | `implementing-sigstore-for-software-signing` | T2-operational | normal |
+| 63 | `hunting-for-supply-chain-compromise` | T3-specialist | normal |
+| 63 | `securing-container-registry-images` | T3-specialist | requires-environment-check |
+| 62 | `implementing-supply-chain-security-with-in-toto` | T3-specialist | normal |
+| 62 | `performing-supply-chain-attack-simulation` | T3-specialist | sensitive-offensive |
+| 60 | `implementing-code-signing-for-artifacts` | T3-specialist | normal |
+| 60 | `implementing-devsecops-security-scanning` | T3-specialist | normal |
 
 ### telecom_mainframe_sap
 

@@ -405,6 +405,32 @@ PY
     assert_output 'Indexed tool arrays retained; associative metadata excluded'
 }
 
+@test "skill frontmatter reader keeps multi-line and quoted values whole" {
+    run python3 - "$PROJECT_ROOT" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + '/scripts')
+from _skill_frontmatter import frontmatter
+text = """---
+name: sample
+description: First line
+  continues here: with a colon
+quoted: 'It''s
+  two lines
+
+  '
+---
+body
+"""
+fm = frontmatter(text)
+assert fm["description"] == "First line continues here: with a colon", fm
+assert fm["quoted"] == "It's two lines", fm
+assert set(fm) == {"name", "description", "quoted"}, fm
+print("ok")
+PY
+    assert_success
+    assert_output "ok"
+}
+
 @test "source module removal clears all mapped executables" {
     _lifecycle_fixture
     _source_fixture_module "$LC_REPO"
