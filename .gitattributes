@@ -23,6 +23,7 @@ Dockerfile text eol=lf
 
 # Keep repository quality tooling in Git, but omit it from GitHub source archives
 # intended for end users. The Makefile stays: `make sandbox-image` and `make audit-verify` serve users.
+# Integration's distro containers have no git, so checkout fetches this same archive: keep what they run.
 .github/ export-ignore
 tests/ export-ignore
 mcp_server/tests/ export-ignore
@@ -42,6 +43,5 @@ scripts/check_doc_links.py export-ignore
 scripts/test-distros.sh export-ignore
 scripts/update-skills.sh export-ignore
 scripts/validate_agent_docs.py export-ignore
-scripts/validate_distro_packages.sh export-ignore
 scripts/validate_profiles.sh export-ignore
 scripts/validate_version.sh export-ignore
