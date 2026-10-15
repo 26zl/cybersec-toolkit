@@ -171,7 +171,7 @@ to `kata()`.
 | `CYBERSEC_SANDBOX_PIDS_LIMIT` | `512` | Process limit inside the guest. |
 | `CYBERSEC_SANDBOX_SCRATCH_SIZE` | `1g` | Size cap of each writable tmpfs (`/tmp`, `/var/tmp`, `$HOME`, the audit log dir, and `/workspace` when none is mounted). |
 | `CYBERSEC_SANDBOX_USER` | `10001:10001` | Guest uid:gid; must match the image. |
-| `CYBERSEC_SANDBOX_CAP_ADD` | none | Comma-separated capabilities, e.g. `NET_RAW` for `nmap -sS`. |
+| `CYBERSEC_SANDBOX_CAP_ADD` | none | Comma-separated capabilities added to the container. The guest user is unprivileged and `no-new-privileges` is set, so they stay in the bounding set and do not enable raw sockets for it. |
 
 `CYBERSEC_MCP_ALLOW_EXTERNAL`, `CYBERSEC_MCP_ALLOW_SCRIPTS` and
 `CYBERSEC_MCP_REDACT_OUTPUT` are forwarded into the VM. Host-specific paths such as `CYBERSEC_MCP_AUDIT_LOG` and
@@ -338,8 +338,9 @@ labelled `cybersec-toolkit.sandbox=kata`.
 
 Two consequences worth knowing:
 
-- Raw-socket scans (`nmap -sS`, `-sU`, OS detection) need
-  `CYBERSEC_SANDBOX_CAP_ADD=NET_RAW`. Without it, connect scans still work.
+- Raw-socket scans (`nmap -sS`, `-sU`, OS detection) do not work in the sandbox:
+  the unprivileged guest user never gets an added `NET_RAW` as an effective
+  capability. Connect scans (`-sT`) work; use `--local` for raw-socket scans.
 - The guest filesystem is discarded on teardown. Anything worth keeping must be
   written to `/workspace` or copied out before the client disconnects.
 

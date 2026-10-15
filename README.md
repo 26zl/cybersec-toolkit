@@ -18,8 +18,6 @@
       |_|                     Toolkit
 ```
 
-<p align="center"><em>&ldquo;I am a friend of virtue, not of fortune.&rdquo;</em><br>&mdash; Gjergj Kastrioti &middot; Skanderbeg (1405&ndash;1468)</p>
-
 __A security toolkit that AI agents can drive, under rules you set.__ One command installs 670+ security tools on Linux or Termux. An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets Claude Code, Codex, Gemini CLI, OpenCode, and other MCP clients discover, recommend, and run those tools through a governed execution path, inside a disposable Kata Containers VM by default. 872 Agent Skills supply the methodology for CTF, pentest, bug bounty, DFIR, and blue-team work.
 
 | Component | What you get |
@@ -43,7 +41,7 @@ git clone --depth 1 --branch v1.3.0 https://github.com/26zl/cybersec-toolkit.git
 sudo ./install.sh --profile ctf   # one profile; with no flags, all 18 modules
 ```
 
-__2. Connect an AI client.__ The tracked configs for Claude Code (`.mcp.json`), Codex, Gemini CLI, and OpenCode start the server through `scripts/mcp-launch.sh`, with external targets and script execution disabled. Choose where the tools run:
+__2. Connect an AI client.__ The tracked configs for Claude Code (`.mcp.json`, also read by the GitHub Copilot CLI), Codex, Gemini CLI, and OpenCode start the server through `scripts/mcp-launch.sh`, with external targets and script execution disabled. Choose where the tools run:
 
 | Mode | Tools run | Host needs | One-time setup |
 | ---- | --------- | ---------- | -------------- |
@@ -164,7 +162,7 @@ The time goes to I/O-bound work that no scripting language can speed up:
 | Git clones | Cloning each repository |
 | Binary releases | Downloading pre-built binaries from GitHub |
 
-`./install.sh --dry-run` prints the live per-method breakdown. pipx, Go, git, and binary installs run in parallel (`-j 4` by default); the system package manager and Cargo run sequentially. To go faster: install a profile or `--module` instead of everything, `--skip-cargo` to avoid Rust compilation, `-j 8` for more parallel jobs, and an [apt-cacher-ng](https://wiki.debian.org/AptCacherNg) proxy for repeated installs.
+`./install.sh --dry-run` prints the live per-method breakdown. pipx, Go, git, and binary installs run in parallel (`-j 4` by default); the system package manager, Cargo, gem, npm, and source builds run sequentially. To go faster: install a profile or `--module` instead of everything, `--skip-cargo` to avoid Rust compilation, `-j 8` for more parallel jobs, and an [apt-cacher-ng](https://wiki.debian.org/AptCacherNg) proxy for repeated installs.
 
 </details>
 
@@ -254,17 +252,17 @@ Docker and C2 show what each profile enables by default. A profile that enables 
 
 ### Post-install scripts
 
-All scripts support `--help` and `--version`. On Linux, `update.sh` and `remove.sh` need root (`sudo`), as does `backup.sh schedule`; `verify.sh` and the other `backup.sh` commands run as your user. Termux needs no root. Without a terminal, pass `--yes` to `remove.sh` (and to `install.sh --rollback`).
+All scripts support `--help` and `--version`. On Linux, `update.sh` and `remove.sh` need root (`sudo`), as do `backup.sh schedule` and `unschedule`; `verify.sh` and the other `backup.sh` commands run as your user. Termux needs no root. Without a terminal, pass `--yes` to `remove.sh` (and to `install.sh --rollback`).
 
 | Script | Purpose | Example |
 | ------ | ------- | ------- |
 | `scripts/verify.sh` | Check which tools are installed | `./scripts/verify.sh --module web --skip-heavy` |
 | `scripts/update.sh` | Update the tools this toolkit installed | `sudo ./scripts/update.sh --skip-system` |
 | `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module enterprise --yes` |
-| `scripts/remove.sh --deep-clean` | Purge caches and build artifacts | `sudo ./scripts/remove.sh --deep-clean --yes` |
+| `scripts/remove.sh --deep-clean` | Remove all toolkit tools, then purge caches and build artifacts | `sudo ./scripts/remove.sh --deep-clean --yes` |
 | `scripts/backup.sh` | Back up and restore tool configs | `./scripts/backup.sh backup` |
 
-`--deep-clean` removes the Go module/build cache, the Cargo registry, pip/pipx/npm/gem caches, orphaned pipx venvs, stale symlinks, and log files. Add `--remove-deps` to also purge Rustup toolchains.
+After a full removal, `--deep-clean` removes the Go module/build cache, the Cargo registry, pip/pipx/npm/gem caches, orphaned pipx venvs, stale symlinks, and log files. Add `--remove-deps` to also purge Rustup toolchains.
 
 <details>
 <summary><strong>Tool locations</strong></summary>
@@ -313,7 +311,7 @@ __Debian/Ubuntu/Kali is the primary target__ and has the strongest test coverage
 | Platform | Status |
 | -------- | ------ |
 | __WSL__ | Supported for installs and MCP use; the wireless module and kernel-level packages are skipped. No dedicated CI job, so validate release-critical changes in a local WSL distro. See [Windows Defender false positives](#windows-defender-false-positives) if the repo lives on a Windows-mounted path. |
-| __ARM__ (aarch64/armv7) | Supported, with automatic skips for x86-only binary releases and build-from-source tools. No dedicated CI job. |
+| __ARM__ (aarch64/armv7) | Supported, with automatic skips for x86-only binary releases and x86-only build-from-source tools. No dedicated CI job. |
 | __Termux__ (Android) | Supported without sudo. Docker, snap, binary releases, and build-from-source are skipped (Bionic incompatible). No dedicated CI job. |
 | __Windows__ (native) | Not supported. Use WSL. |
 | __macOS__ | The installer is not supported; use the Docker image. The MCP server runs on macOS in host mode (`--local`). |
@@ -332,7 +330,7 @@ Beyond installing packages, an install can change the system in ways `remove.sh`
 Data the toolkit keeps, stored only on this machine:
 
 - `.versions`, `.install_sessions/`, and `*.log` in the checkout: install provenance and logs.
-- `~/.local/state/cybersec-tools-mcp/`: the MCP audit log and its rotations, `remote_hosts.json`, and the agent guard's `guard-session` and `guard-denials.log`.
+- `~/.local/state/cybersec-tools-mcp/`: the MCP audit log and its rotations, `remote_hosts.json`, and the agent guard's `guard-session*` markers and `guard-denials.log`.
 - `~/cybersec_tools_backup/`: encrypted configuration backups.
 - `writeups/` in the checkout (git-ignored).
 
@@ -345,7 +343,7 @@ The installer downloads and runs code from the internet. On Linux it runs as roo
 - __System packages__: signed by your distro's repositories (apt, dnf, pacman, zypper, pkg). On openSUSE, `zypper refresh` trusts new or rotated repository keys automatically only when `CI=true` or `CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS=1` is set.
 - __pipx/Go/Cargo/Gem/npm__: fetched from their registries without signature verification; pipx tools are isolated in venvs. Go, Cargo, and Gem builds run as the invoking user; pipx and global npm installs run as root, so package build backends and npm lifecycle scripts execute with root privileges.
 - __Binary releases__: SHA256-verified using upstream checksum files, exact-asset GitHub release digests, or reviewed repository/tag/asset checksums in `lib/release_checksums.tsv`. A mismatch always fails; `--require-checksums` or `--production` also fails when verification data is unavailable. These checks establish download integrity, not independent publisher authentication. `--fast` skips ordinary release verification and cannot be combined with strict flags; private runtime dependencies always require verification.
-- __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified; in strict mode (`--production`/`--require-checksums`) they are skipped when they would run as root, i.e. without `sudo` from a normal user. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
+- __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified; in strict mode (`--production`/`--require-checksums`) the rustup, uv, and cargo-binstall installers are skipped when they would run as root (i.e. without `sudo` from a normal user), and NodeSource's script is always skipped in favour of the distro's signed `nodejs`/`npm`. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
 - __Go SDK__: SHA256-verified against go.dev when the API is reachable; strict mode fails if it is not.
 - __Git repos__: cloned at HEAD; the repo's own `setup.py` is never run. `requirements.txt` installs into a per-repo venv as the invoking user, where dependency sdists can still build, and outside strict mode (`--production` or `--require-checksums`) a failed pinned install is retried with `==` relaxed to `>=`.
 - __Build from source__: runs `make` as the invoking user, not root. Review what you build.
@@ -381,7 +379,7 @@ The server gives MCP-capable clients read access to the 670+ tool registry, inst
 
 ### Supported clients
 
-Claude Code, Codex, Gemini CLI and OpenCode pick up the tracked configs automatically; Claude Desktop, GitHub Copilot, Hermes Agent, OpenClaw, DeepSeek Harness, Cursor, Cline, Goose, Continue and LM Studio connect through their own MCP settings, and Ollama or Open WebUI through an MCP host or bridge. The support matrix, with skill discovery and test status per client, lives in [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md).
+Claude Code, Codex, Gemini CLI, OpenCode and the GitHub Copilot CLI pick up the tracked configs automatically; Claude Desktop, Copilot in VS Code, Hermes Agent, OpenClaw, DeepSeek Harness, Cursor, Cline, Goose, Continue and LM Studio connect through their own MCP settings, and Ollama or Open WebUI through an MCP host or bridge. The support matrix, with skill discovery and test status per client, lives in [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md).
 
 Coordinating several agents across any MCP client is in [`docs/ORCHESTRATION.md`](docs/ORCHESTRATION.md).
 
@@ -479,7 +477,7 @@ The agent can query every tool and its install state, chain governed tool calls,
 
 - __Files__: the VM sees no host path unless `CYBERSEC_SANDBOX_WORKSPACE` names an absolute directory, which appears as `/workspace` (read-only with `CYBERSEC_SANDBOX_WORKSPACE_RO=1`). Pass guest paths to `run_tool`.
 - __Network__: the VM uses Docker's default bridge. Set `CYBERSEC_SANDBOX_NETWORK=none` for offline analysis, or a filtered Docker network to scope egress.
-- __Privileges__: uid 10001, all capabilities dropped, `no-new-privileges`, and 2 GB / 2 vCPUs / 512 processes by default. Raw-socket scans (`nmap -sS`, `-sU`, OS detection) need `CYBERSEC_SANDBOX_CAP_ADD=NET_RAW`.
+- __Privileges__: uid 10001, all capabilities dropped, `no-new-privileges`, and 2 GB / 2 vCPUs / 512 processes by default. Raw-socket scans (`nmap -sS`, `-sU`, OS detection) are not available in the sandbox: the guest user is unprivileged and `no-new-privileges` is set, so an added `NET_RAW` capability never becomes effective. Use connect scans (`-sT`) or `--local` mode.
 - __Host mode only__: remote execution over SSH (`manage_remote_hosts`) and venvs under `~/.ctf-venvs/` that you created on the host.
 - __Audit__: records leave the VM on a stderr side channel and are appended to the host log, so the trail outlives the VM.
 
@@ -616,7 +614,7 @@ __As a Claude Code plugin.__ The repo doubles as a [plugin marketplace](https://
 
 The plugin carries the skills only; the MCP server is configured separately (see [MCP server](#mcp-server)).
 
-__In other clients.__ OpenCode, Codex, Gemini CLI, GitHub Copilot, Cursor, Cline, Goose, Hermes, and OpenClaw support Agent Skills through their own paths. `scripts/sync-skills.sh` mirrors `.claude/skills/` into the git-ignored `.agents/skills/` for clients that read that location (`--check` reports drift; `make setup` runs it). Continue and LM Studio do not document automatic skill discovery; give them selected skill content as rules or context instead. Details: [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md).
+__In other clients.__ OpenCode, Codex, Gemini CLI, GitHub Copilot, Cursor, Cline, Goose, Hermes, OpenClaw, and DeepSeek Harness support Agent Skills through their own paths. `scripts/sync-skills.sh` mirrors `.claude/skills/` into the git-ignored `.agents/skills/` for clients that read that location (`--check` reports drift; `make setup` runs it). Continue and LM Studio do not document automatic skill discovery; give them selected skill content as rules or context instead. Details: [`docs/AI_CLIENTS.md`](docs/AI_CLIENTS.md).
 
 __Helper-script dependencies.__ Some vendored skills include helper scripts with optional Python imports, declared in [`.claude/skills/requirements.txt`](.claude/skills/requirements.txt) and generated from the import inventory. `scripts/validate_claude_skills.py` checks skill metadata, index counts, curation freshness, and helper-script syntax.
 
