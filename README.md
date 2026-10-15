@@ -36,7 +36,7 @@ __A security toolkit that AI agents can drive, under rules you set.__ One comman
 __1. Install the tools__ on a supported Linux distro or on Termux:
 
 ```bash
-git clone --depth 1 --branch v1.3.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
+git clone --depth 1 --branch v1.4.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
 ./install.sh --doctor             # read-only preflight: distro, prerequisites, MCP server, sandbox
 sudo ./install.sh --profile ctf   # one profile; with no flags, all 18 modules
 ```
@@ -94,7 +94,7 @@ A supported Linux distro (Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE
 __From the latest release__ (pinned; recommended):
 
 ```bash
-git clone --depth 1 --branch v1.3.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
+git clone --depth 1 --branch v1.4.0 https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit && sudo ./install.sh
 ```
 
 __From `main`__ (newest tools and fixes, including unreleased work):
