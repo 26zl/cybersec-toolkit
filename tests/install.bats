@@ -460,6 +460,8 @@ EOF
         for expected in apk-mitm surya promptfoo; do
             install_single_tool "$expected" || exit 1
         done
+        expected=rea-agents
+        install_single_tool rea || exit 1
         npm() { return 1; }
         ! install_single_tool surya
     '
@@ -467,6 +469,7 @@ EOF
     assert_output --partial "Installed: apk-mitm"
     assert_output --partial "Installed: surya"
     assert_output --partial "Installed: promptfoo"
+    assert_output --partial "Installed: rea ("
     assert_output --partial "Failed: surya"
 }
 

@@ -2244,6 +2244,17 @@ def _check_teamfiltration_policy(arg_list: list[str]) -> None:
         )
 
 
+def _check_rea_policy(arg_list: list[str]) -> None:
+    if arg_list in ([], ["--help"], ["-h"], ["--version"]):
+        return
+    if len(arg_list) == 2 and arg_list[1] in ("--help", "-h") and re.fullmatch(r"[a-z][a-z0-9-]*", arg_list[0]):
+        return
+    raise ValueError(
+        "Blocked by policy: rea: MCP permits only help; process, browser, device, listener and "
+        "agent-configuration commands need a dedicated scope adapter"
+    )
+
+
 def _check_takajo_policy(arg_list: list[str]) -> None:
     if arg_list in ([], ["--help"], ["-h"], ["--version"], ["help"]):
         return
@@ -2267,6 +2278,8 @@ _ARGUMENT_POLICIES: dict[str, Callable[[list[str]], None]] = {
     "ltrace": partial(_check_tracer_attach_only, "ltrace"),
     "gdb": _check_gdb_execution_commands,
     "teamfiltration": _check_teamfiltration_policy,
+    "rea": _check_rea_policy,
+    "rea-agents": _check_rea_policy,
     "takajo": _check_takajo_policy,
     "oscap": _check_openscap_policy,
     "openscap-scanner": _check_openscap_policy,

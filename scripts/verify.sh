@@ -606,6 +606,8 @@ if should_verify "reversing"; then
     check_pipx_arr "${RE_PIPX[@]}"
     log_info "RE (Git):"
     check_git_repos "${RE_GIT_NAMES[@]}"
+    log_info "RE (npm):"
+    check_npm_arr "${RE_NPM[@]}"
     log_info "RE (Build from source):"
     check_builds "${RE_BUILD_NAMES[@]}"
     log_info "RE (Binary):"

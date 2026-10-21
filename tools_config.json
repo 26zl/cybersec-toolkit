@@ -676,5 +676,6 @@
   {"name": "pycdc", "method": "source", "module": "reversing", "url": "https://github.com/zrax/pycdc"},
   {"name": "mat2", "method": "apt", "module": "forensics", "url": "https://github.com/jvoisin/mat2"},
   {"name": "vmkatz", "method": "binary", "module": "forensics", "url": "https://github.com/nikaiw/VMkatz"},
-  {"name": "TeamFiltration", "method": "binary", "module": "enterprise", "url": "https://github.com/Flangvik/TeamFiltration"}
+  {"name": "TeamFiltration", "method": "binary", "module": "enterprise", "url": "https://github.com/Flangvik/TeamFiltration"},
+  {"name": "rea-agents", "method": "npm", "module": "reversing", "url": "https://github.com/morluto/rea"}
 ]

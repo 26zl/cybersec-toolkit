@@ -590,6 +590,7 @@ declare -gA _CARGO_BIN_NAMES=(
 # the same name, so only exceptions belong here.
 declare -gA _NPM_BIN_NAMES=(
     [rms-runtime-mobile-security]="rms"
+    [rea-agents]="rea"
 )
 
 install_cargo_batch() {

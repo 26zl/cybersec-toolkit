@@ -72,6 +72,34 @@ class TestCommandPolicies:
         with pytest.raises(ValueError, match="dedicated scope adapter"):
             check_policy("TeamFiltration", args)
 
+    @pytest.mark.parametrize("args", [[], ["--help"], ["-h"], ["--version"], ["setup", "--help"], ["mcp", "-h"]])
+    @pytest.mark.parametrize("tool,binary", [("rea-agents", "rea-agents"), ("alias", "rea")])
+    def test_rea_help(self, args, tool, binary, monkeypatch):
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_EXTERNAL", raising=False)
+        check_policy(tool, args, binary)
+
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["setup"],
+            ["update"],
+            ["--update"],
+            ["--json", "--update"],
+            ["mcp"],
+            ["--mcp"],
+            ["--mcp", "--help"],
+            ["mcp", "--http", "--port", "8765"],
+            ["capture-process", "/tmp/synthetic-bin"],
+            ["inspect-go-binary", "/tmp/synthetic-bin", "--json"],
+            ["setup", "--help", "--json"],
+        ],
+    )
+    def test_rea_commands_blocked(self, args, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="dedicated scope adapter"):
+            check_policy("rea-agents", args)
+
     @pytest.mark.parametrize(
         "args",
         [

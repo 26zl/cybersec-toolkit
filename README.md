@@ -244,7 +244,7 @@ Docker and C2 show what each profile enables by default. A profile that enables 
 | Docker | 13 | Empire, MobSF, BeEF, BloodHound, TheHive, Cortex, PentAGI |
 | Cargo (Rust) | 8 | feroxbuster, RustScan, pwninit, yara-x-cli |
 | Ruby gem | 6 | wpscan, evil-winrm, brakeman |
-| npm | 5 | promptfoo, apk-mitm, surya, solgraph |
+| npm | 6 | promptfoo, apk-mitm, surya, solgraph, rea-agents |
 | Special | 5 | Metasploit, Foundry, Steampipe, patator (curl-pipe installers), crypto venv bootstrap |
 | Snap | 1 | zaproxy |
 

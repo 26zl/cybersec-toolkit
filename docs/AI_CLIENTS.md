@@ -179,6 +179,16 @@ OpenCode discovers skills from `.agents/skills/` (generated mirror of
 `.claude/skills/`). Run `scripts/sync-skills.sh` after cloning to generate
 the mirror. OpenCode also reads `.claude/skills/` directly.
 
+### Non-interactive runs
+
+`opencode run` reads the rest of its message from stdin when stdin is not a
+terminal and waits for EOF, so a scripted call with an open stdin hangs before
+it contacts the model. Close stdin explicitly:
+
+```bash
+opencode run -m <provider>/<model> "Call the cybersec-tools list_profiles tool once." < /dev/null
+```
+
 ## Hermes Agent
 
 Hermes Agent has native MCP client support through `mcp_servers` in the
@@ -540,3 +550,30 @@ Run `scripts/sync-skills.sh` to generate the mirror from `.claude/skills/`.
 
 Smaller local models may not reliably call MCP tools. Use a model with
 proven tool-calling ability or a cloud provider model.
+
+### Local model context window too small for the tool surface
+
+Every client sends its own system prompt plus the schemas of all 15 tools on
+every turn, and the tool descriptions are deliberately detailed so the model
+picks the right tool and arguments. That preamble is large before the user's
+first message: measured at about 16K tokens (OpenCode with Ollama), 44K
+(Codex), and 136K (OpenCode with a custom `openai-compatible` provider, which
+it does not compact). A model served with a 32K window rejects the request
+(`context_length_exceeded`) or, on runtimes that truncate silently, drops the
+start of the prompt and loses the tool definitions.
+
+- Raise the runtime's context window first. Many Ollama models default to
+  4K-8K; create a tag with a larger window instead of editing the service:
+
+  ```bash
+  printf 'FROM <model>\nPARAMETER num_ctx 32768\n' > Modelfile
+  ollama create <model>:32k -f Modelfile
+  ```
+
+  Other local servers expose the same setting as a flag (for example
+  `--max-context`).
+- Restrict the exposed tools in the client when the window cannot grow (see
+  the Hermes `tools.include` example above).
+- Shortening the server's tool descriptions is a trade-off, not a fix: they
+  are detailed on purpose, and small-context models are not a target of the
+  server design.

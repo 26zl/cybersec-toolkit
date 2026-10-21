@@ -23,6 +23,7 @@ RE_GIT=(
 )
 
 RE_GIT_NAMES=(pwndbg GEF peda decomp2dbg Qiling Krakatau pyinstxtractor)
+RE_NPM=(rea-agents)
 RE_BUILD_NAMES=(ELFkickers rappel pycdc)
 # Source of truth for build-from-source url + command (install + update). rappel is
 # x86-only, so install gates it on !IS_ARM; update skips it on ARM (never cloned).
@@ -47,6 +48,7 @@ install_module_reversing() {
     install_apt_batch "Reversing - Packages" "${RE_PACKAGES[@]}"
     install_pipx_batch "Reversing - Python" "${RE_PIPX[@]}"
     install_git_batch "Reversing - Git" "${RE_GIT[@]}"
+    install_npm_batch "Reversing - npm" "${RE_NPM[@]}"
 
     # Build from source (url + command from RE_BUILD_URLS / RE_BUILD_CMDS)
     log_info "Building RE tools from source..."
