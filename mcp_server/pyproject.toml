@@ -4,7 +4,7 @@ version = "1.4.0"
 description = "MCP server for the cybersec-toolkit — query 670+ tools, get recommendations, execute safely"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=3.4.2,<4.0.0",
 ]
@@ -69,7 +69,7 @@ bypass-selection = true
 exclude-newer = "3 days"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]
