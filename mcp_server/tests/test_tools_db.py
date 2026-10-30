@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mcp_server.tools_db import ToolsDatabase, _discover_project_root
+from mcp_server.tools_db import ToolsDatabase, _discover_project_root, resolve_binary_name
 
 from .conftest import SAMPLE_TOOLS
 
@@ -293,3 +293,19 @@ class TestReloadVersions:
         vers = db.reload_versions()
         assert "short" not in vers
         assert "nmap" in vers
+
+
+class TestResolveBinaryName:
+    """Registry tool name -> executable name, per install method."""
+
+    def test_npm_package_names_resolve_to_their_binaries(self) -> None:
+        assert resolve_binary_name("npm", "rea-agents") == "rea"
+        assert resolve_binary_name("npm", "rms-runtime-mobile-security") == "rms"
+
+    def test_cargo_crate_names_resolve_to_their_binaries(self) -> None:
+        assert resolve_binary_name("cargo", "yara-x-cli") == "yr"
+
+    def test_unmapped_names_pass_through_unchanged(self) -> None:
+        assert resolve_binary_name("npm", "apk-mitm") == "apk-mitm"
+        assert resolve_binary_name("cargo", "ripgrep") == "ripgrep"
+        assert resolve_binary_name("go", "nuclei") == "nuclei"

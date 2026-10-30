@@ -304,6 +304,7 @@ Key design decisions: absolute imports with `sys.path` fixup (no relative import
 **Hardcoded data that must stay in sync with bash sources** (validated by
 `scripts/validate_mcp_sync.py`, which also covers the C2, CVE, binary-name, toolchain
 and audit-stream constants), including: `tools_db.py` `PIPX_BIN_NAMES` ↔ `scripts/verify.sh`;
+`tools_db.py` `NPM_BIN_NAMES`/`CARGO_BIN_NAMES` ↔ `lib/installers.sh` `_NPM_BIN_NAMES`/`_CARGO_BIN_NAMES`;
 `tools_db.py` `MODULE_DESCRIPTIONS` ↔ `lib/common.sh`; `tools_db.py` `DOCKER_IMAGES` ↔
 `lib/installers.sh` `ALL_DOCKER_IMAGES`; `profiles.py` `PROFILES` ↔ `profiles/*.conf`;
 `advisor_utils.py` `TOOL_ALIASES` targets ↔ `tools_config.json` tool names.
