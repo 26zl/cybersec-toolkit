@@ -122,6 +122,17 @@ SPECIAL_BIN_NAMES: dict[str, str] = {
     "foundry": "forge",
 }
 
+# npm / cargo package name -> installed binary name, for the packages where they
+# differ. Sync-pinned: validate_mcp_sync.py mirrors these to _NPM_BIN_NAMES and
+# _CARGO_BIN_NAMES in lib/installers.sh, which verify.sh/update.sh/remove.sh share.
+NPM_BIN_NAMES: dict[str, str] = {
+    "rms-runtime-mobile-security": "rms",
+    "rea-agents": "rea",
+}
+CARGO_BIN_NAMES: dict[str, str] = {
+    "yara-x-cli": "yr",
+}
+
 
 def resolve_binary_name(method: str, tool_name: str) -> str:
     """Map a registry tool name to its installed executable name, by install method.
@@ -137,6 +148,10 @@ def resolve_binary_name(method: str, tool_name: str) -> str:
         return APT_BIN_NAMES.get(tool_name, tool_name)
     if method == "special":
         return SPECIAL_BIN_NAMES.get(tool_name, tool_name)
+    if method == "npm":
+        return NPM_BIN_NAMES.get(tool_name, tool_name)
+    if method == "cargo":
+        return CARGO_BIN_NAMES.get(tool_name, tool_name)
     return tool_name
 
 

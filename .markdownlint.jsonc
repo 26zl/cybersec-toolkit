@@ -5,5 +5,8 @@
   // Allow inline HTML — used in README badges and formatting
   "MD033": false,
   // Allow non-H1 first heading — some docs start with badges or metadata
-  "MD041": false
+  "MD041": false,
+  // Only flag duplicate headings within the same section — Keep a Changelog
+  // repeats Added/Changed/Fixed under each version heading
+  "MD024": { "siblings_only": true }
 }

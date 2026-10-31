@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """CI check: validate MCP server hardcoded data matches bash source files.
 
-Compares MODULE_DESCRIPTIONS, DOCKER_IMAGES, PIPX_BIN_NAMES, C2_TOOLS, and
-profile modules/flags/descriptions with the bash installer sources; checks that
+Compares MODULE_DESCRIPTIONS, DOCKER_IMAGES, PIPX/NPM/CARGO_BIN_NAMES, C2_TOOLS,
+and profile modules/flags/descriptions with the bash installer sources; checks that
 TOOL_ALIASES targets, advisor and KNOWN_CVES tool/skill/module references, and
-APT/SPECIAL_BIN_NAMES keys resolve; that MCP_TOOLCHAIN matches the @mcp.tool set
+APT/SPECIAL/NPM/CARGO_BIN_NAMES keys resolve; that MCP_TOOLCHAIN matches the @mcp.tool set
 in server.py; and that AUDIT_STREAM_PREFIX agrees with the sandbox audit sink.
 
 Exit code 0 = all in sync, 1 = drift detected.
@@ -22,8 +22,8 @@ errors: list[str] = []
 
 
 def parse_bash_assoc_array(text: str, var_name: str) -> dict[str, str]:
-    """Parse a bash associative array: declare -A VAR=( [k]="v" ... )."""
-    m = re.search(rf"declare\s+-A\s+{var_name}=\(", text)
+    """Parse a bash associative array: declare -A (or -gA) VAR=( [k]="v" ... )."""
+    m = re.search(rf"declare\s+-g?A\s+{var_name}=\(", text)
     if not m:
         return {}
     block = balanced_array_body(text, m.end() - 1)
@@ -160,6 +160,38 @@ def check_pipx_bin_names() -> None:
             errors.append(f"PIPX_BIN_NAMES: '{key}' in Python but missing in bash")
 
     print(f"PIPX_BIN_NAMES: {len(bash_names)} bash, {len(py_names)} python")
+
+
+def check_installer_bin_names() -> None:
+    """Compare _NPM_BIN_NAMES / _CARGO_BIN_NAMES in lib/installers.sh with tools_db.py.
+
+    Without these maps resolve_binary_name() looks the package name up on PATH and
+    reports an installed tool (rea-agents -> rea, yara-x-cli -> yr) as missing.
+    """
+    bash_text = (ROOT / "lib" / "installers.sh").read_text(encoding="utf-8")
+
+    from mcp_server.tools_db import CARGO_BIN_NAMES, NPM_BIN_NAMES
+
+    for bash_var, py_label, py_names in (
+        ("_NPM_BIN_NAMES", "NPM_BIN_NAMES", NPM_BIN_NAMES),
+        ("_CARGO_BIN_NAMES", "CARGO_BIN_NAMES", CARGO_BIN_NAMES),
+    ):
+        bash_names = parse_bash_assoc_array(bash_text, bash_var)
+        if not bash_names:
+            errors.append(f"{py_label}: could not parse {bash_var} from lib/installers.sh")
+            continue
+
+        for key, val in bash_names.items():
+            if key not in py_names:
+                errors.append(f"{py_label}: '{key}' in bash but missing in Python")
+            elif py_names[key] != val:
+                errors.append(f"{py_label}['{key}']: bash={val!r} != python={py_names[key]!r}")
+
+        for key in py_names:
+            if key not in bash_names:
+                errors.append(f"{py_label}: '{key}' in Python but missing in bash")
+
+        print(f"{py_label}: {len(bash_names)} bash, {len(py_names)} python")
 
 
 # Sentinel for a flag assignment whose value can't be parsed (vs. genuinely absent).
@@ -485,31 +517,32 @@ def check_cve_advisor() -> None:
 
 
 def check_bin_name_maps() -> None:
-    """APT_BIN_NAMES / SPECIAL_BIN_NAMES keys must be real registry tool names.
+    """APT/SPECIAL/NPM/CARGO_BIN_NAMES keys must be real registry tool names.
 
-    Both maps translate a registry tool name to its on-PATH binary. A key that is
+    Each map translates a registry tool name to its on-PATH binary. A key that is
     no longer a registry tool (rename/removal) is dead config that can mask a
     genuinely-missing install — assert every key exists in tools_config.json.
     """
     import json
 
-    from mcp_server.tools_db import APT_BIN_NAMES, SPECIAL_BIN_NAMES
+    from mcp_server.tools_db import APT_BIN_NAMES, CARGO_BIN_NAMES, NPM_BIN_NAMES, SPECIAL_BIN_NAMES
 
     tools = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
     names = {t["name"] for t in tools}
 
-    for map_name, mapping in (
+    maps = (
         ("APT_BIN_NAMES", APT_BIN_NAMES),
         ("SPECIAL_BIN_NAMES", SPECIAL_BIN_NAMES),
-    ):
+        ("NPM_BIN_NAMES", NPM_BIN_NAMES),
+        ("CARGO_BIN_NAMES", CARGO_BIN_NAMES),
+    )
+    for map_name, mapping in maps:
         for key in mapping:
             if key not in names:
                 errors.append(f"{map_name}: key '{key}' is not a tool in tools_config.json")
 
-    print(
-        f"BIN_NAMES: {len(APT_BIN_NAMES)} APT_BIN_NAMES + {len(SPECIAL_BIN_NAMES)} "
-        f"SPECIAL_BIN_NAMES keys checked against {len(names)} registry tools"
-    )
+    checked = " + ".join(f"{len(mapping)} {map_name}" for map_name, mapping in maps)
+    print(f"BIN_NAMES: {checked} keys checked against {len(names)} registry tools")
 
 
 def check_audit_stream_prefix() -> None:
@@ -559,6 +592,7 @@ def main() -> int:
     check_module_descriptions()
     check_docker_images()
     check_pipx_bin_names()
+    check_installer_bin_names()
     check_profiles()
     check_profile_descriptions()
     check_tool_aliases()
