@@ -2,7 +2,7 @@ name: Skills upstream drift check
 
 # Weekly notifier for the vendored .claude/skills/ sources (they are copies, not
 # submodules, so Dependabot does not cover them). Reports only — re-vendoring is a
-# manual, reviewed step. Mirrors the deps 3-day cooldown via MIN_AGE_DAYS.
+# manual, reviewed step. Mirrors the deps 5-day cooldown via MIN_AGE_DAYS.
 
 on:
   schedule:
@@ -37,7 +37,7 @@ jobs:
       - name: Check upstream skill sources
         id: check
         env:
-          MIN_AGE_DAYS: "3"
+          MIN_AGE_DAYS: "5"
         run: |
           bash scripts/update-skills.sh > skills-report.txt 2>&1 || true
           cat skills-report.txt
@@ -58,7 +58,7 @@ jobs:
           # Build the body from a file (never interpolate report text into the shell).
           {
             echo "Weekly check found vendored skill sources that advanced past their pin"
-            echo "(past the 3-day cooldown) or upstream skills not yet vendored."
+            echo "(past the 5-day cooldown) or upstream skills not yet vendored."
             echo
             echo "Re-vendoring is manual and reviewed (see AGENTS.md \"Skills (portable via sync)\")."
             echo "After re-vendoring, bump the pin in SKILLS.md, THIRD_PARTY_NOTICES.md,"

@@ -42,7 +42,7 @@ make validate       # all data-consistency validators
 
 - Absolute imports with `sys.path` fixup (no relative imports).
 - Managed with `uv` (`pyproject.toml`), not pip/venv.
-- 3-day `exclude-newer` window for dependency resolution.
+- 5-day `exclude-newer` window for dependency resolution.
 - Ruff for linting and formatting (line length 120).
 
 ## Shell conventions

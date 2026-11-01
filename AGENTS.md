@@ -350,7 +350,7 @@ When you re-vendor a source, bump its pin in `SKILLS.md`, `THIRD_PARTY_NOTICES.m
 the `SOURCES` array in that script; `update-skills.sh --check-pins` (offline, no cloning)
 asserts all four places — including per-skill `upstream_commit` frontmatter — agree, and
 runs as a CI gate. A weekly workflow (`.github/workflows/skills-update.yml`) opens a
-`skills-update` tracking issue when a source advances past its pin (past a 3-day cooldown)
+`skills-update` tracking issue when a source advances past its pin (past a 5-day cooldown)
 or ships new skills — the notify-only analog of Dependabot, which does not cover copies.
 
 Each skill is `<name>/SKILL.md` with frontmatter where `name` must equal the directory

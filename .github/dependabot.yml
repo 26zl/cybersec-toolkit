@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: "weekly"
     cooldown:
-      default-days: 3
+      default-days: 5
     commit-message:
       prefix: "ci"
     labels:
@@ -22,7 +22,7 @@ updates:
     schedule:
       interval: "weekly"
     cooldown:
-      default-days: 3
+      default-days: 5
     commit-message:
       prefix: "deps"
     labels:
@@ -37,7 +37,7 @@ updates:
     schedule:
       interval: "weekly"
     cooldown:
-      default-days: 3
+      default-days: 5
     commit-message:
       prefix: "deps"
     labels:
@@ -50,7 +50,7 @@ updates:
     schedule:
       interval: "monthly"
     cooldown:
-      default-days: 3
+      default-days: 5
     commit-message:
       prefix: "docker"
     labels:
@@ -61,7 +61,7 @@ updates:
     schedule:
       interval: "monthly"
     cooldown:
-      default-days: 3
+      default-days: 5
     commit-message:
       prefix: "deps"
     labels:

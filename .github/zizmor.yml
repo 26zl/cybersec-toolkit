@@ -1,0 +1,5 @@
+rules:
+  dependabot-cooldown:
+    config:
+      # Repo-wide release cooldown, shared with dependabot.yml and [tool.uv] exclude-newer.
+      days: 5

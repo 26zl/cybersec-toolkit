@@ -45,7 +45,7 @@ jobs:
         run: |
           cd mcp_server
           cp uv.lock uv.lock.old
-          # pyproject.toml sets [tool.uv] exclude-newer = "3 days" to avoid
+          # pyproject.toml sets [tool.uv] exclude-newer = "5 days" to avoid
           # locking package releases during their highest-risk window.
           uv lock --upgrade
           if diff -q uv.lock uv.lock.old > /dev/null 2>&1; then

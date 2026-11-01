@@ -347,7 +347,7 @@ The installer downloads and runs code from the internet. On Linux it runs as roo
 - __Go SDK__: SHA256-verified against go.dev when the API is reachable; strict mode fails if it is not.
 - __Git repos__: cloned at HEAD; the repo's own `setup.py` is never run. `requirements.txt` installs into a per-repo venv as the invoking user, where dependency sdists can still build, and outside strict mode (`--production` or `--require-checksums`) a failed pinned install is retried with `==` relaxed to `>=`.
 - __Build from source__: runs `make` as the invoking user, not root. Review what you build.
-- __MCP Python dependencies__: resolved by `uv` with a 3-day `exclude-newer` window, and Dependabot waits the same 3 days. This does not apply to the security tools themselves, which follow their upstream release channels.
+- __MCP Python dependencies__: resolved by `uv` with a 5-day `exclude-newer` window, and Dependabot waits the same 5 days. This does not apply to the security tools themselves, which follow their upstream release channels.
 - __Toolkit Docker images__: Ubuntu and uv are digest-pinned; apt packages resolve from the current signed Ubuntu repositories, so rebuilds are not bit-for-bit reproducible.
 - __Optional tool images__: pulled by mutable tags, several of them `latest`. `--production` does not pin or verify them.
 
@@ -633,7 +633,7 @@ make setup    # submodules, MCP deps, sandbox deps, skill mirror
 make check    # lint, validators, bats, pytest, sandbox tests
 ```
 
-`make help` lists every target; the raw commands are in [`AGENTS.md`](AGENTS.md). The MCP Python project resolves dependencies with `uv` and `exclude-newer = "3 days"`, so fresh releases are ignored for 72 hours to limit the blast radius of a compromised upload; Dependabot and the weekly uv update workflow use the same cooldown. Run the shell tests on Linux, macOS, or WSL: native Windows checkouts can rewrite the Bats submodules with CRLF and fail with `$'\r'`.
+`make help` lists every target; the raw commands are in [`AGENTS.md`](AGENTS.md). The MCP Python project resolves dependencies with `uv` and `exclude-newer = "5 days"`, so fresh releases are ignored for five days to limit the blast radius of a compromised upload; Dependabot and the weekly uv update workflow use the same cooldown. Run the shell tests on Linux, macOS, or WSL: native Windows checkouts can rewrite the Bats submodules with CRLF and fail with `$'\r'`.
 
 Release notes for every version, including security fixes and upgrade steps, are on the [GitHub Releases](https://github.com/26zl/cybersec-toolkit/releases) page; `git log $(git describe --tags --abbrev=0)..` shows what has landed since the latest release.
 

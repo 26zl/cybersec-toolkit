@@ -306,7 +306,7 @@ mcp_server/
                        #   marks directives aimed at an AI reader
   audit.py             # Owner-only rotating audit log in the user's state directory
   remote.py            # Remote SSH execution — host config, connection testing, input validation
-  pyproject.toml       # UV config, 3-day exclude-newer for MCP runtime deps, CLI entrypoint
+  pyproject.toml       # UV config, 5-day exclude-newer for MCP runtime deps, CLI entrypoint
   README.md            # This file
 manual_scripts/        # Persistent scripts — exploits, solvers, reusable tools
 ```

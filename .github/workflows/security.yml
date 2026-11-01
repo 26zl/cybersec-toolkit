@@ -228,6 +228,13 @@ jobs:
           fi
           echo "All actions are SHA-pinned"
 
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Audit workflows and Dependabot config (zizmor)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uvx zizmor@1.31.1 --format=github .github/
+
   scorecard:
     name: OSSF Scorecard
     runs-on: ubuntu-latest

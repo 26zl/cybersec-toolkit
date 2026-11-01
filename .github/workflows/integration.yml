@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     container:
-      image: "${{ matrix.image }}"
+      image: "${{ matrix.image }}" # zizmor: ignore[unpinned-images] rolling distros are tested at their current release
     strategy:
       fail-fast: false
       matrix:

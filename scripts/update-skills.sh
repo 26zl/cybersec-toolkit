@@ -9,7 +9,7 @@
 #   scripts/update-skills.sh --check      as above; exit 1 if any drift found
 #   scripts/update-skills.sh --check-pins offline pin-consistency check; exit 1 on mismatch
 #
-# MIN_AGE_DAYS (env, default 3) — cooldown before an upstream advance is flagged as UPDATE.
+# MIN_AGE_DAYS (env, default 5) — cooldown before an upstream advance is flagged as UPDATE.
 #
 set -uo pipefail
 
@@ -19,8 +19,8 @@ SKILLS="$REPO_ROOT/.claude/skills"
 SKILLS_MD="$SKILLS/SKILLS.md"
 TPN="$REPO_ROOT/THIRD_PARTY_NOTICES.md"
 
-# Cooldown before an upstream advance is flagged, matching the deps 3-day policy.
-MIN_AGE_DAYS="${MIN_AGE_DAYS:-3}"
+# Cooldown before an upstream advance is flagged, matching the deps 5-day policy.
+MIN_AGE_DAYS="${MIN_AGE_DAYS:-5}"
 
 # name|git-url|pinned-commit — canonical pin list (--check-pins validates docs + frontmatter against it).
 SOURCES=(
