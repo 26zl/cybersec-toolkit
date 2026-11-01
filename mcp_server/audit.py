@@ -285,20 +285,25 @@ def _audit_required() -> bool:
     return os.environ.get("CYBERSEC_MCP_AUDIT_REQUIRED", "").strip().lower() in ("1", "true", "yes")
 
 
+def _open_append_nofollow(path: str) -> int:
+    """Open ``path`` for appending; a symlink planted at the path must not redirect audit records."""
+    return os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+
+
 class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """RotatingFileHandler that keeps the audit log owner-only (0600).
 
-    Permissions are applied whenever the stream opens. chmod remains best-effort
-    for filesystems without POSIX mode support.
+    Permissions are applied through the open descriptor whenever the stream opens.
+    fchmod remains best-effort for filesystems without POSIX mode support.
     """
 
     def _open(self):  # type: ignore[override]
-        stream = super()._open()
+        fd = _open_append_nofollow(self.baseFilename)
         try:
-            os.chmod(self.baseFilename, 0o600)
-        except OSError:
+            os.fchmod(fd, 0o600)
+        except (AttributeError, OSError):
             pass
-        return stream
+        return self._builtin_open(fd, self.mode, encoding=self.encoding, errors=self.errors)
 
     def emit(self, record: logging.LogRecord) -> None:
         # Several server processes may append to one log. Without a shared lock each
@@ -309,7 +314,7 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
             super().emit(record)
             return
         try:
-            lock = open(self.baseFilename + ".lock", "a", encoding="utf-8")  # noqa: SIM115
+            lock = open(_open_append_nofollow(self.baseFilename + ".lock"), "a", encoding="utf-8")  # noqa: SIM115
         except OSError:
             super().emit(record)
             return

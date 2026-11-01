@@ -17,7 +17,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
   appendFileSync,
   closeSync,
-  existsSync,
+  constants,
   mkdirSync,
   openSync,
   renameSync,
@@ -35,6 +35,8 @@ export const AUDIT_KEY_ENV = 'CYBERSEC_MCP_AUDIT_KEY';
 export const AUDIT_KEY_BYTES = 32;
 
 const TAG_PATTERN = /^[0-9a-f]{64}$/;
+// O_NOFOLLOW: a symlink planted at the log path must not redirect audit records.
+const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 const MAX_BYTES = 5 * 1024 * 1024;
 const BACKUP_COUNT = 3;
 // A rotation lock older than this was left by a crashed holder.
@@ -216,9 +218,13 @@ export const createAuditSink = ({ path, required = false, warn = (m) => process.
     write(record) {
       if (disabled) return false;
       try {
-        if (!existsSync(target)) closeSync(openSync(target, 'a', 0o600));
         rotate(target);
-        appendFileSync(target, `${record}\n`, { mode: 0o600 });
+        const fd = openSync(target, APPEND_FLAGS, 0o600);
+        try {
+          appendFileSync(fd, `${record}\n`);
+        } finally {
+          closeSync(fd);
+        }
         return true;
       } catch (error) {
         fail(error);

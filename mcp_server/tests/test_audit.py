@@ -889,6 +889,20 @@ class TestAuditRequiredFailsClosedAtRuntime:
         finally:
             handler.close()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink semantics")
+    def test_handler_refuses_a_symlink_planted_at_the_log_path(self, tmp_path: Path) -> None:
+        import mcp_server.audit as mod
+
+        victim = tmp_path / "victim.txt"
+        victim.write_text("untouched\n")
+        mode_before = victim.stat().st_mode
+        (tmp_path / "a.log").symlink_to(victim)
+
+        with pytest.raises(OSError):
+            mod._SecureRotatingFileHandler(tmp_path / "a.log", maxBytes=1024, backupCount=1, encoding="utf-8")
+        assert victim.read_text() == "untouched\n"
+        assert victim.stat().st_mode == mode_before
+
 
 class TestConcurrentWriters:
     """Several server processes append to one audit log (OP-2). Below the size cap,

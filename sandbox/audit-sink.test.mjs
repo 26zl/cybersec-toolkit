@@ -2,7 +2,17 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -151,6 +161,20 @@ test('createAuditSink clears a rotate lock left by a crashed holder', () => {
 
   assert.equal(existsSync(lock), false);
   assert.equal(existsSync(`${target}.1`), true);
+});
+
+test('createAuditSink refuses to write through a symlink planted at the log path', () => {
+  const dir = scratch();
+  const victim = join(dir, 'victim.txt');
+  writeFileSync(victim, 'untouched\n');
+  const target = join(dir, 'audit.log');
+  symlinkSync(victim, target);
+  const warnings = [];
+  const sink = createAuditSink({ path: target, warn: (m) => warnings.push(m) });
+
+  assert.equal(sink.write(record('run_tool')), false);
+  assert.equal(readFileSync(victim, 'utf8'), 'untouched\n');
+  assert.equal(warnings.length, 1);
 });
 
 test('createAuditSink degrades to a single warning when the log is unusable', () => {
