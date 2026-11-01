@@ -6,7 +6,7 @@ SHELL := bash
 SH_FILES := install.sh lib/*.sh modules/*.sh scripts/*.sh
 # Pinned so a local `make lint-md` matches CI, which uses the SHA-pinned
 # DavidAnson/markdownlint-cli2-action. Bump both together.
-MARKDOWNLINT_VERSION := 0.23.2
+MARKDOWNLINT_VERSION := 0.24.0
 # Paths the CI markdown-lint job skips; applied to tracked and untracked *.md files.
 MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
 

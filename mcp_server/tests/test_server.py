@@ -19,19 +19,19 @@ def test_main_disables_banner_and_update_check() -> None:
 async def test_every_tool_has_behavior_annotations() -> None:
     # A new @mcp.tool without annotations would leave clients unable to reason
     # about its side effects; every registered tool must carry a readOnly hint.
-    tools = await server.mcp._list_tools()
+    tools = await server.mcp.list_tools()
     assert tools, "no MCP tools registered"
-    missing = [t.name for t in tools if t.annotations is None or t.annotations.readOnlyHint is None]
+    missing = [t.name for t in tools if t.annotations is None or t.annotations.read_only_hint is None]
     assert not missing, f"tools missing behavior annotations: {missing}"
 
 
 @pytest.mark.asyncio
 async def test_executors_marked_not_read_only() -> None:
-    tools = {t.name: t.annotations for t in await server.mcp._list_tools()}
+    tools = {t.name: t.annotations for t in await server.mcp.list_tools()}
     for name in ("run_tool", "run_pipeline", "run_script"):
-        assert tools[name].readOnlyHint is False and tools[name].destructiveHint is True, name
+        assert tools[name].read_only_hint is False and tools[name].destructive_hint is True, name
     for name in ("list_tools", "get_tool_info", "list_profiles"):
-        assert tools[name].readOnlyHint is True, name
+        assert tools[name].read_only_hint is True, name
 
 
 @pytest.mark.asyncio
@@ -202,7 +202,7 @@ EXPECTED_TOOL_SCHEMA = {
 
 @pytest.mark.asyncio
 async def test_tool_schema_matches_snapshot() -> None:
-    tools = await server.mcp._list_tools()
+    tools = await server.mcp.list_tools()
     actual = {}
     for t in tools:
         schema = getattr(t, "parameters", None) or {}

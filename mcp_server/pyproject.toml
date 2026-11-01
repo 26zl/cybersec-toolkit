@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
-    "fastmcp>=3.4.2,<4.0.0",
+    "fastmcp>=4.1.4,<5.0.0",
 ]
 
 [project.optional-dependencies]
@@ -19,7 +19,7 @@ ctf-core = [
 ]
 ctf-extra = [
     "pwntools>=4.11",
-    "z3-solver>=4.12,<5",
+    "z3-solver>=4.12,<6",
 ]
 
 [project.scripts]
