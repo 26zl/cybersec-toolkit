@@ -103,6 +103,124 @@ engagement's rules of engagement or a client contract forbid sharing target
 data with a third party, run the model locally (for example Ollama or LM Studio
 behind an MCP-capable client) so the output never leaves the host.
 
+## Cyber model provider (OrcaRouter Cyber Inference)
+
+The toolkit itself ships no model client — the MCP client on the other end of
+stdio chooses the model. For deliberate security work, [OrcaRouter](https://www.orcarouter.ai)
+is a named, OpenAI-compatible provider preset that lets a security team that has
+completed business verification reach cyber-tier models and gateway controls on
+one endpoint: **Cyber models for your red team, gateway controls for your blue
+team.** It admits authorized, scoped security-reasoning requests that general
+gateways often refuse or silently downgrade.
+
+| | Value |
+| --- | --- |
+| Provider ID | `orcarouter` (**OrcaRouter Cyber Inference**) |
+| Inference base (OpenAI wire format) | `https://api.orcarouter.ai/v1` |
+| Model catalog | `GET https://api.orcarouter.ai/v1/models` |
+| Auth (one click) | OAuth 2.0 + PKCE, key issued at `https://www.orcarouter.ai/api/v1/auth/keys` |
+| Auth (existing key) | `ORCAROUTER_API_KEY`, an `sk-orca-…` key |
+| Provider page | <https://www.orcarouter.ai/cyber> |
+| Cyber-tier catalog | <https://www.orcarouter.ai/models?tier=cyber> |
+
+### Choose a model
+
+| Tier | Model ID | Use |
+| --- | --- | --- |
+| Default | `orcarouter/auto` | Automatic routing; works with any key; the provider default |
+| Cyber (business-verified teams) | `orca/orcacyber-ultra-1.0` | Security code scanning and multi-step reasoning over large codebases |
+| Cyber (business-verified teams) | `orca/orcacyber-zero-1.5` (also `orca/orcacyber-zero-1.0`) | OrcaCyber harness |
+| General fallback | `orcarouter/fusion` | General-purpose fallback |
+
+The Cyber IDs are the catalog form (`orca/<id>`, namespaced like every other vendor),
+and that is what a client must send in `model`. Cyber-tier models serve
+authenticated catalog listings only and are gated on business verification; select
+a cyber model only on a key whose owner completed that step.
+
+### Where the catalog is filtered
+
+The preset in your client's config drives the model picker, so the picker must
+follow the catalog rather than a hardcoded list. A chat-only client, or a client
+that lets a user choose the tier, should list the catalog filtered to chat.
+Filtering is a static, offline decision over the catalog metadata (endpoint types,
+input modalities), so it works whether the catalog came from the live `GET /models`
+call or from the fallback seed:
+
+- Read `GET /models`; it needs no key, and with the user's `sk-orca-…` key it returns
+  only what their workspace can call. Keep every `vendor/model` ID exactly as returned.
+- Chat: keep models whose `supported_endpoint_types` include one of `openai`,
+  `anthropic`, `gemini`, `openai-response`; drop anything that offers only
+  non-chat endpoints such as an image generation endpoint.
+- Image or file input: keep only chat models whose `architecture.input_modalities`
+  explicitly lists `image` (or `file`). A model that omits the field is left out, and an
+  attachment the selected model does not declare clears the selection instead of
+  being sent.
+- Scheduled evaluation: `scripts/evaluate_orcarouter_catalog.py` applies these rules
+  (`scripts/orcarouter_model_filter.py` holds the rule set), prints the text and
+  multimodal pickers, and exits non-zero if a picker would keep a model without a
+  chat endpoint. A fetch failure falls back to a small, checked-in seed and says so.
+
+```bash
+python3 scripts/evaluate_orcarouter_catalog.py --show-config   # provider block for Codex
+python3 scripts/evaluate_orcarouter_catalog.py --json          # live catalog + pickers
+```
+
+### 1. Paste an existing API key
+
+Either tier works, and nothing is written to the repository:
+
+```bash
+export ORCAROUTER_API_KEY=sk-orca-…   # keep it out of shell history
+```
+
+Copy it from the OrcaRouter console and treat it like any other credential — never
+put it in tracked config ([`.mcp.json`](../.mcp.json) is committed and must stay
+free of tokens; the same rule applies to your provider config).
+
+### 2. Connect with OrcaRouter (OAuth 2.0 + PKCE)
+
+No client secret, no pre-registered redirect URI. The user authorizes in the browser
+and the client receives a normal `sk-orca-…` key, billed to the user's account,
+listed in their console, and revocable at
+<https://www.orcarouter.ai/console/authorized-apps>.
+
+- OpenCode: run `/connect` and pick OrcaRouter.
+- Codex: run `codex login` if your version lists OrcaRouter.
+- Clients without a built-in OrcaRouter login: the helper script implements both
+  flows. `--connect` opens the consent page on a loopback callback and checks the
+  returned `state`; `--code`/`--verifier` accepts an out-of-band code:
+
+  ```bash
+  python3 scripts/evaluate_orcarouter_catalog.py --connect
+  python3 scripts/evaluate_orcarouter_catalog.py --code <code> --verifier <verifier>
+  ```
+
+  The script prints the consent URL for `--connect`; the verifier for `--code` comes
+  from the client that started that flow. Always send `code_challenge_method=S256`
+  (the `plain` method is rejected with `400`), the consent `scope` is `api`, and
+  `app_name` is `Cybersec Toolkit`. The exchange goes to the auth origin only —
+  `https://api.orcarouter.ai/v1/auth/keys` is a 404.
+
+A `200` returns the key (the script verifies the `sk-orca-` prefix and that the
+scope reads back as `api`, and never prints the key). Persistence follows the
+client's own rule: a PKCE-issued key is a durable API key, not a refresh token, so
+store it once in the client's credential store and reuse it (a user may issue at
+most 10 per 24 hours) — never re-authorize on every launch. A `401` from the relay
+means revoked: mark that account for reauthentication rather than retrying or
+inventing a refresh grant.
+
+### Provider evidence
+
+- Inference and model list: [`GET https://api.orcarouter.ai/v1/models`](https://api.orcarouter.ai/v1/models),
+  OpenAI-compatible `/chat/completions` on the same base.
+- Authorization, exchange, revocation: <https://www.orcarouter.ai/auth>,
+  <https://www.orcarouter.ai/api/v1/auth/keys>, revoke every app-issued key at
+  <https://www.orcarouter.ai/console/authorized-apps>.
+- Product: <https://www.orcarouter.ai>, <https://www.orcarouter.ai/cyber>,
+  <https://www.orcarouter.ai/models?tier=cyber>.
+- Terms and routing: <https://www.orcarouter.ai/terms>, <https://www.orcarouter.ai/legal>.
+- Maintenance owner: OrcaRouter team; verified against the live catalog on 2026-11-08.
+
 ## OpenCode
 
 ### Configuration
@@ -157,21 +275,43 @@ Select DeepSeek in `/connect`, enter the user's own API key, and then choose
 the desired DeepSeek model with `/models`. Credentials remain in OpenCode's
 user credential store rather than the repository configuration.
 
-**Other OpenAI-compatible providers:**
+**Other providers:** use the client's own provider preset for any named vendor.
+For an endpoint without a preset, define a custom `openai-compatible` provider that
+points at that vendor's base URL.
+
+**OrcaRouter Cyber Inference** — a named provider preset, not a custom
+`openai-compatible` endpoint. [OrcaRouter](https://www.orcarouter.ai) is an
+OpenAI-compatible AI gateway that routes many providers behind one endpoint:
 
 ```jsonc
 {
   "provider": {
-    "openai-compatible": {
+    "orcarouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OrcaRouter Cyber Inference",
       "options": {
-        "apiKey": "{env:MY_API_KEY}",
-        "baseURL": "https://api.example.com/v1"
+        "baseURL": "https://api.orcarouter.ai/v1",
+        "apiKey": "{env:ORCAROUTER_API_KEY}"
+      },
+      "models": {
+        "orcarouter/auto": {},
+        "orcarouter/fusion": {}
       }
     }
   },
-  "model": "openai-compatible/model-name"
+  "model": "orcarouter/orcarouter/auto"
 }
 ```
+
+- `ORCAROUTER_API_KEY` is an `sk-orca-…` key from the user's own OrcaRouter account;
+  or drop the `options.apiKey` line and run OpenCode's `/connect` OAuth login
+  (browser authorization, no client secret), which stores the same kind of key.
+- Agent Firewall and Guardrails on the gateway screen prompts and tool calls
+  before they reach the model. See
+  [Cyber model provider](#cyber-model-provider-orcarouter-cyber-inference) below for the tier list,
+  catalog filtering and the OAuth 2.0 + PKCE connect flow.
+- Model IDs come from `GET https://api.orcarouter.ai/v1/models`; keep the
+  `vendor/model` namespace as returned.
 
 ### Skills
 
