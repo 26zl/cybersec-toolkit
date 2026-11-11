@@ -8,5 +8,5 @@
     "smoke": "node smoke.mjs"
   },
   "engines": { "node": ">=22" },
-  "dependencies": { "@ai-hero/sandcastle": "0.12.0" }
+  "dependencies": { "@ai-hero/sandcastle": "0.14.0" }
 }
