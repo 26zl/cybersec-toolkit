@@ -517,7 +517,7 @@ MANIFEST
 }
 
 # _builder_cmd (privilege-drop tool resolution)
-# Regression cover: root's cargo under /root is unreachable for $SUDO_USER, and a
+# Root's cargo under /root is unreachable for $SUDO_USER, and a
 # bare name misses ensure_go's /usr/local/go/bin.
 
 _bc_setup() {
@@ -714,7 +714,7 @@ PY
     [[ "$alive" -eq 1 ]]
 }
 
-@test "lazy package index refreshes once, only on the first install (CL-6)" {
+@test "lazy package index refreshes once, only on the first install" {
     source_libs archlinux pacman
     make_test_tmpdir
     pkg_update() { echo refresh >> "$TEST_TMPDIR/calls"; }
@@ -735,7 +735,7 @@ PY
     assert_output "1"
 }
 
-@test "zypper refresh does not auto-import repo keys outside CI (SI-10)" {
+@test "zypper refresh does not auto-import repo keys outside CI" {
     source_libs opensuse-tumbleweed zypper
     make_test_tmpdir
     unset CI CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS
@@ -792,6 +792,27 @@ PY
     [[ ! -e "$TEST_TMPDIR/calls" ]]
 }
 
+@test "pkg_cleanup leaves orphaned packages alone unless autoremove is requested" {
+    make_test_tmpdir
+    maybe_sudo() { echo "$*" >> "$TEST_TMPDIR/calls"; }
+
+    for manager in apt dnf; do
+        : > "$TEST_TMPDIR/calls"
+        PKG_MANAGER="$manager" PKG_AUTOREMOVE=0 run pkg_cleanup
+        assert_success
+        run grep -c autoremove "$TEST_TMPDIR/calls"
+        assert_output "0"
+        run grep -c clean "$TEST_TMPDIR/calls"
+        refute_output "0"
+
+        : > "$TEST_TMPDIR/calls"
+        PKG_MANAGER="$manager" PKG_AUTOREMOVE=1 run pkg_cleanup
+        assert_success
+        run grep -c autoremove "$TEST_TMPDIR/calls"
+        assert_output "1"
+    done
+}
+
 @test "the install log never writes through a planted symlink" {
     make_test_tmpdir
     printf 'keep\n' > "$TEST_TMPDIR/victim"
@@ -801,4 +822,91 @@ PY
 
     [[ "$(cat "$TEST_TMPDIR/victim")" == "keep" ]]
     [[ ! -L "$TEST_TMPDIR/cybersec_install.log" ]]
+}
+
+@test "_show_log_tail prints the end of the run log to stderr" {
+    bats_require_minimum_version 1.5.0
+    make_test_tmpdir
+    printf 'line %s\n' 1 2 3 4 5 > "$TEST_TMPDIR/run.log"
+    LOG_FILE="$TEST_TMPDIR/run.log"
+
+    run --separate-stderr _show_log_tail 2
+    assert_success
+    assert_output ""
+    [[ "$stderr" == *"line 4"* && "$stderr" == *"line 5"* && "$stderr" != *"line 3"* ]]
+}
+
+@test "_show_log_tail is silent without a readable log" {
+    LOG_FILE=/dev/null run _show_log_tail
+    assert_success
+    assert_output ""
+}
+
+# apt-get stub for the removal tests: user-app needs lib-b, and lib-b needs lib-c.
+_apt_removal_stub() {
+    apt-get() {
+        if [[ "$1" != -s ]]; then
+            echo "apt-get $*" >> "$TEST_TMPDIR/calls"
+            return 0
+        fi
+        shift 2
+        local pkg
+        for pkg in "$@"; do
+            printf 'Remv %s [1.0]\n' "$pkg"
+            case "$pkg" in
+                lib-b) printf 'Remv user-app [1.0]\n' ;;
+                lib-c) printf 'Remv lib-b [1.0]\n' ;;
+            esac
+        done
+    }
+    maybe_sudo() { "$@"; }
+    PKG_MANAGER=apt
+}
+
+@test "pkg_remove removes what nothing else needs and keeps the rest" {
+    make_test_tmpdir
+    _apt_removal_stub
+
+    run pkg_remove tool-a lib-b
+    assert_failure
+    assert_output --partial "Keeping lib-b: needed by user-app"
+    run cat "$TEST_TMPDIR/calls"
+    assert_output "apt-get remove -y tool-a"
+}
+
+@test "pkg_remove also keeps a package that a kept package needs" {
+    make_test_tmpdir
+    _apt_removal_stub
+
+    run pkg_remove tool-a lib-b lib-c
+    assert_failure
+    assert_output --partial "Keeping lib-c: needed by lib-b"
+    run cat "$TEST_TMPDIR/calls"
+    assert_output "apt-get remove -y tool-a"
+}
+
+@test "pkg_remove removes a whole list that depends only on itself" {
+    make_test_tmpdir
+    _apt_removal_stub
+
+    run pkg_remove tool-a tool-d
+    assert_success
+    run cat "$TEST_TMPDIR/calls"
+    assert_output "apt-get remove -y tool-a tool-d"
+}
+
+@test "pkg_remove treats an unreadable package manager answer as a blocker" {
+    make_test_tmpdir
+    apt-get() {
+        [[ "$1" == -s ]] || { echo "apt-get $*" >> "$TEST_TMPDIR/calls"; return 0; }
+        # The list as a whole reports a dependent; the per-package question then fails.
+        [[ $# -gt 3 ]] && { printf 'Remv a [1]\nRemv other [1]\n'; return 0; }
+        return 100
+    }
+    maybe_sudo() { "$@"; }
+    PKG_MANAGER=apt
+
+    run pkg_remove a b
+    assert_failure
+    [[ ! -e "$TEST_TMPDIR/calls" ]]
 }

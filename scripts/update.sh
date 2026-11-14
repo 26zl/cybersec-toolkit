@@ -11,6 +11,9 @@
 #   sudo ./scripts/update.sh --skip-go          # Skip Go tools
 
 set -uo pipefail
+# Tools land in shared locations (/usr/local/bin, /opt); a restrictive umask inherited
+# through sudo would leave them unreadable for the user who runs them.
+umask 022
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
@@ -77,12 +80,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Never read from the environment: an inherited FAST_MODE would silently disable
+# checksum verification (root shells, containers, sudo -E).
+FAST_MODE=false
 export VERBOSE REQUIRE_CHECKSUMS PRODUCTION_MODE
-
-_init_log_file "$SCRIPT_DIR/tool_update.log"
 
 check_root
 _acquire_run_lock
+# After the lock: a refused second run must not truncate the log of the run that holds it.
+_init_log_file "$SCRIPT_DIR/tool_update.log"
 print_banner
 
 _check_pkg_manager
@@ -116,11 +122,42 @@ echo ""
 if [[ "$SKIP_PIPX" == "false" ]]; then
     if command_exists pipx; then
         log_info "Updating pipx packages..."
-        if pipx upgrade-all >> "$LOG_FILE" 2>&1; then
-            log_success "pipx packages updated"
+        # One package at a time: upgrade-all would also upgrade the venvs in $PIPX_HOME
+        # that this toolkit did not install (`pipx install --global` shares the directory).
+        ALL_PIPX_TOOLS=()
+        _collect_module_arrays "PIPX" ALL_PIPX_TOOLS
+        installed_pipx=$(pipx list --short 2>/dev/null \
+            | while read -r _pl_name _; do _pipx_venv_name "$_pl_name"; done || true)
+        PIPX_UPDATED=0
+        PIPX_LATEST=0
+        PIPX_SKIPPED=0
+        PIPX_FAILED=0
+        for tool in ${ALL_PIPX_TOOLS[@]+"${ALL_PIPX_TOOLS[@]}"}; do
+            if ! _version_known "$tool" || _is_preexisting "$tool" \
+                || ! grep -qxF -- "$(_pipx_venv_name "$tool")" <<< "$installed_pipx"; then
+                log_debug "Skipping pipx $tool (not installed by the toolkit)"
+                PIPX_SKIPPED=$((PIPX_SKIPPED + 1))
+                continue
+            fi
+            if _pipx_out=$(pipx upgrade "$tool" 2>&1); then
+                printf '%s\n' "$_pipx_out" >> "$LOG_FILE"
+                if [[ "$_pipx_out" == *"upgraded package"* ]]; then
+                    PIPX_UPDATED=$((PIPX_UPDATED + 1))
+                    _track_update "$tool" "pipx" "latest"
+                else
+                    PIPX_LATEST=$((PIPX_LATEST + 1))
+                fi
+            else
+                printf '%s\n' "$_pipx_out" >> "$LOG_FILE"
+                log_warn "Failed: pipx $tool"
+                PIPX_FAILED=$((PIPX_FAILED + 1))
+            fi
+        done
+        if [[ "$PIPX_FAILED" -eq 0 ]]; then
+            log_success "pipx packages: $PIPX_UPDATED updated, $PIPX_LATEST already latest, $PIPX_SKIPPED skipped (not installed by the toolkit)"
         else
-            log_warn "Some pipx packages failed to update (check log)"
-            UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
+            log_warn "pipx packages: $PIPX_UPDATED updated, $PIPX_LATEST already latest, $PIPX_SKIPPED skipped, $PIPX_FAILED failed (check log)"
+            UPDATE_FAILURES=$((UPDATE_FAILURES + PIPX_FAILED))
         fi
     else
         log_warn "pipx not found — skipping Python tool updates"
@@ -419,7 +456,7 @@ if [[ "$SKIP_CARGO" == "false" ]]; then
                 # Without --force, cargo skips if the installed version matches latest
                 cargo_output=""
                 _upd_crate_esc="$(_escape_single_quoted "$crate")"
-                if cargo_output=$(_as_builder "$(_builder_cmd cargo) install $_upd_crate_esc" 2>&1); then
+                if cargo_output=$(_cargo_install "$(_builder_cmd cargo)" "$_upd_crate_esc" 2>&1); then
                     if echo "$cargo_output" | grep -q "already installed"; then
                         log_debug "Already latest: $crate"
                         CARGO_LATEST=$((CARGO_LATEST + 1))

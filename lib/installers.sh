@@ -593,6 +593,14 @@ declare -gA _NPM_BIN_NAMES=(
     [rea-agents]="rea"
 )
 
+# _cargo_install <cargo-cmd> <escaped-crate> — build a crate from source as the builder.
+# The crate's published Cargo.lock is tried first: it is the dependency set upstream
+# tested, and an unlocked resolve breaks whenever a transitive dependency raises its
+# minimum Rust version. A crate whose lockfile no longer builds falls back to a fresh resolve.
+_cargo_install() {
+    _as_builder "$1 install --locked $2" || _as_builder "$1 install $2"
+}
+
 install_cargo_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
@@ -669,7 +677,7 @@ install_cargo_batch() {
         fi
         # Fall back to cargo install (compiles from source)
         if [[ "$_installed" == "false" ]]; then
-            if ! _as_builder "$_cargo_cmd install $_crate_escaped" >> "$LOG_FILE" 2>&1; then
+            if ! _cargo_install "$_cargo_cmd" "$_crate_escaped" >> "$LOG_FILE" 2>&1; then
                 log_error "Failed cargo: $crate$(_disk_hint)"
                 failed=$((failed + 1))
                 track_session "$crate" "cargo" "failed" 2>/dev/null || true
@@ -1528,6 +1536,23 @@ Path(sys.argv[1], ".runtime-launcher.json").write_text(json.dumps(configuration)
     chmod 755 "$content_root/runtime_launcher.py"
 }
 
+# _release_dir_shared <dir> — true when more than one binary release installs into
+# <dir>. Such a directory is the toolkit's own collection (cybersec-jars), not one
+# tool's tree: each release adds a file named after itself, so no single install
+# record vouches for the directory.
+_release_dir_shared() {
+    local dir="$1" arr entry _repo _binary _pattern _dest _rest tenants=0
+    for arr in $(compgen -v BINARY_RELEASES_); do
+        local -n _rds_entries="$arr"
+        [[ ${#_rds_entries[@]} -gt 0 ]] || continue
+        for entry in "${_rds_entries[@]}"; do
+            IFS='|' read -r _repo _binary _pattern _dest _rest <<< "$entry"
+            [[ "$_dest" == "$dir" ]] && tenants=$((tenants + 1))
+        done
+    done
+    [[ "$tenants" -gt 1 ]]
+}
+
 # Args: repo binary pattern dest_dir mode [archive_binary] [release_tag]
 #   mode=install: skip if already installed, track version, log success/failure
 #   mode=update:  force re-download, set _RELEASE_TAG, no version tracking (caller does it)
@@ -1544,11 +1569,20 @@ _download_github_release_impl() {
         log_warn "Skipping $binary — no supported release for this platform"
         return 0
     fi
-    if [[ "$(_module_tool_metadata "$binary" BINARY_EXCLUSIVE_DIRS)" == true ]]; then
-        local exposed_binary="$PIPX_BIN_DIR/$binary"
+    # A destination of its own is written only when this toolkit created it: the
+    # release tree is copied over the directory and its modes are rewritten.
+    local _dest_created=false
+    _drop_new_dest() {
+        [[ "$_dest_created" == true && -n "$dest_dir" && "$dest_dir" != "$PIPX_BIN_DIR" ]] && rm -rf "$dest_dir"
+        return 0
+    }
+    if [[ "$dest_dir" != "$PIPX_BIN_DIR" ]]; then
+        local exposed_binary="$PIPX_BIN_DIR/$binary" _ours=false _exclusive=false
+        _version_known "$binary" && ! _is_preexisting "$binary" && _ours=true
+        [[ "$(_module_tool_metadata "$binary" BINARY_EXCLUSIVE_DIRS)" == true ]] && _exclusive=true
         if [[ -e "$exposed_binary" || -L "$exposed_binary" ]]; then
-            if [[ ! -L "$exposed_binary" || "$(readlink "$exposed_binary")" != "$dest_dir/"* ]] \
-                || ! _version_known "$binary" || _is_preexisting "$binary"; then
+            if [[ "$_ours" != true ]] || { [[ "$_exclusive" == true ]] \
+                && [[ ! -L "$exposed_binary" || "$(readlink "$exposed_binary")" != "$dest_dir/"* ]]; }; then
                 log_error "Preserving existing executable: $exposed_binary"
                 return 1
             fi
@@ -1557,7 +1591,7 @@ _download_github_release_impl() {
             log_error "Preserving existing destination: $dest_dir"
             return 1
         fi
-        if [[ -d "$dest_dir" ]] && { ! _version_known "$binary" || _is_preexisting "$binary"; }; then
+        if [[ -d "$dest_dir" && "$_ours" != true ]] && ! _release_dir_shared "$dest_dir"; then
             log_error "Preserving destination not owned by the toolkit: $dest_dir"
             return 1
         fi
@@ -1783,9 +1817,13 @@ WRAPPER
     fi
 
     if [[ "$dest_dir" != "$PIPX_BIN_DIR" ]]; then
+        # A destination this call creates is dropped again when the install fails;
+        # left behind, it would look like a directory the toolkit does not own.
+        [[ -e "$dest_dir" ]] || _dest_created=true
         if ! mkdir -p "$dest_dir" "$PIPX_BIN_DIR" \
             || ! cp -a "$content_root"/. "$dest_dir/" >>"$LOG_FILE" 2>&1; then
             log_error "Failed to copy $binary release files to $dest_dir"
+            _drop_new_dest
             rm -rf "$tmp_dir"
             return 1
         fi
@@ -1813,13 +1851,18 @@ WRAPPER
             dest_bin=$(find "$dest_dir" \( -name "$archive_binary" -o -name "${archive_binary}.sh" \) -type f 2>/dev/null | head -1)
         fi
         if [[ -f "$content_root/.runtime-launcher.json" ]]; then
-            chmod +x "$dest_dir/${found#"$content_root/"}" || return 1
+            if ! chmod +x "$dest_dir/${found#"$content_root/"}"; then
+                _drop_new_dest
+                rm -rf "$tmp_dir"
+                return 1
+            fi
             dest_bin="$dest_dir/runtime_launcher.py"
         fi
         if [[ -z "$dest_bin" || -L "$dest_bin" ]] \
             || ! chmod +x "$dest_bin" \
             || ! ln -sf "$dest_bin" "$PIPX_BIN_DIR/$binary"; then
             log_error "Failed to expose expected binary $binary from $dest_dir"
+            _drop_new_dest
             rm -rf "$tmp_dir"
             return 1
         fi
@@ -1841,6 +1884,7 @@ WRAPPER
             echo "${release_tag:-latest}" > "${dest_dir}/.${binary}.vtag"
         else
             log_error "Install failed: $binary"
+            _drop_new_dest
             return 1
         fi
     fi
@@ -1947,15 +1991,22 @@ track_version() {
     # Inner logic shared between locked and unlocked paths
     _tv_write() {
         if [[ ! -f "$version_file" ]]; then
-            echo "# tool|method|version|last_updated" > "$version_file"
+            # Only a record started under schema 2 carries the marker (see _versions_schema).
+            printf '# schema: 2\n# tool|method|version|last_updated\n' > "$version_file"
             chmod 644 "$version_file" 2>/dev/null || true
         fi
         local tmp_file
-        tmp_file=$(mktemp "${version_file}.XXXXXX")
-        grep -v "^${tool}|" "$version_file" > "$tmp_file" 2>/dev/null || true
-        echo "${tool}|${method}|${version}|${timestamp}" >> "$tmp_file"
-        chmod 644 "$tmp_file" 2>/dev/null || true
-        mv -f "$tmp_file" "$version_file"
+        tmp_file=$(mktemp "${version_file}.XXXXXX") || return 1
+        # The record is replaced only by a complete copy: a failed write (full disk)
+        # must not truncate it. awk compares the tool name literally, not as a regex.
+        if awk -F'|' -v t="$tool" '$1 != t' "$version_file" > "$tmp_file" \
+            && echo "${tool}|${method}|${version}|${timestamp}" >> "$tmp_file"; then
+            chmod 644 "$tmp_file" 2>/dev/null || true
+            mv -f "$tmp_file" "$version_file"
+        else
+            rm -f "$tmp_file"
+            return 1
+        fi
     }
 
     # Use flock when available (parallel safety), fall back to mkdir-based lock
@@ -2815,6 +2866,56 @@ _is_preexisting() {
     local version_file="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
     [[ -f "$version_file" ]] || return 1
     awk -F'|' -v t="$1" '$1==t && $3=="existing"{f=1} END{exit !f}' "$version_file" 2>/dev/null
+}
+
+# _pipx_venv_name <package> — the name pipx stores a package under (PEP 503: lower
+# case, runs of '-', '_' and '.' become one '-').
+_pipx_venv_name() {
+    local name="${1,,}"
+    name="${name//[._]/-}"
+    while [[ "$name" == *--* ]]; do name="${name//--/-}"; done
+    printf '%s\n' "$name"
+}
+
+# _versions_schema — 2 when the install record labels system packages the host
+# already had as "existing", else 1. Releases before 1.1.0 recorded those packages as
+# installed by the toolkit, so the system-package rows of their records must not drive
+# a removal. A record without a marker counts as 2 only when every install session
+# on file was written under schema 2; the session manifests carry the same marker.
+_versions_schema() {
+    local version_file="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
+    local session_dir="${SCRIPT_DIR:-.}/.install_sessions" manifest marker seen=false
+    marker=$(sed -n 's/^# schema: \([0-9]\{1,\}\)$/\1/p' "$version_file" 2>/dev/null | head -1)
+    if [[ -n "$marker" ]]; then
+        echo "$marker"
+        return 0
+    fi
+    for manifest in "$session_dir"/*.manifest "$session_dir"/*.rolled_back; do
+        [[ -f "$manifest" ]] || continue
+        seen=true
+        if ! grep -q '^# Schema: 2' "$manifest"; then
+            echo 1
+            return 0
+        fi
+    done
+    if [[ "$seen" == true ]]; then echo 2; else echo 1; fi
+}
+
+# _versions_stamp_schema — write the verdict of _versions_schema into a record that
+# has no marker. Must run before the session starts: the manifest a new session adds
+# is schema 2 and would otherwise vouch for rows it did not write.
+_versions_stamp_schema() {
+    local version_file="${VERSION_FILE:-$SCRIPT_DIR/.versions}" tmp schema
+    [[ -f "$version_file" ]] || return 0
+    grep -q '^# schema: [0-9]' "$version_file" 2>/dev/null && return 0
+    schema=$(_versions_schema)
+    tmp=$(mktemp "${version_file}.XXXXXX") || return 0
+    if { echo "# schema: $schema"; cat "$version_file"; } > "$tmp"; then
+        chmod 644 "$tmp" 2>/dev/null || true
+        mv -f "$tmp" "$version_file"
+    else
+        rm -f "$tmp"
+    fi
 }
 
 # _track_already_present — record a tool found already on the system. It counts as

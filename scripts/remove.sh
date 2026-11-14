@@ -31,8 +31,9 @@ Options:
   --remove-deps      Also remove base dependencies (python3, openssl, git,
                        build-essential, etc.) — DANGEROUS, may break system
   --deep-clean       Remove all caches, module caches, build artifacts, and
-                       stale symlinks (Go cache, Cargo registry, pip/pipx
-                       cache, npm cache, rustup toolchains, log files).
+                       stale symlinks into the toolkit's trees (Go cache, Cargo
+                       registry, pip/pipx cache, npm cache, rustup toolchains,
+                       log files).
                        Full removal only; not combinable with --module.
   -y, --yes          Skip confirmation prompt (required when not on a terminal)
   --force-unrecorded Remove listed tools even when no .versions install record
@@ -102,10 +103,10 @@ else
     fi
 fi
 
-_init_log_file "$SCRIPT_DIR/tool_removal.log"
-
 check_root
 _acquire_run_lock
+# After the lock: a refused second run must not truncate the log of the run that holds it.
+_init_log_file "$SCRIPT_DIR/tool_removal.log"
 print_banner
 
 # When disk space is critically low, free package cache FIRST so that
@@ -272,14 +273,14 @@ filter_untracked NPM_TO_REMOVE         "npm packages"
 # 1) pipx tools — must run BEFORE system packages remove python3-pipx
 if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
     if command_exists pipx; then
-        # Cache installed list once, normalized to underscores for PEP 503 matching
-        installed_pipx=$(pipx list --short 2>/dev/null | sed 's/-/_/g' || true)
+        # Cache the installed list once, under the names pipx stores (PEP 503), so that
+        # 'dissect.target' matches 'dissect-target'.
+        installed_pipx=$(pipx list --short 2>/dev/null \
+            | while read -r _pl_name _; do _pipx_venv_name "$_pl_name"; done || true)
         pipx_removed=0
         pipx_skipped=0
         for tool in "${PIPX_TO_REMOVE[@]}"; do
-            # Normalize hyphens → underscores (PEP 503: pip/pipx normalize package names)
-            _norm="${tool//-/_}"
-            if echo "$installed_pipx" | awk -v t="$_norm" 'tolower($1)==tolower(t){f=1} END{exit !f}'; then
+            if grep -qxF -- "$(_pipx_venv_name "$tool")" <<< "$installed_pipx"; then
                 if pipx_remove "$tool" >> "$LOG_FILE" 2>&1; then
                     REMOVED_TOOLS+=("$tool")
                     log_success "Removed pipx: $tool"
@@ -300,8 +301,8 @@ if [[ ${#PIPX_TO_REMOVE[@]} -gt 0 ]]; then
         pipx_removed=0
         for tool in "${PIPX_TO_REMOVE[@]}"; do
             _removed=false
-            # Try exact name, then normalized (hyphens → underscores, and vice versa)
-            for _variant in "$tool" "${tool//-/_}" "${tool//_/-}"; do
+            # Try exact name, then normalized (hyphens → underscores, and vice versa, and PEP 503)
+            for _variant in "$tool" "${tool//-/_}" "${tool//_/-}" "$(_pipx_venv_name "$tool")"; do
                 if [[ -f "$PIPX_BIN_DIR/$_variant" ]] || [[ -L "$PIPX_BIN_DIR/$_variant" ]]; then
                     rm -f "$PIPX_BIN_DIR/$_variant"
                     log_success "Removed: $PIPX_BIN_DIR/$_variant"
@@ -389,6 +390,11 @@ fi
 echo ""
 
 # 4) System packages — AFTER tools that need runtime commands
+if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 && -f "$_VERSIONS_FILE" && "$(_versions_schema)" -lt 2 ]]; then
+    log_warn "Keeping all system packages: $_VERSIONS_FILE was started by a release that recorded the host's own packages as installed by this toolkit, so it cannot show which ones are yours."
+    log_warn "Remove the ones you want gone with your package manager."
+    PKGS_TO_REMOVE=()
+fi
 if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
     # Translate per package so a row under either the Debian name (install.sh --tool)
     # or the distro-specific name (batch installs) counts as installed by this toolkit.
@@ -429,17 +435,23 @@ if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 ]]; then
 
     if [[ ${#PKGS_INSTALLED[@]} -gt 0 ]]; then
         log_info "Removing ${#PKGS_INSTALLED[@]} system packages (${pkgs_skipped} already removed)..."
-        if pkg_remove "${PKGS_INSTALLED[@]}" >> "$LOG_FILE" 2>&1; then
-            for pkg in "${PKGS_INSTALLED[@]}"; do
-                pkg_is_installed "$pkg" || REMOVED_TOOLS+=("$pkg")
-            done
-            for _pkg_generic in "${_PKGS_REQUESTED[@]}"; do
-                _pkg_fx=("$_pkg_generic"); fixup_package_names _pkg_fx
-                [[ ${#_pkg_fx[@]} -gt 0 ]] && ! pkg_is_installed "${_pkg_fx[0]}" && REMOVED_TOOLS+=("$_pkg_generic")
-            done
-            log_success "System packages: ${#PKGS_INSTALLED[@]} removed"
+        _pkg_rc=0
+        pkg_remove "${PKGS_INSTALLED[@]}" >> "$LOG_FILE" 2>&1 || _pkg_rc=$?
+        # A package another installed package needs is kept, so count what is gone.
+        _pkgs_gone=0
+        for pkg in "${PKGS_INSTALLED[@]}"; do
+            pkg_is_installed "$pkg" && continue
+            REMOVED_TOOLS+=("$pkg")
+            _pkgs_gone=$((_pkgs_gone + 1))
+        done
+        for _pkg_generic in "${_PKGS_REQUESTED[@]}"; do
+            _pkg_fx=("$_pkg_generic"); fixup_package_names _pkg_fx
+            [[ ${#_pkg_fx[@]} -gt 0 ]] && ! pkg_is_installed "${_pkg_fx[0]}" && REMOVED_TOOLS+=("$_pkg_generic")
+        done
+        if [[ $_pkg_rc -eq 0 ]]; then
+            log_success "System packages: $_pkgs_gone removed"
         else
-            log_warn "Some packages failed to remove (check log)"
+            log_warn "System packages: $_pkgs_gone removed, $(( ${#PKGS_INSTALLED[@]} - _pkgs_gone )) kept (in use by other packages, or the removal failed; check log)"
             REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
         fi
     else
@@ -907,29 +919,37 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     fi
 
     # pipx / pip caches
-    # pipx remaining venvs (orphaned after tool removal). On Linux PIPX_HOME is
-    # /opt/pipx (toolkit-owned), but on Termux it is the user's own pipx home, so
-    # wiping the whole venvs dir there would delete the user's unrelated tools.
-    if [[ "$PKG_MANAGER" == "pkg" ]]; then
-        log_info "Skipping pipx venvs purge on Termux (shared user pipx home)"
-    elif [[ -d "$PIPX_HOME/venvs" ]]; then
-        _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-        if [[ "$_remaining" -gt 0 ]]; then
-            _sz=$(du -sm "$PIPX_HOME/venvs" 2>/dev/null | cut -f1 || echo 0)
-            rm -rf "$PIPX_HOME/venvs"
-            log_success "Removed $_remaining orphaned pipx venvs ($PIPX_HOME/venvs — ${_sz}MB)"
+    # Venvs left behind by a failed uninstall, by name: $PIPX_HOME is also where
+    # `pipx install --global` and (on Termux) the user's own pipx keep theirs.
+    _orphans=0
+    for tool in ${PIPX_TO_REMOVE[@]+"${PIPX_TO_REMOVE[@]}"}; do
+        for _variant in "$tool" "$(_pipx_venv_name "$tool")"; do
+            _venv="$PIPX_HOME/venvs/$_variant"
+            [[ -d "$_venv" && ! -L "$_venv" ]] || continue
+            _sz=$(du -sm "$_venv" 2>/dev/null | cut -f1 || echo 0)
+            rm -rf "$_venv"
+            _orphans=$((_orphans + 1))
+            _deep_freed=$((_deep_freed + _sz))
+        done
+    done
+    [[ "$_orphans" -gt 0 ]] && log_success "Removed $_orphans orphaned pipx venvs ($PIPX_HOME/venvs)"
+    _remaining=0
+    [[ -d "$PIPX_HOME/venvs" ]] && _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+    if [[ "$_remaining" -gt 0 ]]; then
+        # The venvs that stay load pipx's shared libraries.
+        log_info "Keeping $_remaining pipx venvs this toolkit did not install ($PIPX_HOME/venvs), and pipx's shared libraries"
+    else
+        [[ -d "$PIPX_HOME/venvs" ]] && { rmdir "$PIPX_HOME/venvs" 2>/dev/null || true; }
+        # pipx shared libraries
+        if [[ -d "$PIPX_HOME/shared" ]]; then
+            _sz=$(du -sm "$PIPX_HOME/shared" 2>/dev/null | cut -f1 || echo 0)
+            rm -rf "$PIPX_HOME/shared"
+            log_success "Removed pipx shared libs ($PIPX_HOME/shared — ${_sz}MB)"
             _deep_freed=$((_deep_freed + _sz))
         fi
+        # pipx bootstrap venv
+        [[ -d "$PIPX_HOME/.pipx-bootstrap" ]] && rm -rf "$PIPX_HOME/.pipx-bootstrap"
     fi
-    # pipx shared libraries
-    if [[ -d "$PIPX_HOME/shared" ]]; then
-        _sz=$(du -sm "$PIPX_HOME/shared" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$PIPX_HOME/shared"
-        log_success "Removed pipx shared libs ($PIPX_HOME/shared — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
-    fi
-    # pipx bootstrap venv
-    [[ -d "$PIPX_HOME/.pipx-bootstrap" ]] && rm -rf "$PIPX_HOME/.pipx-bootstrap"
     # Remove PIPX_HOME if now empty
     if [[ -d "$PIPX_HOME" ]]; then
         _ph_remaining=$(find "$PIPX_HOME" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
@@ -974,11 +994,19 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
         _deep_freed=$((_deep_freed + _sz))
     fi
 
-    # Stale symlinks in bin dirs
+    # Stale symlinks in bin dirs — only links into trees this toolkit installs to.
+    # A dangling link that points elsewhere can be the user's own, for example into
+    # a volume that is not mounted right now.
     _stale=0
     for _bindir in "$PIPX_BIN_DIR" "$GOBIN"; do
         [[ -d "$_bindir" ]] || continue
         while IFS= read -r -d '' _link; do
+            _target=$(readlink "$_link" 2>/dev/null) || continue
+            case "$_target" in
+                "$PIPX_HOME"/*|"$GITHUB_TOOL_DIR"/*|"$GOPATH"/*) ;;
+                "$_user_home"/.cargo/*|"$_user_home"/.local/share/gem/*|"$_user_home"/.foundry/*) ;;
+                *) continue ;;
+            esac
             rm -f "$_link"
             _stale=$((_stale + 1))
         done < <(find "$_bindir" -maxdepth 1 -xtype l -print0 2>/dev/null)

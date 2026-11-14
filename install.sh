@@ -5,6 +5,9 @@
 # Usage: ./install.sh --help
 
 set -uo pipefail
+# Tools land in shared locations (/usr/local/bin, /opt); a restrictive umask inherited
+# through sudo would leave them unreadable for the user who runs them.
+umask 022
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
@@ -548,7 +551,7 @@ install_single_tool() {
             ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
             log_info "Installing $tool via cargo..."
             local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
-            if _as_builder "$(_builder_cmd cargo) install $_tool_esc" >> "$LOG_FILE" 2>&1; then
+            if _cargo_install "$(_builder_cmd cargo)" "$_tool_esc" >> "$LOG_FILE" 2>&1; then
                 log_success "Installed: $tool"
                 _track_single "cargo"
             else
@@ -715,6 +718,7 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     check_root
     _acquire_run_lock
     _init_log_file "$SCRIPT_DIR/cybersec_install.log"
+    _versions_stamp_schema
     # A session of its own, so `--rollback last` undoes this run, not the previous one.
     _init_session "tool" "${SELECTED_TOOLS[*]}"
     # Fresh containers and hosts may have empty package indexes (the Docker image
@@ -729,6 +733,7 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     if [[ "$TOOL_FAILED" -gt 0 ]]; then
         _finalize_session "partial"
         log_warn "$TOOL_FAILED tool(s) failed"
+        _show_log_tail 40
         exit 1
     fi
     _finalize_session "complete"
@@ -1349,6 +1354,7 @@ main() {
 
     check_disk_space "${#MODULES_TO_INSTALL[@]}"
 
+    _versions_stamp_schema
     _init_session "${PROFILE:-full}" "${MODULES_TO_INSTALL[*]}"
     log_info "Session: $_SESSION_ID"
     log_info "Starting installation..."

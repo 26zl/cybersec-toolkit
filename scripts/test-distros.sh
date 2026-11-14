@@ -100,7 +100,7 @@ done
 
 declare -A IMAGE=(
     [ubuntu]="docker.io/library/ubuntu:26.04"
-    [fedora]="registry.fedoraproject.org/fedora:44"
+    [fedora]="registry.fedoraproject.org/fedora:45"
     [arch]="docker.io/library/archlinux:latest"
     [opensuse]="registry.opensuse.org/opensuse/tumbleweed:latest"
 )

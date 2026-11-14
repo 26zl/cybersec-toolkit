@@ -777,16 +777,78 @@ _pkg_remove_dependents() {
             ;;
         dnf|zypper)
             command -v rpm &>/dev/null || return 0
-            rpm -e --test "$@" 2>&1 | sed -n 's/.* is needed by (installed) \(.*\)$/\1/p'
+            # The message is matched as text, so it must not be translated.
+            LC_ALL=C rpm -e --test "$@" 2>&1 | sed -n 's/.* is needed by (installed) \(.*\)$/\1/p'
             ;;
     esac
 }
 
+# _pkg_blockers <pkg> <removal-list...> — installed packages outside the removal
+# list that need <pkg>, one per line. An answer that cannot be read prints "?", so
+# it counts as a blocker instead of as permission.
+_pkg_blockers() {
+    local pkg="$1"; shift
+    local out
+    local -a needed=()
+    case "$PKG_MANAGER" in
+        apt)
+            out=$(apt-get -s remove "$pkg" 2>/dev/null) || { echo "?"; return 0; }
+            awk '/^Remv /{sub(/:.*/, "", $2); print $2}' <<< "$out" \
+                | grep -vxF -f <(printf '%s\n' "${@%%:*}") || true
+            ;;
+        dnf|zypper)
+            command -v rpm &>/dev/null || return 0
+            # The message is matched as text, so it must not be translated.
+            out=$(LC_ALL=C rpm -e --test "$pkg" 2>&1) && return 0
+            mapfile -t needed < <(sed -n 's/.* is needed by (installed) \(.*\)$/\1/p' <<< "$out" | sort -u)
+            if [[ ${#needed[@]} -eq 0 ]]; then echo "?"; return 0; fi
+            # rpm names each dependent as name-version-release.arch.
+            rpm -q --qf '%{NAME}\n' "${needed[@]}" 2>/dev/null | sort -u \
+                | grep -vxF -f <(printf '%s\n' "$@") || true
+            ;;
+        pacman)
+            LC_ALL=C pacman -Qi "$pkg" 2>/dev/null | sed -n 's/^Required By *: *//p' | tr -s ' ' '\n' \
+                | grep -vx -e None -e '' | grep -vxF -f <(printf '%s\n' "$@") || true
+            ;;
+    esac
+}
+
+# _pkg_removable <pkg...> — the packages that can go without taking an installed
+# package outside the list with them, one per line. Keeping one package can pin
+# another that it needs, so the check repeats until the list stops shrinking.
+_pkg_removable() {
+    local -a keep=("$@") next=()
+    local pkg blockers changed=true
+    while [[ "$changed" == true && ${#keep[@]} -gt 0 ]]; do
+        changed=false
+        next=()
+        for pkg in "${keep[@]}"; do
+            blockers=$(_pkg_blockers "$pkg" "${keep[@]}" | sort -u | tr '\n' ' ')
+            if [[ -n "${blockers// /}" ]]; then
+                log_warn "Keeping $pkg: needed by ${blockers% }" >&2
+                changed=true
+            else
+                next+=("$pkg")
+            fi
+        done
+        keep=(${next[@]+"${next[@]}"})
+    done
+    [[ ${#keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
+}
+
+# pkg_remove <pkg...> — remove the packages nothing else installed depends on.
+# Returns non-zero when a package was kept or the package manager failed; callers
+# read what is gone from pkg_is_installed.
 pkg_remove() {
-    local _dependents
-    _dependents=$(_pkg_remove_dependents "$@" | sort -u | tr '\n' ' ')
-    if [[ -n "${_dependents// /}" ]]; then
-        log_error "Not removing $*: installed packages depend on it ($_dependents)"
+    local -a removable=("$@")
+    local _dependents="" _kept=0
+    [[ "$PKG_MANAGER" == pacman ]] || _dependents=$(_pkg_remove_dependents "$@" | tr -d '[:space:]')
+    if [[ -n "$_dependents" || "$PKG_MANAGER" == pacman ]]; then
+        mapfile -t removable < <(_pkg_removable "$@")
+        _kept=$(( $# - ${#removable[@]} ))
+    fi
+    if [[ ${#removable[@]} -eq 0 ]]; then
+        log_error "Not removing $*: other installed packages depend on them"
         return 1
     fi
     case "$PKG_MANAGER" in
@@ -794,17 +856,18 @@ pkg_remove() {
             # autoremove can cascade into distro-owned packages, so it is opt-in
             # (PKG_AUTOREMOVE=1, set by remove.sh under --remove-deps).
             if [[ "${PKG_AUTOREMOVE:-0}" == "1" ]]; then
-                maybe_sudo apt-get remove -y "$@" && maybe_sudo apt-get autoremove -y
+                maybe_sudo apt-get remove -y "${removable[@]}" && maybe_sudo apt-get autoremove -y
             else
-                maybe_sudo apt-get remove -y "$@"
+                maybe_sudo apt-get remove -y "${removable[@]}"
             fi
             ;;
-        dnf)     maybe_sudo dnf remove -y "$@" ;;
-        pacman)  maybe_sudo pacman -Rns --noconfirm "$@" 2>/dev/null || true ;;
-        zypper)  maybe_sudo zypper --non-interactive remove "$@" ;;
-        pkg)     pkg uninstall -y "$@" ;;
+        dnf)     maybe_sudo dnf remove -y "${removable[@]}" ;;
+        pacman)  maybe_sudo pacman -Rns --noconfirm "${removable[@]}" 2>/dev/null ;;
+        zypper)  maybe_sudo zypper --non-interactive remove "${removable[@]}" ;;
+        pkg)     pkg uninstall -y "${removable[@]}" ;;
         *)       log_error "Unsupported package manager: $PKG_MANAGER"; return 1 ;;
-    esac
+    esac || return 1
+    [[ $_kept -eq 0 ]]
 }
 
 pkg_upgrade() {
@@ -818,10 +881,30 @@ pkg_upgrade() {
     esac
 }
 
+# _show_log_tail [lines] — print the end of the run log to stderr, so a failed
+# install names its cause instead of only pointing at a root-owned file.
+_show_log_tail() {
+    [[ -n "${LOG_FILE:-}" && "$LOG_FILE" != /dev/null && -r "$LOG_FILE" ]] || return 0
+    echo "--- last ${1:-25} lines of $LOG_FILE ---" >&2
+    tail -n "${1:-25}" "$LOG_FILE" >&2 || true
+}
+
 pkg_cleanup() {
+    # autoremove takes every orphaned package on the host, not only the toolkit's,
+    # so it stays opt-in here as it is in pkg_remove (PKG_AUTOREMOVE=1).
     case "$PKG_MANAGER" in
-        apt)     maybe_sudo apt-get autoremove -y && maybe_sudo apt-get clean && maybe_sudo apt-get autoclean ;;
-        dnf)     maybe_sudo dnf autoremove -y && maybe_sudo dnf clean all ;;
+        apt)
+            if [[ "${PKG_AUTOREMOVE:-0}" == "1" ]]; then
+                maybe_sudo apt-get autoremove -y || return 1
+            fi
+            maybe_sudo apt-get clean && maybe_sudo apt-get autoclean
+            ;;
+        dnf)
+            if [[ "${PKG_AUTOREMOVE:-0}" == "1" ]]; then
+                maybe_sudo dnf autoremove -y || return 1
+            fi
+            maybe_sudo dnf clean all
+            ;;
         pacman)  maybe_sudo pacman -Sc --noconfirm ;;
         zypper)  maybe_sudo zypper clean ;;
         pkg)     pkg clean ;;
