@@ -1,7 +1,10 @@
 ---
 name: performing-file-carving-with-foremost
-description: Recover files from disk images and unallocated space using Foremost's
-  header-footer signature carving to extract evidence regardless of file system state.
+description: Recovers files from disk images and unallocated space using Foremost's
+  header-footer signature carving, extracting evidence independent of the file system's
+  state. Use during digital forensics investigations to carve deleted or fragmented
+  files, such as documents, images, and archives, from raw disk images or unallocated
+  space.
 domain: cybersecurity
 subdomain: digital-forensics
 tags:
@@ -15,7 +18,6 @@ version: '1.0'
 author: mahipal
 license: Apache-2.0
 nist_csf:
-- RS.AN-01
 - RS.AN-03
 - DE.AE-02
 - RS.MA-01

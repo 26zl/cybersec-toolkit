@@ -1,8 +1,10 @@
 ---
 name: implementing-saml-sso-with-okta
-description: Implement SAML 2.0 Single Sign-On (SSO) using Okta as the Identity Provider
-  (IdP). This skill covers end-to-end configuration of SAML authentication flows,
-  attribute mapping, certificate management, a
+description: Implement SAML 2.0 Single Sign-On using Okta as the Identity Provider,
+  covering SP-initiated and IdP-initiated flows, attribute mapping, certificate management,
+  SHA-256 signature enforcement, and Single Logout. Use when configuring Okta SAML SSO
+  for an application, hardening SAML certificate rotation and signing, or testing and
+  troubleshooting SAML assertion flows with a tracer tool.
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -27,6 +29,33 @@ mitre_attack:
 - T1556
 - T1098
 - T1553
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - resource-development
+  techniques:
+  - id: T1586
+    name: Compromise Accounts
+    tactic: resource-development
+    source: attack
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
+  - id: F1004
+    name: Access with Stolen Session Cookie
+    tactic: initial-access
+    source: f3
+  - id: T1550.001
+    name: 'Use Alternate Authentication Material: Application Access Token'
+    tactic: initial-access
+    source: attack
+  - id: F1006.003
+    name: 'Account Takeover: Password Reset'
+    tactic: initial-access
+    source: f3
 ---
 # Implementing SAML SSO with Okta
 

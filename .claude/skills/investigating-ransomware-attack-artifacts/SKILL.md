@@ -1,7 +1,6 @@
 ---
 name: investigating-ransomware-attack-artifacts
-description: Identify, collect, and analyze ransomware attack artifacts to determine
-  the variant, initial access vector, encryption scope, and recovery options.
+description: Forensically preserve memory and disk, collect ransom notes and encrypted file samples, and identify the ransomware variant using tools such as ID Ransomware, Volatility, and Chainsaw/Hayabusa to determine the initial access vector and recovery options. Use immediately after discovering ransomware encryption, when scoping the incident forensically, or when documenting evidence for law enforcement and insurance claims.
 domain: cybersecurity
 subdomain: digital-forensics
 tags:
@@ -15,7 +14,6 @@ version: '1.0'
 author: mahipal
 license: Apache-2.0
 nist_csf:
-- RS.AN-01
 - RS.AN-03
 - DE.AE-02
 - RS.MA-01
@@ -25,6 +23,33 @@ mitre_attack:
 - T1119
 - T1070
 - T1486
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - stealth
+  - monetization
+  techniques:
+  - id: T1110
+    name: Brute Force
+    tactic: initial-access
+    source: attack
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: T1070
+    name: Indicator Removal
+    tactic: stealth
+    source: attack
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1017.001
+    name: 'Conversion to Physical Monetary Instruments: Cash'
+    tactic: monetization
+    source: f3
 ---
 
 # Investigating Ransomware Attack Artifacts

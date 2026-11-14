@@ -1,8 +1,12 @@
 ---
 name: performing-threat-landscape-assessment-for-sector
-description: Conduct a sector-specific threat landscape assessment by analyzing threat
-  actor targeting patterns, common attack vectors, and industry-specific vulnerabilities
-  to inform organizational risk management.
+description: >-
+  Conducts a sector-specific threat landscape assessment (financial,
+  healthcare, energy, government, etc.) by profiling targeting threat actors,
+  mapping attack vectors and MITRE ATT&CK TTPs with the attackcti/pandas
+  Python stack, and analyzing exploited CVEs and incident trends from ISAC
+  and vendor reports. Use when producing CTI for risk management or
+  board-level reporting on an industry's threat exposure.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:

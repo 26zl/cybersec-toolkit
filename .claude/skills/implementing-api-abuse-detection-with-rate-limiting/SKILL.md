@@ -1,8 +1,10 @@
 ---
 name: implementing-api-abuse-detection-with-rate-limiting
-description: Implement API abuse detection using token bucket, sliding window, and
-  adaptive rate limiting algorithms to prevent DDoS, brute force, and credential stuffing
-  attacks.
+description: Implements API abuse detection using token bucket, sliding window, and
+  fixed window rate-limiting algorithms backed by Redis, including adaptive limits
+  that tighten during detected attacks and relax during normal traffic. Use when
+  defending APIs against DDoS, brute force login attempts, credential stuffing, or
+  scraping abuse and you need to design or tune rate-limiting logic.
 domain: cybersecurity
 subdomain: api-security
 tags:

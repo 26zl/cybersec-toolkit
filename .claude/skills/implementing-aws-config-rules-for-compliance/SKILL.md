@@ -1,11 +1,10 @@
 ---
 name: implementing-aws-config-rules-for-compliance
-description: 'Implementing AWS Config rules for continuous compliance monitoring of
-  AWS resources, deploying managed and custom rules aligned to CIS and PCI DSS frameworks,
-  configuring automatic remediation with SSM Automation, and aggregating compliance
-  data across accounts.
-
-  '
+description: 'Implements AWS Config managed and custom rules for continuous compliance
+  monitoring of AWS resources aligned to CIS and PCI DSS, configuring automatic remediation
+  with SSM Automation and aggregating compliance data across accounts. Use when establishing
+  continuous compliance monitoring, detecting configuration drift, or building a
+  multi-account compliance dashboard via AWS Organizations.'
 domain: cybersecurity
 subdomain: cloud-security
 tags:

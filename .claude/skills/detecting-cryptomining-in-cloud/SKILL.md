@@ -29,6 +29,29 @@ mitre_attack:
 - T1537
 - T1580
 - T1071
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - resource-development
+  - monetization
+  techniques:
+  - id: F1006.001
+    name: 'Account Takeover: Exposed API Key'
+    tactic: initial-access
+    source: f3
+  - id: T1586.003
+    name: 'Compromise Accounts: Cloud Accounts'
+    tactic: resource-development
+    source: attack
+  - id: T1583.003
+    name: 'Acquire Infrastructure: Virtual Private Network or Server'
+    tactic: resource-development
+    source: attack
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
 ---
 
 # Detecting Cryptomining in Cloud

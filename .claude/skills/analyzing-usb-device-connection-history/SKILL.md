@@ -1,7 +1,9 @@
 ---
 name: analyzing-usb-device-connection-history
-description: Investigate USB device connection history from Windows registry, event
-  logs, and setupapi logs to track removable media usage and potential data exfiltration.
+description: Correlate Windows registry keys (USBSTOR, MountedDevices), Event Logs,
+  and setupapi.dev.log to reconstruct USB device connection history, first/last-plugged
+  timestamps, and drive letter mappings. Use when investigating removable media usage,
+  tracking device provenance, or building a timeline for suspected data exfiltration.
 domain: cybersecurity
 subdomain: digital-forensics
 tags:
@@ -15,7 +17,6 @@ version: '1.0'
 author: mahipal
 license: Apache-2.0
 nist_csf:
-- RS.AN-01
 - RS.AN-03
 - DE.AE-02
 - RS.MA-01

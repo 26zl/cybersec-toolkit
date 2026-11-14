@@ -1,8 +1,6 @@
 ---
 name: conducting-social-engineering-penetration-test
-description: Design and execute a social engineering penetration test including phishing,
-  vishing, smishing, and physical pretexting campaigns to measure human security resilience
-  and identify training gaps.
+description: Design and execute a social engineering penetration test combining OSINT-driven target profiling with phishing, vishing, smishing, and physical pretexting campaigns using tools like GoPhish, the Social Engineer Toolkit (SET), and Evilginx to measure human security resilience. Use when scoping or running an authorized human-attack-surface test and reporting results to identify security awareness training gaps.
 domain: cybersecurity
 subdomain: penetration-testing
 tags:
@@ -35,6 +33,37 @@ mitre_attack:
 - T1566.004
 - T1204.001
 - T1589
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - initial-access
+  - resource-development
+  techniques:
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: F1029
+    name: Gather Customer Information
+    tactic: reconnaissance
+    source: f3
+  - id: F1032
+    name: Impersonate Official
+    tactic: initial-access
+    source: f3
+  - id: T1557
+    name: Adversary-in-the-Middle
+    tactic: initial-access
+    source: attack
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
 ---
 
 # Conducting Social Engineering Penetration Test

@@ -1,8 +1,10 @@
 ---
 name: testing-ransomware-recovery-procedures
-description: Test and validate ransomware recovery procedures including backup restore
-  operations, RTO/RPO target verification, recovery sequencing, and clean restore
-  validation to ensure organizational resilience against destructive ransomware attacks.
+description: Tests and validates ransomware recovery procedures - backup restore operations
+  (e.g. with Restic), RTO/RPO target verification, recovery sequencing, and clean-restore
+  validation - to confirm organizational resilience against destructive ransomware attacks.
+  Use when validating that recovery plans work under realistic conditions, measuring
+  RTO/RPO against business requirements, or testing restore integrity after simulated encryption.
 domain: cybersecurity
 subdomain: incident-response
 tags:
@@ -27,6 +29,28 @@ mitre_attack:
 - T1070
 - T1078
 - T1489
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - positioning
+  - monetization
+  techniques:
+  - id: T1531
+    name: Account Access Removal
+    tactic: positioning
+    source: attack
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1047
+    name: Transfer of funds
+    tactic: monetization
+    source: f3
+  - id: F1017.001
+    name: 'Conversion to Physical Monetary Instruments: Cash'
+    tactic: monetization
+    source: f3
 ---
 # Testing Ransomware Recovery Procedures
 

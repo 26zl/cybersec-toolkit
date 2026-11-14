@@ -1,8 +1,17 @@
 ---
 name: implementing-kubernetes-pod-security-standards
-description: Pod Security Standards (PSS) define three levels of security policies
-  -- Privileged, Baseline, and Restricted -- enforced by the Pod Security Admission
-  (PSA) controller built into Kubernetes 1.25+. PS
+description: >-
+  Chooses and applies the correct Kubernetes Pod Security Standard (Privileged,
+  Baseline, Restricted) for a workload: what each profile forbids, how to map
+  existing workloads to a profile, which securityContext fields must change, and
+  how to plan a PodSecurityPolicy-to-PSS migration without breaking running pods.
+  Use when deciding which pod security profile a namespace or workload should run
+  under, auditing which workloads would fail Restricted, planning a PSP migration,
+  or mapping pod security posture to a compliance control. Keywords: Pod Security
+  Standards, PSS, Privileged, Baseline, Restricted, securityContext, runAsNonRoot,
+  drop ALL capabilities, seccomp RuntimeDefault, PSP migration. Do not use for
+  configuring the admission controller that enforces these profiles - use
+  implementing-pod-security-admission-controller.
 domain: cybersecurity
 subdomain: container-security
 tags:
@@ -34,10 +43,15 @@ Pod Security Standards (PSS) define three levels of security policies -- Privile
 
 ## When to Use
 
-- When deploying or configuring implementing kubernetes pod security standards capabilities in your environment
-- When establishing security controls aligned to compliance requirements
-- When building or improving security architecture for this domain
-- When conducting security assessments that require this implementation
+- Deciding whether a namespace or workload belongs at Privileged, Baseline, or Restricted
+- Auditing which existing workloads would be rejected if Restricted were enforced today
+- Translating a "must meet Restricted" requirement into concrete `securityContext` changes
+- Planning a PodSecurityPolicy migration and predicting what will break before it does
+- Mapping pod security posture to a compliance control (NIST PR.PS-01, CIS Kubernetes)
+
+**Not this skill:** configuring the controller that enforces these profiles — namespace
+labels, `AdmissionConfiguration`, exemptions, or debugging a pod PSA rejected. Use
+`implementing-pod-security-admission-controller`.
 
 ## Prerequisites
 

@@ -1,14 +1,6 @@
 ---
 name: performing-oil-gas-cybersecurity-assessment
-description: 'This skill covers conducting cybersecurity assessments specific to oil
-  and gas facilities including upstream (exploration/production), midstream (pipeline/transport),
-  and downstream (refining/distribution) operations. It addresses SCADA systems controlling
-  pipeline operations, DCS for refinery process control, safety instrumented systems
-  for hazardous processes, remote terminal units at unmanned wellhead sites, and compliance
-  with API 1164, TSA Pipeline Security Directives, IEC 62443, and NIST Cybersecurity
-  Framework for critical infrastructure.
-
-  '
+description: Conduct cybersecurity assessments of upstream, midstream, and downstream oil and gas operations, covering pipeline SCADA, refinery DCS, safety instrumented systems, and remote wellhead RTUs, and evaluate compliance with API 1164, TSA Pipeline Security Directives, and IEC 62443. Use when assessing a refinery, pipeline, or production facility or preparing for TSA/API compliance audits; not for IT-only or purely physical-security assessments.
 domain: cybersecurity
 subdomain: ot-ics-security
 tags:

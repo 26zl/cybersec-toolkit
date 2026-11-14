@@ -1,10 +1,11 @@
 ---
 name: remediating-s3-bucket-misconfiguration
-description: 'This skill provides step-by-step procedures for identifying and remediating
-  Amazon S3 bucket misconfigurations that expose sensitive data to unauthorized access.
-  It covers enabling S3 Block Public Access at account and bucket levels, auditing
-  bucket policies and ACLs, enforcing encryption, configuring access logging, and
-  deploying automated remediation using AWS Config and Lambda.
+description: 'Provides step-by-step procedures for remediating Amazon S3 bucket
+  misconfigurations that expose sensitive data: enabling S3 Block Public Access,
+  auditing bucket policies and ACLs, enforcing encryption, configuring access logging,
+  and deploying automated remediation with AWS Config and Lambda. Use when AWS Config
+  or Security Hub flags public or unencrypted S3 buckets, or preparing audit evidence
+  for storage security controls.
 
   '
 domain: cybersecurity

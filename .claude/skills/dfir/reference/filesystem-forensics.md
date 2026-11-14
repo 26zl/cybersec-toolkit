@@ -153,7 +153,7 @@ Windows firewall log (`pfirewall.txt`) at `C:\Windows\System32\LogFiles\Firewall
 
 ```
 # Fields: date time action protocol src-ip dst-ip src-port dst-port size tcpflags tcpsyn tcpack tcpwin icmptype icmpcode info path
-2023-05-05 15:24:17 ALLOW TCP 172.17.79.129 13.232.96.186 50045 80 0 - 0 0 0 - - - SEND
+2023-05-05 15:24:17 ALLOW TCP 172.17.79.129 203.0.113.45 50045 80 0 - 0 0 0 - - - SEND
 ```
 
 Useful for: identifying highest source port to malicious IP, confirming C2 connections, network timeline.

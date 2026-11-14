@@ -1,13 +1,6 @@
 ---
 name: detecting-deepfake-audio-in-vishing-attacks
-description: 'Detects AI-generated deepfake audio used in voice phishing (vishing)
-  attacks by extracting spectral features (MFCC, spectral centroid, spectral contrast,
-  zero-crossing rate) and classifying samples with machine learning models. Supports
-  batch analysis of audio files, generates confidence scores, and produces forensic
-  reports. Activates for requests involving deepfake voice detection, vishing investigation,
-  AI-generated speech analysis, voice cloning detection, or audio authenticity verification.
-
-  '
+description: Detect AI-generated deepfake audio used in voice phishing (vishing) by extracting spectral features (MFCC, spectral centroid, spectral contrast, zero-crossing rate) and classifying samples with machine learning models, supporting batch audio analysis, confidence scoring, and forensic reporting. Use for deepfake voice detection, vishing investigations, AI-generated speech analysis, voice cloning detection, or audio authenticity verification.
 domain: cybersecurity
 subdomain: social-engineering-defense
 tags:
@@ -47,6 +40,34 @@ mitre_attack:
 - T1059
 - T1566
 - T1598
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - initial-access
+  - stealth
+  - monetization
+  techniques:
+  - id: F1032
+    name: Impersonate Official
+    tactic: initial-access
+    source: f3
+  - id: F1031
+    name: Impersonate Account Holder
+    tactic: initial-access
+    source: f3
+  - id: F1040
+    name: Phone Number Spoofing
+    tactic: stealth
+    source: f3
+  - id: F1034
+    name: Interactive Voice Response Mapping
+    tactic: reconnaissance
+    source: f3
+  - id: F1025.003
+    name: 'Electronic Funds Transfer: Wire Transfer'
+    tactic: monetization
+    source: f3
 ---
 
 # Detecting Deepfake Audio in Vishing Attacks

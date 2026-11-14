@@ -1,12 +1,12 @@
 ---
 name: web3-audit
 description: Smart contract security audit — 10 DeFi bug classes (accounting desync, access control, incomplete path, off-by-one, oracle, ERC4626, reentrancy, flash loan, signature replay, proxy), pre-dive kill signals (TVL < $500K etc), Foundry PoC template, grep patterns for each class, and real Immunefi paid examples. Use for any Solidity/Rust contract audit or when deciding whether a DeFi target is worth hunting.
-source: shuvonsec/claude-bug-bounty
+source: awarexone/Agentic-Bug-Hunter
 license: MIT
-upstream_commit: 22ea70b763618984a08d6f601bb2e3e079e86a15
+upstream_commit: 8060af0c1b0b6ecc6595ee3261f50aa613038620
 ---
 
-> **Vendored note (this repo).** Adapted from the standalone [claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty) project. The upstream **executable scaffolding** — helper scripts (`tools/*.py`, `tools/*.sh`), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — add them with the `add-tool` skill or install upstream.
+> **Vendored note (this repo).** Adapted from the standalone [Agentic-Bug-Hunter](https://github.com/awarexone/Agentic-Bug-Hunter) project (formerly `shuvonsec/claude-bug-bounty`). The upstream **executable scaffolding** — helper scripts (`bughunter/tools/*.py`, `bughunter/tools/*.sh`; `tools/…` in older upstream text), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — propose them through the approval-gated `add-tool` flow. Do not fetch or run the upstream project's helper scripts.
 
 # WEB3 SMART CONTRACT AUDIT
 

@@ -1,8 +1,6 @@
 ---
 name: hunting-for-data-staging-before-exfiltration
-description: Detect data staging activity before exfiltration by monitoring for archive
-  creation with 7-Zip/RAR, unusual temp folder access, large file consolidation, and
-  staging directory patterns via EDR and process telemetry
+description: Detect data-staging activity (MITRE ATT&CK T1074) by analyzing EDR/Sysmon process-creation and file-system telemetry (Event ID 4688, Sysmon 1/11) for 7-Zip/RAR/tar archive creation, unusual temp or hidden folder access, and anomalous consolidation of files from multiple directories. Use when hunting for pre-exfiltration staging behavior, building detection rules for archiver abuse, or validating monitoring coverage for T1074.
 domain: cybersecurity
 subdomain: threat-hunting
 tags:

@@ -1,13 +1,6 @@
 ---
 name: detecting-oauth-token-theft
-description: 'Detects and responds to OAuth token theft and replay attacks in cloud
-  environments, focusing on Microsoft Entra ID (Azure AD) token protection, conditional
-  access policies, and sign-in anomaly detection. Covers access token theft, refresh
-  token replay, Primary Refresh Token (PRT) abuse, and pass-the-cookie attacks. Activates
-  for requests involving OAuth token theft detection, token replay prevention, Azure
-  AD conditional access token protection, or cloud identity attack investigation.
-
-  '
+description: Detect and respond to OAuth token theft and replay in Microsoft Entra ID (Azure AD), covering access token theft, refresh token replay, Primary Refresh Token (PRT) abuse, pass-the-cookie attacks, and Token Protection conditional access policies. Use for impossible-travel or anomalous token-usage alerts, suspected session hijacking, sign-in log analysis, or configuring token-binding defenses in Azure/M365.
 domain: cybersecurity
 subdomain: cloud-security
 tags:
@@ -32,6 +25,36 @@ mitre_attack:
 - T1530
 - T1537
 - T1580
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  techniques:
+  - id: F1004
+    name: Access with Stolen Session Cookie
+    tactic: initial-access
+    source: f3
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
+  - id: T1557
+    name: Adversary-in-the-Middle
+    tactic: initial-access
+    source: attack
+  - id: T1550.001
+    name: 'Use Alternate Authentication Material: Application Access Token'
+    tactic: initial-access
+    source: attack
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
+  - id: T1185
+    name: Browser Session Hijacking
+    tactic: positioning
+    source: attack
 ---
 
 # Detecting OAuth Token Theft

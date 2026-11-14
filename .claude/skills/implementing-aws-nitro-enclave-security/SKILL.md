@@ -1,13 +1,10 @@
 ---
 name: implementing-aws-nitro-enclave-security
-description: 'Implements AWS Nitro Enclave-based confidential computing environments
-  with cryptographic attestation, KMS policy integration using PCR-based condition
-  keys, and secure vsock communication channels. The practitioner builds enclave images,
-  configures attestation-aware KMS policies, validates attestation documents against
-  the AWS Nitro PKI root of trust, and establishes isolated computation pipelines
-  for processing sensitive data such as PII, cryptographic keys, and healthcare records.
-  Activates for requests involving Nitro Enclave setup, enclave attestation validation,
-  confidential computing on AWS, or KMS enclave policy configuration.
+description: 'Build AWS Nitro Enclave confidential computing environments using nitro-cli
+  to create enclave images, configure attestation-aware KMS policies with PCR condition
+  keys, validate attestation documents against the Nitro PKI root, and set up vsock/kmstool-enclave-cli
+  pipelines for processing PII, keys, and health records. Use for Nitro Enclave setup,
+  attestation validation, or scoping KMS to an enclave image hash.
 
   '
 domain: cybersecurity

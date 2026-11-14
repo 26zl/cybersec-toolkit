@@ -1,4 +1,6 @@
-# Agent: LLM07 Model Extraction / Model Theft Testing
+# Agent: Model Extraction / Model Theft Testing
+
+> Category **`LLM10:2025`** Unbounded Consumption. The `llm07` filename predates the 2025 renumbering and does not match the id; the authoritative mapping is [`reference/catalog/llm-top10-2025.json`](catalog/llm-top10-2025.json).
 
 ## Core Responsibilities
 
@@ -44,6 +46,9 @@
 - **Memorization testing**: Identify memorized content
 - **Exact match detection**: Find exact training data
 - **Privacy violation**: Demonstrate data leakage
+
+### Phase 6: Adversarial Inputs Against Classifier-Backed Endpoints
+- L0-bounded pixel attacks when the user controls a small number of input dimensions and the server gates a decision on the predicted class — see [adversarial-pixel-attacks.md](adversarial-pixel-attacks.md). Always inspect the model's final-layer activation before computing gradients (softmax-fused heads silently break gradient-based attacks).
 
 ## Tools & Techniques
 

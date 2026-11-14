@@ -1,8 +1,11 @@
 ---
 name: implementing-identity-verification-for-zero-trust
-description: Implement continuous identity verification for zero trust using phishing-resistant
-  MFA (FIDO2/WebAuthn), risk-based conditional access, and identity governance aligned
-  with the CISA Zero Trust Maturity Model.
+description: Implements continuous, risk-adaptive identity verification for zero trust
+  using phishing-resistant MFA (FIDO2/WebAuthn), risk-based conditional access, and
+  identity governance aligned with NIST SP 800-207 and the CISA Zero Trust Maturity
+  Model Identity Pillar. Use when designing zero trust identity controls, deploying
+  phishing-resistant MFA, or building conditional access policies based on device
+  posture, behavior, and location.
 domain: cybersecurity
 subdomain: zero-trust-architecture
 tags:
@@ -31,6 +34,37 @@ mitre_attack:
 - T1059
 - T1566
 - T1598
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - reconnaissance
+  techniques:
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
+  - id: T1110.004
+    name: 'Brute Force:  Credential Stuffing'
+    tactic: initial-access
+    source: attack
+  - id: T1111
+    name: Multi-Factor Authentication Interception
+    tactic: initial-access
+    source: attack
+  - id: T1557
+    name: Adversary-in-the-Middle
+    tactic: initial-access
+    source: attack
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
 ---
 
 # Implementing Identity Verification for Zero Trust

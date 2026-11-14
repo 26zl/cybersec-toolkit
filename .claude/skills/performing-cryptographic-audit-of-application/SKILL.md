@@ -22,6 +22,29 @@ mitre_attack:
 - T1600
 - T1573
 - T1553
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - initial-access
+  - positioning
+  techniques:
+  - id: T1557
+    name: Adversary-in-the-Middle
+    tactic: positioning
+    source: attack
+  - id: T1555
+    name: Credentials from Password Stores
+    tactic: reconnaissance
+    source: attack
+  - id: F1006.001
+    name: 'Account Takeover: Exposed API Key'
+    tactic: initial-access
+    source: f3
+  - id: F1004
+    name: Access with Stolen Session Cookie
+    tactic: initial-access
+    source: f3
 ---
 # Performing Cryptographic Audit of Application
 

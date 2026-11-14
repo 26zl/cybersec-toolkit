@@ -1,12 +1,30 @@
 ---
 name: bb-methodology
 description: Use at the START of any bug bounty hunting session, when switching targets, or when feeling lost about what to do next. Master orchestrator that combines the 5-phase non-linear hunting workflow with the critical thinking framework (developer psychology, anomaly detection, What-If experiments). Routes to all other skills based on current hunting phase. Also use when asking "what should I do next" or "where am I in the process."
-source: shuvonsec/claude-bug-bounty
+source: awarexone/Agentic-Bug-Hunter
 license: MIT
-upstream_commit: 22ea70b763618984a08d6f601bb2e3e079e86a15
+upstream_commit: 8060af0c1b0b6ecc6595ee3261f50aa613038620
 ---
 
-> **Vendored note (this repo).** Adapted from the standalone [claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty) project. The upstream **executable scaffolding** — helper scripts (`tools/*.py`, `tools/*.sh`), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — add them with the `add-tool` skill or install upstream.
+> **Vendored note (this repo).** Adapted from the standalone [Agentic-Bug-Hunter](https://github.com/awarexone/Agentic-Bug-Hunter) project (formerly `shuvonsec/claude-bug-bounty`). The upstream **executable scaffolding** — helper scripts (`bughunter/tools/*.py`, `bughunter/tools/*.sh`; `tools/…` in older upstream text), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — propose them through the approval-gated `add-tool` flow. Do not fetch or run the upstream project's helper scripts.
+>
+> **Upstream helpers this text names, and what to use here.** None of them is in this repository.
+>
+> | Upstream helper | Here |
+> | --- | --- |
+> | `bypass_403.sh` | `run_tool("nomore403", …)`; judge the response body as well as the status, since a soft block answers 200 |
+> | `waf_encoder.py` | No script. Fingerprint with `run_tool("wafw00f", …)`, then take the encoding variants from the `offensive-waf-bypass` and `security-payloads` skills |
+> | `waf_response_analyzer.py` | No script. Compare status, body length, block-page text and the WAF's request-ID header across `run_tool("curl", …)` responses |
+> | `multipart_mutator.py` | No script. The multipart variants are in the `offensive-file-upload` skill; send them with `run_tool("curl", …)` |
+> | `param_discovery.sh` | `run_tool` with `arjun`, `paramspider` or `x8` |
+> | `graphql_audit.sh` | `run_tool` with `graphw00f` and `clairvoyance`, following the `offensive-graphql` skill |
+> | `cicd_scanner.sh` | No registry tool. Review workflows with the `securing-github-actions-workflows` skill; `gitleaks` and `trufflehog` cover committed secrets |
+> | `takeover_scanner.sh` | `run_tool` with `subzy`, or the takeover templates of `nuclei` |
+> | `cloud_recon.sh` | `run_tool` with `cloud_enum`, `s3scanner` or `cloudbrute` |
+> | `secrets_hunter.sh` | `run_tool` with `trufflehog` (verified results only) or `gitleaks` |
+> | `eol_check.py` | No script. Fingerprint with `whatweb` or `webanalyze`, then check each version against the vendor's support lifecycle; `get_cve_info` maps a known CVE to tools |
+> | `lead_board.py` | No script. Keep leads in the engagement's shared-state file (`docs/ORCHESTRATION.md`) or in the writeup, one line per lead with its status |
+> | `hunt.py` | `guided_assessment`, or `suggest_for_bounty` when the target type is known |
 
 # Bug Bounty Methodology: Workflow + Mindset
 
@@ -72,6 +90,7 @@ Before touching any tool:
 
 - **Naming anomaly**: `userId` everywhere but suddenly `user_id` -> different dev, weaker security
 - **Error diff**: Same 403 but different JSON structure -> different backend systems
+- **200 but wrong body length/content**: `200 OK` with tiny response or "just a moment" text → WAF soft block, not a real response. Run `bypass_403.sh` to confirm and get baseline diff.
 - **Environment diff**: Prod vs Dev/Staging -> debug headers, CSP disabled
 - **Version diff**: JS file before/after update -> new endpoints, removed params
 - **Supply chain**: Check framework/library versions for known CVEs
@@ -195,9 +214,20 @@ Google Dorks -> JS file download -> Hidden param discovery -> API mapping
 | Live subdomains with tech stack | Phase 2 (Mapping) |
 | Known software (WordPress, Jira) | Check CVEs + defaults immediately |
 | Cloud resources (S3, Firebase) | Test permissions (read/write/list) |
+| 403 **or 200 + block page** on endpoint | `bughunter/tools/bypass_403.sh <url>` auto-detects soft blocks (200+block-body). Verdict: bypassed/needs_review/blocked. If all blocked after 5 min, skip |
 | Nothing after 5 min on a host | Skip, try next host (5-minute rule) |
 
 **Recon**: run the `web2-recon` skill against target.com (subfinder/httpx/katana/nuclei via MCP `run_tool`).
+
+**After every recon (mandatory):**
+```bash
+python3 bughunter/tools/lead_board.py ingest target.com
+python3 bughunter/tools/lead_board.py show target.com
+python3 bughunter/tools/lead_board.py next target.com
+# Route in plain language: "GraphQL endpoint → skills/graphql-audit"
+# touch status when you start / kill / report a lead
+```
+(`hunt.py` runs ingest + EOL automatically unless `--skip-leads`.)
 
 ### Phase 2: MAPPING & ANALYSIS
 
@@ -259,7 +289,7 @@ What input are you testing?
 |--------------|-------------|
 | Low-impact behavior (redirect, self-XSS, cookie injection) | Chain it -- find a connector gadget |
 | Confirmed vuln (XSS, IDOR, SQLi) | Phase 4 (Prove and Escalate) |
-| Blocked by WAF/CSP/403 | Bypass techniques, then retry |
+| Blocked by WAF/CSP/403 **or soft-block 200** | `/bypass-403 <url>` → check verdict (not just status) → `bughunter/tools/waf_encoder.py "<payload>"` → if upload: `bughunter/tools/multipart_mutator.py` → 5 min, kill |
 | Known software vuln (CVE) | 1-day speed workflow |
 | Nothing after 20 min on this endpoint | Rotate (20-minute rule) |
 
@@ -340,7 +370,7 @@ Run the report-writing skill
 | Found subdomain but don't know what to test | Phase 2: Map the app, download JS, understand auth |
 | Testing but nothing works | Phase 3: Switch vuln class (20-min rotation rule) |
 | Found a bug but impact is low | Phase 4: Escalation paths or gadget chaining |
-| WAF/CSP/403 blocking my payload | Bypass techniques, then return to current phase |
+| WAF/CSP/403 blocking my payload | `/bypass-403` → fingerprint WAF → `waf_encoder.py` variants → kill if 5 min spent (403 even after `/bypass-403` + WAF fingerprint + `waf_encoder.py` variants) |
 | Been stuck for 45 min on one param | STOP. Rabbit hole. Move to next endpoint. |
 | New API endpoint discovered during testing | Return to Phase 2: map it before attacking |
 | Found one bug | A->B signal: same dev made more mistakes. Hunt 20 min for siblings. |
@@ -361,22 +391,30 @@ Every 20 minutes ask yourself: **"Am I making progress?"**
 | Recon: JS | `jsluice` + `mantra` + `trufflehog --only-verified` | Extract URLs/secrets -> find API keys -> verify keys actually work |
 | Recon: Ports | `naabu` (wide) -> `rustscan` (deep) | Fast top-1000 sweep -> full 65535 on interesting targets |
 | Recon: Scan | `nuclei -tags cve` -> `nuclei -tags takeover` | Known CVEs first -> then takeover (act immediately) |
-| Mapping: Params | `arjun` + `paramspider` + ParamMiner | Brute-force hidden params + mine archives + cache headers |
+| **After recon (ALWAYS)** | `python3 bughunter/tools/lead_board.py ingest <target>` → `show` → `next` | Route every signal to a `hunt-*` skill; never lose a lead. `touch` when you start/kill/report |
+| After recon: EOL | `python3 bughunter/tools/eol_check.py --tech "php=7.4,nginx=1.18"` | Flag EOL products from `technologies.txt` fingerprints |
+| Mapping: Params | `arjun` + `paramspider` + ParamMiner / `bughunter/tools/param_discovery.sh` | Brute-force hidden params + mine archives + cache headers |
+| Mapping: GraphQL | `bash bughunter/tools/graphql_audit.sh <url>` | Introspection → fingerprint → batching → IDOR → injection |
+| Mapping: CI/CD | `bash bughunter/tools/cicd_scanner.sh owner/repo` | Workflow injection / secret exfil / runner poisoning |
 | Mapping: JS code | Download -> `jsluice` -> VS Code/Cursor grep | Extract -> static analysis -> AI-assisted taint analysis |
 | Mapping: Dorks | Manual Google Dorks | Custom per-target queries find what automation misses |
 | Discovery: Fuzz | `ffuf -ac` + `cewl` custom wordlist | Auto-calibrate filtering + target-specific words beat generic lists |
 | Discovery: XSS | `kxss` -> `dalfox` | Filter (which params reflect?) -> scan (only reflective params) |
 | Discovery: SQLi | `ghauri` | Modern blind SQLi on ID-like parameters |
 | Discovery: SSRF | `interactsh-client` | Self-hosted OOB listener for blind SSRF/XXE/RCE |
-| Discovery: WAF | `wafw00f` -> `whatwaf` | Identify WAF vendor -> test bypass techniques |
-| Exploit: 403 | `byp4xx` or `nomore403` | 20+ bypass techniques automated |
-| Exploit: Takeover | `subzy` | Checks CNAME against 70+ vulnerable services |
-| Exploit: Cloud | `s3scanner` + `aws` CLI | Scan bucket permissions -> extract metadata credentials |
-| Exploit: Secrets | `trufflehog --only-verified` | Only verified working keys (no false positives) |
+| Discovery: WAF | `wafw00f` → `bughunter/tools/bypass_403.sh` → `bughunter/tools/waf_encoder.py` → `waf_response_analyzer.py` | Fingerprint → soft-block aware bypass → encoded variants → score response |
+| Exploit: 403 | `bughunter/tools/bypass_403.sh` / `byp4xx` | Soft-block (200+block body) aware; verdict: bypassed/needs_review/blocked |
+| Exploit: Upload | `bughunter/tools/multipart_mutator.py --file shell --field f` | Parser-confusion multipart variants |
+| Exploit: Takeover | `bughunter/tools/takeover_scanner.sh` / `subzy` | CNAME against vulnerable services |
+| Exploit: Cloud | `bughunter/tools/cloud_recon.sh` + `aws` CLI | Scan bucket permissions -> extract metadata credentials |
+| Exploit: Secrets | `bughunter/tools/secrets_hunter.sh` / `trufflehog --only-verified` | Only verified working keys (no false positives) |
+| Orchestrate | `python3 bughunter/tools/hunt.py --target T` | Recon → lead ingest → EOL → scan (add `--graphql` / `--cve-hunt` as needed) |
 
 ### Session End Checklist
 
+- [ ] `lead_board.py show <target>` — any high-priority leads still `new` / stale?
 - [ ] Save all Burp/Caido project files
 - [ ] Record any "weird but not yet exploitable" behaviors (future gadgets)
 - [ ] Update notes with failed attempts (don't re-test with same techniques)
 - [ ] Log findings with `/remember`
+- [ ] `touch` every lead you killed or reported

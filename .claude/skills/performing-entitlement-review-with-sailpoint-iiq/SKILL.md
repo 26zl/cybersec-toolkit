@@ -1,12 +1,10 @@
 ---
 name: performing-entitlement-review-with-sailpoint-iiq
-description: 'Performs entitlement review and access certification campaigns using
-  SailPoint IdentityIQ including manager certifications, targeted entitlement reviews,
-  role-based access validation, SOD violation remediation, and automated revocation
-  workflows. Activates for requests involving access reviews, entitlement certifications,
-  SailPoint IIQ governance, or periodic user access recertification.
-
-  '
+description: 'Runs entitlement review and access certification campaigns in SailPoint
+  IdentityIQ, covering manager certifications, targeted entitlement reviews, role-based
+  access validation, segregation-of-duties violation remediation, and automated
+  revocation workflows. Use when performing periodic user access recertification,
+  auditing SailPoint IIQ access governance, or investigating SOD violations.'
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -29,6 +27,34 @@ mitre_attack:
 - T1110
 - T1556
 - T1098
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - defense-impairment
+  - resource-development
+  techniques:
+  - id: T1586
+    name: Compromise Accounts
+    tactic: resource-development
+    source: attack
+  - id: F1033
+    name: Insider Access Abuse
+    tactic: initial-access
+    source: f3
+  - id: F1005
+    name: Account Manipulation
+    tactic: positioning
+    source: f3
+  - id: F1005.002
+    name: 'Account Manipulation: Add Authorized User'
+    tactic: positioning
+    source: f3
+  - id: F1005.007
+    name: 'Account Manipulation: Enable Account Features'
+    tactic: defense-impairment
+    source: f3
 ---
 
 # Performing Entitlement Review with SailPoint IdentityIQ

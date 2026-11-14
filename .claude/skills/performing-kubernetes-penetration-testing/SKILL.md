@@ -1,8 +1,13 @@
 ---
 name: performing-kubernetes-penetration-testing
-description: Kubernetes penetration testing systematically evaluates cluster security
-  by simulating attacker techniques against the API server, kubelet, etcd, pods, RBAC,
-  network policies, and secrets. Using tools
+description: >-
+  Evaluates Kubernetes cluster security by actively simulating attacker techniques against the
+  API server, kubelet, etcd, pods, RBAC, network policy, and secrets, using kube-hunter,
+  Kubescape, peirates, and manual kubectl exploitation to find paths to cluster compromise.
+  Use for an authorized penetration test or hands-on validation that controls actually stop an
+  attacker. Keywords: kube-hunter, Kubescape, peirates, kubelet 10250, anonymous auth, token
+  theft, lateral movement, cluster takeover. Do not use for a configuration-only compliance
+  audit - use performing-kubernetes-cis-benchmark-with-kube-bench.
 domain: cybersecurity
 subdomain: container-security
 tags:

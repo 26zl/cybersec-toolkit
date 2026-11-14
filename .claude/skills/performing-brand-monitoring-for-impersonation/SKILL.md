@@ -27,6 +27,38 @@ mitre_attack:
 - T1593
 - T1589
 - T1566
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - resource-development
+  - initial-access
+  - stealth
+  techniques:
+  - id: T1583.001
+    name: 'Acquire Infrastructure: Domains'
+    tactic: resource-development
+    source: attack
+  - id: T1583.008
+    name: 'Acquire Infrastructure: Malvertising'
+    tactic: resource-development
+    source: attack
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
+  - id: T1593
+    name: Search Open Websites/Domains
+    tactic: reconnaissance
+    source: attack
+  - id: F1032
+    name: Impersonate Official
+    tactic: initial-access
+    source: f3
+  - id: T1672
+    name: Email Spoofing
+    tactic: stealth
+    source: attack
 ---
 # Performing Brand Monitoring for Impersonation
 

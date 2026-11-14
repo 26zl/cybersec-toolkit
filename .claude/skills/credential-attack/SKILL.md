@@ -1,12 +1,12 @@
 ---
 name: credential-attack
 description: Password spray methodology for bug bounty — when to do it vs web-vuln hunting, the wordlist-gen + breach-check + osint-employees + spray pipeline, mode selection (http-form / oauth / o365 / okta), rate-limit + lockout tactics, BBP legal guardrails, success detection, and the spray → authenticated hunt chain pattern. Use when assessing whether credential attack is worth running on a target, picking the right mode, or recovering from common pitfalls.
-source: shuvonsec/claude-bug-bounty
+source: awarexone/Agentic-Bug-Hunter
 license: MIT
-upstream_commit: 22ea70b763618984a08d6f601bb2e3e079e86a15
+upstream_commit: 8060af0c1b0b6ecc6595ee3261f50aa613038620
 ---
 
-> **Vendored note (this repo).** Adapted from the standalone [claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty) project. The upstream **executable scaffolding** — helper scripts (`tools/*.py`, `tools/*.sh`), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — add them with the `add-tool` skill or install upstream.
+> **Vendored note (this repo).** Adapted from the standalone [Agentic-Bug-Hunter](https://github.com/awarexone/Agentic-Bug-Hunter) project (formerly `shuvonsec/claude-bug-bounty`). The upstream **executable scaffolding** — helper scripts (`bughunter/tools/*.py`, `bughunter/tools/*.sh`; `tools/…` in older upstream text), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — propose them through the approval-gated `add-tool` flow. Do not fetch or run the upstream project's helper scripts.
 
 > **Phase/command mapping (this repo).** The `/…` names below are upstream phase labels, **not** bundled commands. Cross-skill: `/recon`→`web2-recon`, `/hunt`→`bug-bounty`, `/validate`→`triage-validation`, `/report`→`report-writing`, `/scope`→`authorization-gate`. This skill's own pipeline (wordlist-gen → breach-check → osint-employees → spray) runs as MCP `run_tool`/`run_script` steps — see each stage below.
 

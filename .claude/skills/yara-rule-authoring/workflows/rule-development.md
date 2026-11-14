@@ -1,6 +1,8 @@
 # YARA Rule Development Workflow
 
 This guide walks through the complete process of developing a production-quality YARA-X rule, from sample collection to deployment.
+Resolve `<resolved-yara-lint-path>` to the absolute path of the
+[linter](../scripts/yara_lint.py) in the installed skill before using the command below.
 
 ## Overview
 
@@ -104,10 +106,11 @@ yarGen extracts candidate strings but generates legacy YARA syntax. Always valid
 
 ```bash
 # Basic extraction
-python yarGen.py -m samples/ --excludegood -o candidate_rule.yar
+cd yarGen  # run from the yarGen checkout, where requirements.txt lives
+uv run --no-project --with-requirements requirements.txt python yarGen.py -m samples/ --excludegood -o candidate_rule.yar
 
 # Recommended flags
-python yarGen.py -m samples/ \
+uv run --no-project --with-requirements requirements.txt python yarGen.py -m samples/ \
     --excludegood \           # Filter against known goodware strings
     -g /path/to/good/files \  # Add custom goodware
     --nosimple \              # Exclude simple strings
@@ -291,7 +294,7 @@ yr fmt -w rule.yar
 
 ```bash
 # Run the skill's linter
-uv run {baseDir}/scripts/yara_lint.py rule.yar
+uv run "<resolved-yara-lint-path>" rule.yar
 ```
 
 **All three must pass before proceeding.**

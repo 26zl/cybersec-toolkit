@@ -1,7 +1,6 @@
 ---
 name: building-threat-hunt-hypothesis-framework
-description: Build a systematic threat hunt hypothesis framework that transforms threat
-  intelligence, attack patterns, and environmental data into testable hunting hypotheses.
+description: Build a systematic threat-hunt workflow that turns threat intelligence and ATT&CK gap analysis into testable hypotheses, then executes and validates them via EDR/SIEM queries (CrowdStrike, Defender, Splunk, Elastic, Sysmon, Velociraptor, Sigma) and documents findings in a standardized hunt report. Use when planning or running a proactive threat hunt or scoping compromise from an intel- or anomaly-driven lead.
 domain: cybersecurity
 subdomain: threat-hunting
 tags:

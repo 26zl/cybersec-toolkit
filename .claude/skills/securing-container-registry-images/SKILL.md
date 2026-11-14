@@ -1,9 +1,10 @@
 ---
 name: securing-container-registry-images
-description: 'Securing container registry images by implementing vulnerability scanning
-  with Trivy and Grype, enforcing image signing with Cosign and Sigstore, configuring
-  registry access controls, and building CI/CD pipelines that prevent deploying unscanned
-  or unsigned images.
+description: 'Secures container registry images (ECR, ACR, GCR, Docker Hub) by scanning
+  with Trivy and Grype, signing with Cosign and Sigstore, configuring registry access
+  controls, and building CI/CD pipelines that block unscanned or unsigned images.
+  Use when establishing registry security controls or enforcing scan/signature checks
+  before image promotion.
 
   '
 domain: cybersecurity

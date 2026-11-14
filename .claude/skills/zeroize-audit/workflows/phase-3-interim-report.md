@@ -6,7 +6,7 @@
 
 ## Instructions
 
-Spawn agent `4-report-assembler` via `Task` with:
+Launch the [4-report-assembler role](../../../agents/4-report-assembler.md) using the [Execution Contract](../SKILL.md#execution-contract) with:
 
 | Parameter | Value |
 |---|---|

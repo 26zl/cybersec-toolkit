@@ -1,7 +1,10 @@
 ---
 name: detecting-broken-object-property-level-authorization
 description: Detect and test for OWASP API3:2023 Broken Object Property Level Authorization
-  vulnerabilities including excessive data exposure and mass assignment attacks.
+  (BOPLA), covering excessive data exposure in API responses and mass assignment via
+  injected request-body properties. Use when reviewing API responses/requests for
+  over-exposed or over-writable object fields, or building detection rules and test
+  cases for property-level authorization gaps that object-level checks miss.
 domain: cybersecurity
 subdomain: api-security
 tags:

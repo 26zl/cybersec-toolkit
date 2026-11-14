@@ -1,11 +1,11 @@
 ---
 name: detecting-stuxnet-style-attacks
-description: 'This skill covers detecting sophisticated cyber-physical attacks that
-  follow the Stuxnet attack pattern of modifying PLC logic while spoofing sensor readings
-  to hide the manipulation from operators. It addresses PLC logic integrity monitoring,
-  physics-based process anomaly detection, engineering workstation compromise indicators,
-  USB-borne attack vectors, and multi-stage attack chain detection spanning IT-to-OT
-  lateral movement through to process manipulation.
+description: 'Detects sophisticated cyber-physical attacks that follow the Stuxnet
+  pattern of modifying PLC logic while spoofing sensor readings to hide the
+  manipulation, using PLC logic integrity monitoring (Claroty xDome, Nozomi
+  Guardian) and physics-based process anomaly detection. Use when hunting for
+  IT-to-OT lateral movement or discrepancies between PLC program state and
+  physical process behavior in ICS/SCADA environments.
 
   '
 domain: cybersecurity

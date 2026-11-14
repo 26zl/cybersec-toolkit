@@ -1,8 +1,14 @@
 ---
 name: detecting-container-drift-at-runtime
-description: Detect unauthorized modifications to running containers by monitoring
-  for binary execution drift, file system changes, and configuration deviations from
-  the original container image.
+description: >-
+  Detects unauthorized runtime drift in containers by monitoring binary execution, filesystem
+  changes, and configuration deviation from the original immutable image, using Falco and
+  Microsoft Defender for Containers. Use when validating immutable-infrastructure controls,
+  hunting for unexpected package installs or binaries written inside a running container, or
+  determining whether a container diverged from the image it was built from. Keywords: drift,
+  immutable infrastructure, new binary executed, package install, image mismatch, Falco. Do
+  not use for detecting breakout from the container to the host - use
+  detecting-container-escape-attempts.
 domain: cybersecurity
 subdomain: container-security
 tags:

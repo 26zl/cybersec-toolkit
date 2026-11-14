@@ -1,8 +1,9 @@
 ---
 name: performing-service-account-credential-rotation
-description: Automate credential rotation for service accounts across Active Directory,
+description: Automates credential rotation for service accounts across Active Directory,
   cloud platforms, and application databases to eliminate stale secrets and reduce
-  compromise risk.
+  compromise risk. Use when rotating or automating rotation of service account passwords,
+  API keys, or secrets stored in a vault.
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -26,6 +27,33 @@ mitre_attack:
 - T1556
 - T1098
 - T1003
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - stealth
+  techniques:
+  - id: F1006.001
+    name: 'Account Takeover: Exposed API Key'
+    tactic: initial-access
+    source: f3
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
+  - id: T1110
+    name: Brute Force
+    tactic: initial-access
+    source: attack
+  - id: F1005
+    name: Account Manipulation
+    tactic: positioning
+    source: f3
+  - id: F1023
+    name: Device Fingerprint Spoofing
+    tactic: stealth
+    source: f3
 ---
 
 # Performing Service Account Credential Rotation

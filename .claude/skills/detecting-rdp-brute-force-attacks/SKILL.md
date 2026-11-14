@@ -1,8 +1,11 @@
 ---
 name: detecting-rdp-brute-force-attacks
-description: Detect RDP brute force attacks by analyzing Windows Security Event Logs
-  for failed authentication patterns (Event ID 4625), successful logons after failures
-  (Event ID 4624), NLA failures, and source IP frequency analysis.
+description: Detect RDP brute force attacks by parsing Windows Security Event Logs
+  (EVTX files, via python-evtx) for failed logon patterns (Event ID 4625, Logon
+  Type 10/3), correlating with successful logons (Event ID 4624), and analyzing
+  NLA failures and source IP frequency. Use when investigating exposed RDP endpoints,
+  building SIEM detection rules for credential guessing, or confirming whether
+  a compromised account followed a brute-force pattern.
 domain: cybersecurity
 subdomain: threat-detection
 tags:

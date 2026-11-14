@@ -1,8 +1,10 @@
 ---
 name: implementing-azure-ad-privileged-identity-management
-description: Configure Microsoft Entra Privileged Identity Management to enforce just-in-time
-  role activation, approval workflows, and access reviews for Azure AD privileged
-  roles.
+description: Configure Microsoft Entra Privileged Identity Management (PIM) to convert
+  standing privileged assignments into eligible, time-bound roles requiring justification,
+  MFA, and approval, covering Entra roles, Azure resource roles, and PIM for Groups,
+  plus access reviews. Use for role-assignment audits, just-in-time admin activation,
+  or Zero Trust identity governance in Entra/Azure AD.
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -26,6 +28,29 @@ mitre_attack:
 - T1110
 - T1556
 - T1098
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - defense-impairment
+  techniques:
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
+  - id: T1110.003
+    name: 'Brute Force: Password Spraying'
+    tactic: initial-access
+    source: attack
+  - id: F1005
+    name: Account Manipulation
+    tactic: positioning
+    source: f3
+  - id: F1005.002
+    name: 'Account Manipulation: Add Authorized User'
+    tactic: defense-impairment
+    source: f3
 ---
 
 # Implementing Azure AD Privileged Identity Management

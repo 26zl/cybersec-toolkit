@@ -1,8 +1,9 @@
 ---
 name: analyzing-typosquatting-domains-with-dnstwist
-description: Detect typosquatting, homograph phishing, and brand impersonation domains
-  using dnstwist to generate domain permutations and identify registered lookalike
-  domains targeting your organization.
+description: Generate domain permutations with dnstwist and check DNS resolution
+  to detect typosquatting, homograph phishing, and brand impersonation domains registered
+  against your organization. Use when asked to monitor for lookalike domains, investigate
+  a phishing domain, or assess brand-impersonation risk.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:
@@ -30,6 +31,33 @@ mitre_attack:
 - T1566.002
 - T1598.003
 - T1583.006
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - resource-development
+  - reconnaissance
+  - initial-access
+  techniques:
+  - id: T1583.001
+    name: 'Acquire Infrastructure: Domains'
+    tactic: resource-development
+    source: attack
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
+  - id: T1593
+    name: Search Open Websites/Domains
+    tactic: reconnaissance
+    source: attack
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
 ---
 # Analyzing Typosquatting Domains with DNSTwist
 

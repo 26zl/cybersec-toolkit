@@ -1,8 +1,10 @@
 ---
 name: building-ioc-enrichment-pipeline-with-opencti
-description: OpenCTI is an open-source platform for managing cyber threat intelligence
-  knowledge, built on STIX 2.1 as its native data model. This skill covers building
-  an automated IOC enrichment pipeline using O
+description: Build an automated IOC enrichment pipeline on OpenCTI (STIX 2.1 native
+  threat intel platform) using its internal enrichment connectors to pull context
+  from VirusTotal, Shodan, AbuseIPDB, and GreyNoise, correlate indicators with known
+  actors/campaigns, and score them for analyst prioritization. Use when deploying
+  OpenCTI or automating enrichment and confidence scoring of newly ingested indicators.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:

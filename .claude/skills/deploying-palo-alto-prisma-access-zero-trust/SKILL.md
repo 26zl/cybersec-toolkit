@@ -1,10 +1,6 @@
 ---
 name: deploying-palo-alto-prisma-access-zero-trust
-description: 'Deploying Palo Alto Networks Prisma Access for SASE-based zero trust
-  network access using GlobalProtect agents, ZTNA Connectors, security policy enforcement,
-  and integration with Strata Cloud Manager for unified security management.
-
-  '
+description: Deploys Palo Alto Networks Prisma Access for SASE-based zero trust network access, configuring GlobalProtect agents, ZTNA Connectors, security policy enforcement, and Strata Cloud Manager integration for unified management. Use when implementing enterprise-grade SASE with integrated ZTNA/SWG/CASB/FWaaS, replacing both VPN and branch firewalls with cloud-delivered security, or integrating ZTNA with an existing Palo Alto NGFW estate.
 domain: cybersecurity
 subdomain: zero-trust-architecture
 tags:

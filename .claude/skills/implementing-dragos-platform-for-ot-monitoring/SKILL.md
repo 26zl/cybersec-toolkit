@@ -1,11 +1,6 @@
 ---
 name: implementing-dragos-platform-for-ot-monitoring
-description: 'Deploy and configure the Dragos Platform for OT network monitoring,
-  leveraging its 600+ industrial protocol parsers, intelligence-driven threat detection
-  analytics, and asset visibility capabilities to protect ICS environments against
-  threat groups like VOLTZITE, GRAPHITE, and BAUXITE.
-
-  '
+description: Deploys and configures Dragos Platform sensors and detection analytics for OT/ICS network monitoring, using industrial protocol parsers and threat-intel packs to detect groups like VOLTZITE, CHERNOVITE, and KAMACITE. Use when standing up OT-specific network detection and response or an OT SOC, or integrating OT monitoring into an enterprise SIEM; not for IT-only or Claroty/Nozomi environments.
 domain: cybersecurity
 subdomain: ot-ics-security
 tags:

@@ -1,7 +1,11 @@
 ---
 name: detecting-process-hollowing-technique
-description: Detect process hollowing (T1055.012) by analyzing memory-mapped sections,
-  hollowed process indicators, and parent-child process anomalies in EDR telemetry.
+description: Detect process hollowing (MITRE T1055.012) by analyzing memory-mapped
+  sections, hollowed process indicators, and parent-child anomalies using EDR
+  telemetry, Volatility's malfind plugin, pe-sieve, Hollows Hunter, and Sysmon
+  Event ID 25. Use when investigating a legitimate-looking process (svchost.exe,
+  explorer.exe, rundll32.exe) suspected of hosting injected code via
+  NtUnmapViewOfSection.
 domain: cybersecurity
 subdomain: threat-hunting
 tags:

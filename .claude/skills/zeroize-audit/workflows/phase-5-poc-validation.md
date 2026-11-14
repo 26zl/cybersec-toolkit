@@ -8,7 +8,7 @@
 
 ### Step 5a — Compile and Run All PoCs (agent)
 
-Spawn agent `5b-poc-validator` via `Task` with:
+Launch the [5b-poc-validator role](../../../agents/5b-poc-validator.md) using the [Execution Contract](../SKILL.md#execution-contract) with:
 
 | Parameter | Value |
 |---|---|
@@ -27,7 +27,7 @@ echo "Exit code: $?"
 
 ### Step 5b — Verify PoCs Prove Their Claims (agent)
 
-Spawn agent `5c-poc-verifier` via `Task` with:
+Launch the [5c-poc-verifier role](../../../agents/5c-poc-verifier.md) using the [Execution Contract](../SKILL.md#execution-contract) with:
 
 | Parameter | Value |
 |---|---|
@@ -48,8 +48,8 @@ The verifier reads each PoC source file, the corresponding finding, and the orig
 
 Read `{workdir}/poc/poc_verification.json`. For any PoC with `verified: false`:
 
-1. Use `Read` to show the PoC source file.
-2. Present to the user via `AskUserQuestion` with:
+1. Read and show the PoC source file using the environment's file-access tools.
+2. Ask the user through the environment's input facility or in the conversation, including:
    - Finding ID and category
    - PoC file path
    - Which verification checks failed and why

@@ -1,12 +1,12 @@
 ---
 name: meme-coin-audit
 description: Meme coin and token security audit — rug pull detection (honeypot, hidden mint, fee manipulation, LP lock bypass), Solana SPL token analysis (freeze authority, mint authority, metadata mutability), Token-2022 extension risks (transfer hooks, permanent delegate), DEX liquidity pool attacks (sandwich amplification, LP drain, bonding curve exploits), pump.fun/Raydium/Jupiter integration risks, MCP-driven red-flag scanning (grep/run_pipeline over contract source), and real exploit examples from 2024-2025. Use for any token audit, rug pull assessment, meme coin security review, or pre-investment due diligence.
-source: shuvonsec/claude-bug-bounty
+source: awarexone/Agentic-Bug-Hunter
 license: MIT
-upstream_commit: 22ea70b763618984a08d6f601bb2e3e079e86a15
+upstream_commit: 8060af0c1b0b6ecc6595ee3261f50aa613038620
 ---
 
-> **Vendored note (this repo).** Adapted from the standalone [claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty) project. The upstream **executable scaffolding** — helper scripts (`tools/*.py`, `tools/*.sh`), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — add them with the `add-tool` skill or install upstream.
+> **Vendored note (this repo).** Adapted from the standalone [Agentic-Bug-Hunter](https://github.com/awarexone/Agentic-Bug-Hunter) project (formerly `shuvonsec/claude-bug-bounty`). The upstream **executable scaffolding** — helper scripts (`bughunter/tools/*.py`, `bughunter/tools/*.sh`; `tools/…` in older upstream text), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — propose them through the approval-gated `add-tool` flow. Do not fetch or run the upstream project's helper scripts.
 
 # MEME COIN & TOKEN SECURITY AUDIT
 

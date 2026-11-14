@@ -1,7 +1,6 @@
 ---
 name: analyzing-prefetch-files-for-execution-history
-description: Parse Windows Prefetch files to determine program execution history including
-  run counts, timestamps, and referenced files for forensic investigation.
+description: Parse Windows Prefetch files (versions 17, 23, 26, 30) with tools like PECmd, WinPrefetchView, or python-prefetch to determine program execution history, including run counts, execution timestamps, and referenced files/DLLs. Use when building a timeline of program execution on a Windows system, confirming whether a suspicious binary ran, or correlating execution evidence with other forensic artifacts during an investigation.
 domain: cybersecurity
 subdomain: digital-forensics
 tags:
@@ -15,7 +14,6 @@ version: '1.0'
 author: mahipal
 license: Apache-2.0
 nist_csf:
-- RS.AN-01
 - RS.AN-03
 - DE.AE-02
 - RS.MA-01

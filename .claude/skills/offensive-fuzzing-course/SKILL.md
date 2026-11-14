@@ -4,7 +4,7 @@ description: "Week 2 of the exploit development curriculum. Covers fuzzing metho
 category: fuzzing
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: aeb41eca7088a703c3a35fbcba3086d4a6c1aa4e
+upstream_commit: a8de813edc9f66f60d44cfe42d47750e89d9930b
 ---
 # SKILL: Week 2: Finding Vulnerabilities Through Fuzzing
 

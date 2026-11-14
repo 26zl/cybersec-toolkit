@@ -1,7 +1,6 @@
 ---
 name: hunting-for-data-exfiltration-indicators
-description: Hunt for data exfiltration through network traffic analysis, detecting unusual data flows, DNS tunneling, cloud
-  storage uploads, and encrypted channel abuse.
+description: Hunt for data exfiltration by analyzing Zeek and Suricata network telemetry for unusual data flows, DNS tunneling via large/frequent TXT queries, uploads to personal cloud storage, and encrypted-channel abuse, correlated against threat intel on destination domains. Use when hunting for data theft in a compromised environment, investigating unusual outbound data volumes, or determining what data was stolen during incident response.
 domain: cybersecurity
 subdomain: threat-hunting
 tags:
@@ -32,6 +31,12 @@ nist_csf:
 - DE.AE-02
 - DE.AE-07
 - ID.RA-05
+mitre_attack:
+- T1046
+- T1057
+- T1082
+- T1083
+- T1048
 ---
 
 # Hunting for Data Exfiltration Indicators

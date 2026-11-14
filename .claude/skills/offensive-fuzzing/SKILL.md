@@ -4,7 +4,7 @@ description: "Practical offensive fuzzing methodology covering target identifica
 category: fuzzing
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: aeb41eca7088a703c3a35fbcba3086d4a6c1aa4e
+upstream_commit: a8de813edc9f66f60d44cfe42d47750e89d9930b
 ---
 # Offensive Fuzzing
 

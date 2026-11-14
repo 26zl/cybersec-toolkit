@@ -30,6 +30,28 @@ mitre_attack:
 - T1059
 - T1003
 - T1110
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  techniques:
+  - id: T1110.004
+    name: 'Brute Force:  Credential Stuffing'
+    tactic: initial-access
+    source: attack
+  - id: T1110.003
+    name: 'Brute Force: Password Spraying'
+    tactic: initial-access
+    source: attack
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
 ---
 
 # Hunting Credential Stuffing Attacks

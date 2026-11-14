@@ -1,7 +1,11 @@
 ---
 name: implementing-api-security-posture-management
-description: Implement API Security Posture Management to continuously discover, classify,
-  and score APIs based on risk while enforcing security policies across the API lifecycle.
+description: Implements API Security Posture Management (API-SPM) to continuously
+  discover, classify, and risk-score APIs -- including internal, external, partner,
+  and shadow endpoints -- while aggregating findings from DAST, SAST, SCA, and runtime
+  monitoring into a unified risk view. Use when building continuous API inventory
+  and risk-scoring, detecting configuration drift or policy violations, or unifying
+  API risk visibility across an organization.
 domain: cybersecurity
 subdomain: api-security
 tags:

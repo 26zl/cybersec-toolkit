@@ -1,8 +1,10 @@
 ---
 name: implementing-pam-for-database-access
 description: Deploy privileged access management for database systems including Oracle,
-  SQL Server, PostgreSQL, and MySQL. Covers session proxy configuration, credential
-  vaulting, query auditing, dynamic credentia
+  SQL Server, PostgreSQL, and MySQL, covering session proxy configuration, credential
+  vaulting, query auditing, dynamic credential generation, and least-privilege database
+  roles. Use when securing DBA access, implementing database PAM controls, or auditing
+  privileged database sessions.
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -27,6 +29,33 @@ mitre_attack:
 - T1556
 - T1098
 - T1003
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - resource-development
+  techniques:
+  - id: T1586
+    name: Compromise Accounts
+    tactic: resource-development
+    source: attack
+  - id: T1110
+    name: Brute Force
+    tactic: initial-access
+    source: attack
+  - id: F1033
+    name: Insider Access Abuse
+    tactic: initial-access
+    source: f3
+  - id: F1005.004
+    name: 'Account Manipulation: Change Account Details'
+    tactic: positioning
+    source: f3
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
 ---
 # Implementing PAM for Database Access
 

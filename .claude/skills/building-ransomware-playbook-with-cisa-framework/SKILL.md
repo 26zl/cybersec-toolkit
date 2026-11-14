@@ -1,12 +1,10 @@
 ---
 name: building-ransomware-playbook-with-cisa-framework
-description: 'Builds a structured ransomware incident response playbook aligned with
-  the CISA StopRansomware Guide and NIST Cybersecurity Framework. Covers preparation,
+description: Builds a structured ransomware incident response playbook aligned with
+  the CISA StopRansomware Guide and NIST Cybersecurity Framework, covering preparation,
   detection, containment, eradication, recovery, and post-incident phases with actionable
-  checklists. Activates for requests involving ransomware response planning, CISA
-  compliance, incident response playbook creation, or ransomware preparedness assessment.
-
-  '
+  checklists. Use when creating or updating a ransomware playbook, running a CISA-aligned
+  readiness assessment, or validating response steps during a tabletop exercise.
 domain: cybersecurity
 subdomain: ransomware-defense
 tags:
@@ -30,6 +28,28 @@ mitre_attack:
 - T1489
 - T1078
 - T1021.002
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - monetization
+  techniques:
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: T1110
+    name: Brute Force
+    tactic: initial-access
+    source: attack
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1047
+    name: Transfer of funds
+    tactic: monetization
+    source: f3
 ---
 
 # Building Ransomware Playbook with CISA Framework

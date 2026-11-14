@@ -1,7 +1,11 @@
 ---
 name: detecting-api-enumeration-attacks
-description: Detect and prevent API enumeration attacks including BOLA and IDOR exploitation
-  by monitoring sequential identifier access patterns and authorization failures.
+description: Detect API enumeration attacks (BOLA/IDOR, OWASP API1:2023) by writing SIEM
+  detection rules that flag sequential or UUID identifier iteration, parameter tampering,
+  and mixed 200/401/403 response patterns from API gateway and WAF logs. Use when
+  investigating suspected object-level authorization abuse, building threat-hunting
+  queries for API access-control bypass, or hardening API logging/rate-limiting against
+  enumeration.
 domain: cybersecurity
 subdomain: api-security
 tags:

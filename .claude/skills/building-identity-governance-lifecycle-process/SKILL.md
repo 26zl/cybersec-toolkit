@@ -1,12 +1,6 @@
 ---
 name: building-identity-governance-lifecycle-process
-description: 'Builds comprehensive identity governance and lifecycle management processes
-  including joiner-mover-leaver automation, role mining, access request workflows,
-  periodic recertification, and orphaned account remediation using IGA platforms.
-  Activates for requests involving identity lifecycle management, JML processes, role-based
-  access provisioning, or identity governance program design.
-
-  '
+description: Design identity governance and lifecycle (IGA) programs on platforms like SailPoint, Saviynt, or Entra ID Governance, covering joiner-mover-leaver (JML) automation, role mining, access requests, periodic recertification, and orphaned-account remediation sourced from an HR feed. Use when automating cross-system JML provisioning, remediating former-employee access, or building lifecycle processes for SOX, HIPAA, or GDPR compliance.
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -34,6 +28,33 @@ mitre_attack:
 - T1078
 - T1531
 - T1087
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - positioning
+  - defense-impairment
+  - initial-access
+  techniques:
+  - id: F1005
+    name: Account Manipulation
+    tactic: positioning
+    source: f3
+  - id: F1005.002
+    name: 'Account Manipulation: Add Authorized User'
+    tactic: positioning
+    source: f3
+  - id: F1033
+    name: Insider Access Abuse
+    tactic: initial-access
+    source: f3
+  - id: F1042
+    name: Reactivate Account
+    tactic: positioning
+    source: f3
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
 ---
 
 # Building Identity Governance Lifecycle Process

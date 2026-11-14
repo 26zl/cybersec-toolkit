@@ -1,8 +1,6 @@
 ---
 name: analyzing-apt-group-with-mitre-navigator
-description: Analyze advanced persistent threat (APT) group techniques using MITRE
-  ATT&CK Navigator to create layered heatmaps of adversary TTPs for detection gap
-  analysis and threat-informed defense.
+description: Query ATT&CK data with attackcti, mitreattack-python, and stix2, then build MITRE ATT&CK Navigator layers and multi-layer heatmap overlays mapping one or more APT groups' TTPs for detection-gap analysis. Use to compare threat-actor technique coverage, find gaps in detection engineering, or produce Navigator visualizations for threat-intel reporting.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:

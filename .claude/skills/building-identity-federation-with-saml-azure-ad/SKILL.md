@@ -1,8 +1,6 @@
 ---
 name: building-identity-federation-with-saml-azure-ad
-description: Establish SAML 2.0 identity federation between on-premises Active Directory
-  and Azure AD (Microsoft Entra ID) for seamless cross-domain authentication and SSO
-  to cloud applications.
+description: Configure SAML 2.0 identity federation between on-premises Active Directory (via AD FS or a third-party IdP) and Microsoft Entra ID, covering federation models (AD FS, password hash sync, pass-through auth, third-party IdP) and the SAML authentication flow. Use when extending on-premises authentication authority to cloud resources or designing hybrid identity SSO architecture for Entra ID.
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -28,6 +26,32 @@ mitre_attack:
 - T1484.002
 - T1078.004
 - T1110.003
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  techniques:
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
+  - id: T1110.003
+    name: 'Brute Force: Password Spraying'
+    tactic: initial-access
+    source: attack
+  - id: T1550
+    name: Use Alternate Authentication Material
+    tactic: initial-access
+    source: attack
+  - id: F1004
+    name: Access with Stolen Session Cookie
+    tactic: initial-access
+    source: f3
 ---
 
 # Building Identity Federation with SAML Azure AD

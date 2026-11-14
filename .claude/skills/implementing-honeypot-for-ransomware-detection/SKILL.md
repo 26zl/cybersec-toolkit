@@ -38,6 +38,34 @@ mitre_attack:
 - T1059
 - T1486
 - T1490
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - positioning
+  - initial-access
+  - monetization
+  - resource-development
+  techniques:
+  - id: T1219
+    name: Remote Access Tools
+    tactic: positioning
+    source: attack
+  - id: T1586
+    name: Compromise Accounts
+    tactic: resource-development
+    source: attack
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1047
+    name: Transfer of funds
+    tactic: monetization
+    source: f3
+  - id: F1033
+    name: Insider Access Abuse
+    tactic: initial-access
+    source: f3
 ---
 # Implementing Honeypot for Ransomware Detection
 

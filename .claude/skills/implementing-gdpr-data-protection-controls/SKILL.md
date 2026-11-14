@@ -1,8 +1,6 @@
 ---
 name: implementing-gdpr-data-protection-controls
-description: The General Data Protection Regulation (EU) 2016/679 (GDPR) is the EU's
-  comprehensive data protection law governing the collection, processing, storage,
-  and transfer of personal data. This skill cover
+description: Implements GDPR (EU 2016/679) technical and organizational measures — privacy by design/default, DPIAs, data subject rights management, 72-hour breach notification, and cross-border transfer mechanisms (SCCs, BCRs, adequacy). Use when designing or auditing GDPR controls, building a DPIA, handling data subject access/erasure requests, or assessing cross-border data transfers.
 domain: cybersecurity
 subdomain: compliance-governance
 tags:

@@ -1,12 +1,11 @@
 ---
 name: recovering-from-ransomware-attack
-description: 'Executes structured recovery from a ransomware incident following NIST
-  and CISA frameworks, including environment isolation, forensic evidence preservation,
-  clean infrastructure rebuild, prioritized system restoration from verified backups,
-  credential reset, and validation against re-infection. Covers Active Directory recovery,
-  database restoration, and application stack rebuild in dependency order. Activates
-  for requests involving ransomware recovery, post-encryption restoration, or disaster
-  recovery from ransomware.
+description: 'Executes structured ransomware incident recovery following NIST/CISA
+  frameworks: environment isolation, forensic evidence preservation, clean infrastructure
+  rebuild, prioritized restoration from verified backups, credential reset, and
+  Active Directory/database recovery in dependency order. Use when recovering from
+  a ransomware attack, performing post-encryption restoration, or executing disaster
+  recovery after ransomware encryption.
 
   '
 domain: cybersecurity
@@ -31,6 +30,29 @@ mitre_attack:
 - T1059
 - T1003
 - T1110
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - positioning
+  - monetization
+  - defense-impairment
+  techniques:
+  - id: T1531
+    name: Account Access Removal
+    tactic: positioning
+    source: attack
+  - id: F1005
+    name: Account Manipulation
+    tactic: defense-impairment
+    source: f3
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: T1219
+    name: Remote Access Tools
+    tactic: positioning
+    source: attack
 ---
 # Recovering from Ransomware Attack
 

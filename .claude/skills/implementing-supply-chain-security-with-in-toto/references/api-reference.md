@@ -12,7 +12,7 @@
 ## Installation
 
 ```bash
-pip install in-toto securesystemslib[crypto]
+pip install in-toto 'securesystemslib[crypto]'
 ```
 
 ## CLI Commands

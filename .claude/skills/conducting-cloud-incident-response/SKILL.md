@@ -1,11 +1,6 @@
 ---
 name: conducting-cloud-incident-response
-description: 'Responds to security incidents in cloud environments (AWS, Azure, GCP) by performing identity-based containment,
-  cloud-native log analysis, resource isolation, and forensic evidence acquisition adapted for ephemeral cloud infrastructure.
-  Activates for requests involving cloud incident response, AWS security incident, Azure compromise, GCP breach, cloud forensics,
-  or cloud identity compromise.
-
-  '
+description: Respond to security incidents in AWS, Azure, and GCP via identity-based containment, cloud-native log analysis (CloudTrail, Azure Activity Logs, GCP Audit Logs), resource isolation, and forensic evidence acquisition adapted for ephemeral cloud infrastructure. Use when CSPM alerts or audit logs show compromised cloud credentials, unauthorized IAM changes, or a breach spanning cloud services.
 domain: cybersecurity
 subdomain: incident-response
 tags:

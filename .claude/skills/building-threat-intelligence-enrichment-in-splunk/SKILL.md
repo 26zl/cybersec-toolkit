@@ -1,7 +1,6 @@
 ---
 name: building-threat-intelligence-enrichment-in-splunk
-description: Build automated threat intelligence enrichment pipelines in Splunk Enterprise
-  Security using lookup tables, modular inputs, and the Threat Intelligence Framework.
+description: Build automated IOC enrichment pipelines in Splunk Enterprise Security by ingesting threat feeds into KV Store collections and correlating them against security events via lookup tables, modular inputs, and the Threat Intelligence Framework. Use when wiring threat intel into Splunk correlation searches to flag IOC matches and cut SOC triage time.
 domain: cybersecurity
 subdomain: soc-operations
 tags:

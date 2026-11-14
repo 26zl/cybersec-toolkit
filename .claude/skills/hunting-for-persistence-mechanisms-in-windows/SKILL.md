@@ -1,7 +1,10 @@
 ---
 name: hunting-for-persistence-mechanisms-in-windows
-description: Systematically hunt for adversary persistence mechanisms across Windows
-  endpoints including registry, services, startup folders, and WMI subscriptions.
+description: Systematically hunts for adversary persistence mechanisms across Windows
+  endpoints, covering registry Run/RunOnce keys, services, startup folders, scheduled
+  tasks, and WMI event subscriptions. Use when performing a broad persistence sweep
+  during incident response or building SIEM detections that cover the full range of
+  Windows persistence techniques (MITRE T1547).
 domain: cybersecurity
 subdomain: threat-hunting
 tags:

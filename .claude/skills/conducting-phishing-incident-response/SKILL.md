@@ -1,13 +1,6 @@
 ---
 name: conducting-phishing-incident-response
-description: 'Responds to phishing incidents by analyzing reported emails, extracting
-  indicators, assessing credential compromise, quarantining malicious messages across
-  the organization, and remediating affected accounts. Covers email header analysis,
-  URL/attachment sandboxing, and mailbox-wide purge operations. Activates for requests
-  involving phishing response, email incident, credential phishing, spear phishing
-  investigation, or phishing remediation.
-
-  '
+description: Respond to phishing incidents by analyzing reported emails, extracting indicators, sandboxing URLs/attachments, assessing credential compromise, quarantining malicious messages organization-wide, and remediating affected accounts. Use when investigating a reported phishing or credential-phishing email, a suspected spearphishing incident, or when a mailbox-wide purge and account remediation is needed.
 domain: cybersecurity
 subdomain: incident-response
 tags:
@@ -23,6 +16,38 @@ mitre_attack:
 - T1204.001
 - T1114
 - T1056.003
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - reconnaissance
+  - resource-development
+  - positioning
+  techniques:
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
+  - id: T1557
+    name: Adversary-in-the-Middle
+    tactic: positioning
+    source: attack
+  - id: F1004
+    name: Access with Stolen Session Cookie
+    tactic: initial-access
+    source: f3
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
 version: 1.0.0
 author: mahipal
 license: Apache-2.0

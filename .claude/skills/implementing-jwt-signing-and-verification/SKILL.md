@@ -1,8 +1,11 @@
 ---
 name: implementing-jwt-signing-and-verification
-description: JSON Web Tokens (JWT) defined in RFC 7519 are compact, URL-safe tokens
-  used for authentication and authorization in web applications. This skill covers
-  implementing secure JWT signing with HMAC-SHA256
+description: >-
+  Implements secure JWT (RFC 7519) signing and verification using HMAC-SHA256,
+  RSA-PSS, ES256, and EdDSA, including token expiration, claims validation, and
+  defenses against algorithm-confusion, none-algorithm, and key-injection
+  attacks. Use when adding or hardening JWT-based authentication/authorization,
+  or when auditing token verification code for common JWT vulnerabilities.
 domain: cybersecurity
 subdomain: cryptography
 tags:

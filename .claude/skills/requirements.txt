@@ -96,6 +96,7 @@ pyshark
 pysigma
 pysigma-backend-splunk
 pysnmp
+pytest
 python-evtx
 python-gvm
 python-Levenshtein

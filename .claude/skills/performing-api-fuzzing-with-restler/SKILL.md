@@ -1,13 +1,11 @@
 ---
 name: performing-api-fuzzing-with-restler
-description: 'Uses Microsoft RESTler to perform stateful REST API fuzzing by automatically
-  generating and executing test sequences that exercise API endpoints, discover producer-consumer
-  dependencies between requests, and find security and reliability bugs. The tester
-  compiles an OpenAPI specification into a RESTler fuzzing grammar, configures authentication,
-  runs test/fuzz-lean/fuzz modes, and analyzes results for 500 errors, authentication
-  bypasses, resource leaks, and payload injection vulnerabilities. Activates for requests
-  involving API fuzzing, RESTler testing, stateful API testing, or automated API security
-  scanning.
+description: 'Uses Microsoft RESTler to perform stateful REST API fuzzing: compiles
+  an OpenAPI/Swagger spec into a RESTler grammar, configures authentication, and runs
+  test/fuzz-lean/fuzz modes that generate request sequences exercising producer-consumer
+  dependencies, then flags 500 errors, auth bypasses, resource leaks, and injection
+  bugs. Use when fuzzing REST APIs for stateful bugs or running RESTler-based automated
+  API security testing.
 
   '
 domain: cybersecurity

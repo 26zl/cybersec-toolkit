@@ -1,8 +1,15 @@
 ---
 name: detecting-container-escape-attempts
-description: Container escape is a critical attack technique where an adversary breaks
-  out of container isolation to access the host system or other containers. Detection
-  involves monitoring for escape indicators
+description: >-
+  Detects container escape at runtime across tooling - namespace manipulation, capability
+  abuse, kernel exploits, sensitive host mounts, and anomalous syscalls - and explains which
+  signals matter regardless of whether Falco, Sysdig, auditd, or an EDR is doing the
+  collection. Use when deciding what breakout behaviour to monitor, investigating a suspected
+  Docker or Kubernetes breakout, or comparing escape coverage across runtime sensors.
+  Keywords: container escape, breakout, namespaces, CAP_SYS_ADMIN, privileged, hostPath,
+  kernel exploit, syscall. Do not use for Falco rule syntax itself - use
+  detecting-container-escape-with-falco-rules; for a static configuration sweep use
+  performing-container-escape-detection.
 domain: cybersecurity
 subdomain: container-security
 tags:

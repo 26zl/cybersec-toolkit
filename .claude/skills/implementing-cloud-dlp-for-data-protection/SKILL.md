@@ -1,8 +1,11 @@
 ---
 name: implementing-cloud-dlp-for-data-protection
-description: 'Implementing Cloud Data Loss Prevention (DLP) using Amazon Macie, Azure
-  Information Protection, and Google Cloud DLP API to discover, classify, and protect
-  sensitive data across cloud storage, databases, and data pipelines.
+description: 'Implement cloud DLP using Amazon Macie, Google Cloud DLP API, Microsoft
+  Purview, Azure Information Protection, and Nightfall AI to discover, classify, label,
+  de-identify, and protect sensitive data (PII, PHI, financial data) across cloud
+  storage, databases, and pipelines. Use for GDPR/HIPAA/PCI DSS data-discovery, cloud
+  data governance, or CI/CD DLP scanning; not for endpoint, email, or network-level
+  DLP.
 
   '
 domain: cybersecurity

@@ -3,10 +3,9 @@ name: zeroize-audit
 source: trailofbits/skills
 license: CC-BY-SA-4.0
 description: "Detects missing zeroization of sensitive data in source code and identifies zeroization removed by compiler optimizations, with assembly-level analysis, and control-flow verification. Use for auditing C/C++/Rust code handling secrets, keys, passwords, or other sensitive data."
-allowed-tools: Read Grep Glob Bash Write Task AskUserQuestion mcp__serena__activate_project mcp__serena__find_symbol mcp__serena__find_referencing_symbols mcp__serena__get_symbols_overview
 ---
 
-# zeroize-audit — Claude Skill
+# zeroize-audit
 
 ## When to Use
 - Auditing cryptographic implementations (keys, seeds, nonces, secrets)
@@ -20,6 +19,29 @@ allowed-tools: Read Grep Glob Bash Write Task AskUserQuestion mcp__serena__activ
 - Performance optimization (unless related to secure wiping)
 - Refactoring tasks not related to sensitive data
 - Code without identifiable secrets or sensitive values
+
+---
+
+## Execution Contract
+
+Use the agent environment's available tools for file access, shell commands, worker execution, and user input. The `allowed-tools` entry and role-file frontmatter are legacy host metadata; they do not define another environment's tool names or grant permissions there.
+
+- **Resolve resources.** Set `baseDir` to the absolute directory containing this `SKILL.md`. Confirm the linked [input schema](schemas/input.json) and [orchestrator prompt](prompts/task.md) exist there. `{baseDir}`, `{workdir}`, and `{{input}}` are notation for values the orchestrator must substitute, not environment variables or automatic host expansion. Resolve relative Markdown links against the directory of the file containing them; resolve `{baseDir}/…` paths against the skill directory. Pass resolved paths to workers and shell commands.
+- **Launch a role.** Read the role prompt linked in the Agent Architecture table. When the environment has a registered worker for the role, use its `zeroize-audit:<role-name>` identifier (for example, `zeroize-audit:0-preflight`); otherwise create an independent worker with the Markdown body of that prompt, the current phase's instructions, and its parameter values. Always include the resolved `baseDir` and, once created, `workdir`, even when a phase table does not repeat them. Resolve resource references using the rules above before delegation. Worker file/search/shell actions use the environment's actual tool schemas and permissions. The role's name identifies its instructions, not a required dispatch API or model.
+- **Wait for results.** Retain each worker's handle and wait through the environment's completion mechanism. A launch acknowledgement is not completion. Read the phase's required artifacts before updating its completion state or starting a dependent phase. On worker failure or unavailable dispatch, apply only that phase's documented fallback; otherwise record the failure in the existing run state and report the affected phase as blocked.
+- **Concurrency.** Respect available concurrency and phase barriers. Run workers sequentially when parallel execution is unavailable. Per-TU compiler workers write to separate directories and may run concurrently.
+- **Collect decisions.** Use the environment's user-input facility or ask in the conversation. When a phase requires an answer, wait for it; do not substitute a default or elapsed time for the user's decision. Preserve the validation and verification outcomes when recording any accepted or rejected PoC result.
+
+## How to Run
+
+On a request like "audit this crate for secrets left in memory" or "check that this C library actually wipes its keys":
+
+1. **Collect inputs.** Map the request onto the Inputs table below (full schema: [schemas/input.json](schemas/input.json)). `path` is required, plus at least one of `compile_db` (C/C++) or `cargo_manifest` (Rust); if neither is given or derivable from the repo, ask the user, because preflight stops the run without one. Leave all other fields at their defaults unless the user says otherwise.
+2. **Read the [orchestrator prompt](prompts/task.md)**, substituting the collected inputs for its `{{placeholder}}` values. You act as the orchestrator it describes: it defines state recovery, the phase loop, early termination, and error handling. Read the [shared instructions](prompts/system.md) alongside it for the shared working-directory layout and the agent error protocol every phase depends on.
+3. **Execute its phase loop.** Run Phases 0-7 sequentially. Before each phase, read that phase's workflow file from `{baseDir}/workflows/phase-{N}-{name}.md` and follow its Preconditions, Instructions, State Update, and Error Handling sections. Each workflow specifies the role prompt and parameters to use under the Execution Contract above. Honor the per-phase skip conditions and the early-termination rules in task.md.
+4. **Return the report** (Phase 8, inline): read `{workdir}/report/final-report.md` and return its contents as the skill output.
+
+To resume an interrupted run: if a `workdir` is known from prior context, read `{workdir}/orchestrator-state.json` and continue from its `current_phase` instead of starting at Phase 0 (see the Recovery section of task.md).
 
 ---
 
@@ -42,7 +64,7 @@ Detect missing zeroization of sensitive data in source code and identify zeroiza
 
 ## Inputs
 
-See `{baseDir}/schemas/input.json` for the full schema. Key fields:
+See [schemas/input.json](schemas/input.json) for the full schema. Key fields:
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -52,10 +74,10 @@ See `{baseDir}/schemas/input.json` for the full schema. Key fields:
 | `config` | no | — | YAML defining heuristics and approved wipes |
 | `opt_levels` | no | `["O0","O1","O2"]` | Optimization levels for IR comparison. O1 is the diagnostic level: if a wipe disappears at O1 it is simple DSE; O2 catches more aggressive eliminations. |
 | `languages` | no | `["c","cpp","rust"]` | Languages to analyze |
-| `max_tus` | no | — | Limit on translation units processed from compile DB |
+| `max_tus` | no | `50` | Limit on translation units processed from compile DB |
 | `mcp_mode` | no | `prefer` | `off`, `prefer`, or `require` — controls Serena MCP usage |
 | `mcp_required_for_advanced` | no | `true` | Downgrade `SECRET_COPY`, `MISSING_ON_ERROR_PATH`, and `NOT_DOMINATING_EXITS` to `needs_review` when MCP is unavailable |
-| `mcp_timeout_ms` | no | — | Timeout budget for MCP semantic queries |
+| `mcp_timeout_ms` | no | `10000` | Timeout budget for MCP semantic queries |
 | `poc_categories` | no | all 11 exploitable | Finding categories for which to generate PoCs. C/C++ findings: all 11 categories supported. Rust findings: only `MISSING_SOURCE_ZEROIZE`, `SECRET_COPY`, and `PARTIAL_WIPE` are supported; other Rust categories are marked `poc_supported=false`. |
 | `poc_output_dir` | no | `generated_pocs/` | Output directory for generated PoCs |
 | `enable_asm` | no | `true` | Enable assembly emission and analysis (Step 8); produces `STACK_RETENTION`, `REGISTER_SPILL`. Auto-disabled if `emit_asm.sh` is missing. |
@@ -153,7 +175,7 @@ Findings are grouped by required evidence. Only attempt findings for which the r
 
 ## Agent Architecture
 
-The analysis pipeline uses 11 agents across 8 phases, invoked by the orchestrator (`{baseDir}/prompts/task.md`) via `Task`. Agents write persistent finding files to a shared working directory (`/tmp/zeroize-audit-{run_id}/`), enabling parallel execution and protecting against context pressure.
+The analysis pipeline uses 11 worker roles across 8 phases, launched by the [orchestrator](prompts/task.md) using the Execution Contract above. Agents write persistent finding files to a shared working directory (`/tmp/zeroize-audit-{run_id}/`), enabling parallel execution and protecting against context pressure.
 
 | Agent | Phase | Purpose | Output Directory |
 | --- | --- | --- | --- |
@@ -186,7 +208,7 @@ Phase 4: Wave 5:  5-poc-generator             (C/C++: all categories; Rust: MISS
 Phase 5: PoC Validation & Verification
            Step 1: 5b-poc-validator agent      (compile and run all PoCs)
            Step 2: 5c-poc-verifier agent       (verify each PoC proves its claimed finding)
-           Step 3: Orchestrator presents verification failures to user via AskUserQuestion
+           Step 3: Orchestrator asks the user to accept or reject failed verification
            Step 4: Orchestrator merges all results into poc_final_results.json
 Phase 6: Wave 6: 4-report-assembler           (mode=final → merge PoC results, final-report.md)
 Phase 7: Wave 7: 6-test-generator             (optional)
@@ -230,6 +252,10 @@ Analysis runs in two phases. For complete step-by-step guidance, see `{baseDir}/
 † requires `enable_semantic_ir=true`
 ‡ requires `enable_cfg=true`
 
+For Rust, `{baseDir}/references/rust-zeroization-patterns.md` catalogues 40 named anti-patterns, keyed to the script that detects each one: Section A for rustdoc-JSON semantics (`semantic_audit.py`), Section B for dangerous APIs (`find_dangerous_apis.py`), and Section C for MIR/LLVM IR/assembly (`check_mir_patterns.py`, `check_llvm_patterns.py`, `check_rust_asm.py`). Read the relevant section when triaging a Rust finding, writing its fix recommendation, or deciding whether a hand-spotted pattern is already covered.
+
+Two limits on how far that reference goes. The 34 entries in Sections A-C are what the scripts detect today; Section D's six are known gaps no script covers, so treat those as unaudited rather than clean. Sections A and C are also partial — the scripts emit some classes with no entry — so a finding that matches no catalogued pattern is still a finding, carrying whatever evidence the script produced.
+
 ---
 
 
@@ -250,7 +276,7 @@ The markdown report (`final-report.md`) contains these sections:
 - **Findings**: Grouped by severity then confidence. Each finding includes location, object, all evidence (source/IR/ASM/CFG), compiler evidence details, and recommended fix
 - **Superseded Findings**: Source findings replaced by CFG-backed findings
 - **Confidence Gate Summary**: Downgrades applied and overrides rejected
-- **Analysis Coverage**: TUs analyzed, agent success/failure, features enabled
+- **Analysis Coverage**: TUs analyzed, agent success/failure, features enabled, and any Section D patterns the crate uses that no script audits
 - **Appendix: Evidence Files**: Mapping of finding IDs to evidence file paths
 
 ### Structured JSON

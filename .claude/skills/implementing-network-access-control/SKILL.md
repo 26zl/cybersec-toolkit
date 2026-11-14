@@ -1,8 +1,11 @@
 ---
 name: implementing-network-access-control
 description: 'Implements 802.1X port-based network access control using RADIUS authentication,
-  PacketFence NAC, and switch configurations to enforce identity-based access policies,
-  posture assessment, and automatic VLAN assignment for authorized devices.
+  PacketFence NAC, and switch configuration to enforce identity-based access policies,
+  posture assessment, and automatic VLAN assignment for authorized devices. Use when
+  enforcing zero-trust access at the network edge, quarantining non-compliant endpoints,
+  meeting PCI-DSS/HIPAA/SOC 2 access requirements, or onboarding BYOD devices with
+  automated provisioning.
 
   '
 domain: cybersecurity
