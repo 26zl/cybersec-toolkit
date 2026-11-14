@@ -118,7 +118,7 @@ Hardcoded data in the MCP server must stay in sync with the bash source:
 - Keep PRs focused. Adding one tool: one PR. Refactoring: separate PR.
 - Include a brief description. For a tool addition, mention the module and install method.
 - The project `.mcp.json` is tracked intentionally. Do not add personal tokens, hostnames, or local-only MCP settings to it.
-- Don't commit `.versions`, generated install logs, local caches, local editor/Claude settings, or anything under `writeups/` (all gitignored).
+- Don't commit `.versions`, generated install logs, local caches, local editor/Claude settings, or anything you write under `writeups/` (all gitignored).
 - Use clear commit subjects ("add subfinder to recon module", not "update"). Reference issue numbers when relevant.
 
 ## Code style

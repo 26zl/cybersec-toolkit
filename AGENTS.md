@@ -432,7 +432,7 @@ Use a descriptive filename that makes the subject obvious. Recommended format:
 `writeups/ctf/htb-pilgrimage.md`, `writeups/bug-bounty/example-idor.md`,
 `writeups/cve/CVE-2024-xxxx-reproduction.md`, or
 `writeups/guided-assessment/example-web-recon.md`). Writeups must pass
-`npx markdownlint-cli2 "writeups/**/*.md"`. The directory is git-ignored: writeups
+`npx markdownlint-cli2 "writeups/**/*.md"`. Everything in the directory is git-ignored: writeups
 carry target details and stay local unless the operator shares them deliberately.
 
 Record findings and flag candidates beside the writeup as `findings.json`, in the format
