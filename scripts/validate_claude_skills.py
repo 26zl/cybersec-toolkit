@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _skill_frontmatter import frontmatter as _frontmatter  # noqa: E402
+from _skill_text import PROMPT_FREE_TOOLS, find_invisible, granted_tools  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 # SKILL.md bodies above this size load as one block; 256 KiB flags only the extreme outliers.
@@ -33,7 +34,7 @@ _NOTICES_ROWS = {
     "anthropic": "Anthropic-Cybersecurity-Skills",
     "claude-red": "SnailSploit/Claude-Red",
     "trail-of-bits": "trailofbits/skills",
-    "bughunter": "shuvonsec/claude-bug-bounty",
+    "bughunter": "awarexone/Agentic-Bug-Hunter",
     "transilience": "transilienceai/communitytools",
     "karpathy": "andrej-karpathy-skills",
 }
@@ -104,7 +105,7 @@ def _validate_powershell_scripts(skill_dirs: list[Path], errors: list[str]) -> t
             f"[System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw -LiteralPath '{ps_path}'), "
             "[ref]$errors) > $null; "
             "if ($errors) { "
-            "$errors | ForEach-Object { Write-Error (\"$($_.Token.StartLine):$($_.Token.StartColumn) $($_.Message)\") }; "
+            '$errors | ForEach-Object { Write-Error ("$($_.Token.StartLine):$($_.Token.StartColumn) $($_.Message)") }; '
             "exit 1 "
             "}"
         )
@@ -115,6 +116,38 @@ def _validate_powershell_scripts(skill_dirs: list[Path], errors: list[str]) -> t
             errors.append(f"{relative}: {message}")
 
     return len(scripts), False
+
+
+def _validate_visible_text(skill_dirs: list[Path], errors: list[str]) -> None:
+    """Reject text an agent would read and a reviewer would not see."""
+    for skill_dir in skill_dirs:
+        for path in sorted(p for p in skill_dir.rglob("*") if p.is_file()):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            hidden = find_invisible(text)
+            if hidden:
+                line = text.count("\n", 0, hidden.start()) + 1
+                codes = " ".join(f"U+{ord(char):04X}" for char in hidden.group()[:4])
+                errors.append(
+                    f"{path.relative_to(ROOT)}:{line}: invisible characters ({codes}); write them as <U+XXXX> escapes"
+                )
+
+
+def _validate_tool_grants(skill_dirs: list[Path], errors: list[str]) -> None:
+    """A skill may pre-approve workspace lookups, nothing that executes, writes or fetches."""
+    for skill_dir in skill_dirs:
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_file.is_file():
+            continue
+        granted = granted_tools(skill_file.read_text(encoding="utf-8", errors="replace"))
+        refused = sorted(set(granted or ()) - PROMPT_FREE_TOOLS)
+        if refused:
+            errors.append(
+                f"{skill_file.relative_to(ROOT)}: allowed-tools pre-approves {', '.join(refused)}; "
+                f"a skill may pre-approve only {', '.join(sorted(PROMPT_FREE_TOOLS))}"
+            )
 
 
 def _validate_curation(skill_dirs: list[Path], errors: list[str]) -> None:
@@ -164,9 +197,7 @@ def _validate_curation(skill_dirs: list[Path], errors: list[str]) -> None:
             f"{CURATION_JSON.relative_to(ROOT)} is stale; run python3 scripts/curate_claude_skills.py --write"
         )
     if CURATION_MD.is_file() and CURATION_MD.read_text(encoding="utf-8") != expected_md:
-        errors.append(
-            f"{CURATION_MD.relative_to(ROOT)} is stale; run python3 scripts/curate_claude_skills.py --write"
-        )
+        errors.append(f"{CURATION_MD.relative_to(ROOT)} is stale; run python3 scripts/curate_claude_skills.py --write")
 
 
 def _validate_third_party_notices(skill_dirs: list[Path], errors: list[str]) -> None:
@@ -288,6 +319,8 @@ def main() -> int:
 
     python_script_count = _validate_python_scripts(skill_dirs, errors)
     powershell_script_count, powershell_skipped = _validate_powershell_scripts(skill_dirs, errors)
+    _validate_visible_text(skill_dirs, errors)
+    _validate_tool_grants(skill_dirs, errors)
     _validate_curation(skill_dirs, errors)
     _validate_third_party_notices(skill_dirs, errors)
     _validate_plugin_manifests(skill_dirs, errors)
@@ -302,7 +335,9 @@ def main() -> int:
         elif declared != len(skill_dirs):
             errors.append(f"{INDEX.relative_to(ROOT)}: declares {declared} skills, found {len(skill_dirs)}")
 
-        counted_sections = [(name, count) for name, count in _section_counts(index_text) if "Adding more skills" not in name]
+        counted_sections = [
+            (name, count) for name, count in _section_counts(index_text) if "Adding more skills" not in name
+        ]
         section_total = sum(count for _, count in counted_sections)
         if counted_sections and section_total != len(skill_dirs):
             errors.append(
@@ -319,7 +354,9 @@ def main() -> int:
         for warning in spec_warnings:
             print(f"  - {warning}")
     if size_warnings:
-        print(f"NOTE: {len(size_warnings)} SKILL.md file(s) exceed {MAX_SKILL_BODY_BYTES // 1024} KiB; split them into references/:")
+        print(
+            f"NOTE: {len(size_warnings)} SKILL.md file(s) exceed {MAX_SKILL_BODY_BYTES // 1024} KiB; split them into references/:"
+        )
         for warning in size_warnings:
             print(f"  - {warning}")
     if errors:

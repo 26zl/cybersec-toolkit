@@ -29,6 +29,29 @@ mitre_attack:
 - T1611
 - T1613
 - T1078.004
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - defense-impairment
+  techniques:
+  - id: F1033
+    name: Insider Access Abuse
+    tactic: initial-access
+    source: f3
+  - id: F1005
+    name: Account Manipulation
+    tactic: positioning
+    source: f3
+  - id: F1005.002
+    name: 'Account Manipulation: Add Authorized User'
+    tactic: positioning
+    source: f3
+  - id: T1531
+    name: Account Access Removal
+    tactic: positioning
+    source: attack
 ---
 
 # Auditing Kubernetes Cluster RBAC

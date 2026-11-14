@@ -31,6 +31,32 @@ mitre_attack:
 - T1059
 - T1003
 - T1110
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - initial-access
+  techniques:
+  - id: T1555
+    name: Credentials from Password Stores
+    tactic: reconnaissance
+    source: attack
+  - id: F1029
+    name: Gather Customer Information
+    tactic: reconnaissance
+    source: f3
+  - id: T1110.001
+    name: 'Brute Force: Password Guessing'
+    tactic: initial-access
+    source: attack
+  - id: F1006.001
+    name: 'Account Takeover: Exposed API Key'
+    tactic: initial-access
+    source: f3
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
 ---
 
 # Performing Firmware Extraction with Binwalk

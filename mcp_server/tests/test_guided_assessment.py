@@ -387,8 +387,11 @@ async def test_autonomous_network_requires_authorization() -> None:
         )
     execute_tool.assert_not_called()
     assert "authorization_confirmed=false" in result["execution"]["reason"]
-    # the directive is still returned so the agent knows what to do once authorized
-    assert result["autonomous"] is not None
+    directive = result["autonomous"]["directive"]
+    assert "NOT STARTED" in directive
+    assert "auto-runs" not in directive
+    assert not any("auto-solver loop" in action for action in result["next_actions"])
+    assert any("authorization_confirmed=true" in action for action in result["next_actions"])
 
 
 def test_ctf_file_plan_uses_local_triage_tools_without_network_auth() -> None:

@@ -1,12 +1,11 @@
 ---
 name: managing-cloud-identity-with-okta
-description: 'This skill covers implementing Okta as a centralized identity provider
-  for cloud environments, configuring SSO integration with AWS, Azure, and GCP, deploying
-  phishing- resistant MFA with Okta FastPass, managing lifecycle automation for user
-  provisioning and deprovisioning, and enforcing adaptive access policies based on
-  device posture and risk signals.
-
-  '
+description: >-
+  Implement Okta as a centralized cloud identity provider: configure SSO with AWS,
+  Azure, and GCP, deploy phishing-resistant MFA with Okta FastPass, automate user
+  provisioning/deprovisioning, and enforce adaptive access policies on device posture
+  and risk signals. Use when standing up Okta SSO, rolling out FastPass MFA, automating
+  identity lifecycle, or building risk-based conditional access for cloud environments.
 domain: cybersecurity
 subdomain: cloud-security
 tags:
@@ -29,6 +28,36 @@ mitre_attack:
 - T1537
 - T1580
 - T1566
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  techniques:
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
+  - id: T1110.004
+    name: 'Brute Force:  Credential Stuffing'
+    tactic: initial-access
+    source: attack
+  - id: T1110.003
+    name: 'Brute Force: Password Spraying'
+    tactic: initial-access
+    source: attack
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
+  - id: T1550.001
+    name: 'Use Alternate Authentication Material: Application Access Token'
+    tactic: initial-access
+    source: attack
 ---
 
 # Managing Cloud Identity with Okta

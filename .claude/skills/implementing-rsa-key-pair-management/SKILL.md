@@ -1,8 +1,10 @@
 ---
 name: implementing-rsa-key-pair-management
-description: RSA (Rivest-Shamir-Adleman) is the most widely deployed asymmetric cryptographic
-  algorithm, used for digital signatures, key exchange, and encryption. This skill
-  covers generating, storing, rotating,
+description: Generates, stores, rotates, and manages RSA key pairs following NIST
+  SP 800-57 guidelines, covering serialization formats (PEM, DER, PKCS#8), passphrase
+  protection, and key strength validation. Use when creating or rotating RSA keys
+  for signatures, key exchange, or encryption, or when auditing existing keys for
+  proper storage and NIST-compliant strength.
 domain: cybersecurity
 subdomain: cryptography
 tags:

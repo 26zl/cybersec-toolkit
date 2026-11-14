@@ -1,8 +1,10 @@
 ---
 name: performing-indicator-lifecycle-management
-description: Indicator lifecycle management tracks IOCs from initial discovery through
-  validation, enrichment, deployment, monitoring, and eventual retirement. This skill
-  covers implementing systematic processes f
+description: Tracks IOCs through discovery, enrichment/validation (VirusTotal, Shodan,
+  passive DNS), deployment to SIEM/IDS watchlists, hit-rate and false-positive monitoring,
+  confidence-score decay, and automated expiration using MISP/OpenCTI and STIX. Use
+  when building or maintaining a threat intelligence indicator lifecycle process,
+  aging out stale IOCs, or reducing analyst fatigue from low-quality indicators.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:

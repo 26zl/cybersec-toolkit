@@ -1,8 +1,10 @@
 ---
 name: implementing-stix-taxii-feed-integration
-description: STIX (Structured Threat Information eXpression) and TAXII (Trusted Automated
-  eXchange of Intelligence Information) are OASIS open standards for representing
-  and transporting cyber threat intelligence.
+description: Implements a STIX 2.1/TAXII 2.1 threat-intelligence feed consumer and
+  producer in Python, covering TAXII server discovery, collection polling, parsing
+  STIX bundles with the stix2 library, and standing up a local TAXII server with Medallion.
+  Use when integrating a STIX/TAXII CTI feed into a SIEM or TIP, writing a TAXII client
+  to poll for new indicators, or setting up TAXII collections for indicator exchange.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:

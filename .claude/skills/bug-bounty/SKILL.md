@@ -1,12 +1,30 @@
 ---
 name: bug-bounty
-description: Complete bug bounty workflow — recon (subdomain enumeration, asset discovery, fingerprinting, HackerOne scope, source code audit), pre-hunt learning (disclosed reports, tech stack research, threat modeling), vulnerability hunting (IDOR, SSRF, XSS, auth bypass, CSRF, race conditions, SQLi, XXE, file upload, business logic, GraphQL, HTTP smuggling, cache poisoning, OAuth, OIDC, SSTI, subdomain takeover, cloud misconfig, ATO chains, agentic AI), LLM/AI security testing (prompt injection, indirect injection, ASCII smuggling, RCE via code tools, system prompt extraction, ASI01-ASI10), A-to-B bug chaining, bypass tables, language-specific grep (JS prototype pollution, Python pickle, PHP type juggling, Go template.HTML, Ruby YAML.load, Rust unwrap), and reporting (7-Question Gate, validation gates, CVSS 3.1, PoC generation, submission checklist). Use for ANY bug bounty task — recon, hunting, source audit, AI testing, validation, or reporting. 中文触发词：漏洞赏金、安全测试、渗透测试、漏洞挖掘、信息收集、子域名枚举、XSS测试、SQL注入、SSRF、安全审计、漏洞报告
-source: shuvonsec/claude-bug-bounty
+description: Complete bug bounty workflow — recon, pre-hunt learning, vulnerability hunting (IDOR, SSRF, XSS, auth bypass, CSRF, race conditions, SQLi, XXE, file upload, business logic, GraphQL, HTTP smuggling, cache poisoning, OAuth, OIDC, SSTI, subdomain takeover, cloud misconfig, ATO chains, agentic AI), LLM/AI security testing (ASI01-ASI10), A-to-B bug chaining, bypass tables, language-specific grep patterns, and reporting (7-Question Gate, 4 validation gates, CVSS 3.1, PoC generation, submission checklist). Use for ANY bug bounty task — recon, hunting specific vulns, auditing source code, testing AI features, validating findings, or writing reports.
+source: awarexone/Agentic-Bug-Hunter
 license: MIT
-upstream_commit: 22ea70b763618984a08d6f601bb2e3e079e86a15
+upstream_commit: 8060af0c1b0b6ecc6595ee3261f50aa613038620
 ---
 
-> **Vendored note (this repo).** Adapted from the standalone [claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty) project. The upstream **executable scaffolding** — helper scripts (`tools/*.py`, `tools/*.sh`), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — add them with the `add-tool` skill or install upstream.
+> **Vendored note (this repo).** Adapted from the standalone [Agentic-Bug-Hunter](https://github.com/awarexone/Agentic-Bug-Hunter) project (formerly `shuvonsec/claude-bug-bounty`). The upstream **executable scaffolding** — helper scripts (`bughunter/tools/*.py`, `bughunter/tools/*.sh`; `tools/…` in older upstream text), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — propose them through the approval-gated `add-tool` flow. Do not fetch or run the upstream project's helper scripts.
+>
+> **Upstream helpers this text names, and what to use here.** None of them is in this repository.
+>
+> | Upstream helper | Here |
+> | --- | --- |
+> | `bypass_403.sh` | `run_tool("nomore403", …)`; judge the response body as well as the status, since a soft block answers 200 |
+> | `waf_encoder.py` | No script. Fingerprint with `run_tool("wafw00f", …)`, then take the encoding variants from the `offensive-waf-bypass` and `security-payloads` skills |
+> | `waf_response_analyzer.py` | No script. Compare status, body length, block-page text and the WAF's request-ID header across `run_tool("curl", …)` responses |
+> | `multipart_mutator.py` | No script. The multipart variants are in the `offensive-file-upload` skill; send them with `run_tool("curl", …)` |
+> | `param_discovery.sh` | `run_tool` with `arjun`, `paramspider` or `x8` |
+> | `graphql_audit.sh` | `run_tool` with `graphw00f` and `clairvoyance`, following the `offensive-graphql` skill |
+> | `cicd_scanner.sh` | No registry tool. Review workflows with the `securing-github-actions-workflows` skill; `gitleaks` and `trufflehog` cover committed secrets |
+> | `takeover_scanner.sh` | `run_tool` with `subzy`, or the takeover templates of `nuclei` |
+> | `cloud_recon.sh` | `run_tool` with `cloud_enum`, `s3scanner` or `cloudbrute` |
+> | `secrets_hunter.sh` | `run_tool` with `trufflehog` (verified results only) or `gitleaks` |
+> | `eol_check.py` | No script. Fingerprint with `whatweb` or `webanalyze`, then check each version against the vendor's support lifecycle; `get_cve_info` maps a known CVE to tools |
+> | `lead_board.py` | No script. Keep leads in the engagement's shared-state file (`docs/ORCHESTRATION.md`) or in the writeup, one line per lead with its status |
+> | `hunt.py` | `guided_assessment`, or `suggest_for_bounty` when the target type is known |
 
 # Bug Bounty Master Workflow
 
@@ -54,6 +72,7 @@ Full pipeline: Recon -> Learn -> Hunt -> Validate -> Report. One skill for every
 15. **ONE-HOUR RULE** -- stuck on one target for an hour with no progress? SWITCH CONTEXT
 16. **TWO-EYE APPROACH** -- combine systematic testing (checklist) with anomaly detection (watch for unexpected behavior)
 17. **T-SHAPED KNOWLEDGE** -- go DEEP in one area and BROAD across everything else
+18. **LEAD BOARD — never lose a lead** -- after recon run `python3 bughunter/tools/lead_board.py ingest <target>` + `show` + `next`. Route each signal to its skill ("GraphQL → hunt-graphql"). `touch` when starting/killing/reporting. Focus on one lead; the board remembers the rest. Surface stale high-priority leads unprompted.
 
 > **For the full hunting methodology** — 5-phase non-linear workflow, developer psychology framework, session discipline, tool routing by phase, and Wide/Deep route selection — see the **`bb-methodology`** skill.
 
@@ -763,6 +782,39 @@ SeLeCt * FrOm uSeRs
 ' OR '1'='1
 ```
 
+### Stack → DBMS fingerprint (pick the right payload or you MISS blind/error injections)
+| Tech signal | Likely DBMS | Blind probe |
+|---|---|---|
+| `.asp`/`.aspx`, IIS, ASP.NET error pages | MSSQL | `WAITFOR DELAY '0:0:5'--` |
+| `.php`, Apache/nginx LAMP | MySQL/MariaDB | `SLEEP(5)--` |
+| Java/Spring, `.jsp` | PostgreSQL / MSSQL / Oracle | `pg_sleep(5)` / `WAITFOR` / `dbms_pipe.receive_message('a',5)` |
+| Python (Django/Flask), Rails | PostgreSQL / MySQL | `pg_sleep(5)` / `SLEEP(5)` |
+
+Fingerprint early: `@@version` (MSSQL/MySQL), `version()` (PG), `SELECT banner FROM v$version` (Oracle). A wrong-DBMS payload silently fails — that's a missed bug, not a clean target.
+
+### Where SQLi hides (test every sink, not just the search box)
+- [ ] Every param from recon / `param-discover` — incl. JSON keys, `ORDER BY`/`sort=` columns (can't be parameterized → high-yield), `LIMIT`/`offset`
+- [ ] Headers & cookies looked up in a query (`X-Forwarded-For`, `User-Agent`, session/auth tokens)
+- [ ] Second-order: value stored on one request (profile field, filename), fires in a *later* query — plant `'`/sleep, then watch a different page render
+- [ ] REST/GraphQL filters, export & report generators, autocomplete/"search" endpoints
+
+### Confirm + prove impact (read-only — kills N/A, catches blind)
+```sql
+-- 1. confirm it's REAL (don't stop at one error)
+' AND 1=1--  vs  ' AND 1=2--    → responses differ = boolean oracle = real
+-- 2. column count, then a displayable column
+' ORDER BY 1--  ↑ N until error → N-1 cols
+0' UNION SELECT NULL,'MARKER',NULL--   → find where MARKER renders
+-- 3. prove readable data (ONE value is enough for a valid report)
+0' UNION SELECT NULL,@@version,NULL--               -- MSSQL/MySQL
+0' UNION SELECT NULL,version(),NULL--               -- PostgreSQL
+-- one-request dump when proving a sensitive table:
+-- MySQL GROUP_CONCAT() · MSSQL/PG STRING_AGG() · Oracle LISTAGG()
+```
+SQLi that reads a sensitive row (e.g. a config/credentials table) **is already a valid, high-severity finding** — submit on the readable data, not a lone 500. You do not need RCE.
+
+> **Escalation (conditional — most SQLi stops at data read).** Only if the DB account is `sysadmin`/superuser **and** host exploitation is in program scope does SQLi → OS RCE apply (MSSQL `xp_cmdshell`, PG `COPY…FROM PROGRAM`, MySQL `INTO OUTFILE`). In BBP this is usually out of scope — prove the data read, note escalation potential in Impact, and don't run it.
+
 ## GraphQL
 
 ### Introspection (alone = Informational, but reveals attack surface)
@@ -800,18 +852,20 @@ SeLeCt * FrOm uSeRs
 
 When target has AI agents with tool access, these are the 10 attack classes:
 
+Canonical mapping — single source of truth is `skills/llm-redteam/SKILL.md`. Mirrored here:
+
 | ID | Vuln Class | What to Test |
 |----|-----------|-------------|
-| ASI01 | Prompt injection | Override system prompt via user input -- make agent ignore its rules |
-| ASI02 | Tool misuse | Make AI call tools with attacker-controlled params (SSRF via "fetch URL", RCE via code tool) |
-| ASI03 | Data exfil | Extract training data / PII via crafted prompts that leak context |
-| ASI04 | Privilege escalation | Use AI to access admin-only tools -- agent has broader perms than user |
-| ASI05 | Indirect injection | Poison document/URL the AI processes -- hidden instructions in fetched content |
-| ASI06 | Excessive agency | AI takes destructive actions without confirmation -- delete, send, pay |
-| ASI07 | Model DoS | Craft inputs that cause infinite loops, excessive token usage, or OOM |
-| ASI08 | Insecure output | AI generates XSS/SQLi/command injection in its output that gets rendered |
-| ASI09 | Supply chain | Compromised plugins/tools/MCP servers the AI calls |
-| ASI10 | Sensitive disclosure | AI reveals internal configs, API keys, system prompts, user data |
+| ASI01 | Prompt Injection / Goal Hijack | Override objectives via direct or indirect injection |
+| ASI02 | Tool Misuse | Attacker-controlled tool params (SSRF via "fetch URL", RCE via code tool) |
+| ASI03 | Privilege Compromise | Agent uses broader perms / admin tokens than the user |
+| ASI04 | Supply Chain | Compromised plugin / MCP server / tool-output poisoning next agent |
+| ASI05 | Code Execution | Unsafe code-interpreter / sandbox escape |
+| ASI06 | Memory & Context Poisoning | Persistent RAG/memory corruption across sessions/users |
+| ASI07 | Agent Communication | Inter-agent spoofing / IDOR (agent A reads agent B's context) |
+| ASI08 | Excessive Agency | Destructive action without confirmation; cascading failures |
+| ASI09 | Insecure Output Handling | AI output rendered as XSS / SQLi / command injection downstream |
+| ASI10 | Sensitive Information Disclosure | Leaks system prompt / keys / configs / user data |
 
 **Triage rule:** ASI alone = Informational. Must chain to IDOR/exfil/RCE/ATO for paid bounty.
 
@@ -1160,7 +1214,7 @@ sisakulint findings are **potentially exploitable** — not confirmed bugs. Ever
 **Gate question:** Is an AI agent (Gemini CLI, Claude Code, Cline, Codex) invoked in a workflow where external users can influence the prompt?
 
 **Verification depth:**
-1. **Trigger + prompt source** — `issues: opened` → AI triage bot reads `github.event.issue.body`. The body IS the prompt. HTML comments (`<!-- ignore previous instructions -->`) are invisible in GitHub UI but included in the API response and thus in the AI prompt.
+1. **Trigger + prompt source** — `issues: opened` → AI triage bot reads `github.event.issue.body`. The body IS the prompt. HTML comments (e.g. `<!-- [attacker override text hidden here] -->`) are invisible in GitHub UI but included in the API response and thus in the AI prompt.
 2. **Tool permissions** — If the AI agent has Bash/Write/Edit tools and runs with secrets in env, prompt injection = RCE + secret exfil. `allowed_non_write_users: "*"` means ANY user can trigger.
 3. **Multi-phase chain** — Clinejection: prompt injection → AI runs `npm install` from attacker commit → Cacheract plants in npm cache → nightly publish restores cache → tokens stolen → malicious version published. **A prompt injection finding alone may seem low-severity, but it's a gateway to cache poisoning and supply chain attacks.**
 

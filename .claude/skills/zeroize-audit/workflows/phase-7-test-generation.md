@@ -8,7 +8,7 @@
 
 ## Instructions
 
-Spawn agent `6-test-generator` via `Task` with:
+Launch the [6-test-generator role](../../../agents/6-test-generator.md) using the [Execution Contract](../SKILL.md#execution-contract) with:
 
 | Parameter | Value |
 |---|---|

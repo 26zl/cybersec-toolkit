@@ -1,14 +1,10 @@
 ---
 name: testing-for-xss-vulnerabilities
-description: 'Tests web applications for Cross-Site Scripting (XSS) vulnerabilities
-  by injecting JavaScript payloads into reflected, stored, and DOM-based contexts
-  to demonstrate client-side code execution, session hijacking, and user impersonation.
-  The tester identifies all injection points and output contexts, crafts context-appropriate
-  payloads, and bypasses sanitization and CSP protections. Activates for requests
-  involving XSS testing, cross-site scripting assessment, client-side injection testing,
-  or JavaScript injection vulnerability testing.
-
-  '
+description: Tests web applications for reflected, stored, and DOM-based Cross-Site
+  Scripting by injecting JavaScript payloads with Burp Suite (XSS extensions, Active
+  Scan++) and browser tools, then bypassing sanitization and CSP to demonstrate session
+  hijacking and user impersonation. Use for OWASP WSTG client-side injection testing or
+  when evaluating input sanitization and output encoding coverage.
 domain: cybersecurity
 subdomain: penetration-testing
 tags:

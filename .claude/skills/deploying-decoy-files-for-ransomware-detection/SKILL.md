@@ -30,6 +30,29 @@ mitre_attack:
 - T1083
 - T1490
 - T1485
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - monetization
+  - positioning
+  - stealth
+  techniques:
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1017.001
+    name: 'Conversion to Physical Monetary Instruments: Cash'
+    tactic: monetization
+    source: f3
+  - id: T1219
+    name: Remote Access Tools
+    tactic: positioning
+    source: attack
+  - id: T1070
+    name: Indicator Removal
+    tactic: stealth
+    source: attack
 ---
 
 # Deploying Decoy Files for Ransomware Detection

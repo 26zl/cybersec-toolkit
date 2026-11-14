@@ -24,6 +24,7 @@ if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
 from mcp_server import security as _security  # noqa: E402
+from mcp_server.sanitize import sanitize_output  # noqa: E402
 
 
 def _default_config_path() -> Path:
@@ -50,6 +51,10 @@ _DEFAULT_CONFIG_PATH = _default_config_path()
 _SAFE_HOST_RE = re.compile(r"^[a-zA-Z0-9._:\-]+$")
 # First char not '-' so a username can't be read as an ssh option in argv position 0.
 _SAFE_USER_RE = re.compile(r"^[a-zA-Z0-9._][a-zA-Z0-9._\-]*$")
+# Host names and descriptions are returned to the model on every list call, so they
+# are held to a narrow shape instead of being stored as free text.
+_SAFE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+_MAX_DESCRIPTION_CHARS = 200
 
 # SSH options applied to every connection.
 _SSH_BASE_OPTIONS = [
@@ -89,6 +94,11 @@ def _validate_host_entry(name: str, entry: Any) -> None:
         not isinstance(allowlist, list) or any(not isinstance(tool, str) or not tool.strip() for tool in allowlist)
     ):
         raise ValueError(f"Remote host '{name}' has an invalid tool_allowlist")
+
+
+def _clean_description(text: str) -> str:
+    """Collapse a description to one bounded line with injection markers removed."""
+    return " ".join(sanitize_output(text).split())[:_MAX_DESCRIPTION_CHARS]
 
 
 class RemoteHostConfig:
@@ -185,6 +195,8 @@ class RemoteHostConfig:
         """Add or update a remote host. Returns the host entry."""
         if not name or not name.strip():
             raise ValueError("Host name must not be empty")
+        if not _SAFE_NAME_RE.fullmatch(name.strip()):
+            raise ValueError("Host name may hold letters, digits, '.', '_' and '-', at most 64 characters")
         if not hostname or not hostname.strip():
             raise ValueError("Hostname must not be empty")
         if not isinstance(port, int) or not (1 <= port <= 65535):
@@ -198,7 +210,7 @@ class RemoteHostConfig:
             "hostname": hostname.strip(),
             "user": user.strip(),
             "port": port,
-            "description": description,
+            "description": _clean_description(description),
         }
         if ssh_key:
             entry["ssh_key"] = ssh_key.strip()
@@ -233,8 +245,11 @@ class RemoteHostConfig:
         return existed
 
     def list_hosts(self) -> dict[str, dict[str, Any]]:
-        """Return all hosts."""
-        return dict(self._hosts)
+        """Return all hosts, with free-text fields cleaned for display to a model."""
+        return {
+            name: {**entry, "description": _clean_description(str(entry.get("description", "")))}
+            for name, entry in self._hosts.items()
+        }
 
     def get_ssh_base_args(self, name: str) -> list[str]:
         """Build base SSH command arguments for a named host.
@@ -289,7 +304,7 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_security._child_env(),
+            env=_security._child_env(ssh_agent=True),
         )
 
         try:
@@ -363,7 +378,7 @@ async def execute_remote_command(
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_security._child_env(),
+            env=_security._child_env(ssh_agent=True),
         )
 
         try:

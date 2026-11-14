@@ -76,7 +76,7 @@ Per-category decision trees + tool ordering.
 
 ## BugHunter — bug bounty workflow (10)
 
-MIT — see `LICENSE-BugHunter-MIT`. Source: <https://github.com/shuvonsec/claude-bug-bounty>, commit `22ea70b763618984a08d6f601bb2e3e079e86a15`.
+MIT — see `LICENSE-BugHunter-MIT`. Source: <https://github.com/awarexone/Agentic-Bug-Hunter> (formerly `shuvonsec/claude-bug-bounty`), commit `8060af0c1b0b6ecc6595ee3261f50aa613038620`.
 
 Use these only for authorized security research, training, CTF/lab work, or testing within an approved bug bounty program scope.
 
@@ -95,7 +95,7 @@ Use these only for authorized security research, training, CTF/lab work, or test
 
 ## SnailSploit Claude-Red — offensive methodology (58)
 
-MIT — see `LICENSE-Claude-Red-MIT`. Source: <https://github.com/SnailSploit/Claude-Red>, commit `aeb41eca7088a703c3a35fbcba3086d4a6c1aa4e`.
+MIT — see `LICENSE-Claude-Red-MIT`. Source: <https://github.com/SnailSploit/Claude-Red>, commit `a8de813edc9f66f60d44cfe42d47750e89d9930b`.
 
 Use these only for authorized security research, training, CTF/lab work, or scoped assessments.
 
@@ -117,7 +117,7 @@ Use these only for authorized security research, training, CTF/lab work, or scop
 
 ## Trail of Bits — code audit & vulnerability research (14)
 
-CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailofbits/skills>, commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`.
+CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailofbits/skills>, commit `e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff`. `insecure-defaults` is kept at commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`: upstream has since replaced the skill with a plugin command.
 
 | Skill | What it does |
 | --- | --- |
@@ -138,7 +138,7 @@ CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailof
 
 ## mukul975/Anthropic-Cybersecurity-Skills (community project) — operational how-tos (754)
 
-Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/Anthropic-Cybersecurity-Skills>, commit `673da1f3b0b7be34ffc9624ef3858fe45f1c3bed`. The full upstream skill set is mirrored here as local Claude Code skills. Each skill maps to MITRE ATT&CK / D3FEND / NIST CSF.
+Apache 2.0 — see `LICENSE-Apache-2.0`. Source: <https://github.com/mukul975/Anthropic-Cybersecurity-Skills>, commit `54a798831d2266a3ca61ce68a7acb80b81160d57`. 754 of the upstream skills are vendored here as local Claude Code skills; `scripts/update-skills.sh` lists the upstream skills that are not. Each skill maps to MITRE ATT&CK / D3FEND / NIST CSF.
 
 Subdomain coverage:
 
@@ -192,7 +192,7 @@ Subdomain coverage:
 
 ## Transilience — high-level workflows (4)
 
-MIT — see `LICENSE-Transilience-MIT`. Source: <https://github.com/transilienceai/communitytools>, commit `58b552ef35029814b95fa53924790e3546a4a146`.
+MIT — see `LICENSE-Transilience-MIT`. Source: <https://github.com/transilienceai/communitytools>, commit `95fdc128af4ca1ae16b3226f9430f1bad97b0656`.
 
 - `cve-poc-generator` — Research CVEs, query NVD, generate Python PoCs
 - `dfir` — Windows event logs, PCAP, AD attack pattern analysis
@@ -237,6 +237,6 @@ This project is MIT-licensed. The vendored skills retain their original licenses
 - Transilience skills: MIT (`LICENSE-Transilience-MIT`)
 - Karpathy guidelines skill: MIT ([`LICENSE-Karpathy-MIT`](LICENSE-Karpathy-MIT)), source <https://github.com/multica-ai/andrej-karpathy-skills>, commit `2c606141936f1eeef17fa3043a72095b4765b9c2`
 - SnailSploit Claude-Red skills: MIT (`LICENSE-Claude-Red-MIT`)
-- BugHunter (claude-bug-bounty) skills: MIT (`LICENSE-BugHunter-MIT`)
+- BugHunter (Agentic-Bug-Hunter) skills: MIT (`LICENSE-BugHunter-MIT`)
 
 When modifying vendored skills, retain the source attribution in their SKILL.md frontmatter.

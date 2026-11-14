@@ -1,12 +1,10 @@
 ---
 name: implementing-ransomware-backup-strategy
-description: 'Designs and implements a ransomware-resilient backup strategy following
-  the 3-2-1-1-0 methodology (3 copies, 2 media types, 1 offsite, 1 immutable/air-gapped,
-  0 errors on restore verification). Configures backup schedules aligned to RPO/RTO
-  requirements, implements backup credential isolation to prevent ransomware from
-  compromising backup infrastructure, and establishes automated restore testing. Activates
-  for requests involving ransomware backup planning, backup resilience, air-gapped
-  backup design, or backup recovery point objective configuration.
+description: 'Designs a ransomware-resilient backup strategy using the 3-2-1-1-0
+  methodology (3 copies, 2 media types, 1 offsite, 1 immutable/air-gapped, 0 restore
+  errors), configuring RPO/RTO-aligned schedules, isolating backup credentials, and
+  automating restore testing. Use when planning ransomware backup resilience or air-gapped/immutable
+  backup architecture.
 
   '
 domain: cybersecurity
@@ -42,6 +40,28 @@ mitre_attack:
 - T1059
 - T1003
 - T1110
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - positioning
+  - monetization
+  techniques:
+  - id: T1531
+    name: Account Access Removal
+    tactic: positioning
+    source: attack
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1047
+    name: Transfer of funds
+    tactic: monetization
+    source: f3
+  - id: F1017.001
+    name: 'Conversion to Physical Monetary Instruments: Cash'
+    tactic: monetization
+    source: f3
 ---
 # Implementing Ransomware Backup Strategy
 

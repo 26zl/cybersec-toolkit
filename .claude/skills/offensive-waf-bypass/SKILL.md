@@ -4,7 +4,7 @@ description: "WAF bypass techniques checklist: encoding bypass (URL/HTML/Unicode
 category: web
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: aeb41eca7088a703c3a35fbcba3086d4a6c1aa4e
+upstream_commit: a8de813edc9f66f60d44cfe42d47750e89d9930b
 ---
 # SKILL: WAF Bypass Techniques
 

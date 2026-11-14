@@ -1,8 +1,13 @@
 ---
 name: scanning-kubernetes-manifests-with-kubesec
-description: Perform security risk analysis on Kubernetes resource manifests using
-  Kubesec to identify misconfigurations, privilege escalation risks, and deviations
-  from security best practices.
+description: >-
+  Scores Kubernetes resource manifests with Kubesec to flag misconfiguration and
+  privilege-escalation risk before deployment, mapping each finding back to the
+  securityContext change that fixes it. Use when gating manifests in CI, reviewing YAML or a
+  rendered chart before it reaches a cluster, or explaining why a manifest scored negatively.
+  Keywords: Kubesec, manifest score, securityContext, readOnlyRootFilesystem, runAsNonRoot, CI
+  gate. Do not use for scanning built images for CVEs - use scanning-docker-images-with-trivy;
+  for admission-time enforcement use implementing-opa-gatekeeper-for-policy-enforcement.
 domain: cybersecurity
 subdomain: container-security
 tags:

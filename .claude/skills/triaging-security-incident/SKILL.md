@@ -1,13 +1,10 @@
 ---
 name: triaging-security-incident
-description: 'Performs initial triage of security incidents to determine severity,
-  scope, and required response actions using the NIST SP 800-61r3 and SANS PICERL
-  frameworks. Classifies incidents by type, assigns priority based on business impact,
-  and routes to appropriate response teams. Activates for requests involving incident
-  triage, security alert classification, severity assessment, incident prioritization,
-  or initial incident analysis.
-
-  '
+description: 'Performs initial triage of security incidents using the NIST SP
+  800-61r3 and SANS PICERL frameworks, classifying incident type, assigning priority
+  by business impact, and routing to the appropriate response team. Use when a
+  SIEM/EDR alert needs human classification, concurrent alerts must be prioritized,
+  or a user report or threat-intel IOC match requires initial incident categorization.'
 domain: cybersecurity
 subdomain: incident-response
 tags:

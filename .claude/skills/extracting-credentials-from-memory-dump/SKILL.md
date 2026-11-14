@@ -1,7 +1,10 @@
 ---
 name: extracting-credentials-from-memory-dump
-description: Extract cached credentials, password hashes, Kerberos tickets, and authentication tokens from memory dumps using
-  Volatility and Mimikatz for forensic investigation.
+description: Extracts cached credentials, password hashes, Kerberos tickets, and
+  authentication tokens from Windows memory dumps using Volatility 3, Mimikatz,
+  and pypykatz. Use when performing memory forensics or incident response on an
+  LSASS or full memory dump and you need to recover credentials or Kerberos material
+  for investigation.
 domain: cybersecurity
 subdomain: digital-forensics
 tags:
@@ -13,14 +16,46 @@ tags:
 - password-hashes
 - incident-response
 mitre_attack:
+- T1005
+- T1074
+- T1119
+- T1070
 - T1003
-- T1558
-- T1552
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - positioning
+  - initial-access
+  techniques:
+  - id: T1555
+    name: Credentials from Password Stores
+    tactic: reconnaissance
+    source: attack
+  - id: T1555.003
+    name: 'Credentials from Password Stores: Credentials from Web Browsers'
+    tactic: reconnaissance
+    source: attack
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
+  - id: F1006.001
+    name: 'Account Takeover: Exposed API Key'
+    tactic: initial-access
+    source: f3
 version: '1.0'
 author: mahipal
 license: Apache-2.0
 nist_csf:
-- RS.AN-01
 - RS.AN-03
 - DE.AE-02
 - RS.MA-01

@@ -16,6 +16,8 @@ _guard_fixture() {
     mkdir -p "$XDG_STATE_HOME/cybersec-tools-mcp"
     printf '2026-07-28T10:00:00.000Z\n' \
         > "$XDG_STATE_HOME/cybersec-tools-mcp/guard-session"
+    # The fixtures are dated 2026-07-28 10:00 UTC; the guard's clock reads ten minutes later.
+    export CYBERSEC_AGENT_GUARD_NOW=1785233400
 }
 
 _run_guarded_nmap() {
@@ -75,6 +77,22 @@ _run_guard_on() {
         XDG_STATE_HOME="$XDG_STATE_HOME" \
         CYBERSEC_MCP_AUDIT_LOG="$CYBERSEC_MCP_AUDIT_LOG" \
         bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash <<< "$json"
+}
+
+@test "agent guard asks for a fresh advisor call once the last one is hours old" {
+    _guard_fixture
+    printf '%s\n' '{"ts":"2026-07-28T10:00:01.000Z","event":"tool_call","tool":"guided_assessment"}' \
+        > "$CYBERSEC_MCP_AUDIT_LOG"
+
+    # Three hours and 59 minutes after the call it still clears; a minute past four hours it does not.
+    CYBERSEC_AGENT_GUARD_NOW=$((1785233400 - 600 + 14340)) _run_guarded_nmap
+    assert_success
+    assert_output ""
+
+    CYBERSEC_AGENT_GUARD_NOW=$((1785233400 - 600 + 14460)) _run_guarded_nmap
+    assert_success
+    assert_output --partial '"permissionDecision":"deny"'
+    refute_output --partial "CYBERSEC_AGENT_GUARD"
 }
 
 @test "agent guard treats quoted text and heredoc bodies as data" {
@@ -370,7 +388,7 @@ _lifecycle_fixture() {
             "$cmd" "$TEST_TMPDIR" > "$LC_STUBS/$cmd"
         chmod +x "$LC_STUBS/$cmd"
     done
-    printf '# tool|method|version|last_updated\n' > "$LC_REPO/.versions"
+    printf '# schema: 2\n# tool|method|version|last_updated\n' > "$LC_REPO/.versions"
 }
 
 _run_lifecycle() {
@@ -713,6 +731,32 @@ _run_backup_schedule() {
     assert_output "pkg uninstall -y dnsenum"
 }
 
+@test "remove keeps system packages when the install record predates provenance tracking" {
+    _lifecycle_fixture
+    printf '#!/bin/sh\ncase "$2" in dnsenum) echo "ii  $2 1.0 all fixture"; exit 0 ;; esac\nexit 1\n' \
+        > "$LC_STUBS/dpkg"
+    printf '#!/bin/sh\necho "pkg $*" >> "%s/calls.log"\n' "$TEST_TMPDIR" > "$LC_STUBS/pkg"
+    printf '# tool|method|version|last_updated\ndnsenum|pkg|system|2026-01-01 00:00:00\n' > "$LC_REPO/.versions"
+
+    _run_lifecycle remove.sh --yes
+
+    assert_success
+    assert_output --partial "Keeping all system packages"
+    run grep -F "uninstall" "$TEST_TMPDIR/calls.log"
+    assert_failure
+
+    # The same record is trusted when every install session on file was written under schema 2.
+    printf '# tool|method|version|last_updated\ndnsenum|pkg|system|2026-01-01 00:00:00\n' > "$LC_REPO/.versions"
+    mkdir -p "$LC_REPO/.install_sessions"
+    printf '# Session: fixture\n# Schema: 2\n' > "$LC_REPO/.install_sessions/20260101_000000_1.manifest"
+    _run_lifecycle remove.sh --yes
+
+    assert_success
+    refute_output --partial "Keeping all system packages"
+    run grep -F "uninstall" "$TEST_TMPDIR/calls.log"
+    assert_output "pkg uninstall -y dnsenum"
+}
+
 @test "remove --module drops the rows of what it removed" {
     _lifecycle_fixture
     printf 'jwt_tool|git|HEAD|2026-01-01 00:00:00\nnmap|pkg|system|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
@@ -833,6 +877,57 @@ _run_backup_schedule() {
     refute_output --partial "ffuf"
 }
 
+# A pipx that lists the given "name version" lines and logs every other call.
+_lifecycle_pipx_stub() {
+    {
+        printf '#!/bin/sh\n'
+        printf 'if [ "$1" = list ]; then\n'
+        printf '    printf "%%s\\n" %s\n' "$(printf "'%s' " "$@")"
+        printf '    exit 0\nfi\n'
+        printf 'echo "pipx $*" >> "%s/calls.log"\n' "$TEST_TMPDIR"
+        printf 'echo "upgraded package $2 from 1.0 to 2.0"\n'
+    } > "$LC_STUBS/pipx"
+}
+
+@test "update upgrades only the pipx tools this toolkit installed" {
+    _lifecycle_fixture
+    _lifecycle_pipx_stub "codext 1.0" "dissect-target 3.0" "sqlmap 1.8" "users-own-tool 2.0"
+    printf '%s\n' 'codext|pipx|latest|2026-01-01 00:00:00' \
+        'dissect.target|pipx|latest|2026-01-01 00:00:00' \
+        'sqlmap|pipx|existing|2026-01-01 00:00:00' >> "$LC_REPO/.versions"
+
+    _run_lifecycle update.sh --skip-system --skip-go --skip-git --skip-gems \
+        --skip-cargo --skip-binary --skip-special --skip-docker
+
+    assert_output --partial "pipx packages: 2 updated"
+    run grep -F "pipx " "$TEST_TMPDIR/calls.log"
+    assert_line "pipx upgrade codext"
+    assert_line "pipx upgrade dissect.target"
+    refute_output --partial "upgrade-all"
+    refute_output --partial "sqlmap"
+    refute_output --partial "users-own-tool"
+}
+
+@test "deep clean keeps pipx venvs and dangling links that are not the toolkit's" {
+    _lifecycle_fixture
+    local pipx_home="$TEST_TMPDIR/home/.local/pipx" bin="$TEST_TMPDIR/prefix/bin"
+    # codext's uninstall left its venv behind; the other venv was never the toolkit's.
+    _lifecycle_pipx_stub
+    printf 'codext|pipx|latest|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+    mkdir -p "$pipx_home/venvs/codext" "$pipx_home/venvs/users-own-tool" "$pipx_home/shared"
+    ln -s "$pipx_home/venvs/codext/bin/codext" "$bin/codext"
+    ln -s "$TEST_TMPDIR/unmounted-volume/tool" "$bin/users-own-link"
+
+    _run_lifecycle remove.sh --deep-clean --yes
+
+    assert_success
+    assert_output --partial "Keeping 1 pipx venvs this toolkit did not install"
+    [[ ! -e "$pipx_home/venvs/codext" ]]
+    [[ -d "$pipx_home/venvs/users-own-tool" && -d "$pipx_home/shared" ]]
+    [[ ! -L "$bin/codext" ]]
+    [[ -L "$bin/users-own-link" ]]
+}
+
 @test "mcp-launch.sh --local runs uv on the host, not the sandbox" {
     run env CYBERSEC_SANDBOX_MODE= bash -c '
         PATH="'"$TEST_TMPDIR"'/bin:$PATH"
@@ -911,14 +1006,14 @@ EOF
     assert_success
 }
 
-@test "remove refuses --deep-clean combined with --module (CL-3)" {
+@test "remove refuses --deep-clean combined with --module" {
     _lifecycle_fixture
     _run_lifecycle remove.sh --module web --deep-clean --yes
     assert_failure
     assert_output --partial "cannot be combined with --module"
 }
 
-@test "verify does not report untracked opt-in Docker images missing (CL-7)" {
+@test "verify does not report untracked opt-in Docker images missing" {
     _lifecycle_fixture
     # A docker stub with no images: the opt-in images were never pulled.
     printf '#!/bin/sh\nexit 0\n' > "$LC_STUBS/docker"
@@ -929,7 +1024,7 @@ EOF
     refute_output --partial "Docker image NOT found"
 }
 
-@test "verify fails loudly on an unreadable .versions (CL-7)" {
+@test "verify fails loudly on an unreadable .versions" {
     [[ $EUID -ne 0 ]] || skip "root reads any file"
     _lifecycle_fixture
     chmod 000 "$LC_REPO/.versions"
@@ -941,7 +1036,7 @@ EOF
     chmod 644 "$LC_REPO/.versions"
 }
 
-@test "restore runs unattended with BACKUP_PASSPHRASE (CL-15)" {
+@test "restore runs unattended with BACKUP_PASSPHRASE" {
     local test_home="$TEST_TMPDIR/home"
     mkdir -p "$test_home/.nmap"
     printf 'setting\n' > "$test_home/.nmap/settings"
@@ -996,7 +1091,7 @@ EOF
     [[ "$(cat "$test_home/.msf4/loot/capture.enc")" == "loot" ]]
 }
 
-@test "a second install/update/remove run refuses while one holds the lock (OP-4)" {
+@test "a second install/update/remove run refuses while one holds the lock" {
     command -v flock >/dev/null || skip "needs flock"
     _lifecycle_fixture
     # Hold the run lock as a concurrent run would.
@@ -1059,7 +1154,7 @@ EOF
     [[ "$(cat "$test_home/.nmap/nmap.conf")" == "setting" ]]
 }
 
-@test "restore refuses an unauthenticated legacy archive by default (SI-12)" {
+@test "restore refuses an unauthenticated legacy archive by default" {
     local test_home="$TEST_TMPDIR/home"
     local archive_src="$TEST_TMPDIR/archive-src"
     local archive="$TEST_TMPDIR/restore.tar.gz"
@@ -1078,7 +1173,7 @@ EOF
     [[ ! -e "$test_home/.nmap/settings" ]]
 }
 
-@test "remove --remove-deps keeps a uv the user installed and uv's data (SI-11)" {
+@test "remove --remove-deps keeps a uv the user installed and uv's data" {
     _lifecycle_fixture
     local home="$TEST_TMPDIR/home"
     mkdir -p "$home/.local/bin" "$home/.local/share/uv/python"
@@ -1097,7 +1192,7 @@ EOF
     [[ -d "$home/.local/share/uv/python" ]]
 }
 
-@test "agent guard keeps a separate clearance window per session (CL-17)" {
+@test "agent guard keeps a separate clearance window per session" {
     _guard_fixture
     local dir="$XDG_STATE_HOME/cybersec-tools-mcp"
     # Session A started, then an advisor call, then session B started.
@@ -1120,7 +1215,7 @@ EOF
     assert_output --partial '"permissionDecision":"deny"'
 }
 
-@test "agent guard session-start writes a per-session marker (CL-17)" {
+@test "agent guard session-start writes a per-session marker" {
     _guard_fixture
     run env -u CYBERSEC_AGENT_GUARD XDG_STATE_HOME="$XDG_STATE_HOME" \
         bash "$PROJECT_ROOT/scripts/agent-guard.sh" session-start <<< '{"session_id":"abc-123"}'
@@ -1302,4 +1397,290 @@ _source_tracked_clone() {
     _source_run_lifecycle verify.sh --module reversing --installed-only
 
     assert_success
+}
+
+# Vendored skill updates (scripts/revendor_skills.py)
+
+# Build an upstream repository with one skill at two commits, and a local copy of the first.
+# Sets UPSTREAM, PIN, TARGET and SKILLS. The second commit is whatever the caller wrote before.
+_skill_fixture() {
+    UPSTREAM="$TEST_TMPDIR/upstream"
+    SKILLS="$TEST_TMPDIR/skills"
+    mkdir -p "$UPSTREAM/skills/demo/helpers" "$SKILLS"
+    git -C "$UPSTREAM" init -q
+    git -C "$UPSTREAM" config user.email fixture@example.invalid
+    git -C "$UPSTREAM" config user.name fixture
+    git -C "$UPSTREAM" config commit.gpgsign false
+    printf -- '---\nname: demo\ndescription: First description.\n---\n\n# Demo\n\nstep one\n\nstep two\n\nstep three\n' \
+        > "$UPSTREAM/skills/demo/SKILL.md"
+    printf 'helper v1\n' > "$UPSTREAM/skills/demo/helpers/run.txt"
+    git -C "$UPSTREAM" add -A
+    git -C "$UPSTREAM" commit -q -m first
+    PIN="$(git -C "$UPSTREAM" rev-parse HEAD)"
+    cp -R "$UPSTREAM/skills/demo" "$SKILLS/demo"
+}
+
+# Replace one exact line of a file; avoids `sed -i`, which differs between GNU and BSD.
+_replace_line() {
+    python3 - "$1" "$2" "$3" <<'EOF'
+import sys
+
+path, old, new = sys.argv[1:]
+lines = open(path, encoding="utf-8").read().split("\n")
+assert old in lines, old
+open(path, "w", encoding="utf-8").write("\n".join(new if line == old else line for line in lines))
+EOF
+}
+
+_skill_commit() {
+    git -C "$UPSTREAM" add -A
+    git -C "$UPSTREAM" commit -q -m "$1"
+    TARGET="$(git -C "$UPSTREAM" rev-parse HEAD)"
+}
+
+_revendor() {
+    python3 "$PROJECT_ROOT/scripts/revendor_skills.py" --clone "$UPSTREAM" --pin "$PIN" --target "$TARGET" \
+        --skills-dir "$SKILLS" --name fixture "$@"
+}
+
+@test "revendor keeps a local edit while taking an upstream change elsewhere in the file" {
+    _skill_fixture
+    _replace_line "$SKILLS/demo/SKILL.md" "step three" "step three, locally hardened"
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "step one" "step one, upstream rewrite"
+    _skill_commit second
+
+    run _revendor --list-local-edits
+    assert_success
+    assert_output --partial "UPDATED: demo"
+    assert_output --partial "LOCAL-EDIT: demo/SKILL.md"
+    assert_output --partial "PIN: advance"
+    run cat "$SKILLS/demo/SKILL.md"
+    assert_output --partial "step one, upstream rewrite"
+    assert_output --partial "step three, locally hardened"
+}
+
+@test "revendor merges frontmatter by key, so a local provenance key does not block an upstream edit beside it" {
+    _skill_fixture
+    _replace_line "$SKILLS/demo/SKILL.md" "name: demo" "name: demo"$'\n'"source: example/upstream"$'\n'"upstream_commit: $PIN"
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "description: First description." "description: Second description."
+    _skill_commit second
+
+    run _revendor
+    assert_success
+    run cat "$SKILLS/demo/SKILL.md"
+    assert_output --partial "description: Second description."
+    assert_output --partial "source: example/upstream"
+    assert_output --partial "upstream_commit: $TARGET"
+}
+
+@test "revendor writes nothing when a skill conflicts, then finishes after a hand merge" {
+    bats_require_minimum_version 1.5.0
+    _skill_fixture
+    _replace_line "$SKILLS/demo/SKILL.md" "step two" "step two, local wording"
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "step two" "step two, upstream wording"
+    printf 'helper v2\n' > "$UPSTREAM/skills/demo/helpers/run.txt"
+    _skill_commit second
+
+    run -3 _revendor
+    assert_output --partial "BLOCKED: demo: conflict in SKILL.md"
+    assert_output --partial "PIN: hold"
+    run cat "$SKILLS/demo/helpers/run.txt"
+    assert_output "helper v1"
+
+    run -3 _revendor --mark-conflicts
+    run grep -c '^<<<<<<< ' "$SKILLS/demo/SKILL.md"
+    assert_output "1"
+    run cat "$SKILLS/demo/helpers/run.txt"
+    assert_output "helper v2"
+
+    run -3 _revendor --finalize
+    assert_output --partial "conflict markers left in SKILL.md"
+
+    printf -- '---\nname: demo\ndescription: First description.\n---\n\n# Demo\n\nstep one\n\nstep two, merged\n\nstep three\n' \
+        > "$SKILLS/demo/SKILL.md"
+    run _revendor --finalize
+    assert_success
+    assert_output --partial "PIN: advance"
+}
+
+@test "revendor treats a copy older than the pin as unmodified" {
+    _skill_fixture
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "step one" "step one, second version"
+    _skill_commit second
+    PIN="$TARGET"
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "step one, second version" "step one, third version"
+    _skill_commit third
+
+    run _revendor --list-local-edits
+    assert_success
+    assert_output --partial "1 local copies predated the recorded pin"
+    refute_output --partial "LOCAL-EDIT"
+    run grep -c 'third version' "$SKILLS/demo/SKILL.md"
+    assert_output "1"
+}
+
+@test "revendor keeps a locally removed helper directory removed" {
+    _skill_fixture
+    rm -r "$SKILLS/demo/helpers"
+    printf 'helper v2\n' > "$UPSTREAM/skills/demo/helpers/run.txt"
+    printf 'new helper\n' > "$UPSTREAM/skills/demo/helpers/extra.txt"
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "step one" "step one, upstream rewrite"
+    _skill_commit second
+
+    run _revendor
+    assert_success
+    [[ ! -e "$SKILLS/demo/helpers" ]]
+    run grep -c 'upstream rewrite' "$SKILLS/demo/SKILL.md"
+    assert_output "1"
+}
+
+@test "revendor reports a skill upstream removed and deletes it only with --prune" {
+    _skill_fixture
+    git -C "$UPSTREAM" rm -q -r skills/demo
+    mkdir -p "$UPSTREAM/skills/other"
+    printf -- '---\nname: other\ndescription: Another skill.\n---\n' > "$UPSTREAM/skills/other/SKILL.md"
+    _skill_commit second
+
+    run _revendor
+    assert_success
+    assert_output --partial "REMOVED-UPSTREAM: demo"
+    assert_output --partial "NEW-UPSTREAM: other"
+    [[ -f "$SKILLS/demo/SKILL.md" ]]
+
+    run _revendor --prune
+    assert_success
+    assert_output --partial "PRUNED: demo"
+    [[ ! -e "$SKILLS/demo" ]]
+}
+
+@test "revendor writes invisible characters from upstream as visible escapes" {
+    _skill_fixture
+    printf 'summarize this \xf3\xa0\x81\xb3\xf3\xa0\x81\xa5 now\n' >> "$UPSTREAM/skills/demo/SKILL.md"
+    _skill_commit second
+
+    run _revendor
+    assert_success
+    assert_output --partial "INVISIBLE-TEXT: demo/SKILL.md"
+    run grep -c 'summarize this <U+E0073 U+E0065> now' "$SKILLS/demo/SKILL.md"
+    assert_output "1"
+}
+
+@test "revendor refuses a skill that gains a symlink upstream" {
+    bats_require_minimum_version 1.5.0
+    _skill_fixture
+    ln -s /etc/hostname "$UPSTREAM/skills/demo/link"
+    _skill_commit second
+
+    run -3 _revendor
+    assert_output --partial "BLOCKED: demo: refused: upstream link has mode 120000"
+    [[ ! -e "$SKILLS/demo/link" ]]
+}
+
+@test "revendor drops a tool grant that upstream adds to a skill" {
+    _skill_fixture
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "name: demo" "name: demo"$'\n'"allowed-tools: Bash Write WebFetch"
+    _replace_line "$UPSTREAM/skills/demo/SKILL.md" "step one" "step one, upstream rewrite"
+    _skill_commit second
+
+    run _revendor
+    assert_success
+    assert_output --partial "UPDATED: demo"
+    run cat "$SKILLS/demo/SKILL.md"
+    assert_output --partial "step one, upstream rewrite"
+    refute_output --partial "allowed-tools"
+}
+
+@test "the skills validator separates workspace lookups from tools that execute, write or fetch" {
+    run python3 - "$PROJECT_ROOT" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + "/scripts")
+from _skill_text import PROMPT_FREE_TOOLS, drop_tool_grant, granted_tools
+
+inline = "---\nname: x\nallowed-tools: Read Grep Bash(git diff:*) WebFetch\neffort: low\n---\nbody\n"
+listed = "---\nallowed-tools:\n- Write\n- mcp__server__tool\nname: x\n---\nallowed-tools: in the body\n"
+assert granted_tools(inline) == ["Read", "Grep", "Bash(git diff:*)", "WebFetch"]
+assert set(granted_tools(inline)) - PROMPT_FREE_TOOLS == {"Bash(git diff:*)", "WebFetch"}
+assert granted_tools(listed) == ["Write", "mcp__server__tool"]
+assert granted_tools("---\nname: x\nallowed-tools: Read Glob\n---\n") == ["Read", "Glob"]
+assert granted_tools("---\nname: x\n---\nallowed-tools: Bash\n") is None
+assert drop_tool_grant(inline) == "---\nname: x\neffort: low\n---\nbody\n"
+assert drop_tool_grant(listed) == "---\nname: x\n---\nallowed-tools: in the body\n"
+PY
+    assert_success
+}
+
+@test "the skills validator rejects invisible characters and accepts an emoji joiner" {
+    run python3 - "$PROJECT_ROOT" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + "/scripts")
+from _skill_text import find_invisible, show_invisible
+
+hidden = "".join(chr(0xE0000 + ord(c)) for c in "hi")
+assert find_invisible("a" + hidden + "b") is not None
+assert find_invisible("a​b") is not None
+assert find_invisible("‮abc") is not None
+assert find_invisible("\U0001F468‍\U0001F469") is None
+assert find_invisible("﻿plain text with a byte-order mark") is None
+assert show_invisible("a" + hidden + "b") == "a<U+E0068 U+E0069>b"
+assert find_invisible(show_invisible("a" + hidden + "​b")) is None
+PY
+    assert_success
+}
+
+# One evidence item from a tool run, as a JSON fragment.
+_finding_evidence() {
+    printf '{"source":"run_tool","command":"curl -s http://10.0.0.5/","captured_at":"2026-11-14T18:00:00Z","locator":"body, line 3","excerpt":"x"%s}' "${1:-}"
+}
+
+@test "validate_findings accepts observed, claimed and confirmed findings that carry their evidence" {
+    local sha
+    sha=$(printf 'a%.0s' $(seq 64))
+    printf '%s\n' \
+        "{\"id\":\"F-1\",\"title\":\"Banner\",\"kind\":\"observation\",\"status\":\"observed\",\"target\":\"10.0.0.5\",\"uncertainty\":\"banner only\",\"evidence\":[$(_finding_evidence)]}" \
+        '{"id":"F-2","title":"Hint in README","kind":"observation","status":"claimed","target":"archive","uncertainty":"untested","evidence":[{"source":"target_claim","captured_at":"2026-11-14T18:01:00Z","locator":"README.md line 3","excerpt":"the key is in notes.txt"}]}' \
+        "{\"id\":\"F-3\",\"title\":\"Flag\",\"kind\":\"flag_candidate\",\"status\":\"confirmed\",\"target\":\"capture\",\"derivation\":\"stream 4 decodes to it\",\"confirmed_by\":\"decoded again from the original\",\"evidence\":[$(_finding_evidence ",\"sha256\":\"$sha\"")]}" \
+        > "$TEST_TMPDIR/findings.jsonl"
+
+    run python3 "$PROJECT_ROOT/scripts/validate_findings.py" "$TEST_TMPDIR/findings.jsonl"
+    assert_success
+    assert_output --partial "3 finding(s): 1 claimed, 1 confirmed, 1 observed"
+    run python3 "$PROJECT_ROOT/scripts/validate_findings.py" --markdown "$TEST_TMPDIR/findings.jsonl"
+    assert_success
+    assert_line "| F-3 | confirmed | flag_candidate |  | Flag | capture | 1 item(s) |"
+}
+
+@test "validate_findings refuses a flag without a derivation and a claim promoted to a fact" {
+    printf '[%s,%s]' \
+        "{\"id\":\"B-1\",\"title\":\"flag{looks_right}\",\"kind\":\"flag_candidate\",\"status\":\"observed\",\"target\":\"page\",\"uncertainty\":\"all of it\",\"evidence\":[$(_finding_evidence)]}" \
+        '{"id":"B-2","title":"Password in a comment","kind":"vulnerability","status":"confirmed","target":"page","derivation":"the comment says so","confirmed_by":"the comment","evidence":[{"source":"target_claim","captured_at":"2026-11-14T18:00:00Z","locator":"HTML comment","excerpt":"x"}]}' \
+        > "$TEST_TMPDIR/findings.json"
+
+    run python3 "$PROJECT_ROOT/scripts/validate_findings.py" "$TEST_TMPDIR/findings.json"
+    assert_failure
+    assert_output --partial "B-1: a flag candidate needs a 'derivation'"
+    assert_output --partial "B-2: every evidence item is a target claim, so the status can only be 'claimed'"
+    assert_output --partial "B-2: a confirmed finding needs one evidence item with the 'sha256' of its raw data"
+}
+
+@test "scan_skills --compare lists only the findings the newer result adds" {
+    printf '%s' '{"scanner":"s","skills":1,"incomplete":[],"findings":[{"skill":"a","rule":"P1","severity":"HIGH","category":"c","file":"SKILL.md","line":1,"digest":"d1","excerpt":"old"}]}' > "$TEST_TMPDIR/old.json"
+    printf '%s' '{"scanner":"s","skills":1,"incomplete":[],"findings":[{"skill":"a","rule":"P1","severity":"HIGH","category":"c","file":"SKILL.md","line":1,"digest":"d1","excerpt":"old"},{"skill":"a","rule":"P2","severity":"CRITICAL","category":"c","file":"SKILL.md","line":9,"digest":"d2","excerpt":"added"}]}' > "$TEST_TMPDIR/new.json"
+
+    run python3 "$PROJECT_ROOT/scripts/scan_skills.py" --compare "$TEST_TMPDIR/old.json" "$TEST_TMPDIR/new.json"
+    assert_success
+    assert_output --partial "New since the earlier scan: 1 CRITICAL"
+    assert_output --partial "CRITICAL P2 (c) a/SKILL.md:9: added"
+    refute_output --partial ": old"
+}
+
+@test "update-skills rejects flag combinations that would move a pin by mistake" {
+    run bash "$PROJECT_ROOT/scripts/update-skills.sh" --finalize
+    assert_failure 2
+    run bash "$PROJECT_ROOT/scripts/update-skills.sh" --apply --finalize bughunter
+    assert_failure 2
+    assert_output --partial "--finalize needs --target"
+    run bash "$PROJECT_ROOT/scripts/update-skills.sh" --apply --target abc bughunter
+    assert_failure 2
+    run bash "$PROJECT_ROOT/scripts/update-skills.sh" --apply no-such-source
+    assert_failure 2
 }

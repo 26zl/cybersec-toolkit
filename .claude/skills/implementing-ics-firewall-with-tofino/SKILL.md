@@ -1,9 +1,11 @@
 ---
 name: implementing-ics-firewall-with-tofino
-description: 'Deploy and configure Tofino industrial firewalls from Belden/Hirschmann
-  to protect SCADA systems and PLCs using deep packet inspection for OT protocols
-  including Modbus, EtherNet/IP, OPC, and S7comm, enforcing granular access control
-  between ICS security zones.
+description: 'Deploys and configures Tofino industrial firewalls (Belden/Hirschmann)
+  to protect SCADA systems and PLCs, using deep packet inspection of OT protocols
+  (Modbus, EtherNet/IP, OPC, S7comm) to enforce access control between ICS zones.
+  Use when deploying zone-level firewall protection in front of PLCs/RTUs, enforcing
+  IEC 62443 zone/conduit boundaries, or adding compensating controls for unpatchable
+  legacy PLCs.
 
   '
 domain: cybersecurity

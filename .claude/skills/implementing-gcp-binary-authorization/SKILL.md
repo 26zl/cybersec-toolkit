@@ -1,8 +1,6 @@
 ---
 name: implementing-gcp-binary-authorization
-description: Implement GCP Binary Authorization to enforce deploy-time security controls
-  that ensure only trusted, attested container images are deployed to Google Kubernetes
-  Engine and Cloud Run.
+description: Implements GCP Binary Authorization end to end, including creating KMS-backed attestors, Container Analysis notes, deploy-time policies, and signing image attestations, so that only trusted, verified images deploy to GKE and Cloud Run. Use when enforcing container supply-chain integrity or deploy-time attestation checks on GCP.
 domain: cybersecurity
 subdomain: cloud-security
 tags:

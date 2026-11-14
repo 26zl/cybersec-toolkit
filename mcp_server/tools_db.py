@@ -105,6 +105,9 @@ PIPX_BIN_NAMES: dict[str, str] = {
 # scripts/verify.sh) — keep this list local to the MCP layer.
 APT_BIN_NAMES: dict[str, str] = {
     "libimage-exiftool-perl": "exiftool",
+    "libhivex-bin": "hivexml",
+    "pst-utils": "readpst",
+    "mdbtools": "mdb-tables",
     "netcat-openbsd": "nc",
     "wireshark-common": "tshark",
     "upx-ucl": "upx",
@@ -190,6 +193,13 @@ C2_TOOLS: frozenset[str] = frozenset(
         "Havoc",
         "PoshC2",
         "merlin",
+        # Rogue-AP credential-phishing frameworks (WIRELESS_C2_GIT_NAMES)
+        "fluxion",
+        "wifiphisher",
+        "eaphammer",
+        "wifipumpkin3",
+        # Browser hooking framework (Docker, gated in install_module_web)
+        "beef",
     }
 )
 

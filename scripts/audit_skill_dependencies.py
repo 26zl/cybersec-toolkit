@@ -131,6 +131,7 @@ IMPORT_TO_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "pypff": ("libpff-python",),
     "pyrad": ("pyrad",),
     "pyshark": ("pyshark",),
+    "pytest": ("pytest",),
     "pysnmp": ("pysnmp",),
     "pytsk3": ("pytsk3",),
     "pyzbar": ("pyzbar",),

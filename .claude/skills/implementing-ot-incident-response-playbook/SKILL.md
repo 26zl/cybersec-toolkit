@@ -1,9 +1,11 @@
 ---
 name: implementing-ot-incident-response-playbook
-description: 'Develop and implement OT-specific incident response playbooks aligned
-  with SANS PICERL framework, IEC 62443, and NIST SP 800-82 that address unique ICS
-  challenges including safety-critical systems, limited downtime tolerance, and coordination
-  between IT SOC, OT engineering, and plant operations teams.
+description: 'Develops OT-specific incident response playbooks using a SANS PICERL-based Python
+  engine that classifies incident severity (safety, process, access, recon) and
+  coordinates IT SOC, OT engineering, and plant operations, aligned with IEC 62443
+  and NIST SP 800-82. Use when building ICS/SCADA incident response procedures for
+  the first time, preparing for OT ransomware scenarios, or aligning IR with IEC
+  62443/NERC CIP reporting requirements.
 
   '
 domain: cybersecurity

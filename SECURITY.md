@@ -47,7 +47,7 @@ For context when evaluating a report:
 - **Binary releases** — SHA256-verified against published checksums when available. `--production` or `--require-checksums` turns missing checksums into a hard failure
 - **Go SDK** — SHA256-verified against `go.dev/dl/?mode=json` when reachable
 - **MCP Python dependencies** — resolved by `uv` with a 5-day `exclude-newer` release-age window for project runtime dependencies
-- **GitHub Actions** — all SHA-pinned with version comments; `zizmor` audits every workflow and the Dependabot config; `step-security/harden-runner` audits egress in every job (audit mode, not blocking)
+- **GitHub Actions** — all SHA-pinned with version comments; `zizmor` audits every workflow and the Dependabot config; `step-security/harden-runner` audits egress in every job that runs on the runner itself (audit mode, not blocking; it cannot observe the four distro-container integration jobs)
 - **MCP execution engine** — tool allowlisting, argument sanitization (blocks `|`, backtick, `$(`, `${`; `;` and `&` pass through as literals since no shell is used), protected write destinations, per-tool blocked flags, private/loopback network and SSH scope by default, rate limiting, and audit logging
 - **Execution sandbox** — the launcher starts the MCP server in a per-session Kata Containers VM by default ([`docs/SANDBOX.md`](docs/SANDBOX.md)); `--local` is the explicit host-mode opt-out. Audit records are hash-chained and mirrored out of the VM
 - **MCP script execution** — off by default; `CYBERSEC_MCP_ALLOW_SCRIPTS=1` is an explicit code-execution opt-in outside the policy layer (OS isolation only from the Kata VM) and is not constrained by `CYBERSEC_MCP_ALLOW_EXTERNAL`
@@ -67,7 +67,7 @@ no-shell composition primitive, not a network-scope boundary; set
 
 ## Automated security checks
 
-These run on every push and PR via `.github/workflows/security.yml`:
+These run on every push to `main` and every pull request via `.github/workflows/security.yml`:
 
 - **gitleaks** — secret detection
 - **custom-security-scan** — hardcoded IPs, secrets, non-HTTPS URLs, unsafe eval, curl-pipe patterns, `chmod 777`

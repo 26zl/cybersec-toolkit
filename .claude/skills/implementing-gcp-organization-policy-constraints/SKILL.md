@@ -1,8 +1,6 @@
 ---
 name: implementing-gcp-organization-policy-constraints
-description: Implement GCP Organization Policy constraints to enforce security guardrails
-  across the entire resource hierarchy, restricting risky configurations and ensuring
-  compliance at organization, folder, and project levels.
+description: Implements GCP Organization Policy constraints via gcloud and Terraform, such as restricting external IPs, resource locations, default service accounts, and service account keys, plus dry-run testing of policy impact before enforcement. Use when enforcing security guardrails across an org's resource hierarchy, or hardening GCP config at the org, folder, or project level.
 domain: cybersecurity
 subdomain: cloud-security
 tags:

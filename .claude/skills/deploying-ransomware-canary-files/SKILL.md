@@ -1,14 +1,6 @@
 ---
 name: deploying-ransomware-canary-files
-description: 'Deploys and monitors ransomware canary files across critical directories
-  using Python''s watchdog library for real-time filesystem event detection. Places
-  strategically named decoy files that mimic high-value targets (financial records,
-  credentials, database exports) in locations ransomware typically enumerates first.
-  Monitors for any read, modify, rename, or delete operations on canary files and
-  triggers immediate alerts via email, Slack webhook, or syslog when interaction is
-  detected, providing early warning before full encryption begins.
-
-  '
+description: Deploys and monitors ransomware canary files using Python's watchdog library, placing decoy files mimicking high-value targets (financial records, credentials, database exports) where ransomware enumerates first, and alerting via email, Slack, or syslog on any read/modify/rename/delete. Use for early-warning ransomware detection on file servers, NAS, or endpoints, or to supplement EDR where agents can't be deployed.
 domain: cybersecurity
 subdomain: ransomware-defense
 tags:
@@ -32,6 +24,23 @@ mitre_attack:
 - T1083
 - T1490
 - T1485
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - monetization
+  techniques:
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1017
+    name: Conversion to Physical Monetary Instruments
+    tactic: monetization
+    source: f3
+  - id: F1025.003
+    name: 'Electronic Funds Transfer: Wire Transfer'
+    tactic: monetization
+    source: f3
 ---
 # Deploying Ransomware Canary Files
 

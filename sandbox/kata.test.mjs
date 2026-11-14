@@ -7,6 +7,7 @@ import { test } from 'node:test';
 
 import {
   appendTail,
+  assertImageCurrent,
   assertVmBoundary,
   assertWorkspaceUsable,
   buildExecEnv,
@@ -145,6 +146,56 @@ test('assertWorkspaceUsable refuses system trees, $HOME and the checkout', () =>
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('assertWorkspaceUsable refuses a directory inside the checkout', () => {
+  // The client reads instruction files, skills and MCP settings from the project tree.
+  assert.throws(() => assertWorkspaceUsable(resolve(import.meta.dirname)), /inside the toolkit checkout/);
+});
+
+test('a scope adds NET_ADMIN to the bounding set and nothing else changes', () => {
+  const plain = buildRunArgs({ name: 'sbx', runtime: 'kata', options: baseOptions(), env: {} });
+  const scoped = buildRunArgs({ name: 'sbx', runtime: 'kata', options: baseOptions({ scope: '/srv/scope.json' }), env: {} });
+  assert.deepEqual(flagValues(scoped, '--cap-add'), ['NET_ADMIN']);
+  assert.deepEqual(flagValues(scoped, '--cap-drop'), ['ALL']);
+  assert.deepEqual(flagValues(scoped, '--user'), ['10001:10001']);
+  assert.deepEqual(flagValues(scoped, '--security-opt'), ['no-new-privileges']);
+  assert.deepEqual(
+    scoped.filter((arg) => arg !== '--cap-add' && arg !== 'NET_ADMIN'),
+    plain,
+  );
+  // Asked for twice, it is passed once.
+  const both = baseOptions({ scope: '/srv/scope.json', capAdd: 'NET_ADMIN,NET_RAW' });
+  assert.deepEqual(flagValues(buildRunArgs({ name: 'sbx', runtime: 'kata', options: both, env: {} }), '--cap-add'), [
+    'NET_ADMIN',
+    'NET_RAW',
+  ]);
+  // Names in a scope are pinned by Docker at creation, since /etc/hosts is read-only inside.
+  const pinned = buildRunArgs({
+    name: 'sbx',
+    runtime: 'kata',
+    options: baseOptions({ scope: '/srv/scope.json' }),
+    env: {},
+    hostArgs: ['--add-host', 'web.example:198.51.100.7'],
+  });
+  assert.deepEqual(flagValues(pinned, '--add-host'), ['web.example:198.51.100.7']);
+  assert.equal(scoped.includes('--add-host'), false);
+  assert.equal(resolveOptions({}, { CYBERSEC_SANDBOX_SCOPE: '/srv/scope.json' }).scope, '/srv/scope.json');
+  assert.equal(resolveOptions({}, {}).scope, undefined);
+});
+
+test('assertImageCurrent refuses an image built from other server sources', () => {
+  const label = { 'cybersec.sandbox.source_hash': 'aaaa' };
+  assert.doesNotThrow(() => assertImageCurrent(label, 'aaaa', 'img'));
+  assert.throws(() => assertImageCurrent(label, 'bbbb', 'img'), /older server and policy code.*make sandbox-image/);
+  // An image without the label was built before the check existed.
+  assert.throws(() => assertImageCurrent({}, 'bbbb', 'img'), /not built from this checkout/);
+  assert.throws(() => assertImageCurrent(null, 'bbbb', 'img'), /not built from this checkout/);
+  // The operator can accept it, and a hash that cannot be computed decides nothing.
+  assert.doesNotThrow(() => assertImageCurrent(label, 'bbbb', 'img', true));
+  assert.doesNotThrow(() => assertImageCurrent(label, '', 'img'));
+  assert.equal(resolveOptions({}, { CYBERSEC_SANDBOX_ALLOW_STALE_IMAGE: '1' }).allowStaleImage, true);
+  assert.equal(resolveOptions({}, {}).allowStaleImage, false);
 });
 
 test('resolveOptions rejects a malformed capability', () => {

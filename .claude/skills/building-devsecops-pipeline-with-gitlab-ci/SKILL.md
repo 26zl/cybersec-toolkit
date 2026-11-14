@@ -1,7 +1,6 @@
 ---
 name: building-devsecops-pipeline-with-gitlab-ci
-description: Design and implement a comprehensive DevSecOps pipeline in GitLab CI/CD
-  integrating SAST, DAST, container scanning, dependency scanning, and secret detection.
+description: Configure a GitLab CI/CD pipeline that embeds SAST (Semgrep, SpotBugs, Gosec, Bandit, NodeJsScan), DAST, container scanning, dependency scanning, and secret detection via GitLab's managed security templates. Use when building a shift-left DevSecOps pipeline in GitLab, adding automated vulnerability scanning stages to .gitlab-ci.yml, or triaging scanner findings with GitLab Duo AI before deployment.
 domain: cybersecurity
 subdomain: devsecops
 tags:

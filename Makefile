@@ -12,7 +12,8 @@ MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skil
 
 .DEFAULT_GOAL := help
 .PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py test-sandbox validate-packages check-links test-distros \
-	validate check-pins check-skills sync-skills curate check doctor bump mcp docker sandbox-image audit-verify clean
+	validate check-pins check-skills update-skills scan-skills sync-skills curate check doctor bump mcp docker sandbox-image \
+	audit-verify audit-deps clean
 
 help: ## Show this help
 	@if [ -t 1 ] && [ -z "$${NO_COLOR+x}" ]; then c='\033[36m'; r='\033[0m'; else c=''; r=''; fi; \
@@ -83,6 +84,12 @@ check-pins: ## Assert vendored-skill upstream pins agree across all sources (off
 check-skills: ## Report vendored-skill drift against upstream (clones sources)
 	bash scripts/update-skills.sh
 
+update-skills: ## Merge upstream changes into the vendored skills and bump the pins (clones sources)
+	bash scripts/update-skills.sh --apply
+
+scan-skills: ## Scan the skills changed since HEAD with SkillSpector (static; needs network)
+	python3 scripts/scan_skills.py --changed-since HEAD
+
 sync-skills: ## Mirror .claude/skills/ -> .agents/skills/ (for Codex and AGENTS.md tools)
 	scripts/sync-skills.sh
 
@@ -113,8 +120,11 @@ sandbox-image: ## Build the Kata sandbox image used by scripts/mcp-launch.sh (TO
 		$(if $(TOOLKIT_PROFILE),--build-arg TOOLKIT_PROFILE='$(TOOLKIT_PROFILE)') \
 		-t cybersec-toolkit-sandbox:latest .
 
-audit-verify: ## Check the audit log's hash chain (usage: make audit-verify [LOG=path])
-	python3 scripts/verify_audit_chain.py $(if $(LOG),"$(LOG)")
+audit-deps: ## Audit every version pinned in mcp_server/uv.lock for known vulnerabilities (needs network)
+	bash scripts/pip-audit-lock.sh
+
+audit-verify: ## Check the audit log's hash chain (usage: make audit-verify [LOG=path] [STRICT=1])
+	python3 scripts/verify_audit_chain.py $(if $(STRICT),--strict) $(if $(LOG),"$(LOG)")
 
 clean: ## Remove Python caches and test artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true

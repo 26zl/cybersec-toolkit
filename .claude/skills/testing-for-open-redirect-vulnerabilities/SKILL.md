@@ -1,8 +1,10 @@
 ---
 name: testing-for-open-redirect-vulnerabilities
-description: Identify and test open redirect vulnerabilities in web applications by
-  analyzing URL redirection parameters, bypass techniques, and exploitation chains
-  for phishing and token theft.
+description: Identifies and exploits open redirect vulnerabilities by analyzing URL
+  redirection parameters (next, url, redirect, return, goto), applying bypass techniques,
+  and chaining findings into phishing or token-theft exploits, using Burp Suite/OWASP ZAP
+  and Burp Collaborator. Use when testing login/logout flows, OAuth redirect_uri handling,
+  or SSO redirect validation.
 domain: cybersecurity
 subdomain: web-application-security
 tags:

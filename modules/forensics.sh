@@ -13,6 +13,7 @@ FORENSICS_PACKAGES=(
     guymager magicrescue memdump
     rifiuti2 scrounge-ntfs ext3grep ext4magic
     poppler-utils zbar-tools
+    libhivex-bin pst-utils mdbtools
     sigrok-cli pulseview gtkwave
     ffmpeg hexyl ewf-tools
 )
@@ -32,7 +33,12 @@ FORENSICS_GIT=(
 FORENSICS_GIT_NAMES=(RegRipper Depix dvcs-ripper firefox_decrypt firmware-mod-kit USB-HID-decoders ctf-usb-keyboard-parser)
 
 declare -gA FORENSICS_PACKAGE_EXCLUSIONS=([mat2]="rhel centos rocky almalinux ol scientific")
-declare -gA FORENSICS_PACKAGE_BIN_NAMES=([mat2]=mat2)
+declare -gA FORENSICS_PACKAGE_BIN_NAMES=(
+    [mat2]=mat2
+    [libhivex-bin]=hivexml
+    [pst-utils]=readpst
+    [mdbtools]=mdb-tables
+)
 declare -gA FORENSICS_PACKAGE_INCLUSIONS=([mat2]="fedora")
 declare -gA FORENSICS_BINARY_ARCHITECTURES=([vmkatz]="amd64 arm64 armv7")
 

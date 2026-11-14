@@ -38,6 +38,7 @@ wireshark-common	wireshark-cli	wireshark-cli	wireshark	-
 snmp	net-snmp-utils	net-snmp	net-snmp	net-snmp
 smbclient	samba-client		samba-client	
 tshark	-	-	-	
+ssldump		-		-
 #
 # Dev libraries
 #debian	dnf	pacman	zypper	pkg
@@ -85,6 +86,9 @@ openscap-scanner		openscap	openscap-utils	-
 stunnel4	stunnel	stunnel	stunnel	
 protobuf-compiler		protobuf	protobuf-devel	
 poppler-utils		poppler	poppler-tools	
+libhivex-bin	hivex	hivex	hivex	-
+pst-utils	libpst	libpst	libpst	-
+mdbtools	mdbtools	-	mdbtools	mdbtools
 zbar-tools	zbar	zbar	zbar	
 hashdeep	md5deep	-	md5deep	
 wireless-tools	-	wireless_tools	wireless-tools	-

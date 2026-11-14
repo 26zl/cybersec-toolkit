@@ -1,8 +1,10 @@
 ---
 name: configuring-oauth2-authorization-flow
-description: Configure secure OAuth 2.0 authorization flows including Authorization
-  Code with PKCE, Client Credentials, and Device Authorization Grant. This skill covers
-  flow selection, PKCE implementation, token
+description: Configures secure OAuth 2.0 authorization flows, including Authorization
+  Code with PKCE, Client Credentials, and Device Authorization Grant, covering flow
+  selection, PKCE implementation, token lifecycle management, and scope design per
+  OAuth 2.1. Use when implementing or hardening OAuth 2.0 authentication/authorization
+  for web, mobile, SPA, or machine-to-machine clients.
 domain: cybersecurity
 subdomain: identity-access-management
 tags:
@@ -28,6 +30,28 @@ mitre_attack:
 - T1539
 - T1606.001
 - T1212
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  techniques:
+  - id: T1550.001
+    name: 'Use Alternate Authentication Material: Application Access Token'
+    tactic: initial-access
+    source: attack
+  - id: F1004
+    name: Access with Stolen Session Cookie
+    tactic: initial-access
+    source: f3
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
 ---
 # Configuring OAuth 2.0 Authorization Flow
 

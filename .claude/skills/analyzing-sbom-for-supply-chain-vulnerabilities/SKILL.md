@@ -26,7 +26,6 @@ author: mukul975
 license: Apache-2.0
 atlas_techniques:
 - AML.T0010
-- AML.T0104
 nist_ai_rmf:
 - GOVERN-5.2
 - MAP-1.6

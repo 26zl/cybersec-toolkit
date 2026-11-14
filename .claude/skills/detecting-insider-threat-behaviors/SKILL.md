@@ -2,6 +2,8 @@
 name: detecting-insider-threat-behaviors
 description: Detect insider threat behavioral indicators including unusual data access,
   off-hours activity, mass file downloads, privilege abuse, and resignation-correlated
+  data theft. Use when proactively threat-hunting for malicious or negligent insider
+  activity, or when investigating a departing or disgruntled employee for potential
   data theft.
 domain: cybersecurity
 subdomain: threat-hunting

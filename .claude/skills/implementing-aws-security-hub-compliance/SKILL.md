@@ -1,9 +1,11 @@
 ---
 name: implementing-aws-security-hub-compliance
-description: 'Implementing AWS Security Hub to aggregate security findings across
-  AWS accounts, enable compliance standards like CIS AWS Foundations and PCI DSS,
-  configure automated remediation with EventBridge and Lambda, and create custom security
-  insights for organizational risk management.
+description: 'Deploy AWS Security Hub, backed by AWS Config, to aggregate findings
+  from GuardDuty, Inspector, Macie, Firewall Manager, and Prowler across multi-account
+  AWS Organizations, enable standards like CIS AWS Foundations and PCI DSS, and automate
+  remediation via EventBridge and Lambda. Use for centralizing AWS compliance monitoring
+  or executive compliance dashboards; not for threat detection (GuardDuty) or data
+  classification (Macie).
 
   '
 domain: cybersecurity

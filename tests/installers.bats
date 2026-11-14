@@ -138,7 +138,7 @@ PY
     grep -q "^zz-fake-tool|binary|v1|" "$VERSION_FILE"
 }
 
-@test "strict checksum mode wins over an inherited FAST_MODE (SI-8)" {
+@test "strict checksum mode wins over an inherited FAST_MODE" {
     source_libs --installers debian apt
     make_test_tmpdir
     # update.sh has no --fast/--production exclusivity check, so both can be set.
@@ -323,6 +323,130 @@ PY
     run _validate_curl_pipe "$TEST_TMPDIR/script.sh" install github
     assert_failure
     assert_output --partial "missing expected keyword"
+}
+
+# Go SDK bootstrap (ensure_go)
+
+_fake_go_sdk() {
+    mkdir -p "$1/bin"
+    printf '#!/bin/sh\necho "go version go%s linux/amd64"\n' "$2" > "$1/bin/go"
+    chmod +x "$1/bin/go"
+}
+
+# Stubs go.dev: the release list names GO_FIXTURE_LATEST and the tarball holds a fake
+# `go` reporting that version. go stays off PATH until ensure_go exports its GOROOT.
+_go_fixture() {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/lib/shared.sh"
+    make_test_tmpdir
+    export _GO_INSTALL_PARENT="$TEST_TMPDIR/usr-local" SYS_ARCH=amd64
+    unset GOROOT
+    GO_FIXTURE_LATEST="${1:-1.30.2}"
+    GO_SDK="$_GO_INSTALL_PARENT/go"
+    mkdir -p "$_GO_INSTALL_PARENT" "$TEST_TMPDIR/src"
+    _fake_go_sdk "$TEST_TMPDIR/src/go" "$GO_FIXTURE_LATEST"
+    tar -czf "$TEST_TMPDIR/go.tar.gz" -C "$TEST_TMPDIR/src" go
+    GO_FIXTURE_TARBALL="$TEST_TMPDIR/go.tar.gz"
+    GO_FIXTURE_SHA=$(sha256sum "$GO_FIXTURE_TARBALL" | awk '{print $1}')
+    command_exists() {
+        if [[ "$1" == go ]]; then
+            [[ -n "${GOROOT:-}" && -x "$GOROOT/bin/go" ]]
+        else
+            command -v "$1" > /dev/null 2>&1
+        fi
+    }
+    curl() {
+        local out="" url=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -o) out="$2"; shift ;;
+                http*) url="$1" ;;
+            esac
+            shift
+        done
+        if [[ "$url" == *"mode=json" ]]; then
+            [[ "${GO_FIXTURE_OFFLINE:-false}" == true ]] && return 1
+            printf '[{"version":"go%s","files":[{"filename":"go%s.linux-amd64.tar.gz","sha256":"%s"}]}]' \
+                "$GO_FIXTURE_LATEST" "$GO_FIXTURE_LATEST" "$GO_FIXTURE_SHA" > "$out"
+        else
+            touch "$TEST_TMPDIR/downloaded"
+            cp "$GO_FIXTURE_TARBALL" "$out"
+        fi
+    }
+}
+
+# An SDK already in place: version, and whether it carries the toolkit's marker.
+_go_installed() {
+    _fake_go_sdk "$GO_SDK" "$1"
+    printf 'kept\n' > "$GO_SDK/sentinel"
+    [[ "${2:-marked}" == marked ]] && : > "$GO_SDK/.cybersec-toolkit-installed"
+    return 0
+}
+
+@test "ensure_go installs the SDK with its provenance marker and leaves no staging directory" {
+    _go_fixture
+
+    run ensure_go
+    assert_success
+    assert_output --partial "Go 1.30.2 installed"
+    [[ -x "$GO_SDK/bin/go" && -f "$GO_SDK/.cybersec-toolkit-installed" ]]
+    [[ -z "$(find "$_GO_INSTALL_PARENT" -maxdepth 1 -name '.go-stage.*')" ]]
+}
+
+@test "ensure_go reuses the toolkit's SDK when no newer release exists" {
+    _go_fixture
+    _go_installed 1.30.2
+
+    run ensure_go
+    assert_success
+    assert_output --partial "Go 1.30.2 available"
+    [[ ! -e "$TEST_TMPDIR/downloaded" && -f "$GO_SDK/sentinel" ]]
+}
+
+@test "ensure_go replaces the toolkit's SDK with a newer patch release" {
+    _go_fixture
+    _go_installed 1.30.1
+
+    run ensure_go
+    assert_success
+    [[ "$("$GO_SDK/bin/go" version)" == *go1.30.2* ]]
+    [[ ! -e "$GO_SDK/sentinel" && -f "$GO_SDK/.cybersec-toolkit-installed" ]]
+    [[ -z "$(find "$_GO_INSTALL_PARENT" -maxdepth 1 -name '.go-stage.*')" ]]
+}
+
+@test "ensure_go keeps the current SDK when the new tarball does not extract" {
+    _go_fixture
+    _go_installed 1.30.1
+    printf 'not a tarball\n' > "$TEST_TMPDIR/bad.tar.gz"
+    GO_FIXTURE_TARBALL="$TEST_TMPDIR/bad.tar.gz"
+    GO_FIXTURE_SHA=$(sha256sum "$GO_FIXTURE_TARBALL" | awk '{print $1}')
+
+    run ensure_go
+    assert_failure
+    assert_output --partial "Failed to extract Go tarball"
+    [[ "$("$GO_SDK/bin/go" version)" == *go1.30.1* && -f "$GO_SDK/sentinel" ]]
+    [[ -z "$(find "$_GO_INSTALL_PARENT" -maxdepth 1 -name '.go-stage.*')" ]]
+}
+
+@test "ensure_go does not replace a newer SDK with the offline fallback" {
+    _go_fixture
+    _go_installed 99.0.0
+    GO_FIXTURE_OFFLINE=true
+
+    run ensure_go
+    assert_success
+    assert_output --partial "Go 99.0.0 available"
+    [[ ! -e "$TEST_TMPDIR/downloaded" && -f "$GO_SDK/sentinel" ]]
+}
+
+@test "ensure_go never replaces an SDK without the toolkit's marker" {
+    _go_fixture
+    _go_installed 1.10.0 unmarked
+
+    run ensure_go
+    assert_failure
+    assert_output --partial "this toolkit did not install"
+    [[ ! -e "$TEST_TMPDIR/downloaded" && -f "$GO_SDK/sentinel" ]]
 }
 
 # fixup_package_names — apt (no-op)
@@ -544,7 +668,8 @@ PY
     track_version "sqlmap" "pipx" "1.8.2"
 
     [[ -f "$VERSION_FILE" ]]
-    # Header line
+    # Header lines
+    [[ "$(head -1 "$VERSION_FILE")" == "# schema: 2" ]]
     grep -q "^# tool|method|version|last_updated" "$VERSION_FILE"
     # Data line: tool|method|version|timestamp
     grep -q "^sqlmap|pipx|1.8.2|" "$VERSION_FILE"
@@ -912,6 +1037,54 @@ _run_c2_aggregation() {
     [[ "${_ALL_BINARY[*]}" != *"sliver-server"* ]]
 }
 
+@test "C2 aggregation: wireless phishing frameworks follow INCLUDE_C2" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/wireless.sh"
+    declare -a _ALL_GIT _ALL_BINARY
+    local name
+
+    export INCLUDE_C2=false
+    _run_c2_aggregation wireless
+    [[ "${_ALL_GIT[*]}" == *"airgeddon="* ]]
+    for name in fluxion wifiphisher eaphammer wifipumpkin3; do
+        [[ " ${_ALL_GIT[*]}" != *" $name="* ]] || { echo "$name installs without INCLUDE_C2"; return 1; }
+    done
+
+    export INCLUDE_C2=true
+    _run_c2_aggregation wireless
+    for name in fluxion wifiphisher eaphammer wifipumpkin3; do
+        [[ " ${_ALL_GIT[*]}" == *" $name="* ]] || { echo "$name missing with INCLUDE_C2"; return 1; }
+    done
+}
+
+# Loads a module with every installer stubbed, so its install function only prints its Docker pulls.
+_stub_module_installers() {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/modules/$1.sh"
+    install_apt_batch() { :; }; install_pipx_batch() { :; }; install_go_batch() { :; }
+    install_cargo_batch() { :; }; install_gem_batch() { :; }; install_git_batch() { :; }
+    install_binary_releases() { :; }
+    log_info() { :; }; log_warn() { :; }
+    docker_pull() { echo "PULL $1"; }
+    export SKIP_SOURCE=true
+}
+
+@test "BeEF is pulled only when Docker and INCLUDE_C2 are both enabled" {
+    _stub_module_installers web
+
+    ENABLE_DOCKER=true INCLUDE_C2=false run install_module_web
+    assert_success
+    refute_output --partial "beefproject/beef"
+
+    ENABLE_DOCKER=false INCLUDE_C2=true run install_module_web
+    assert_success
+    refute_output --partial "beefproject/beef"
+
+    ENABLE_DOCKER=true INCLUDE_C2=true run install_module_web
+    assert_success
+    assert_output --partial "PULL beefproject/beef"
+}
+
 # install provenance ("existing" vs installed)
 # The uninstall paths skip anything recorded as "existing". Covers all five
 # package managers via pkg_is_installed.
@@ -1189,6 +1362,66 @@ _run_c2_aggregation() {
     grep -q "^ourtool|source|HEAD|" "$VERSION_FILE"
 }
 
+# Install-record schema (which records may drive a system-package removal)
+
+_schema_fixture() {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export SCRIPT_DIR="$TEST_TMPDIR"
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    mkdir -p "$TEST_TMPDIR/.install_sessions"
+    printf '# tool|method|version|last_updated\nnmap|apt|system|x\n' > "$VERSION_FILE"
+}
+
+@test "_versions_schema: a record without a marker is schema 1 unless every session vouches for it" {
+    _schema_fixture
+    [[ "$(_versions_schema)" == 1 ]]
+
+    printf '# Session: a\n# Schema: 2\n' > "$TEST_TMPDIR/.install_sessions/a.manifest"
+    [[ "$(_versions_schema)" == 2 ]]
+
+    # A rolled-back session from before the marker existed still counts as history.
+    printf '# Session: b\n# Version: 1.0.0\n' > "$TEST_TMPDIR/.install_sessions/b.rolled_back"
+    [[ "$(_versions_schema)" == 1 ]]
+}
+
+@test "_versions_schema: a marker in the record decides over the sessions" {
+    _schema_fixture
+    printf '# Session: a\n# Schema: 2\n' > "$TEST_TMPDIR/.install_sessions/a.manifest"
+    printf '# schema: 1\n# tool|method|version|last_updated\nnmap|apt|system|x\n' > "$VERSION_FILE"
+    [[ "$(_versions_schema)" == 1 ]]
+
+    rm -f "$TEST_TMPDIR/.install_sessions/a.manifest"
+    printf '# schema: 2\n# tool|method|version|last_updated\nnmap|apt|system|x\n' > "$VERSION_FILE"
+    [[ "$(_versions_schema)" == 2 ]]
+}
+
+@test "_versions_stamp_schema: the verdict is written once and later sessions cannot change it" {
+    _schema_fixture
+
+    _versions_stamp_schema
+    [[ "$(head -1 "$VERSION_FILE")" == "# schema: 1" ]]
+    grep -qx 'nmap|apt|system|x' "$VERSION_FILE"
+
+    # The session this run then starts is schema 2; it must not upgrade the old rows.
+    printf '# Session: a\n# Schema: 2\n' > "$TEST_TMPDIR/.install_sessions/a.manifest"
+    _versions_stamp_schema
+    [[ "$(_versions_schema)" == 1 ]]
+    [[ "$(grep -c '^# schema:' "$VERSION_FILE")" -eq 1 ]]
+}
+
+@test "_versions_stamp_schema: a record every session vouches for is stamped schema 2" {
+    _schema_fixture
+    printf '# Session: a\n# Schema: 2\n' > "$TEST_TMPDIR/.install_sessions/a.manifest"
+
+    _versions_stamp_schema
+    [[ "$(head -1 "$VERSION_FILE")" == "# schema: 2" ]]
+
+    track_version "sqlmap" "pipx" "latest"
+    [[ "$(head -1 "$VERSION_FILE")" == "# schema: 2" ]]
+    grep -qx 'nmap|apt|system|x' "$VERSION_FILE"
+}
+
 @test "install summary counts exclude pre-existing tools" {
     source_libs --installers debian apt
     make_test_tmpdir
@@ -1424,7 +1657,7 @@ _run_c2_aggregation() {
     [[ -f "$TEST_TMPDIR/home/.steampipe/config/aws.spc" ]]  # connection config kept
 }
 
-@test "zip release assets install without archive group/world-write bits (SI-5)" {
+@test "zip release assets install without archive group/world-write bits" {
     command -v unzip >/dev/null || skip "needs unzip"
     source_libs --installers debian apt
     make_test_tmpdir
@@ -1715,6 +1948,88 @@ PYTHON
         assert_output --partial 'Preserving destination not owned by the toolkit'
     done
     [[ ! -e "$TEST_TMPDIR/network" ]]
+}
+
+@test "a release directory the toolkit did not create is preserved without the exclusive flag" {
+    _binary_release_fixture
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    mkdir -p "$GITHUB_TOOL_DIR/fixture-plain" "$PIPX_BIN_DIR"
+    printf 'synthetic user research\n' > "$GITHUB_TOOL_DIR/fixture-plain/notes.txt"
+    local mode
+    for mode in install update; do
+        run _download_github_release_impl owner/repo fixture-plain pattern "$GITHUB_TOOL_DIR/fixture-plain" "$mode"
+        assert_failure
+        assert_output --partial 'Preserving destination not owned by the toolkit'
+    done
+    [[ ! -e "$TEST_TMPDIR/network" ]]
+    [[ "$(cat "$GITHUB_TOOL_DIR/fixture-plain/notes.txt")" == 'synthetic user research' ]]
+
+    # The user's own file under the exposed name is kept as well.
+    rm -rf "$GITHUB_TOOL_DIR/fixture-plain"
+    printf 'synthetic user file\n' > "$PIPX_BIN_DIR/fixture-plain"
+    run _download_github_release_impl owner/repo fixture-plain pattern "$GITHUB_TOOL_DIR/fixture-plain" install
+    assert_failure
+    assert_output --partial 'Preserving existing executable'
+    [[ ! -e "$TEST_TMPDIR/network" ]]
+
+    # A tree the install record lists as installed by the toolkit is updated.
+    rm -f "$PIPX_BIN_DIR/fixture-plain"
+    mkdir -p "$GITHUB_TOOL_DIR/fixture-plain"
+    printf 'fixture-plain|binary|v1.2.3|2026-10-13\n' > "$VERSION_FILE"
+    run _download_github_release_impl owner/repo fixture-plain pattern "$GITHUB_TOOL_DIR/fixture-plain" update
+    refute_output --partial 'Preserving'
+    [[ -e "$TEST_TMPDIR/network" ]]
+}
+
+@test "a directory shared by several releases is not claimed by one install record" {
+    _binary_release_fixture
+    _gh_api_get() { touch "$TEST_TMPDIR/network"; return 1; }
+    BINARY_RELEASES_FIXTURE=(
+        "owner/a|fixture-jar-a|a\\.jar$|$GITHUB_TOOL_DIR/shared-jars"
+        "owner/b|fixture-jar-b|b\\.jar$|$GITHUB_TOOL_DIR/shared-jars"
+    )
+    mkdir -p "$GITHUB_TOOL_DIR/shared-jars" "$GITHUB_TOOL_DIR/fixture-solo"
+
+    run _release_dir_shared "$GITHUB_TOOL_DIR/shared-jars"
+    assert_success
+    run _release_dir_shared "$GITHUB_TOOL_DIR/fixture-solo"
+    assert_failure
+
+    run _download_github_release_impl owner/a fixture-jar-a 'a\.jar$' "$GITHUB_TOOL_DIR/shared-jars" install
+    refute_output --partial 'Preserving'
+    [[ -e "$TEST_TMPDIR/network" ]]
+}
+
+@test "a failed release install drops the destination it created and keeps one it did not" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions" FAST_MODE=true SYS_ARCH=amd64
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$TEST_TMPDIR/src" "$PIPX_BIN_DIR"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/src/zz-fake-tool"
+    tar -czf "$TEST_TMPDIR/fixture.tar.gz" -C "$TEST_TMPDIR/src" .
+    _gh_api_get() {
+        printf '{"tag_name":"v1","assets":[{"name":"zz-fake-tool_linux_amd64.tar.gz","browser_download_url":"https://example.invalid/zz-fake-tool_linux_amd64.tar.gz"}]}'
+    }
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        cp "$TEST_TMPDIR/fixture.tar.gz" "$out"
+    }
+    # The release cannot be exposed, so the install fails after its files were copied.
+    ln() { return 1; }
+    local dest="$TEST_TMPDIR/opt/zz-fake-tool"
+
+    run _download_github_release_impl example/zz-fake-tool zz-fake-tool 'linux_amd64\.tar\.gz$' "$dest" install
+    assert_failure
+    assert_output --partial 'Failed to expose expected binary'
+    [[ ! -e "$dest" ]]
+
+    mkdir -p "$dest"
+    printf 'zz-fake-tool|binary|v0|2026-10-13\n' > "$VERSION_FILE"
+    run _download_github_release_impl example/zz-fake-tool zz-fake-tool 'linux_amd64\.tar\.gz$' "$dest" update
+    assert_failure
+    [[ -d "$dest" ]]
 }
 
 @test "exclusive release directories refuse a symlink even with a toolkit version record" {
@@ -2229,4 +2544,37 @@ EOF
         esac
         rm "$destination"
     done
+}
+
+@test "_cargo_install builds with the crate's published lockfile" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _as_builder() { echo "$1" >> "$TEST_TMPDIR/calls"; }
+
+    run _cargo_install cargo "'feroxbuster'"
+    assert_success
+    run cat "$TEST_TMPDIR/calls"
+    assert_output "cargo install --locked 'feroxbuster'"
+}
+
+@test "_cargo_install falls back to a fresh resolve when the lockfile build fails" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _as_builder() {
+        echo "$1" >> "$TEST_TMPDIR/calls"
+        [[ "$1" != *--locked* ]]
+    }
+
+    run _cargo_install cargo "'oldcrate'"
+    assert_success
+    run cat "$TEST_TMPDIR/calls"
+    assert_line --index 0 "cargo install --locked 'oldcrate'"
+    assert_line --index 1 "cargo install 'oldcrate'"
+}
+
+@test "_cargo_install reports failure when both builds fail" {
+    source_libs --installers debian apt
+    _as_builder() { return 1; }
+    run _cargo_install cargo "'broken'"
+    assert_failure
 }

@@ -8,7 +8,7 @@ NET_PACKAGES=(
     iftop iptraf-ng whois dnsutils traceroute
     netcat-openbsd socat p0f ncrack sslscan nbtscan
     onesixtyone snmp smbclient iodine redsocks stunnel4 zmap
-    wireshark-common tshark sslsplit
+    wireshark-common tshark sslsplit ssldump
     tor proxychains4 macchanger
     fping ngrep dns2tcp tcpflow tcpreplay
     netsniff-ng arping
@@ -34,6 +34,8 @@ NET_GIT=(
 NET_CARGO=(rustscan)
 NET_GO_BINS=(chisel)
 NET_GIT_NAMES=(bettercap dnscat2 nipe PRET pwnat dnschef yersinia)
+
+declare -gA NET_PACKAGE_BIN_NAMES=([ssldump]=ssldump)
 
 install_module_networking() {
     install_apt_batch "Networking - Packages" "${NET_PACKAGES[@]}"

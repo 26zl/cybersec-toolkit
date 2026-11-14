@@ -32,6 +32,37 @@ mitre_attack:
 - T1059
 - T1078
 - T1021
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - positioning
+  - initial-access
+  techniques:
+  - id: T1555
+    name: Credentials from Password Stores
+    tactic: reconnaissance
+    source: attack
+  - id: T1555.003
+    name: 'Credentials from Password Stores: Credentials from Web Browsers'
+    tactic: reconnaissance
+    source: attack
+  - id: T1555.005
+    name: 'Credentials from Password Stores: Password Managers'
+    tactic: reconnaissance
+    source: attack
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
 ---
 # Performing Credential Access with LaZagne
 

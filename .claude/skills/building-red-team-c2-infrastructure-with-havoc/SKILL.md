@@ -1,7 +1,10 @@
 ---
 name: building-red-team-c2-infrastructure-with-havoc
-description: Deploy and configure the Havoc C2 framework with teamserver, HTTPS listeners,
-  redirectors, and Demon agents for authorized red team operations.
+description: Deploy and configure the Havoc C2 framework (teamserver, HTTPS/HTTP/SMB
+  listeners, Nginx redirectors, and Demon agents) with malleable traffic profiles and
+  OPSEC-hardened infrastructure for authorized red team operations. Use when standing
+  up or hardening Havoc C2 infrastructure for a written, authorized adversary emulation
+  engagement.
 domain: cybersecurity
 subdomain: red-teaming
 tags:

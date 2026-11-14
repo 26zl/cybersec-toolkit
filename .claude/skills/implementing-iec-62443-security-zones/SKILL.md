@@ -1,11 +1,11 @@
 ---
 name: implementing-iec-62443-security-zones
-description: 'This skill covers designing and implementing security zones and conduits
-  for industrial automation and control systems (IACS) per IEC 62443-3-2. It addresses
-  zone partitioning based on risk assessment, assigning Security Level targets (SL-T),
-  designing conduit security controls, implementing microsegmentation with industrial
-  firewalls, and validating zone architecture through traffic analysis and penetration
-  testing against the Purdue Reference Model.
+description: 'Designs security zones and conduits for industrial control systems
+  (IACS) per IEC 62443-3-2 — risk-based zone partitioning, Security Level target
+  (SL-T) assignment, conduit controls, and firewall microsegmentation validated
+  against the Purdue Reference Model. Use when designing OT network zones for a
+  new facility, retrofitting zones into a flat OT network, or upgrading VLAN-only
+  segmentation for IEC 62443-3-2 compliance.
 
   '
 domain: cybersecurity

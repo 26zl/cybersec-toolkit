@@ -1,9 +1,10 @@
 ---
 name: implementing-cloud-security-posture-management
-description: 'Implementing Cloud Security Posture Management (CSPM) to continuously
-  monitor multi-cloud environments for misconfigurations, compliance violations, and
-  security risks using Prowler, ScoutSuite, AWS Security Hub, Azure Defender, and
-  GCP Security Command Center.
+description: 'Continuously monitor multi-cloud environments (AWS, Azure, GCP) for
+  misconfigurations, compliance violations, and security risks using Prowler, ScoutSuite,
+  AWS Security Hub, Microsoft Defender for Cloud, and GCP Security Command Center.
+  Use for cross-cloud posture monitoring, CIS/SOC 2/PCI DSS compliance, or drift-detection
+  workflows; not for runtime workload protection or application security testing.
 
   '
 domain: cybersecurity

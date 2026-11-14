@@ -28,6 +28,38 @@ mitre_attack:
 - T1534
 - T1036
 - T1027
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - initial-access
+  - stealth
+  - positioning
+  techniques:
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: T1672
+    name: Email Spoofing
+    tactic: stealth
+    source: attack
+  - id: F1032
+    name: Impersonate Official
+    tactic: initial-access
+    source: f3
+  - id: F1029
+    name: Gather Customer Information
+    tactic: reconnaissance
+    source: f3
+  - id: F1005.006
+    name: 'Account Manipulation: Change of Payment Details'
+    tactic: positioning
+    source: f3
 ---
 # Implementing Proofpoint Email Security Gateway
 

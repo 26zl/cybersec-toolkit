@@ -387,18 +387,21 @@ def check_advisor_tool_names() -> None:
 def check_c2_tools() -> None:
     """C2_TOOLS (tools_db.py) must match the INCLUDE_C2-gated bash arrays.
 
-    Sources: modules/misc.sh MISC_C2_GIT_NAMES + modules/pwn.sh PWN_C2_GIT_NAMES
-    (git) + lib/installers.sh BINARY_RELEASES_MISC_C2 (binary, 2nd |-field) + the
-    docker-only 'empire'.
+    Sources: modules/misc.sh MISC_C2_GIT_NAMES + modules/pwn.sh PWN_C2_GIT_NAMES +
+    modules/wireless.sh WIRELESS_C2_GIT_NAMES (git) + lib/installers.sh
+    BINARY_RELEASES_MISC_C2 (binary, 2nd |-field) + the docker-only 'empire' and 'beef'.
     """
     from mcp_server.tools_db import C2_TOOLS as py_c2
 
     misc_text = (ROOT / "modules" / "misc.sh").read_text(encoding="utf-8")
     pwn_text = (ROOT / "modules" / "pwn.sh").read_text(encoding="utf-8")
+    wireless_text = (ROOT / "modules" / "wireless.sh").read_text(encoding="utf-8")
+    web_text = (ROOT / "modules" / "web.sh").read_text(encoding="utf-8")
     inst_text = (ROOT / "lib" / "installers.sh").read_text(encoding="utf-8")
 
     git_names = parse_bash_unquoted_array(misc_text, "MISC_C2_GIT_NAMES")
     pwn_c2_names = parse_bash_unquoted_array(pwn_text, "PWN_C2_GIT_NAMES")
+    wireless_c2_names = parse_bash_unquoted_array(wireless_text, "WIRELESS_C2_GIT_NAMES")
     bin_entries = parse_bash_indexed_array(inst_text, "BINARY_RELEASES_MISC_C2")
     bin_names = [e.split("|")[1] for e in bin_entries if len(e.split("|")) >= 2]
 
@@ -406,11 +409,24 @@ def check_c2_tools() -> None:
         errors.append("C2_TOOLS: could not parse MISC_C2_GIT_NAMES from modules/misc.sh")
     if not pwn_c2_names:
         errors.append("C2_TOOLS: could not parse PWN_C2_GIT_NAMES from modules/pwn.sh")
+    if not wireless_c2_names:
+        errors.append("C2_TOOLS: could not parse WIRELESS_C2_GIT_NAMES from modules/wireless.sh")
     if not bin_names:
         errors.append("C2_TOOLS: could not parse BINARY_RELEASES_MISC_C2 from lib/installers.sh")
 
-    # 'empire' is the docker-only C2 framework gated in install_module_misc (no array).
-    bash_c2 = set(git_names) | set(pwn_c2_names) | set(bin_names) | {"empire"}
+    # The docker-only frameworks have no array; each pull sits inside an INCLUDE_C2 branch.
+    docker_c2 = {"empire": (misc_text, "bcsecurity/empire"), "beef": (web_text, "beefproject/beef")}
+    for name, (text, image) in docker_c2.items():
+        gated = re.search(
+            r'if \[\[ "\$\{INCLUDE_C2:-false\}" == "true" \]\]; then\n(?:(?!\n\s*(?:fi|else)\b).)*?docker_pull "'
+            + re.escape(image),
+            text,
+            re.DOTALL,
+        )
+        if not gated:
+            errors.append(f"C2_TOOLS: the docker_pull of '{name}' ({image}) is not inside an INCLUDE_C2 branch")
+
+    bash_c2 = set(git_names) | set(pwn_c2_names) | set(wireless_c2_names) | set(bin_names) | set(docker_c2)
 
     for name in bash_c2 - py_c2:
         errors.append(f"C2_TOOLS: '{name}' gated in bash but missing from C2_TOOLS (tools_db.py)")
@@ -583,6 +599,50 @@ def check_audit_key_env() -> None:
     print(f"AUDIT_KEY_ENV: {len(found)} sources checked")
 
 
+def check_packaged_modules() -> None:
+    """Every server module is listed for the wheel, or the installed server cannot import it.
+
+    The tests run from the source tree and do not notice a missing entry; the
+    sandbox image installs the wheel and fails at start.
+    """
+    text = (ROOT / "mcp_server" / "pyproject.toml").read_text(encoding="utf-8")
+    modules = sorted(path.name for path in (ROOT / "mcp_server").glob("*.py"))
+    for table in ("force-include", "force-include-editable"):
+        header = r"^\[tool\.hatch\.build\.targets\.wheel\." + table + r"\]\n"
+        match = re.search(header + r"(.*?)(?=^\[|\Z)", text, re.M | re.S)
+        if not match:
+            errors.append(f"PACKAGED_MODULES: [{table}] not found in mcp_server/pyproject.toml")
+            continue
+        listed = set(re.findall(r'^"([^"]+\.py)"\s*=', match.group(1), re.M))
+        for name in modules:
+            if name not in listed:
+                errors.append(f"PACKAGED_MODULES: mcp_server/{name} is missing from [{table}] in pyproject.toml")
+        for name in sorted(listed - set(modules)):
+            errors.append(f"PACKAGED_MODULES: [{table}] lists {name}, which does not exist")
+    print(f"PACKAGED_MODULES: {len(modules)} modules checked against 2 wheel tables")
+
+
+def check_audit_forward_names() -> None:
+    """Server and launcher forward audit records under one variable name and one syslog tag."""
+    sources = {
+        "mcp_server/audit.py": ROOT / "mcp_server" / "audit.py",
+        "sandbox/audit-sink.mjs": ROOT / "sandbox" / "audit-sink.mjs",
+    }
+    for constant in ("AUDIT_FORWARD_ENV", "AUDIT_FORWARD_TAG"):
+        pattern = constant + r"""\s*=\s*(['"])(.*?)\1"""
+        found = {}
+        for label, path in sources.items():
+            match = re.search(pattern, path.read_text(encoding="utf-8"))
+            if not match:
+                errors.append(f"{constant}: not found in {label}")
+                break
+            found[label] = match.group(2)
+        else:
+            if len(set(found.values())) != 1:
+                errors.append(f"{constant}: differs between {' and '.join(f'{k}={v!r}' for k, v in found.items())}")
+        print(f"{constant}: {len(found)} sources checked")
+
+
 def main() -> int:
     from _cli import check_args
 
@@ -603,6 +663,8 @@ def main() -> int:
     check_bin_name_maps()
     check_audit_stream_prefix()
     check_audit_key_env()
+    check_audit_forward_names()
+    check_packaged_modules()
 
     print()
     if errors:

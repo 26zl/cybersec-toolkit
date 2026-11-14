@@ -1,11 +1,12 @@
 ---
 name: writeup-template
-description: Use after completing any substantive security workflow with this project, including CTF, bug bounty, CVE validation, guided MCP assessment, DFIR, pentest/recon, or troubleshooting. Generates a writeup at writeups/<category>/<descriptive-case-name>.md following the project's mandatory structure. Triggers on "write writeup", "document this challenge", "write up the solve", "document this finding", or right after a flag/finding/result is confirmed.
+description: Use after completing any substantive security workflow with this project, including CTF, bug bounty, CVE validation, guided MCP assessment, DFIR or pentest/recon. Not for work on this repository itself (code review, tool inventories, troubleshooting the toolkit). Generates a writeup at writeups/<category>/<descriptive-case-name>.md following the project's mandatory structure. Triggers on "write writeup", "document this challenge", "write up the solve", "document this finding", or right after a flag/finding/result is confirmed.
 ---
 
 # Generate a security workflow writeup
 
-This is **MANDATORY** after every substantive security workflow per `AGENTS.md`.
+This is **MANDATORY** after every substantive security workflow on a target per `AGENTS.md`.
+Work on this repository itself gets no writeup.
 Writeups MUST pass markdownlint.
 
 ## File location
@@ -20,6 +21,7 @@ Examples:
 - `writeups/bug-bounty/example-idor.md`
 - `writeups/cve/CVE-2024-xxxx-reproduction.md`
 - `writeups/dfir/suspicious-powershell-investigation.md`
+- `writeups/pentest/internal-lab-ad-assessment.md`
 - `writeups/guided-assessment/example-web-recon.md`
 
 If the directory doesn't exist, create it.

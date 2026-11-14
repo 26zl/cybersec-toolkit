@@ -23,6 +23,28 @@ mitre_attack:
 - T1489
 - T1566
 - T1059.001
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - monetization
+  techniques:
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: T1110
+    name: Brute Force
+    tactic: initial-access
+    source: attack
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1047
+    name: Transfer of funds
+    tactic: monetization
+    source: f3
 version: '1.0'
 author: mahipal
 license: Apache-2.0

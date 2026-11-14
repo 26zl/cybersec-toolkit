@@ -670,6 +670,11 @@ if should_verify "wireless"; then
         check_pipx_arr "${WIRELESS_PIPX[@]}"
         log_info "Wireless (Git):"
         check_git_repos "${WIRELESS_GIT_NAMES[@]}"
+        # Phishing frameworks install only with INCLUDE_C2 (redteam/full); --installed-only checks the tracked ones regardless.
+        if [[ "${INCLUDE_C2:-false}" == "true" || "$INSTALLED_ONLY" == "true" ]]; then
+            log_info "Wireless (Phishing — INCLUDE_C2):"
+            check_git_repos "${WIRELESS_C2_GIT_NAMES[@]}"
+        fi
         log_info "Wireless (Binary):"
         check_binary_array BINARY_RELEASES_WIRELESS
     fi

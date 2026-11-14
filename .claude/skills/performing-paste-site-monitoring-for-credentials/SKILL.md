@@ -27,6 +27,37 @@ mitre_attack:
 - T1593
 - T1589
 - T1003
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - resource-development
+  - initial-access
+  techniques:
+  - id: T1593
+    name: Search Open Websites/Domains
+    tactic: reconnaissance
+    source: attack
+  - id: T1593.002
+    name: 'Search Open Websites/Domains: Search Engines'
+    tactic: reconnaissance
+    source: attack
+  - id: T1650
+    name: Acquire Access
+    tactic: resource-development
+    source: attack
+  - id: T1555.003
+    name: 'Credentials from Password Stores: Credentials from Web Browsers'
+    tactic: reconnaissance
+    source: attack
+  - id: T1110.004
+    name: 'Brute Force:  Credential Stuffing'
+    tactic: initial-access
+    source: attack
+  - id: F1029
+    name: Gather Customer Information
+    tactic: reconnaissance
+    source: f3
 ---
 # Performing Paste Site Monitoring for Credentials
 

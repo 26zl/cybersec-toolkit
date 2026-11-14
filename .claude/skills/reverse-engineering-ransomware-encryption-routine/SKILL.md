@@ -34,6 +34,24 @@ mitre_attack:
 - T1140
 - T1497
 - T1486
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - monetization
+  - positioning
+  techniques:
+  - id: F1018
+    name: Convert to Cryptocurrency
+    tactic: monetization
+    source: f3
+  - id: F1047
+    name: Transfer of funds
+    tactic: monetization
+    source: f3
+  - id: T1219
+    name: Remote Access Tools
+    tactic: positioning
+    source: attack
 ---
 # Reverse Engineering Ransomware Encryption Routine
 

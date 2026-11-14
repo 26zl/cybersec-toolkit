@@ -103,6 +103,34 @@ engagement's rules of engagement or a client contract forbid sharing target
 data with a third party, run the model locally (for example Ollama or LM Studio
 behind an MCP-capable client) so the output never leaves the host.
 
+A gateway or model router adds one more party: both the gateway and the model
+provider it forwards to receive every tool result. Check the terms of each before
+sending engagement data through one.
+
+### Checking a model before relying on it
+
+Whether a model can drive the toolkit depends on the model and its runtime: it
+must accept tool definitions and answer with well-formed tool calls.
+`scripts/check_model_tools.py` tests exactly that against any endpoint that speaks
+the OpenAI chat-completions format. It sends the server's real tool definitions,
+asks for one harmless call (`list_profiles`), returns the result, and checks that
+the answer uses it:
+
+```bash
+# a local runtime
+uv run --directory mcp_server python ../scripts/check_model_tools.py \
+  --base-url http://localhost:11434/v1 --model <model>
+
+# a hosted provider or gateway; the key is read from the named variable
+uv run --directory mcp_server python ../scripts/check_model_tools.py \
+  --base-url https://api.example.com/v1 --model <model> --api-key-env MY_API_KEY
+```
+
+Only the tool definitions and a fixed question are sent, so no target data is
+involved. A pass shows the model can call the tools; it does not show that the
+model plus a particular client fit in the model's context window (see
+[Troubleshooting](#local-model-context-window-too-small-for-the-tool-surface)).
+
 ## OpenCode
 
 ### Configuration
@@ -157,7 +185,14 @@ Select DeepSeek in `/connect`, enter the user's own API key, and then choose
 the desired DeepSeek model with `/models`. Credentials remain in OpenCode's
 user credential store rather than the repository configuration.
 
-**Other OpenAI-compatible providers:**
+**Other hosted providers and gateways:** `/connect` lists every provider
+OpenCode knows, model routers such as OpenRouter and OrcaRouter among them. Pick
+one, enter your own key, and choose a model with `/models`, as for DeepSeek
+above. The repository prefers no provider; these are examples of what the client
+offers.
+
+**Any other OpenAI-compatible endpoint** (a provider without a preset, a
+self-hosted gateway, or a local runtime):
 
 ```jsonc
 {
@@ -172,6 +207,21 @@ user credential store rather than the repository configuration.
   "model": "openai-compatible/model-name"
 }
 ```
+
+Base URLs of some common endpoints, each at its default port or address:
+
+| Endpoint | Base URL |
+| --- | --- |
+| Ollama (local) | `http://localhost:11434/v1` |
+| LM Studio (local) | `http://localhost:1234/v1` |
+| llama.cpp server (local) | `http://localhost:8080/v1` |
+| vLLM (self-hosted) | `http://localhost:8000/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| OrcaRouter | `https://api.orcarouter.ai/v1` |
+
+Model names and capabilities differ per endpoint and change often; take them
+from the endpoint's own model list, and run the
+[model check](#checking-a-model-before-relying-on-it) on the one you choose.
 
 ### Skills
 
@@ -548,8 +598,10 @@ Run `scripts/sync-skills.sh` to generate the mirror from `.claude/skills/`.
 
 ### Local model lacks sufficient tool-calling capability
 
-Smaller local models may not reliably call MCP tools. Use a model with
-proven tool-calling ability or a cloud provider model.
+Smaller local models may not reliably call MCP tools. Run the
+[model check](#checking-a-model-before-relying-on-it) to see whether a given
+model answers with well-formed tool calls, and use a model that passes or a
+hosted model.
 
 ### Local model context window too small for the tool surface
 
@@ -558,7 +610,9 @@ every turn, and the tool descriptions are deliberately detailed so the model
 picks the right tool and arguments. That preamble is large before the user's
 first message: measured at about 16K tokens (OpenCode with Ollama), 44K
 (Codex), and 136K (OpenCode with a custom `openai-compatible` provider, which
-it does not compact). A model served with a 32K window rejects the request
+it does not compact). The server's own share is small: the 15 tool definitions
+are about 16 KiB, roughly 4K tokens; the rest is the client's system prompt and
+built-in tools. A model served with a 32K window rejects the request
 (`context_length_exceeded`) or, on runtimes that truncate silently, drops the
 start of the prompt and loses the tool definitions.
 

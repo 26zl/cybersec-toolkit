@@ -1,8 +1,6 @@
 ---
 name: detecting-dns-exfiltration-with-dns-query-analysis
-description: Detect data exfiltration through DNS tunneling by analyzing query entropy,
-  subdomain length, query volume, TXT record abuse, and response payload sizes using
-  passive DNS monitoring.
+description: Detect data exfiltration via DNS tunneling (tools like iodine, dnscat2, dns2tcp) by analyzing query entropy, subdomain length, query volume to single domains, TXT/CNAME/NULL record abuse, and oversized response payloads using passive DNS monitoring and statistical/ML methods. Use when hunting for covert DNS-based data exfiltration or building a passive DNS anomaly detection capability.
 domain: cybersecurity
 subdomain: network-security
 tags:

@@ -75,9 +75,16 @@ install_module_web() {
     # Binary releases (skipped on Termux — Linux/glibc binaries)
     install_binary_releases "${BINARY_RELEASES_WEB[@]}"
 
-    # Docker (optional) — BeEF is in ALL_DOCKER_IMAGES (centralized registry)
+    # Docker (optional) — BeEF is in ALL_DOCKER_IMAGES (centralized registry). It hooks
+    # and commands browsers, so it is gated behind INCLUDE_C2 like the frameworks in modules/misc.sh.
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
-        docker_pull "beefproject/beef" "BeEF" || true
+        if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+            docker_pull "beefproject/beef" "BeEF" || true
+        else
+            log_info "Skipping BeEF (INCLUDE_C2 disabled — use --include-c2 or the redteam/full profile)"
+        fi
+    elif [[ "${INCLUDE_C2:-false}" == "true" ]]; then
+        log_warn "BeEF requires --enable-docker. Skipping."
     fi
 
     # Special installs (Linux/GUI only — not available on Termux)

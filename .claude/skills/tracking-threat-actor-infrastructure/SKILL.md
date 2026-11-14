@@ -1,8 +1,11 @@
 ---
 name: tracking-threat-actor-infrastructure
-description: Threat actor infrastructure tracking involves monitoring and mapping
-  adversary-controlled assets including command-and-control (C2) servers, phishing
-  domains, exploit kit hosts, bulletproof hosting, a
+description: Discovers and maps adversary-controlled infrastructure (C2 servers,
+  phishing domains, exploit-kit hosts, bulletproof hosting) by pivoting across passive
+  DNS, certificate transparency logs, Shodan/Censys scans, WHOIS records, and network
+  fingerprints (JARM/JA3S). Use when tracking threat actor infrastructure, expanding
+  a known IOC into related assets, or producing STIX-based threat intelligence during
+  a CTI investigation.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:
@@ -29,6 +32,36 @@ mitre_attack:
 - T1593
 - T1589
 - T1566
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - resource-development
+  techniques:
+  - id: T1593
+    name: Search Open Websites/Domains
+    tactic: reconnaissance
+    source: attack
+  - id: T1583.001
+    name: 'Acquire Infrastructure: Domains'
+    tactic: resource-development
+    source: attack
+  - id: T1583.008
+    name: 'Acquire Infrastructure: Malvertising'
+    tactic: resource-development
+    source: attack
+  - id: T1583.003
+    name: 'Acquire Infrastructure: Virtual Private Network or Server'
+    tactic: resource-development
+    source: attack
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
+  - id: T1608.006
+    name: 'Stage Capabilities: SEO Poisoning'
+    tactic: resource-development
+    source: attack
 ---
 # Tracking Threat Actor Infrastructure
 

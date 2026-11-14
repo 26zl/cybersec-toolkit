@@ -6,7 +6,7 @@ None — this is the first phase.
 
 ## Instructions
 
-Spawn agent `0-preflight` via `Task` with:
+Launch the [0-preflight role](../../../agents/0-preflight.md) using the [Execution Contract](../SKILL.md#execution-contract) with:
 
 | Parameter | Value |
 |---|---|

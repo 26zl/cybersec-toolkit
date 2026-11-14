@@ -14,6 +14,7 @@ import logging
 import logging.handlers
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -22,6 +23,8 @@ import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from mcp_server.local_sandbox import enabled as _local_sandbox_enabled
 
 try:
     import fcntl
@@ -62,7 +65,7 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     (
         re.compile(
-            r"(--?(?:password|passwd|token|secret|api[_-]?key|auth)"
+            r"(--?(?:password|passwd|token|secret|api[_-]?key|auth-cred|proxy-cred|auth)"
             r"[\s=]+)(?!\[REDACTED\])\S+",
             re.IGNORECASE,
         ),
@@ -79,9 +82,25 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1" + _REDACTED,
     ),
-    # HTTP Basic auth: curl/wget "-u user:pass" / "--user user:pass".
+    # HTTP Basic auth and SMB logons: "-u user:pass", "--user user:pass", "-U user%pass".
+    # A bare user name or a target URL after -u is not a credential and stays readable.
     (
-        re.compile(r"((?:\B-u|--user)[\s=]+)(?!\[REDACTED\])\S+", re.IGNORECASE),
+        re.compile(
+            r"((?:\B-u|--user)[\s=]+)(?!\[REDACTED\])(?![a-z][a-z0-9+.-]*://)[^\s:%]*[:%]\S+",
+            re.IGNORECASE,
+        ),
+        r"\1" + _REDACTED,
+    ),
+    # Scheme-less "user:password@host", as the impacket tools take it. A password may hold
+    # "@", "/" and ":" itself, so it runs to the last "@" of the token; one that starts
+    # with "/" is left alone, which keeps URLs and remote paths readable.
+    (
+        re.compile(r"(?<![\w:/@])((?:[\w.\-]+[/\\])?[\w.\-$]+):(?!\[REDACTED\])(?!/)\S+@(?=[\w\[][^\s@]*(?:\s|$))"),
+        r"\1:" + _REDACTED + "@",
+    ),
+    # Pass-the-hash material and Kerberos keys.
+    (
+        re.compile(r"(--?(?:hashes|aesKey|aes-key|nthash|nt-hash)[\s=]+)(?!\[REDACTED\])\S+", re.IGNORECASE),
         r"\1" + _REDACTED,
     ),
     # Inline database password flags; preserve nmap port specifications.
@@ -106,8 +125,16 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 # Tools where a separated ``-p`` value is a password.
-_CREDENTIAL_TOOLS = re.compile(r"\b(?:sshpass|hydra|medusa|ncrack)\b", re.IGNORECASE)
+_CREDENTIAL_TOOLS = re.compile(
+    r"\b(?:sshpass|hydra|medusa|ncrack|netexec|nxc|crackmapexec|cme|smbmap|evil-winrm"
+    r"|bloodhound-python|certipy(?:-ad)?|ldapdomaindump|enum4linux(?:-ng)?)\b",
+    re.IGNORECASE,
+)
 _SEPARATED_PASSWORD_FLAG = re.compile(r"(\B-p[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
+
+# Tools where a separated ``-H`` value is an NTLM hash, not an HTTP header or a host.
+_HASH_TOOLS = re.compile(r"\b(?:netexec|nxc|crackmapexec|cme|evil-winrm)\b", re.IGNORECASE)
+_SEPARATED_HASH_FLAG = re.compile(r"(\B-H[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
 
 # redis-cli uses ``-a`` for authentication.
 _REDIS_TOOL = re.compile(r"\bredis-cli\b", re.IGNORECASE)
@@ -120,6 +147,8 @@ def _redact_sensitive(value: str) -> str:
         value = pattern.sub(replacement, value)
     if _CREDENTIAL_TOOLS.search(value):
         value = _SEPARATED_PASSWORD_FLAG.sub(r"\1" + _REDACTED, value)
+    if _HASH_TOOLS.search(value):
+        value = _SEPARATED_HASH_FLAG.sub(r"\1" + _REDACTED, value)
     if _REDIS_TOOL.search(value):
         value = _REDIS_AUTH_FLAG.sub(r"\1" + _REDACTED, value)
     return value
@@ -348,6 +377,67 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
         super().handleError(record)
 
 
+# A second copy of every record, in the system log. The account that runs the tools
+# can add entries there but cannot rewrite or remove them, so the copy survives a
+# compromise of that account's own files. A sandboxed server leaves this to the host
+# launcher: the variable is not passed into the VM.
+AUDIT_FORWARD_ENV = "CYBERSEC_MCP_AUDIT_FORWARD"
+AUDIT_FORWARD_TAG = "cybersec-mcp-audit"
+_SYSLOG_SOCKETS = ("/dev/log", "/var/run/syslog")
+
+
+def _audit_forward_target() -> str:
+    value = os.environ.get(AUDIT_FORWARD_ENV, "").strip().lower()
+    if value in {"", "0", "off", "none"}:
+        return ""
+    if value != "syslog":
+        # A misspelt value must not leave the operator believing a copy is kept.
+        raise RuntimeError(f"{AUDIT_FORWARD_ENV}={value!r} is not supported; use 'syslog' or leave it unset")
+    return value
+
+
+class _ForwardingSysLogHandler(logging.handlers.SysLogHandler):
+    def handleError(self, record: logging.LogRecord) -> None:
+        if _audit_required():
+            raise
+        super().handleError(record)
+
+
+def _probe_syslog_socket(path: str) -> None:
+    """Raise OSError unless something accepts syslog messages at *path*."""
+    last: OSError | None = None
+    for kind in (socket.SOCK_DGRAM, socket.SOCK_STREAM):
+        probe = socket.socket(socket.AF_UNIX, kind)
+        try:
+            probe.connect(path)
+            return
+        except OSError as exc:
+            last = exc
+        finally:
+            probe.close()
+    raise last if last is not None else OSError("no syslog socket")
+
+
+def _syslog_forwarder() -> logging.Handler | None:
+    """A handler for the local syslog socket, or None when forwarding is off or unavailable."""
+    if not _audit_forward_target():
+        return None
+    socket_path = next((path for path in _SYSLOG_SOCKETS if os.path.exists(path)), _SYSLOG_SOCKETS[0])
+    try:
+        # SysLogHandler ignores a socket it cannot reach, at creation and on every write.
+        _probe_syslog_socket(socket_path)
+        handler = _ForwardingSysLogHandler(address=socket_path, facility=logging.handlers.SysLogHandler.LOG_AUTH)
+    except OSError as exc:
+        message = f"Audit forwarding to the system log is unavailable at {socket_path}: {exc}"
+        if _audit_required():
+            raise RuntimeError(message) from exc
+        warnings.warn(message, RuntimeWarning, stacklevel=3)
+        return None
+    handler.ident = f"{AUDIT_FORWARD_TAG}: "
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    return handler
+
+
 def get_audit_logger() -> logging.Logger:
     """Return (and lazily configure) the audit logger.
 
@@ -390,6 +480,16 @@ def get_audit_logger() -> logging.Logger:
 
     handler.setFormatter(logging.Formatter("%(message)s"))
     _logger.addHandler(handler)
+
+    try:
+        forwarder = _syslog_forwarder()
+    except RuntimeError:
+        _logger.removeHandler(handler)
+        handler.close()
+        _logger = None
+        raise
+    if forwarder is not None:
+        _logger.addHandler(forwarder)
 
     # A sandboxed server's file sink lives inside the VM and dies with it. The
     # prefixed stderr mirror is how the host launcher keeps the durable copy.
@@ -484,6 +584,10 @@ def log_server_start() -> None:
             # Which isolation the launcher reported: 'kata' (VM), 'local' (host),
             # or 'unknown' when started without scripts/mcp-launch.sh.
             "sandbox": os.environ.get("CYBERSEC_SANDBOX_MODE", "").strip() or "unknown",
+            # The network scope the launcher loaded into the sandbox, as it described it.
+            "scope": os.environ.get("CYBERSEC_SANDBOX_SCOPE", "").strip() or "none",
+            # Host mode only: whether tools start inside bubblewrap (CYBERSEC_LOCAL_SANDBOX).
+            "local_sandbox": "bwrap" if _local_sandbox_enabled() else "off",
             "venvs_dir": os.environ.get("CYBERSEC_MCP_VENVS_DIR", "~/.ctf-venvs"),
             "pid": os.getpid(),
         },

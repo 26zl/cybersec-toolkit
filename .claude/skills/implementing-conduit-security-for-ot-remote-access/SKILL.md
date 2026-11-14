@@ -1,9 +1,10 @@
 ---
 name: implementing-conduit-security-for-ot-remote-access
-description: 'Implement secure conduit architecture for OT remote access following
-  IEC 62443 zones and conduits model, deploying jump servers, MFA-enabled gateways,
-  session recording, and approval-based workflows to control vendor and engineer access
-  to industrial control systems without exposing OT networks directly.
+description: 'Implements secure conduit architecture for OT remote access under the
+  IEC 62443 zones-and-conduits model, deploying jump servers, MFA gateways, session
+  recording, and approval-based workflows for vendor and engineer access to ICS. Use
+  when replacing direct VPN access into OT networks, securing third-party vendor access
+  to SCADA equipment, or remediating audit findings on uncontrolled OT remote access.
 
   '
 domain: cybersecurity

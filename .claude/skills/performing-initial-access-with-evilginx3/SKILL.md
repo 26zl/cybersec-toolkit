@@ -32,6 +32,41 @@ mitre_attack:
 - T1059
 - T1078
 - T1003
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - resource-development
+  - initial-access
+  - positioning
+  techniques:
+  - id: T1583.001
+    name: 'Acquire Infrastructure: Domains'
+    tactic: resource-development
+    source: attack
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: T1557
+    name: Adversary-in-the-Middle
+    tactic: initial-access
+    source: attack
+  - id: T1539
+    name: Steal Web Session Cookie
+    tactic: positioning
+    source: attack
+  - id: T1111
+    name: Multi-Factor Authentication Interception
+    tactic: initial-access
+    source: attack
+  - id: F1004
+    name: Access with Stolen Session Cookie
+    tactic: initial-access
+    source: f3
+  - id: F1006
+    name: Account Takeover
+    tactic: initial-access
+    source: f3
 ---
 # Performing Initial Access with EvilGinx3
 

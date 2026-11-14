@@ -32,7 +32,7 @@ make validate       # all data-consistency validators
 
 ## Safe editing practices
 
-- All shell scripts use `set -uo pipefail`.
+- Installer and lifecycle scripts use `set -uo pipefail`, never `-e`; the sourced `lib/` and `modules/` files set no shell options of their own.
 - Guard empty arrays with `[[ ${#arr[@]} -gt 0 ]]` before expansion.
 - Never use `shell=True` in Python subprocess code.
 - Use `_bounded_communicate()` instead of `communicate()`.

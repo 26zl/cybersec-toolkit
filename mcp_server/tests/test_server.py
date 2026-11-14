@@ -211,3 +211,60 @@ async def test_tool_schema_matches_snapshot() -> None:
             "params": sorted((schema.get("properties") or {}).keys()),
         }
     assert actual == EXPECTED_TOOL_SCHEMA
+
+
+def test_scope_note_tells_the_client_what_the_sandbox_lets_through(monkeypatch):
+    from mcp_server import server
+
+    monkeypatch.delenv("CYBERSEC_SANDBOX_SCOPE", raising=False)
+    assert server._scope_note() == ""
+
+    monkeypatch.setenv("CYBERSEC_SANDBOX_SCOPE", "lab: 10.10.11.5 tcp/80,443; DNS closed")
+    note = server._scope_note()
+    assert "lab: 10.10.11.5 tcp/80,443; DNS closed" in note
+    assert "Do not look for another route" in note
+
+
+class TestRepeatNotice:
+    """A call that keeps returning the same output is reported, whatever caused the loop."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh(self):
+        from mcp_server import server
+
+        server._repeat_seen.clear()
+        yield
+        server._repeat_seen.clear()
+
+    @staticmethod
+    def _run(call, stdout="same", exit_code=0):
+        from mcp_server import server
+
+        result = {"exit_code": exit_code, "stdout": stdout, "stderr": ""}
+        server._note_repeat("run_tool", call, result)
+        return result
+
+    def test_third_identical_result_carries_the_notice(self):
+        call = ["curl", "-s http://10.0.0.5/next", None]
+        assert "repeat_notice" not in self._run(call)
+        assert "repeat_notice" not in self._run(call)
+        third = self._run(call)
+        assert "same output 3 times in a row" in third["repeat_notice"]
+        assert "4 times" in self._run(call)["repeat_notice"]
+
+    def test_new_output_or_another_call_starts_over(self):
+        call = ["curl", "-s http://10.0.0.5/next", None]
+        self._run(call)
+        self._run(call)
+        assert "repeat_notice" not in self._run(call, stdout="changed")
+        # The other call has its own count, and the first one starts again from the new output.
+        assert "repeat_notice" not in self._run(["curl", "-s http://10.0.0.5/other", None])
+        assert "repeat_notice" not in self._run(call, stdout="changed")
+        assert "repeat_notice" in self._run(call, stdout="changed")
+
+    def test_tracking_is_bounded(self):
+        from mcp_server import server
+
+        for index in range(server._REPEAT_TRACKED + 50):
+            self._run(["curl", f"http://10.0.0.5/{index}", None])
+        assert len(server._repeat_seen) == server._REPEAT_TRACKED

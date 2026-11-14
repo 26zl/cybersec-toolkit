@@ -1,7 +1,17 @@
 ---
 name: implementing-pod-security-admission-controller
-description: Implement Kubernetes Pod Security Admission to enforce baseline and restricted
-  security profiles at namespace level using built-in admission controller.
+description: >-
+  Configures and operates the Kubernetes Pod Security Admission (PSA) controller
+  that enforces Pod Security Standards: namespace enforce/audit/warn labels,
+  cluster-wide defaults via AdmissionConfiguration, exemptions for usernames,
+  runtime classes and namespaces, version pinning, and troubleshooting pods the
+  controller rejected. Use when wiring PSA up on a cluster, setting cluster-wide
+  default enforcement, exempting system namespaces, debugging why a pod was
+  rejected or why enforcement is not firing, or reading PSA audit and warning
+  output. Keywords: Pod Security Admission, PSA, admission controller,
+  AdmissionConfiguration, pod-security.kubernetes.io labels, enforce audit warn,
+  exemptions, kube-apiserver. Do not use for choosing which security profile a
+  workload needs - use implementing-kubernetes-pod-security-standards.
 domain: cybersecurity
 subdomain: container-security
 tags:
@@ -34,10 +44,16 @@ Pod Security Admission (PSA) is a built-in Kubernetes admission controller (stab
 
 ## When to Use
 
-- When deploying or configuring implementing pod security admission controller capabilities in your environment
-- When establishing security controls aligned to compliance requirements
-- When building or improving security architecture for this domain
-- When conducting security assessments that require this implementation
+- Wiring PSA up on a cluster for the first time
+- Setting cluster-wide default enforcement via `AdmissionConfiguration`
+- Exempting system namespaces, service accounts, or runtime classes from enforcement
+- Debugging why a pod was rejected, or why enforcement is silently not firing
+- Staging a safe rollout: `warn` and `audit` first, `enforce` once violations reach zero
+- Pulling PSA violations out of the kube-apiserver audit log
+
+**Not this skill:** deciding which profile a workload should run under, or what
+`securityContext` changes Restricted demands. Use
+`implementing-kubernetes-pod-security-standards`.
 
 ## Prerequisites
 

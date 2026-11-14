@@ -27,7 +27,7 @@ For each C/C++ TU in `{workdir}/source-analysis/tu-map.json`:
    }
    ```
 
-3. Spawn agent `3-tu-compiler-analyzer` via `Task` with:
+3. Launch the [3-tu-compiler-analyzer role](../../../agents/3-tu-compiler-analyzer.md) using the [Execution Contract](../SKILL.md#execution-contract) with:
 
 | Parameter | Value |
 |---|---|
@@ -43,7 +43,7 @@ For each C/C++ TU in `{workdir}/source-analysis/tu-map.json`:
 | `enable_cfg` | `{{enable_cfg}}` |
 | `baseDir` | `{baseDir}` |
 
-Launch TU agents in parallel using multiple `Task` calls in a single message. **Batching**: if the TU count exceeds 15, launch in batches of 10–15; wait for each batch before launching the next.
+Launch TU workers concurrently up to the environment's available capacity, with at most 15 active workers. Process additional TUs in later batches, waiting for each batch to finish. If concurrent dispatch is unavailable, run the same workers sequentially; every in-scope TU still needs an outcome.
 
 **After all TU agents complete**: Verify `{workdir}/compiler-analysis/<tu_hash>/ir-findings.json` exists for each TU. Log any failed TUs but continue.
 
@@ -55,7 +55,7 @@ Skip if any of the following are true:
 - `sensitive-objects.json` is missing or empty
 - `sensitive-objects.json` has no Rust objects (IDs `SO-5NNN` / `SO-5000+`)
 
-Spawn agent `3b-rust-compiler-analyzer` via `Task` (after Wave 3 completes or is skipped):
+Launch the [3b-rust-compiler-analyzer role](../../../agents/3b-rust-compiler-analyzer.md) using the [Execution Contract](../SKILL.md#execution-contract) (after Wave 3 completes or is skipped):
 
 | Parameter | Value |
 |---|---|
@@ -105,11 +105,13 @@ uv run {baseDir}/tools/scripts/check_rust_asm.py \
 
 If assembly tools are missing, write `[]` to `asm-findings.json`.
 
+**Step D — Section D coverage survey:** no script covers these patterns, so the agent greps the crate source for them (its Step 6 lists the markers) and writes `coverage-gaps.json` — `[]` when nothing is found. The report's Analysis Coverage section reads that file; without it a crate using an unaudited pattern is indistinguishable from one that has none.
+
 IR finding IDs: `F-RUST-IR-NNNN`. MIR finding IDs: `F-RUST-MIR-NNNN`. Assembly finding IDs: `F-RUST-ASM-NNNN`.
 
 Write `{workdir}/rust-compiler-analysis/notes.md` summarizing all steps, any failures, and key observations.
 
-**After Wave 3R completes**: Verify `mir-findings.json`, `ir-findings.json`, and `asm-findings.json` exist under `{workdir}/rust-compiler-analysis/`. Log if missing, continue.
+**After Wave 3R completes**: Verify `mir-findings.json`, `ir-findings.json`, `asm-findings.json`, and `coverage-gaps.json` exist under `{workdir}/rust-compiler-analysis/`. Log if missing, continue.
 
 ## State Update
 

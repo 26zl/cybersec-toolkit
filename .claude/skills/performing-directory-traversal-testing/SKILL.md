@@ -1,7 +1,11 @@
 ---
 name: performing-directory-traversal-testing
-description: Testing web applications for path traversal vulnerabilities that allow
-  reading or writing arbitrary files on the server by manipulating file path parameters.
+description: Test web applications for path traversal and Local/Remote File Inclusion
+  vulnerabilities by manipulating file path parameters, applying encoding and filter-bypass
+  techniques, automating discovery with ffuf and dotdotpwn, and reading high-value files
+  or achieving code execution. Use during authorized penetration tests of file download,
+  view, or include functionality, or when assessing APIs that accept file names or file
+  paths as parameters.
 domain: cybersecurity
 subdomain: web-application-security
 tags:

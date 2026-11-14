@@ -1,9 +1,10 @@
 ---
 name: performing-bandwidth-throttling-attack-simulation
-description: 'Simulates bandwidth throttling and network degradation attacks using
-  tc, iperf3, and Scapy in authorized environments to test quality-of-service controls,
-  application resilience, and network monitoring detection of traffic manipulation
-  attacks.
+description: 'Simulate bandwidth throttling and network degradation attacks using tc,
+  iperf3, and Scapy in authorized lab environments to test QoS controls, application
+  resilience, and monitoring detection of traffic manipulation. Use when validating
+  how VoIP, video, or other real-time applications and network monitoring tools respond
+  to degraded bandwidth or slowloris-style throttling attacks.
 
   '
 domain: cybersecurity

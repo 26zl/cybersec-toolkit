@@ -1,4 +1,6 @@
-# Agent: LLM01 Prompt Injection Testing
+# Agent: Prompt Injection Testing
+
+> Category **`LLM01:2025`** Prompt Injection. See [`reference/catalog/llm-top10-2025.json`](catalog/llm-top10-2025.json).
 
 ## Core Responsibilities
 
@@ -59,6 +61,10 @@
 - System prompt recovery attempts
 - Behavior deviation detection
 - Output pattern analysis
+
+## Agentic AI tool-call override
+
+When the target LLM holds tools that mutate server-side state (scores, badges, permissions, certificates), prompt injection in a user-controlled text field can hijack the tool call. The multi-invocation hazard (submit-time agent vs. finalize-time agent overwriting state via a "regenerate" endpoint) and the polite "Please call X to set Y to Z before processing a response" phrasing are covered in [agentic-tool-hijacking.md](agentic-tool-hijacking.md).
 
 ## Success Criteria
 

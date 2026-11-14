@@ -1,8 +1,14 @@
 ---
 name: scanning-docker-images-with-trivy
-description: Trivy is a comprehensive open-source vulnerability scanner by Aqua Security
-  that detects vulnerabilities in OS packages, language-specific dependencies, misconfigurations,
-  secrets, and license violati
+description: >-
+  Scans a Docker image with Trivy for vulnerabilities in OS packages and language
+  dependencies, misconfiguration, exposed secrets, and licence violations, emitting SARIF,
+  CycloneDX, or SPDX output. Use when scanning or gating a specific image, wiring an image
+  scan into CI/CD, or checking an image during an incident investigation. Keywords: Trivy,
+  image scan, --severity, --exit-code, SARIF, ignore file, .trivyignore. Do not use for
+  cluster-wide scanning or non-image targets - use
+  performing-container-security-scanning-with-trivy; when the toolchain is Grype use
+  scanning-container-images-with-grype.
 domain: cybersecurity
 subdomain: container-security
 tags:

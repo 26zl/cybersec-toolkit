@@ -30,6 +30,33 @@ mitre_attack:
 - T1566.002
 - T1608.005
 - T1596.003
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - resource-development
+  - reconnaissance
+  - initial-access
+  techniques:
+  - id: T1583.001
+    name: 'Acquire Infrastructure: Domains'
+    tactic: resource-development
+    source: attack
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
+  - id: T1593
+    name: Search Open Websites/Domains
+    tactic: reconnaissance
+    source: attack
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
 ---
 # Analyzing Certificate Transparency for Phishing
 

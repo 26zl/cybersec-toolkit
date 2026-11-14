@@ -85,6 +85,11 @@ _version_ge() {
     [[ "$cur_major" -eq "$min_major" && "$cur_minor" -ge "$min_minor" ]]
 }
 
+# _version_at_least <have> <want> — dotted comparison that includes the patch level.
+_version_at_least() {
+    [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" == "$1" ]]
+}
+
 # _validate_curl_pipe — validate a downloaded script before execution.
 # Checks: non-empty file, minimum size, and multiple required keywords.
 # Usage: _validate_curl_pipe "$file" "keyword1" "keyword2" ...
@@ -148,20 +153,27 @@ ensure_go() {
         return 1
     fi
 
-    # Never replace a /usr/local/go this toolkit did not install (remove.sh honours the same marker).
-    local _go_root="/usr/local/go"
-    if [[ -d "$_go_root" && ! -f "$_go_root/.cybersec-toolkit-installed" ]]; then
-        local _own_ver
+    # _GO_INSTALL_PARENT is a test seam; remove.sh looks for the SDK in /usr/local/go.
+    local install_parent="${_GO_INSTALL_PARENT:-/usr/local}"
+    local _go_root="$install_parent/go" _own_ver=""
+    _use_go_root() {
+        export GOROOT="$_go_root"
+        export PATH="$GOROOT/bin:$PATH"
+        # Go moved — drop the memoised resolution (_builder_cmd)
+        _BUILDER_CMD_CACHE=()
+    }
+    if [[ -d "$_go_root" ]]; then
         _own_ver=$("$_go_root/bin/go" version 2>/dev/null | awk '{print $3}' | sed 's/^go//')
-        if [[ -n "$_own_ver" ]] && _version_ge "$_own_ver" "$GO_MIN_VERSION"; then
-            export GOROOT="$_go_root"
-            export PATH="$GOROOT/bin:$PATH"
-            _BUILDER_CMD_CACHE=()
-            log_success "Go $_own_ver available in $GOROOT (>= $GO_MIN_VERSION)"
-            return 0
+        # Never replace a Go SDK this toolkit did not install (remove.sh honours the same marker).
+        if [[ ! -f "$_go_root/.cybersec-toolkit-installed" ]]; then
+            if [[ -n "$_own_ver" ]] && _version_ge "$_own_ver" "$GO_MIN_VERSION"; then
+                _use_go_root
+                log_success "Go $_own_ver available in $GOROOT (>= $GO_MIN_VERSION)"
+                return 0
+            fi
+            log_error "$_go_root holds a Go SDK this toolkit did not install (${_own_ver:-unknown version}); upgrade or move it, then re-run"
+            return 1
         fi
-        log_error "$_go_root holds a Go SDK this toolkit did not install (${_own_ver:-unknown version}); upgrade or move it, then re-run"
-        return 1
     fi
 
     # Fetch latest stable Go version from go.dev API
@@ -176,6 +188,8 @@ if data:
     print(data[0]['version'].lstrip('go'))
 " < "$_go_json" 2>/dev/null)
     fi
+    # The version is later written into a URL and a Python snippet.
+    [[ "$GO_INSTALL_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || GO_INSTALL_VERSION=""
     # Fallback to a known-good version if API fails
     # 1.26.4 carries CVE-2026-39822 (os.Root symlink following), fixed in 1.26.5.
     local _GO_FALLBACK_VERSION="1.26.5"
@@ -191,12 +205,15 @@ if data:
         [386]=88c162b204e6eefcc32499453b492e80209f4a4c78c33092636901c540fb0d05
     )
 
-    # Determine install location
-    local install_parent
-    if [[ "$PKG_MANAGER" == "pkg" ]]; then
-        install_parent="$PREFIX/lib"          # → $PREFIX/lib/go
-    else
-        install_parent="/usr/local"           # → /usr/local/go (standard)
+    # The toolkit's own SDK is off root's PATH on a later run, so the check above
+    # misses it. Reuse it unless a newer release is available; when go.dev cannot be
+    # reached, this also keeps the fallback from replacing a newer SDK.
+    if [[ -n "$_own_ver" ]] && _version_ge "$_own_ver" "$GO_MIN_VERSION" \
+        && _version_at_least "$_own_ver" "$GO_INSTALL_VERSION"; then
+        rm -f "$_go_json"
+        _use_go_root
+        log_success "Go $_own_ver available in $GOROOT (>= $GO_MIN_VERSION)"
+        return 0
     fi
 
     # go.dev publishes 32-bit ARM tarballs as "armv6l" (not "armv7"), so map
@@ -265,24 +282,42 @@ for rel in json.load(sys.stdin):
         log_warn "Could not fetch Go checksum from go.dev — skipping verification"
     fi
 
-    [[ -d "$install_parent/go" ]] && rm -rf "$install_parent/go"
-
-    # Extract — creates $install_parent/go/{bin,src,pkg,...}
+    # Extract beside the target and swap it in, so a failed extraction leaves the
+    # current SDK in place. The stage shares a filesystem with the target.
     mkdir -p "$install_parent" 2>/dev/null || true
-    if ! tar -C "$install_parent" -xzf "$tmp_tar" 2>>"$LOG_FILE"; then
+    local _stage
+    if ! _stage=$(mktemp -d "$install_parent/.go-stage.XXXXXX"); then
+        log_error "Failed to create a staging directory in $install_parent"
+        rm -f "$tmp_tar"
+        return 1
+    fi
+    _register_cleanup "$_stage"
+    # As root, tar would otherwise restore archive owners and group/world-write bits.
+    # The marker is the provenance record: remove.sh --remove-deps deletes only an SDK this installed.
+    if ! tar --no-same-owner --no-same-permissions -C "$_stage" -xzf "$tmp_tar" 2>>"$LOG_FILE" \
+        || [[ ! -x "$_stage/go/bin/go" ]] \
+        || ! : > "$_stage/go/.cybersec-toolkit-installed"; then
         log_error "Failed to extract Go tarball"
+        rm -rf "$_stage"
         rm -f "$tmp_tar"
         return 1
     fi
     rm -f "$tmp_tar"
-    # Provenance marker: remove.sh --remove-deps deletes only an SDK this installed.
-    : > "$install_parent/go/.cybersec-toolkit-installed" 2>/dev/null || true
+    if [[ -e "$_go_root" || -L "$_go_root" ]] && ! mv "$_go_root" "$_stage/previous" 2>>"$LOG_FILE"; then
+        log_error "Failed to move the current Go SDK out of $_go_root"
+        rm -rf "$_stage"
+        return 1
+    fi
+    if ! mv "$_stage/go" "$_go_root" 2>>"$LOG_FILE"; then
+        [[ -e "$_stage/previous" || -L "$_stage/previous" ]] && mv "$_stage/previous" "$_go_root" 2>>"$LOG_FILE"
+        log_error "Failed to move the new Go SDK into $_go_root"
+        rm -rf "$_stage"
+        return 1
+    fi
+    rm -rf "$_stage"
 
     # Prepend to PATH so new Go shadows the old system Go
-    export GOROOT="$install_parent/go"
-    export PATH="$GOROOT/bin:$PATH"
-    # Go moved — drop the memoised resolution (_builder_cmd)
-    _BUILDER_CMD_CACHE=()
+    _use_go_root
 
     if command_exists go; then
         local new_ver

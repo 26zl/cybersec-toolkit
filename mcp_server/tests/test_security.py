@@ -32,6 +32,97 @@ from mcp_server.security import (
 )
 
 
+class TestSsldumpPolicy:
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize("tool,binary", [("ssldump", "ssldump"), ("alias", "ssldump"), ("ssldump", "alias")])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            [],
+            ["-i", "eth0"],
+            ["-r", "capture.pcap"],
+            ["-n"],
+            ["-nr", "capture.pcap", "host", "example.org"],
+            ["-n", "-r", "capture.pcap", "-F", "filter.txt"],
+            ["-nr", "capture.pcap", "-p", "secret"],
+            ["-n", "-r", "capture.pcap", "--", "host", "example.org"],
+            ["-nr", "capture.pcap", "-jw/etc/out.pcap"],
+            ["-w", "/etc/out.pcap", "-h"],
+            ["-h", "-w", "/etc/out.pcap"],
+            ["-r", "-h"],
+            ["-nwr", "capture.pcap"],
+        ],
+    )
+    def test_rejects_live_capture_dns_filters_and_sensitive_output(self, args, tool, binary, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy(tool, args, binary)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-nr", "capture.pcap"],
+            ["-n", "-rcapture.pcap", "-l", "tls.keys", "-jw", "decrypted.pcap"],
+            ["-nd", "-f", "capture.pcap", "-kprivate.key"],
+            ["-nr", "capture.pcap", "--"],
+            ["-h"],
+            ["-v"],
+        ],
+    )
+    def test_allows_offline_files_without_classifying_filenames_as_hosts(self, args):
+        with patch("mcp_server.security.socket.getaddrinfo", side_effect=AssertionError("unexpected DNS lookup")):
+            check_policy("ssldump", args)
+
+
+class TestReadpstPolicy:
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize("tool,binary", [("pst-utils", "readpst"), ("alias", "readpst"), ("pst-utils", "alias")])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-w", "mail.pst"],
+            ["-Sw", "mail.pst"],
+            ["-rw", "mail.pst"],
+            ["-o", "/etc", "mail.pst"],
+            ["-ro/etc", "mail.pst"],
+            ["-d/etc/pst-debug.log", "mail.pst"],
+            ["-rd", "/etc/pst-debug.log", "mail.pst"],
+            ["--unknown", "mail.pst"],
+        ],
+    )
+    def test_rejects_destructive_mode_and_sensitive_outputs(self, tool, binary, args, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy(tool, args, binary)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-r", "-o", "extracted", "mail.pst"],
+            ["-rSoextracted", "mail.pst"],
+            ["-d", "debug.log", "-oextracted", "mail.pst"],
+            ["-Cwindows-1252", "-awav", "-t", "e", "mail.pst"],
+            ["-L2", "-L", "3", "mail.pst"],
+            ["-o", "w", "mail.pst"],
+            ["--", "-w"],
+            ["-h"],
+            ["-V"],
+        ],
+    )
+    def test_allows_extraction_and_does_not_read_option_values_as_flags(self, args, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        check_policy("pst-utils", args, "readpst")
+
+    def test_checks_default_directory_and_symlinks(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with patch("mcp_server.security.os.getcwd", return_value="/etc"):
+            with pytest.raises(ValueError, match="sensitive"):
+                check_policy("pst-utils", ["mail.pst"], "readpst")
+        (tmp_path / "output").symlink_to("/etc", target_is_directory=True)
+        with pytest.raises(ValueError, match="sensitive"):
+            check_policy("pst-utils", ["-o", str(tmp_path / "output"), "mail.pst"], "readpst")
+
+
 class TestCommandPolicies:
     @pytest.mark.parametrize(
         "tool,binary,args,reason",
@@ -2740,6 +2831,9 @@ class TestLongOptionAbbreviation:
             ("awk", ["--lo=x.so", "d"]),
             ("wget", ["--inp", "list.txt"]),
             ("sed", ["--in-plac", "s/a/b/", "f"]),
+            ("sed", ["--i", "s/a/b/", "f"]),
+            ("awk", ["--e", "x.awk", "d"]),
+            ("awk", ["--i", "lib", "BEGIN{}"]),
             ("sqlmap", ["-u", "http://10.0.0.1", "--os-she"]),
             ("sqlmap", ["-u", "http://10.0.0.1", "--fi=/etc/passwd"]),
             ("gdb", ["--comm=x"]),
@@ -2840,6 +2934,29 @@ class TestChildEnv:
             assert k not in env, k
         assert env.get("LANG") == "en_US.UTF-8"
 
+    def test_client_password_variables_removed(self, monkeypatch):
+        secret_names = ("MYSQL_PWD", "REDISCLI_AUTH", "SSHPASS", "BW_SESSION", "TS_AUTHKEY")
+        for k in secret_names:
+            monkeypatch.setenv(k, "x")
+        monkeypatch.setenv("PWD", "/work")
+        monkeypatch.setenv("OLDPWD", "/")
+        monkeypatch.setenv("XAUTHORITY", "/run/user/1000/xauth")
+        env = _child_env()
+        for k in secret_names:
+            assert k not in env, k
+        assert env.get("PWD") == "/work"
+        assert env.get("OLDPWD") == "/"
+        assert env.get("XAUTHORITY") == "/run/user/1000/xauth"
+
+    def test_ssh_agent_socket_only_for_the_ssh_transport(self, monkeypatch):
+        monkeypatch.setenv("SSH_AUTH_SOCK", "/run/user/1000/ssh-agent.socket")
+        monkeypatch.setenv("KRB5CCNAME", "FILE:/tmp/krb5cc_1000")
+        env = _child_env()
+        assert "SSH_AUTH_SOCK" not in env
+        # A Kerberos ticket cache is how the AD tools authenticate on an engagement.
+        assert env.get("KRB5CCNAME") == "FILE:/tmp/krb5cc_1000"
+        assert _child_env(ssh_agent=True).get("SSH_AUTH_SOCK") == "/run/user/1000/ssh-agent.socket"
+
     def test_authenticated_proxy_is_inherited(self, monkeypatch):
         # Tools behind an authenticated proxy need its credentials to reach the network.
         monkeypatch.setenv("HTTPS_PROXY", "http://alice:s3cret@proxy.internal:3128")
@@ -2872,7 +2989,7 @@ class TestNulByteRejected:
 
 
 class TestOptInOutputRedaction:
-    """CYBERSEC_MCP_REDACT_OUTPUT=1 redacts credentials found in tool output (AI-1)."""
+    """CYBERSEC_MCP_REDACT_OUTPUT=1 redacts credentials found in tool output."""
 
     SAMPLE = "found config: password=Hunter2Hunter2 user=admin"
 
@@ -2882,6 +2999,20 @@ class TestOptInOutputRedaction:
         monkeypatch.delenv("CYBERSEC_MCP_REDACT_OUTPUT", raising=False)
         assert "Hunter2Hunter2" in sec._finalize_stream(self.SAMPLE, 10_000, False)
 
+    @pytest.mark.parametrize("value", ["true", "TRUE", "yes", "on", " 1 "])
+    def test_common_truthy_spellings_enable_it(self, monkeypatch, value) -> None:
+        import mcp_server.security as sec
+
+        monkeypatch.setenv("CYBERSEC_MCP_REDACT_OUTPUT", value)
+        assert "Hunter2Hunter2" not in sec._finalize_stream(self.SAMPLE, 10_000, False)
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", ""])
+    def test_falsy_values_leave_it_off(self, monkeypatch, value) -> None:
+        import mcp_server.security as sec
+
+        monkeypatch.setenv("CYBERSEC_MCP_REDACT_OUTPUT", value)
+        assert "Hunter2Hunter2" in sec._finalize_stream(self.SAMPLE, 10_000, False)
+
     def test_redacts_when_enabled(self, monkeypatch) -> None:
         import mcp_server.security as sec
 
@@ -2889,3 +3020,422 @@ class TestOptInOutputRedaction:
         out = sec._finalize_stream(self.SAMPLE, 10_000, False)
         assert "Hunter2Hunter2" not in out
         assert "user=admin" in out  # non-credential context is kept
+
+
+class TestHostLedPathTargets:
+    """A scheme-less ``host/path.ext`` token after a flag is a URL to curl and wget, not a file."""
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("curl", ["-s", "203.0.113.9/a.txt"]),
+            ("wget", ["-q", "203.0.113.9/a.html"]),
+            ("curl", ["-s", "169.254.169.254/latest.json"]),
+            ("curl", ["-s", "user@203.0.113.9/a.txt"]),
+            ("curl", ["-s", "203.0.113.9:8080/a.txt"]),
+            ("curl", ["-s", "[2001:db8::1]/a.txt"]),
+            ("httpx", ["-probe=203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe=203.0.113.9./a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe=ftp://203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe=sftp://203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe", "gopher://203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
+        ],
+    )
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_external_host_with_file_extension_blocked(self, _mock_ext, tool, args) -> None:
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy(tool, args)
+
+    @patch("mcp_server.security._resolve_with_timeout", return_value=[(2, 1, 6, "", ("203.0.113.9", 0))])
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_dotted_hostname_with_file_extension_blocked(self, _mock_ext, _mock_dns) -> None:
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["-k", "attacker.example.com/x.html"])
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "attacker.example.com./x.html",
+            "my_host.example.com/x.html",
+            "_srv.example.com/x.html",
+        ],
+    )
+    @patch("mcp_server.security._resolve_with_timeout", return_value=[(2, 1, 6, "", ("203.0.113.9", 0))])
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_root_dot_and_underscore_hostnames_blocked(self, _mock_ext, _mock_dns, value) -> None:
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("httpx", [f"-probe={value}", "-u", "http://10.0.0.1/"])
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("curl", ["-s", "-o", "out/a.txt", "http://127.0.0.1/"]),
+            ("ffuf", ["-w", "wordlists/common.txt", "-u", "http://127.0.0.1/FUZZ"]),
+            ("nmap", ["-sV", "-oN", "./scan.2026/host.txt", "127.0.0.1"]),
+            ("curl", ["-s", "127.0.0.1/a.txt"]),
+        ],
+    )
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_relative_paths_and_private_hosts_allowed(self, _mock_ext, tool, args) -> None:
+        check_policy(tool, args)
+
+
+class TestExtensionTldTargets:
+    """A bare name whose extension is also a registrable TLD is validated as a host."""
+
+    @pytest.mark.parametrize("name", ["attacker.pl", "evil.rs", "notes.md", "x.py", "lib.so", "key.pub"])
+    @patch("mcp_server.security._resolve_with_timeout", return_value=[(2, 1, 6, "", ("203.0.113.9", 0))])
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_tld_extension_after_flag_is_validated(self, _mock_ext, _mock_dns, name) -> None:
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("curl", ["-s", name])
+
+    def test_every_extension_that_is_a_tld_is_listed(self) -> None:
+        """The overlap of the file-extension list with the IANA root zone, as of 2026-11-14."""
+        import mcp_server.security as sec
+
+        overlap = {".java", ".md", ".pl", ".pub", ".py", ".report", ".rs", ".sh", ".so", ".zip"}
+        assert overlap <= sec._FILE_EXTENSIONS
+        assert overlap <= sec._EXTENSION_TLDS
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_explicit_relative_path_keeps_such_a_name_local(self, _mock_ext) -> None:
+        check_policy("curl", ["-s", "-o", "./notes.md", "http://127.0.0.1/"])
+
+
+class TestSqlmapBlockedFlags:
+    """sqlmap options that run code, or take targets from somewhere validation cannot see."""
+
+    TARGET = ["-u", "http://127.0.0.1/?id=1"]
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            ["--os-cmd=id"],
+            ["--os-shell"],
+            ["--file-read=/etc/passwd"],
+            ["--file-write=a", "--file-dest=/tmp/b"],
+            ["--eval", "import os"],
+            ["--eval=import os"],
+            ["--tamper", "/tmp/x.py"],
+            ["--preprocess=/tmp/x.py"],
+            ["--postprocess", "/tmp/x.py"],
+            ["--alert", "id"],
+            ["--udf-inject"],
+            ["--shared-lib=/tmp/x.so"],
+            ["--second-req", "/tmp/r.txt"],
+            ["--proxy-file", "/tmp/p.txt"],
+            ["--tam", "/tmp/x.py"],
+        ],
+    )
+    def test_code_execution_and_injection_flags_blocked(self, extra) -> None:
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy("sqlmap", self.TARGET + extra)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-c", "/tmp/sqlmap.conf"],
+            ["-c/tmp/sqlmap.conf"],
+            ["-m", "/tmp/targets.txt", "--batch"],
+            ["-r", "/tmp/req.txt", "--batch"],
+            ["-l", "/tmp/proxy.log", "--batch"],
+            ["-g", "inurl:id", "--batch"],
+        ],
+    )
+    def test_targets_from_files_blocked(self, args) -> None:
+        with pytest.raises(ValueError, match="sqlmap"):
+            check_policy("sqlmap", args)
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_ordinary_scan_options_still_allowed(self, _mock_ext) -> None:
+        check_policy("sqlmap", self.TARGET + ["--batch", "--tables", "--dump", "--level", "3", "--risk", "2"])
+        check_policy("sqlmap", self.TARGET + ["--proxy", "http://127.0.0.1:8080", "--all"])
+        check_policy("sqlmap", self.TARGET + ["--data", "id=1&x=2", "--cookie", "s=abc", "--prefix", "')"])
+
+
+class TestAwkExecAndInclude:
+    """gawk -E/--exec and -i/--include run a file's program just as -f does."""
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("awk", ["-E", "/tmp/prog.awk"]),
+            ("gawk", ["--exec", "/tmp/prog.awk"]),
+            ("gawk", ["--exec=/tmp/prog.awk"]),
+            ("awk", ["-i", "/tmp/inc.awk", "BEGIN{}"]),
+            ("gawk", ["--include=/tmp/inc.awk", "BEGIN{}"]),
+            ("gawk", ["-i", "inplace", "{print}", "notes.txt"]),
+            ("gawk", ["--incl", "/tmp/inc.awk", "BEGIN{}"]),
+        ],
+    )
+    def test_program_file_flags_blocked(self, tool, args) -> None:
+        with pytest.raises(ValueError, match="awk"):
+            check_policy(tool, args)
+
+
+class TestNmapResume:
+    def test_resume_blocked(self) -> None:
+        with pytest.raises(ValueError, match="resume"):
+            check_policy("nmap", ["--resume", "/tmp/scan.log"])
+
+    def test_resume_abbreviation_blocked(self) -> None:
+        with pytest.raises(ValueError, match="resume"):
+            check_policy("nmap", ["--resum", "/tmp/scan.log"])
+
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_ordinary_scan_still_allowed(self, _mock_ext) -> None:
+        check_policy("nmap", ["-sV", "--reason", "--open", "-p", "80", "127.0.0.1"])
+
+
+class TestShellEscapeUtilities:
+    def test_dc_not_in_system_utilities(self) -> None:
+        """dc runs a shell command with ``!``, also from a program piped to it."""
+        assert "dc" not in SYSTEM_UTILITIES
+
+    def test_dc_rejected_for_execution(self, tools_db) -> None:
+        with pytest.raises(ValueError):
+            validate_tool_for_execution("dc", tools_db)
+
+
+class TestTextUtilityWriteGuard:
+    """Output files of text utilities are held to the same protected paths as cp and tee."""
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("sort", ["-o", "/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["--output=/etc/cron.d/x", "notes.txt"]),
+            ("shuf", ["-o", "/etc/cron.d/x", "notes.txt"]),
+            ("xmllint", ["--output", "/etc/cron.d/x", "a.xml"]),
+            ("uniq", ["notes.txt", "/etc/cron.d/x"]),
+            ("uniq", ["-f", "1", "notes.txt", "/etc/cron.d/x"]),
+            ("xxd", ["-r", "notes.hex", "/etc/cron.d/x"]),
+            ("xxd", ["-s", "16", "-r", "notes.hex", "/etc/cron.d/x"]),
+            ("awk", ['BEGIN{print "x" > "/etc/cron.d/x"}']),
+            ("awk", ['{printf "%s", $0 >> "/etc/cron.d/x"}', "notes.txt"]),
+            ("gawk", ["--pretty-print=/etc/cron.d/x", "BEGIN{}"]),
+            ("gawk", ["-o/etc/cron.d/x", "BEGIN{}"]),
+            # The spellings getopt_long also accepts: abbreviated long options and bundles.
+            ("sort", ["--outp=/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["--out", "/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["--o=/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["-uo", "/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["-uo/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["notes.txt", "-ro", "/etc/cron.d/x"]),
+            ("shuf", ["--o=/etc/cron.d/x", "notes.txt"]),
+            ("shuf", ["-zo", "/etc/cron.d/x", "notes.txt"]),
+            ("xmllint", ["-output", "/etc/cron.d/x", "a.xml"]),
+            ("xmllint", ["-o", "/etc/cron.d/x", "a.xml"]),
+            ("gawk", ["--prof=/etc/cron.d/x", "BEGIN{}"]),
+            ("gawk", ["--dump=/etc/cron.d/x", "BEGIN{}"]),
+            ("gawk", ["-bo/etc/cron.d/x", "BEGIN{}"]),
+            ("gawk", ["-o", "--profile=/etc/cron.d/x", "BEGIN{}"]),
+            # An option value the tables do not list must not push the output out of reach.
+            ("uniq", ["--skip-f", "1", "notes.txt", "/etc/cron.d/x"]),
+            ("uniq", ["-cf", "1", "notes.txt", "/etc/cron.d/x"]),
+            ("xxd", ["-cols", "16", "notes.hex", "/etc/cron.d/x"]),
+        ],
+    )
+    def test_write_into_protected_path_blocked(self, tool, args) -> None:
+        with pytest.raises(ValueError, match="sensitive"):
+            check_policy(tool, args)
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("wget", ["--output-doc=/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("wget", ["--output-d", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("tar", ["-xf", "a.tar", "--dir=/etc/cron.d"]),
+            ("tar", ["-xf", "a.tar", "--direc", "/etc/cron.d"]),
+            ("cp", ["--target-dir=/etc/cron.d", "notes.txt"]),
+            ("cp", ["-vt", "/etc/cron.d", "notes.txt"]),
+            ("mv", ["-ft/etc/cron.d", "notes.txt"]),
+            ("ln", ["-st", "/etc/cron.d", "notes.txt"]),
+            ("gpg", ["--outp", "/etc/cron.d/x", "--decrypt", "a.gpg"]),
+            ("curl", ["--outp", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            # Short options inside a bundle, the way they are usually typed.
+            ("curl", ["-sLo", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("curl", ["-sD", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("curl", ["-sSLc/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("wget", ["-qO", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("wget", ["-qP", "/etc/cron.d", "http://10.0.0.5/x"]),
+            ("wget", ["-nvo/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("unzip", ["-od", "/etc/cron.d", "a.zip"]),
+            ("unzip", ["-xd", "/etc/cron.d", "a.zip"]),
+            ("unzip", ["-qxod/etc/cron.d", "a.zip"]),
+            ("tar", ["xvfC", "a.tar", "/etc/cron.d"]),
+            ("tar", ["cvbf", "20", "/etc/cron.d/x.tar", "notes.txt"]),
+            # A single character is enough when no other option starts with it.
+            ("cp", ["--t=/etc/cron.d", "notes.txt"]),
+            ("cp", ["--t", "/etc/cron.d", "notes.txt"]),
+            ("mv", ["--t=/etc/cron.d", "notes.txt"]),
+            ("ln", ["-s", "--t", "/etc/cron.d", "notes.txt"]),
+            ("gpg", ["--o", "/etc/cron.d/x", "--decrypt", "a.gpg"]),
+            ("shuf", ["--o", "/etc/cron.d/x", "notes.txt"]),
+        ],
+    )
+    def test_abbreviated_and_bundled_options_of_the_older_rules_blocked(self, tool, args) -> None:
+        with pytest.raises(ValueError, match="sensitive"):
+            check_policy(tool, args)
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("cp", ["-v", "notes.txt", "copy.txt"]),
+            ("cp", ["-vt", "out", "notes.txt"]),
+            ("mv", ["--suffix=.bak", "notes.txt", "old.txt"]),
+            ("tar", ["-xf", "a.tar", "--dir=out"]),
+            ("wget", ["--output-doc=page.html", "http://10.0.0.5/x"]),
+            ("gpg", ["--outp", "plain.txt", "--decrypt", "a.gpg"]),
+            ("curl", ["-sLo", "page.html", "http://10.0.0.5/x"]),
+            ("curl", ["-sS", "-X", "POST", "-H", "Accept: text/plain", "-d", "a=b", "http://10.0.0.5/x"]),
+            ("curl", ["-sXPOST", "-HAccept:text/plain", "http://10.0.0.5/x"]),
+            ("wget", ["-qO", "page.html", "http://10.0.0.5/x"]),
+            ("wget", ["-qO-", "http://10.0.0.5/x"]),
+            ("unzip", ["-od", "out", "a.zip"]),
+            ("unzip", ["-Psecretdata", "-d", "out", "a.zip"]),
+            ("unzip", ["a.zip", "-x", "docs/*", "-d", "out"]),
+            ("tar", ["xvfC", "a.tar", "out"]),
+            ("tar", ["tvf", "a.tar"]),
+        ],
+    )
+    def test_the_same_spellings_into_the_working_directory_allowed(self, tool, args) -> None:
+        check_policy(tool, args)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["--compress-program=sh", "notes.txt"],
+            ["--compress-program", "sh", "notes.txt"],
+            ["--comp=sh", "-S", "1k", "notes.txt"],
+        ],
+    )
+    def test_sort_cannot_name_a_program_to_run(self, args) -> None:
+        with pytest.raises(ValueError, match="external compressor"):
+            check_policy("sort", args)
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("sort", ["-o", "out.txt", "notes.txt"]),
+            ("sort", ["-k", "2", "/etc/passwd"]),
+            ("sort", ["-k2,2", "-t,", "-uo", "out.txt", "/etc/passwd"]),
+            ("sort", ["--check", "/etc/passwd"]),
+            ("shuf", ["-n", "3", "-o", "out.txt", "/etc/passwd"]),
+            ("xmllint", ["--noout", "/etc/hostname"]),
+            ("gawk", ["-F:", "-v", "n=1", "{print $n}", "/etc/passwd"]),
+            ("gawk", ["--posix", "{print $1}", "/etc/passwd"]),
+            ("uniq", ["notes.txt", "out.txt"]),
+            ("uniq", ["-f", "1", "/etc/passwd"]),
+            ("xxd", ["-l", "32", "/etc/hostname"]),
+            ("xxd", ["-s", "16", "-l", "32", "/etc/hostname"]),
+            ("awk", ['{print $1 > "out.txt"}', "notes.txt"]),
+            ("awk", ['BEGIN{print "x" > "/dev/stderr"}']),
+            ("awk", ['$1 > "m" {print}', "/etc/passwd"]),
+        ],
+    )
+    def test_reads_and_working_directory_writes_allowed(self, tool, args) -> None:
+        check_policy(tool, args)
+
+
+class TestAwkRedirectTargets:
+    """awk may redirect print output only to a file name spelled out as one literal."""
+
+    @pytest.mark.parametrize(
+        "program",
+        [
+            "BEGIN{print > out}",
+            'BEGIN{print "x" >> out}',
+            'BEGIN{print "x" > ENVIRON["HOME"] "/.bashrc"}',
+            'BEGIN{print "x" > "/tmp/" name}',
+            'BEGIN{print "x" > ("out.txt")}',
+            'BEGIN{printf "%s", $0 > $1}',
+            # An escape hides the path from the protected-location check.
+            'BEGIN{print "x" > "\\x2fetc\\x2fcron.d\\x2fx"}',
+            # A quote inside a regex must not hide the statement that follows it.
+            'BEGIN { if (1) /"/; print "x" > out # "\n}',
+            'BEGIN { x = 1 / 2; print "x" > out; y = 3 / 4 }',
+            'BEGIN { print "x",\n "y" > out }',
+        ],
+    )
+    def test_computed_target_blocked(self, program) -> None:
+        with pytest.raises(ValueError, match="not one plain string literal"):
+            check_policy("awk", ["-v", "out=notes.txt", program])
+
+    @pytest.mark.parametrize("program", ['BEGIN { print "abc }', "/[/]/ {print}"])
+    def test_source_that_cannot_be_delimited_blocked(self, program) -> None:
+        with pytest.raises(ValueError, match="cannot be checked for output redirection"):
+            check_policy("awk", [program, "notes.txt"])
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["$3 > 100 {print $1}", "notes.txt"],
+            ["{ if ($1 > max) max = $1 } END { print max }", "notes.txt"],
+            ['{print ($1 > $2) ? "a" : "b"}', "notes.txt"],
+            ["{x = $1 > 5 ? 1 : 0; print x}", "notes.txt"],
+            ["{print $1\n x = $2 > 3 }", "notes.txt"],
+            ["/foo>bar/ {print}", "notes.txt"],
+            ['BEGIN{print "a>b"}'],
+            ['BEGIN { printf("%d\\n", 3 > 2) }'],
+            ['{print $1 / 2 > "ratio.txt"}', "notes.txt"],
+            ['{ print $1 > "a.txt"; print $2 >> "b.txt" }', "notes.txt"],
+            ['{print $1,\n $2 > "out.txt"}', "notes.txt"],
+            # Without a print statement nothing is scanned, whatever the argument holds.
+            ["-F>", "{n++} END{exit n == 0}", "a>b.txt"],
+            ["/[/]/ {n++}", "notes.txt"],
+        ],
+    )
+    def test_comparisons_and_literal_targets_allowed(self, args) -> None:
+        check_policy("awk", args)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-e", 'BEGIN{print "x"}'],
+            ['@include "/tmp/lib.awk"\nBEGIN{run()}'],
+            ['BEGIN{} @include "lib"'],
+        ],
+    )
+    def test_other_ways_to_load_program_text_blocked(self, args) -> None:
+        with pytest.raises(ValueError, match="uninspected script execution"):
+            check_policy("gawk", args)
+
+    def test_scanner_matches_what_gawk_writes(self, tmp_path) -> None:
+        """Every program that makes gawk create the file is one the policy refuses."""
+        import shutil
+        import subprocess
+
+        gawk = shutil.which("gawk")
+        if gawk is None:
+            pytest.skip("gawk is not installed")
+        hit = tmp_path / "hit"
+        programs = [
+            'BEGIN { if (1) /"/; print "x" > out # "\n}',
+            'BEGIN { while (i++ < 1) /"/; print "x" > out # "\n}',
+            'BEGIN { if (0) x = 1; else /"/; print "x" > out # "\n}',
+            'function f(a) { return /"/ } BEGIN { print "x" > out # "\n}',
+            'BEGIN { x = 1 ? /"/ : 0; print "x" > out # "\n}',
+            'BEGIN { x = !/"/; print "x" > out # "\n}',
+            'BEGIN { n = split("a/b", p, /\\//); print n > out }',
+            'BEGIN { a["k"] = 4; b = a["k"] / 2; print "x" > out; c = 1 / 1 }',
+            'BEGIN { x = (1) / 2; print "x" > out; y = 1 / 1 }',
+            'BEGIN { x = 5; x++ / 2; print "x" > out; y = 1 / 1 }',
+            'BEGIN { x = length / 2; print "x" > out; y = 1 / 1 }',
+            'BEGIN { $0 = "4"; x = $(1) / 2; print "x" > out; y = 1 / 1 }',
+            'BEGIN { x = 1e3 / 2; print "x" > out; y = 1 / 1 }',
+            'BEGIN { x = "s" / 2; print "x" > out; y = 1 / 1 }',
+            'BEGIN { x = 1 /2/ 1; print "x" > out; y = 1 /1/ 1 }',
+            'BEGIN { a = 1; b = a++ / 2 + /"/; print "x" > out # "\n}',
+            'BEGIN { print "x" \\\n > out }',
+            "BEGIN { print 1 ~ /1/ > out }",
+            'BEGIN { print"x">out }',
+            'BEGIN { do print "x" > out; while (0) }',
+        ]
+        for program in programs:
+            hit.unlink(missing_ok=True)
+            subprocess.run([gawk, "-v", f"out={hit}", program], input="", text=True, capture_output=True, timeout=10)
+            assert hit.exists(), f"fixture does not write under gawk: {program!r}"
+            with pytest.raises(ValueError, match="not one plain string literal"):
+                check_policy("gawk", ["-v", f"out={hit}", program])

@@ -1,7 +1,10 @@
 ---
 name: implementing-api-security-testing-with-42crunch
-description: Implement comprehensive API security testing using the 42Crunch platform
-  to perform static audit and dynamic conformance scanning of OpenAPI specifications.
+description: Implements API security testing on the 42Crunch platform, combining
+  API Audit for static analysis of OpenAPI definitions, API Conformance Scan for
+  dynamic vulnerability testing, and API Protect for runtime threat prevention, integrated
+  into CI/CD pipelines and IDEs. Use when shift-left testing APIs for OWASP API Security
+  Top 10 vulnerabilities or setting up 42Crunch audit and conformance scanning.
 domain: cybersecurity
 subdomain: api-security
 tags:

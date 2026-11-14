@@ -1,8 +1,11 @@
 ---
 name: detecting-spearphishing-with-email-gateway
-description: Spearphishing targets specific individuals using personalized, researched
-  content that bypasses generic spam filters. Email security gateways (SEGs) like
-  Microsoft Defender for Office 365, Proofpoint,
+description: Detect and block spearphishing emails that use personalized, researched
+  content to evade generic spam filters, by configuring email security gateway
+  (SEG) impersonation protection, URL rewriting, attachment sandboxing, and
+  custom detection rules in Microsoft Defender for Office 365, Proofpoint,
+  Mimecast, or Barracuda. Use when hardening a mail gateway against targeted
+  phishing or investigating a suspected spearphishing campaign.
 domain: cybersecurity
 subdomain: phishing-defense
 tags:
@@ -26,6 +29,38 @@ mitre_attack:
 - T1566.002
 - T1204.001
 - T1204.002
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - reconnaissance
+  - initial-access
+  - stealth
+  - resource-development
+  techniques:
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
+  - id: T1672
+    name: Email Spoofing
+    tactic: stealth
+    source: attack
+  - id: F1032
+    name: Impersonate Official
+    tactic: initial-access
+    source: f3
+  - id: F1031
+    name: Impersonate Account Holder
+    tactic: initial-access
+    source: f3
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
 ---
 # Detecting Spearphishing with Email Gateway
 

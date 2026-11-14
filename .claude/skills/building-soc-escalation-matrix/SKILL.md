@@ -1,7 +1,10 @@
 ---
 name: building-soc-escalation-matrix
 description: Build a structured SOC escalation matrix defining severity tiers, response
-  SLAs, escalation paths, and notification procedures for security incidents.
+  SLAs, tiered escalation paths, and notification procedures for security incidents,
+  using context-driven criteria that combine business risk, asset criticality, and
+  data sensitivity. Use when designing or revising how a SOC triages and escalates
+  incidents across analyst tiers.
 domain: cybersecurity
 subdomain: soc-operations
 tags:

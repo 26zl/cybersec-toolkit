@@ -1,13 +1,6 @@
 ---
 name: performing-power-grid-cybersecurity-assessment
-description: 'This skill covers conducting cybersecurity assessments of electric power
-  grid infrastructure including generation facilities, transmission substations, distribution
-  systems, and energy management system (EMS) control centers. It addresses NERC CIP
-  compliance verification, substation automation security, IEC 61850 protocol analysis,
-  synchrophasor (PMU) network security, and the unique threat landscape targeting
-  power grid operations as demonstrated by Industroyer/CrashOverride and related attacks.
-
-  '
+description: Conduct cybersecurity assessments of power grid infrastructure spanning generation, transmission substations, distribution, and EMS control centers, covering NERC CIP compliance verification, IEC 61850 (GOOSE/MMS) substation protocol analysis, and synchrophasor (PMU) network security against threats like Industroyer/CrashOverride. Use for periodic NERC CIP assessments, substation automation or EMS/SCADA security reviews, or regional entity compliance audits; not for non-BES systems or generic OT assessments without power grid specifics.
 domain: cybersecurity
 subdomain: ot-ics-security
 tags:

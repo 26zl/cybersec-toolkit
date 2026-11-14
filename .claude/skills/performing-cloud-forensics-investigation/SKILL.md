@@ -1,7 +1,10 @@
 ---
 name: performing-cloud-forensics-investigation
-description: Conduct forensic investigations in cloud environments by collecting and
-  analyzing logs, snapshots, and metadata from AWS, Azure, and GCP services.
+description: Collect and analyze cloud forensic evidence using AWS CLI, Azure CLI, or gcloud
+  to snapshot volumes, capture instance metadata and security group configurations, and preserve
+  cloud-native logs (CloudTrail, Activity Log, Audit Log). Use when investigating a suspected
+  breach in AWS, Azure, or GCP, tracing unauthorized access through API logs, or analyzing a
+  compromised VM, container, or serverless function.
 domain: cybersecurity
 subdomain: digital-forensics
 tags:
@@ -16,7 +19,6 @@ version: '1.0'
 author: mahipal
 license: Apache-2.0
 nist_csf:
-- RS.AN-01
 - RS.AN-03
 - DE.AE-02
 - RS.MA-01

@@ -1,10 +1,6 @@
 ---
 name: deploying-cloudflare-access-for-zero-trust
-description: 'Deploying Cloudflare Access with Cloudflare Tunnel to provide zero trust
-  access to self-hosted and private applications, configuring identity-aware access
-  policies, device posture checks, and WARP client enrollment for VPN replacement.
-
-  '
+description: Deploys Cloudflare Access with Cloudflare Tunnel for zero trust access to self-hosted apps, configuring identity-aware policies, device posture checks, and WARP client enrollment as a VPN replacement. Use when replacing VPN with Cloudflare One, exposing internal apps without open inbound ports, or securing contractor/third-party access to specific applications.
 domain: cybersecurity
 subdomain: zero-trust-architecture
 tags:

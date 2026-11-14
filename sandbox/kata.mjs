@@ -23,6 +23,8 @@ import { createInterface } from 'node:readline';
 
 import { createIsolatedSandboxProvider } from '@ai-hero/sandcastle';
 
+import { applyScope, buildHostArgs, loadScope, resolveScope, summarize } from './scope.mjs';
+
 export const SANDBOX_LABEL_KEY = 'cybersec-toolkit.sandbox';
 export const SANDBOX_LABEL_VALUE = 'kata';
 export const WORKTREE_PATH = '/workspace';
@@ -133,6 +135,8 @@ export const resolveOptions = (options = {}, env = process.env) => {
     allowUnsafeRuntime: (pick(options.allowUnsafeRuntime, 'CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME') ?? '0') === '1',
     workspace,
     workspaceReadonly: truthy(pick(options.workspaceReadonly, 'CYBERSEC_SANDBOX_WORKSPACE_RO')),
+    scope: pick(options.scope, 'CYBERSEC_SANDBOX_SCOPE'),
+    allowStaleImage: (pick(options.allowStaleImage, 'CYBERSEC_SANDBOX_ALLOW_STALE_IMAGE') ?? '0') === '1',
   };
 };
 
@@ -165,8 +169,8 @@ export const selectRuntime = (runtimes, requested, { allowUnsafe = false } = {})
   return chosen;
 };
 
-/** Build the `docker run` argument vector for an idle sandbox VM. */
-export const buildRunArgs = ({ name, runtime, options, env }) => {
+/** Build the `docker run` argument vector for an idle sandbox VM. `hostArgs` pins a scope's names. */
+export const buildRunArgs = ({ name, runtime, options, env, hostArgs = [] }) => {
   const args = [
     'run',
     '--detach',
@@ -204,8 +208,12 @@ export const buildRunArgs = ({ name, runtime, options, env }) => {
     args.push('--tmpfs', `${path}:rw,nosuid,nodev,size=${options.scratchSize},uid=${uid},gid=${gid},mode=${mode}`);
   }
 
-  for (const cap of options.capAdd) args.push('--cap-add', cap);
+  // A scope is loaded by a root setup step, which needs NET_ADMIN in the bounding
+  // set. The tool user holds no capabilities and no-new-privileges keeps it so.
+  const capAdd = options.scope && !options.capAdd.includes('NET_ADMIN') ? [...options.capAdd, 'NET_ADMIN'] : options.capAdd;
+  for (const cap of capAdd) args.push('--cap-add', cap);
   if (options.network) args.push('--network', options.network);
+  args.push(...hostArgs);
 
   // The only host path the VM can see, and only when the operator names one.
   if (options.workspace) {
@@ -264,6 +272,27 @@ const dockerExec = (args, { maxBuffer = 10 * 1024 * 1024, env } = {}) =>
     });
   });
 
+// docker with a stdin payload; resolves with stdout, rejects on a non-zero exit.
+const dockerExecInput = (args, input) =>
+  new Promise((resolve, reject) => {
+    const child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout = appendTail(stdout, chunk.toString());
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr = appendTail(stderr, chunk.toString());
+    });
+    child.on('error', (error) => reject(new Error(`docker ${args[0]} failed: ${error.message}`)));
+    child.on('close', (code) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error(stderr.trim() || stdout.trim() || `exit status ${code}`));
+    });
+    child.stdin.on('error', () => {});
+    child.stdin.end(input ?? '');
+  });
+
 const readRuntimes = async () => {
   const raw = await dockerExec(['info', '--format', '{{json .Runtimes}}']);
   try {
@@ -284,7 +313,27 @@ const currentSourceHash = () => {
   }
 };
 
-const assertImagePresent = async (image) => {
+/**
+ * Refuse an image that was not built from this checkout's server sources.
+ *
+ * Such an image runs older server and policy code than the one being read and
+ * reviewed here, and nothing in the session shows it. `current` is empty when
+ * the hash cannot be computed, which leaves staleness unknown.
+ */
+export const assertImageCurrent = (labels, current, image, allowStale = false) => {
+  if (!current || labels?.[SOURCE_HASH_LABEL] === current) return;
+  if (!allowStale) {
+    throw new Error(
+      `Sandbox image '${image}' was not built from this checkout's server sources, so it would run older ` +
+        `server and policy code. Rebuild with: ${BUILD_HINT} (CYBERSEC_SANDBOX_ALLOW_STALE_IMAGE=1 runs it anyway).`,
+    );
+  }
+  process.stderr.write(
+    `WARNING: sandbox image '${image}' was not built from this checkout's server sources; rebuild with: ${BUILD_HINT}\n`,
+  );
+};
+
+const assertImagePresent = async (image, allowStale) => {
   let raw;
   try {
     raw = await dockerExec(['image', 'inspect', image, '--format', '{{json .Config.Labels}}']);
@@ -297,13 +346,7 @@ const assertImagePresent = async (image) => {
   } catch {
     return; // Unreadable labels leave staleness unknown; that is no reason to refuse the image.
   }
-  // A stale image silently runs old server and policy code.
-  const current = currentSourceHash();
-  if (current && labels?.[SOURCE_HASH_LABEL] !== current) {
-    process.stderr.write(
-      `WARNING: sandbox image '${image}' was not built from this checkout's server sources; rebuild with: ${BUILD_HINT}\n`,
-    );
-  }
+  assertImageCurrent(labels, currentSourceHash(), image, allowStale);
 };
 
 // a is an ancestor of, or equal to, b.
@@ -355,6 +398,11 @@ export const assertWorkspaceUsable = (workspace) => {
   if (checkout && _isAncestorOrSame(real, checkout)) {
     refuse('is the toolkit checkout or an ancestor of it (VM code could rewrite the launcher)');
   }
+  // Clients load instruction files, skills and MCP settings from inside the project
+  // tree, so a directory the VM writes to must not be part of it.
+  if (checkout && _isAncestorOrSame(checkout, real)) {
+    refuse('is inside the toolkit checkout (the client would read files the VM writes there as project content)');
+  }
 };
 
 /**
@@ -401,6 +449,11 @@ export const kata = (options = {}) => {
     env: options.env,
     create: async (createOptions) => {
       assertWorkspaceUsable(resolved.workspace);
+      // Read and resolved before anything boots: a scope that cannot be applied in full stops the launch.
+      const scope = resolved.scope ? await resolveScope(loadScope(resolved.scope)) : null;
+      if (scope && resolved.user.split(':')[0] === '0') {
+        throw new Error('A network scope cannot be enforced when the sandbox user is root; unset CYBERSEC_SANDBOX_USER.');
+      }
       const runtime = selectRuntime(await readRuntimes(), resolved.runtime, {
         allowUnsafe: resolved.allowUnsafeRuntime,
       });
@@ -411,7 +464,7 @@ export const kata = (options = {}) => {
           `WARNING: CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME=1 skips the VM-boundary check for runtime '${runtime}'.\n`,
         );
       }
-      await assertImagePresent(resolved.image);
+      await assertImagePresent(resolved.image, resolved.allowStaleImage);
 
       const containerName = `cybersec-kata-${randomUUID()}`;
       let removed = false;
@@ -429,6 +482,8 @@ export const kata = (options = {}) => {
       if (env.CYBERSEC_SANDBOX_MODE === 'kata') {
         env.CYBERSEC_SANDBOX_MODE = sandboxModeLabel(runtime, resolved.allowUnsafeRuntime);
       }
+      // The server tells its client where it may connect and records it at start.
+      if (scope) env.CYBERSEC_SANDBOX_SCOPE = summarize(scope);
 
       // Registered before `docker run`, which is where the VM boots: a signal
       // in that window must still remove it.
@@ -440,6 +495,7 @@ export const kata = (options = {}) => {
           runtime,
           options: resolved,
           env,
+          hostArgs: scope ? buildHostArgs(scope) : [],
         }),
         { env: buildExecEnv(env).env },
       );
@@ -473,6 +529,17 @@ export const kata = (options = {}) => {
         } catch (error) {
           teardownAndThrow(error);
         }
+      }
+
+      if (scope) {
+        try {
+          await applyScope({ run: dockerExecInput, container: containerName, scope });
+        } catch (error) {
+          removeSync();
+          unregisterShutdown();
+          throw new Error(`Network scope '${scope.name}' could not be enforced: ${error.message}`);
+        }
+        process.stderr.write(`Network scope enforced inside the sandbox — ${summarize(scope)}\n`);
       }
 
       return {

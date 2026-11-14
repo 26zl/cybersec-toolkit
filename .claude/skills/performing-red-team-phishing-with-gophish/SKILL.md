@@ -1,10 +1,10 @@
 ---
 name: performing-red-team-phishing-with-gophish
-description: Automate GoPhish phishing simulation campaigns using the Python gophish
-  library. Creates email templates with tracking pixels, configures SMTP sending profiles,
-  builds target groups from CSV, launches campaigns, and analyzes results including
-  open rates, click rates, and credential submission statistics for security awareness
-  assessment.
+description: Automates GoPhish phishing simulation campaigns using the Python gophish
+  library, creating email templates with tracking pixels, configuring SMTP sending
+  profiles, building target groups from CSV, launching campaigns, and analyzing results
+  such as open rates, click rates, and credential submission statistics. Use when
+  running an authorized phishing simulation or security awareness assessment via GoPhish.
 domain: cybersecurity
 subdomain: security-operations
 tags:
@@ -28,6 +28,33 @@ mitre_attack:
 - T1059
 - T1003
 - T1110
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - resource-development
+  - reconnaissance
+  - initial-access
+  techniques:
+  - id: T1598
+    name: Phishing for Information
+    tactic: reconnaissance
+    source: attack
+  - id: T1660
+    name: Phishing
+    tactic: initial-access
+    source: attack
+  - id: F1020.002
+    name: 'Create Fake Materials: Fake Website'
+    tactic: resource-development
+    source: f3
+  - id: T1583.001
+    name: 'Acquire Infrastructure: Domains'
+    tactic: resource-development
+    source: attack
+  - id: F1006.002
+    name: 'Account Takeover: Exposed Login Credential'
+    tactic: initial-access
+    source: f3
 ---
 
 

@@ -1,8 +1,6 @@
 ---
 name: analyzing-campaign-attribution-evidence
-description: Campaign attribution analysis involves systematically evaluating evidence
-  to determine which threat actor or group is responsible for a cyber operation. This
-  skill covers collecting and weighting attr
+description: Systematically evaluate cyber-campaign evidence to attribute an operation to a threat actor, using the Diamond Model and Analysis of Competing Hypotheses (ACH) to weigh infrastructure overlaps, TTP consistency, malware code similarity, and timing/language artifacts into confidence-weighted attribution assessments. Use when an incident investigation needs a defensible attribution confidence level.
 domain: cybersecurity
 subdomain: threat-intelligence
 tags:

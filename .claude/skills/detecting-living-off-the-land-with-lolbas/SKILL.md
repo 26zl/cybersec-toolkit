@@ -2,7 +2,9 @@
 name: detecting-living-off-the-land-with-lolbas
 description: Detect Living Off the Land Binaries (LOLBins/LOLBAS) abuse including
   certutil, regsvr32, mshta, and rundll32 via process telemetry, Sigma rules, and
-  parent-child process analysis
+  parent-child process analysis with Sysmon endpoint data. Use when hunting for adversaries
+  abusing built-in Windows binaries to download, execute, or proxy malicious code while
+  evading traditional executable-based detection.
 domain: cybersecurity
 subdomain: threat-detection
 tags:

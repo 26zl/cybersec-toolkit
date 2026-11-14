@@ -1,14 +1,11 @@
 ---
 name: implementing-api-gateway-security-controls
-description: 'Implements security controls at the API gateway layer including authentication
-  enforcement, rate limiting, request validation, IP allowlisting, TLS termination,
-  and threat protection. The engineer configures API gateways (Kong, AWS API Gateway,
-  Azure APIM, Apigee) to act as a centralized security enforcement point that validates,
-  throttles, and monitors all API traffic before it reaches backend services. Activates
-  for requests involving API gateway security, API management security, gateway authentication,
-  or centralized API protection.
-
-  '
+description: 'Configures API gateways such as Kong, AWS API Gateway, Azure APIM,
+  or Apigee as a centralized security enforcement point, covering authentication
+  enforcement, rate limiting and throttling, request validation, IP allowlisting,
+  TLS termination, and threat protection. Use when securing API traffic at the gateway
+  layer, setting up gateway-level authentication and quota management, or centralizing
+  API protection before requests reach backend services.'
 domain: cybersecurity
 subdomain: api-security
 tags:

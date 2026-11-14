@@ -1,0 +1,35 @@
+# Workflows reference this as $/.github/actions/setup-uv, which GitHub resolves from the source archive:
+# .gitattributes therefore keeps .github/actions/ in that archive.
+name: Set up uv
+description: Install the uv release the Dockerfile pins, so CI and the image resolve with one version.
+
+inputs:
+  python-version:
+    description: Python version to install, as astral-sh/setup-uv takes it.
+    required: false
+    default: ""
+  enable-cache:
+    description: Passed to astral-sh/setup-uv.
+    required: false
+    default: "auto"
+
+runs:
+  using: composite
+  steps:
+    # Dependabot moves the image tag and its digest together, after the cooldown.
+    - name: Read the pinned uv release
+      id: pin
+      shell: bash
+      run: |
+        version=$(sed -n 's#^FROM ghcr\.io/astral-sh/uv:\([0-9][0-9.]*\)@sha256:.*#\1#p' Dockerfile | head -n 1)
+        if [[ -z "$version" ]]; then
+          echo "::error::Dockerfile names no pinned uv release"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        version: ${{ steps.pin.outputs.version }}
+        python-version: ${{ inputs.python-version }}
+        enable-cache: ${{ inputs.enable-cache }}

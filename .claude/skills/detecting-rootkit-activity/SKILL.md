@@ -1,10 +1,10 @@
 ---
 name: detecting-rootkit-activity
 description: 'Detects rootkit presence on compromised systems by identifying hidden
-  processes, hooked system calls, modified kernel structures, hidden files, and covert
-  network connections using memory forensics, cross-view detection, and integrity
-  checking techniques. Activates for requests involving rootkit detection, hidden
-  process discovery, kernel integrity checking, or system call hook analysis.
+  processes, hooked system calls, modified kernel structures, and covert network
+  connections using Volatility memory forensics, cross-view detection, and tools
+  like GMER, rkhunter, chkrootkit, and RootkitRevealer. Use when standard tools
+  (Task Manager, netstat, AV/EDR) show nothing abnormal but compromise is suspected.
 
   '
 domain: cybersecurity

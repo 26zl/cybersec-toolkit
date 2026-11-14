@@ -927,10 +927,21 @@ def build_guided_plan(
         }
 
     autonomous: dict | None = None
-    if mode_norm == "autonomous":
+    blocked_reason = _execution_reason(mode_norm, authorization_confirmed, auth_required, target_external_block)
+    if mode_norm == "autonomous" and blocked_reason != "ready":
+        # The solver directive is withheld until the run may start, so the response
+        # never tells the client to proceed while also reporting that it is blocked.
         autonomous = {
             "directive": (
-                "AUTHORIZED AUTONOMOUS SOLVER MODE — guided_assessment is the entry point to the full "
+                f"AUTONOMOUS MODE NOT STARTED — {blocked_reason}. Nothing was executed in this call. "
+                "Do not run tools against this target until the next_actions below are resolved."
+            ),
+        }
+    elif mode_norm == "autonomous":
+        autonomous = {
+            "directive": (
+                "AUTONOMOUS SOLVER MODE — the caller stated that this scope is authorized. "
+                "guided_assessment is the entry point to the full "
                 "MCP toolchain. It auto-runs the selected bootstrap below, then the client "
                 "agent should keep solving with MCP tools: inspect install status, choose tools from the "
                 "advisor output and registry, run commands with run_tool/run_pipeline, use run_script for "
@@ -1010,17 +1021,9 @@ def build_guided_plan(
     }
 
 
-# Modes that auto-execute selected bootstrap steps inside this MCP call.
-_EXECUTING_MODES = {"autonomous"}
-
-
 def _execution_reason(mode: str, authorization_confirmed: bool, auth_required: bool, external_blocked: bool) -> str:
-    if mode not in _EXECUTING_MODES:
-        if mode == "companion":
-            return (
-                "mode=companion; no automatic execution inside this call; continue with MCP tools as the user approves"
-            )
-        return f"mode={mode}; no automatic execution inside this call"
+    if mode != "autonomous":
+        return "mode=companion; no automatic execution inside this call; continue with MCP tools as the user approves"
     if auth_required and not authorization_confirmed:
         return "authorization_confirmed=false; no network tools executed"
     if external_blocked:
@@ -1042,7 +1045,7 @@ def _next_actions(mode: str, authorization_confirmed: bool, auth_required: bool,
             f"reusable helpers in {MANUAL_SCRIPTS_DIR}, and keep iterating through the full "
             "registry/modules/profiles until the task is solved or needs explicit escalation."
         )
-    elif mode == "autonomous":
+    elif mode == "autonomous" and not (auth_required and not authorization_confirmed) and not external_blocked:
         actions.append(
             "Continue the user-approved auto-solver loop (the recon bootstrap above is already done): "
             "for each lead, run tools via run_tool/run_pipeline and create+run scoped helper scripts via "

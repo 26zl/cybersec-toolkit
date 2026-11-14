@@ -1,8 +1,10 @@
 ---
 name: implementing-api-schema-validation-security
-description: Implement API schema validation using OpenAPI specifications and JSON
-  Schema to enforce input/output contracts and prevent injection, data exposure, and
-  mass assignment attacks.
+description: Implements API schema validation using OpenAPI Specification and JSON
+  Schema documents, enforced both at the API gateway (runtime) and during development
+  (shift-left), to lock down request/response contracts and reject unknown properties.
+  Use when preventing injection attacks (SQLi, XSS, XXE), blocking mass assignment,
+  or stopping data leakage through unvalidated API responses.
 domain: cybersecurity
 subdomain: api-security
 tags:

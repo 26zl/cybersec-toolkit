@@ -35,7 +35,8 @@ contribution rules there. This file contains only Claude Code-specific behavior.
 injects the scoped MCP contract, and `PreToolUse` on `Bash` denies a security-tool
 invocation until an advisor entry point has been called this session. Clearance is read
 from the server's audit log rather than from anything the agent says; one
-`guided_assessment`, `suggest_for_ctf` or `suggest_for_bounty` call clears the session.
+`guided_assessment`, `suggest_for_ctf` or `suggest_for_bounty` call clears the session
+for four hours, after which the next security-tool invocation needs a fresh one.
 The guard is a routing aid, not a security boundary: anything running as the user can
 write that log, and the MCP policy layer is what enforces execution rules. A sandboxed
 server mirrors its records out to that same host log (`docs/SANDBOX.md`), so the gate

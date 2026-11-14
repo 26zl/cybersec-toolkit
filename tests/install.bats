@@ -101,7 +101,7 @@ setup() {
     assert_output --partial "crypto"
 }
 
-@test "install.sh ignores FAST_MODE and FORCE_YES from the environment (CL-10)" {
+@test "install.sh ignores FAST_MODE and FORCE_YES from the environment" {
     # An inherited FAST_MODE would silently disable checksum verification.
     run env FAST_MODE=true FORCE_YES=true bash "$INSTALL_SH" --profile ctf --dry-run
     assert_success

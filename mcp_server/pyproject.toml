@@ -4,7 +4,7 @@ version = "1.4.0"
 description = "MCP server for the cybersec-toolkit — query 670+ tools, get recommendations, execute safely"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 dependencies = [
     "fastmcp>=4.1.4,<5.0.0",
 ]
@@ -29,7 +29,9 @@ cybersec-mcp = "mcp_server.server:main"
 dev = ["pytest>=9.1.1", "pytest-asyncio>=0.24", "ruff>=0.15.16"]
 
 [build-system]
-requires = ["hatchling"]
+# uv.lock does not cover the build backend. Its own dependencies resolve under the
+# exclude-newer cooldown below.
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
@@ -43,6 +45,7 @@ bypass-selection = true
 "ctf_advisor.py" = "mcp_server/ctf_advisor.py"
 "cve_advisor.py" = "mcp_server/cve_advisor.py"
 "guided_assessment.py" = "mcp_server/guided_assessment.py"
+"local_sandbox.py" = "mcp_server/local_sandbox.py"
 "profiles.py" = "mcp_server/profiles.py"
 "remote.py" = "mcp_server/remote.py"
 "sanitize.py" = "mcp_server/sanitize.py"
@@ -58,6 +61,7 @@ bypass-selection = true
 "ctf_advisor.py" = "mcp_server/ctf_advisor.py"
 "cve_advisor.py" = "mcp_server/cve_advisor.py"
 "guided_assessment.py" = "mcp_server/guided_assessment.py"
+"local_sandbox.py" = "mcp_server/local_sandbox.py"
 "profiles.py" = "mcp_server/profiles.py"
 "remote.py" = "mcp_server/remote.py"
 "sanitize.py" = "mcp_server/sanitize.py"

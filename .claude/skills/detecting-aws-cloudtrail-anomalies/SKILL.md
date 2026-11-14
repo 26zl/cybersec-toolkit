@@ -26,6 +26,33 @@ mitre_attack:
 - T1538
 - T1098.001
 - T1526
+mitre_f3:
+  version: '1.1'
+  tactics:
+  - initial-access
+  - positioning
+  - defense-impairment
+  techniques:
+  - id: F1006.001
+    name: 'Account Takeover: Exposed API Key'
+    tactic: initial-access
+    source: f3
+  - id: T1586.003
+    name: 'Compromise Accounts: Cloud Accounts'
+    tactic: resource-development
+    source: attack
+  - id: F1005
+    name: Account Manipulation
+    tactic: positioning
+    source: f3
+  - id: F1005.002
+    name: 'Account Manipulation: Add Authorized User'
+    tactic: positioning
+    source: f3
+  - id: F1005.001
+    name: 'Account Manipulation: Account Linking'
+    tactic: defense-impairment
+    source: f3
 ---
 # Detecting AWS CloudTrail Anomalies
 
