@@ -25,16 +25,29 @@ and independent of normal repository work.
 
 `.github/workflows/publish-image.yml` builds the image, scans it with Trivy
 (fails on fixable HIGH/CRITICAL CVEs), and pushes it to
-`ghcr.io/26zl/cybersec-toolkit` on pushes to `main` and `v*.*.*` tags. Doc-,
-writeup-, and CI-only commits are skipped via `paths-ignore`. A push to `main`
+`ghcr.io/26zl/cybersec-toolkit` on pushes to `main` and `v*.*.*` tags. Nothing
+is built until the CI and Security runs of the same commit are green: a failed
+run fails the publish, and a commit whose runs were cancelled by a newer push is
+skipped with a warning. A tag therefore has to sit on a commit that CI has run
+on. For a commit that was merged with `GITHUB_TOKEN` and so has no runs of its
+own, the runs on the head of its pull request count instead. Commits
+that touch only documentation, writeups, CI, skills or tests are skipped via
+`paths-ignore`, since none of those reach the image. A push to `main`
 produces `latest` and `sha-<short>`; the numeric version tag (e.g. `1.2.1`) comes
 only from the `v*.*.*` tag build, so a later main push cannot re-point a released
 version tag, and a tag build never moves `latest`.
 
+Every Wednesday the workflow also rebuilds `latest` from `main`, which picks up
+distro package fixes that arrive without a commit here, and scans the released
+`x.y.z` image. That tag is built once and is what `server.json` points the MCP
+Registry at, so it only gets a fix through a new release: fixable HIGH/CRITICAL
+findings open an issue labelled `image-scan`, which the scan closes again once
+the released image is clean.
+
 Merges that the `uv-update` workflow auto-merges are pushed with `GITHUB_TOKEN`,
 which does not trigger other workflows, so they are not published until the next
-push to `main`. To ship a dependency fix sooner, run **Publish image** manually
-from `main` (Actions → Publish image → Run workflow).
+push to `main` or the weekly rebuild. To ship a dependency fix sooner, run
+**Publish image** manually from `main` (Actions → Publish image → Run workflow).
 
 The image must carry `LABEL io.modelcontextprotocol.server.name=` (set in the
 `Dockerfile`) — the registry checks this annotation before accepting the OCI
@@ -55,9 +68,21 @@ silently until a workflow needs it:
   workflow resolves the upgrade but fails at "Create pull request"
   (`GitHub Actions is not permitted to create or approve pull requests`) and
   routine Python updates stop. Dependabot security updates are unaffected.
-- **Settings → Rules → "Protect main"** holds the required status checks. The
-  path-filtered Integration workflow, including its sandbox and installer image
-  Trivy scans, is not among them, so its failures do not block a merge.
+- **Settings → Rules → "Protect main"** holds the required status checks, each
+  bound to the GitHub Actions app, so a commit status posted under the same
+  name by anything else does not satisfy them. A job that is renamed, or moved
+  to another CI system, has to be updated there. The path-filtered Integration
+  workflow, including its sandbox and installer image Trivy scans, is not among
+  them, so its failures do not block a merge.
+- **Settings → Rules → "Release tags are immutable"** forbids deleting or moving
+  a `v*` tag and has no bypass list; "Protect release tags" limits who may
+  create one. A tag pushed by mistake therefore stays until that ruleset is
+  disabled by hand, the tag removed, and the ruleset enabled again. Check
+  `VERSION` before tagging: a tag that does not match it fails the image build
+  and cannot simply be moved.
+- The weekly jobs report through issues they open and close themselves, labelled
+  `image-scan` (released image), `integration-failure` (weekly Integration run)
+  and `skills-update` (vendored skills).
 - **Packages → `cybersec-toolkit`** visibility must stay public (above).
 
 Verify a published image's provenance with
@@ -120,5 +145,5 @@ Listed via a PR to <https://github.com/punkpeye/awesome-mcp-servers> (Security
 section). Entry format:
 
 ```markdown
-- [26zl/cybersec-toolkit](https://github.com/26zl/cybersec-toolkit) 🐍 🏠 🐧 - One command installs 670+ security tools; an authorization-gated MCP server lets AI clients discover and run them for CTF, pentest, bug bounty, and DFIR.
+- [26zl/cybersec-toolkit](https://github.com/26zl/cybersec-toolkit) 🐍 🏠 🐧 - One command installs 670+ security tools; an MCP server lets AI clients look them up and run the installed ones under a scope policy and an audit log, for CTF, pentest, bug bounty, and DFIR.
 ```

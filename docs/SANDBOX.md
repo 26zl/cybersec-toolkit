@@ -31,10 +31,11 @@ What the boundary is for:
 
 What it is not:
 
-- Not a network boundary. `CYBERSEC_MCP_ALLOW_EXTERNAL=0` stays a preflight
-  check on resolved addresses, not a firewall; the VM still reaches whatever
-  its Docker network reaches. Set `CYBERSEC_SANDBOX_NETWORK=none` for offline
-  analysis work.
+- Not a network boundary unless you give it a scope. `CYBERSEC_MCP_ALLOW_EXTERNAL=0`
+  stays a preflight check on resolved addresses, not a firewall, and without a
+  scope file the VM reaches whatever its Docker network reaches. A scope file
+  ([Network scope](#network-scope)) is enforced by a firewall inside the VM;
+  `CYBERSEC_SANDBOX_NETWORK=none` removes the network for offline analysis.
 - Not an authorization control. Scope and permission to test a target remain
   the operator's responsibility.
 - Not a guarantee against every hypervisor escape — it raises the cost of one,
@@ -161,10 +162,12 @@ to `kata()`.
 | -------- | ------- | ------- |
 | `CYBERSEC_SANDBOX_MODE` | `kata` | `kata` or `local`. Read by the launcher. |
 | `CYBERSEC_SANDBOX_IMAGE` | `cybersec-toolkit-sandbox:latest` | Image to boot. |
+| `CYBERSEC_SANDBOX_ALLOW_STALE_IMAGE` | `0` | `1` boots an image that was not built from this checkout's server sources. Startup refuses one otherwise, because it runs older server and policy code. |
 | `CYBERSEC_SANDBOX_RUNTIME` | auto-detected | Pin a runtime name registered with Docker. |
 | `CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME` | `0` | `1` accepts a non-Kata runtime. Startup refuses one otherwise, and warns loudly when accepted: there is no VM boundary. |
 | `CYBERSEC_SANDBOX_NETWORK` | Docker default bridge | `none` for an offline VM, or a named Docker network. |
-| `CYBERSEC_SANDBOX_WORKSPACE` | unset | Absolute host directory to mount at `/workspace`. The only host path the VM can see; the host root is refused. |
+| `CYBERSEC_SANDBOX_SCOPE` | unset | Absolute path of a scope file. Its destinations become the only ones the VM can connect to; startup stops if that cannot be put in force. See [Network scope](#network-scope). |
+| `CYBERSEC_SANDBOX_WORKSPACE` | unset | Absolute host directory to mount at `/workspace`. The only host path the VM can see. The host root, system trees, your home directory itself and any directory inside this checkout are refused. |
 | `CYBERSEC_SANDBOX_WORKSPACE_RO` | `0` | `1` mounts the workspace read-only. |
 | `CYBERSEC_SANDBOX_MEMORY` | `2g` | Guest memory. |
 | `CYBERSEC_SANDBOX_CPUS` | `2` | Guest vCPUs. |
@@ -211,8 +214,70 @@ path uses.
 
 ## Network scope
 
-The VM's reach is the reach of its Docker network, so scope belongs here rather
-than in the MCP policy, which only preflights resolved addresses.
+The MCP policy preflights the addresses a tool is given. It does not see what a
+script connects to, what a child process does, or where a redirect leads. A
+scope file closes that gap: the launcher turns it into a firewall inside the VM,
+and nothing the tools run can change it.
+
+```json
+{
+  "name": "acme-internal-2026-11",
+  "allow": [
+    { "host": "10.20.0.0/24" },
+    { "host": "10.20.5.17", "ports": [22, 443, "8000-8100"], "proto": "tcp" },
+    { "host": "portal.acme.example", "ports": [443] }
+  ],
+  "dns": false
+}
+```
+
+```bash
+export CYBERSEC_SANDBOX_SCOPE=/home/analyst/cases/acme/scope.json
+```
+
+An entry is an address, a CIDR range or a host name. Without `ports` every
+protocol to that destination is allowed; with `ports` the entry covers TCP and
+UDP unless `proto` names one. Wildcards, a `/0` range and unknown keys are
+errors, so a typo cannot widen or narrow a scope unnoticed.
+
+How it is enforced:
+
+- The rules are an nftables table with a default-deny output chain, loaded in
+  the VM's own kernel by a root setup step that the launcher runs before the
+  server starts. Loopback and replies to allowed connections pass; everything
+  else is rejected at once, so a tool sees `No route to host` instead of
+  waiting for a timeout.
+- The tool user holds no capabilities, `no-new-privileges` is set and the image
+  has no setuid binaries, so neither a tool nor a `run_script` body can alter
+  the table. The capability the setup step needs (`NET_ADMIN`) is in the
+  container's bounding set only when a scope is configured.
+- Host names are resolved once, on the host, when the VM starts, and pinned in
+  the guest's `/etc/hosts`. DNS is closed, the Docker resolver included, unless
+  the scope says `"dns": true`; that opens port 53 to the resolvers the guest is
+  configured with. A resolver is a channel to anywhere, so leave it closed when
+  the pinned names are enough.
+- Startup fails closed. A scope file that does not parse, a name that does not
+  resolve, rules that do not load, or a probe showing that an address outside
+  the scope still answers stops the launch and removes the VM.
+- The loaded scope is written to the `server_start` audit record and told to the
+  client, so a refused connection is read as the boundary and not as a fault.
+
+What it does not cover:
+
+- Inbound connections. Something on the VM's Docker network can still reach a
+  listener a tool opens.
+- Sites that share an address. Allowing a name behind a CDN allows every site
+  served from the same addresses.
+- A name whose addresses change during the session. Restart to resolve again.
+- `--local` mode, which has no VM to hold the rules.
+- A break-out of the guest kernel. The rules live inside the VM; filter on the
+  host as well (below) when that matters.
+
+A public target in scope still needs `CYBERSEC_MCP_ALLOW_EXTERNAL=1`: the policy
+check and the firewall answer different questions. `node sandbox/scope-smoke.mjs`
+proves the enforcement against a throwaway target on this host.
+
+The Docker network is the outer layer, and works without a scope file too:
 
 ```bash
 # Fully offline: no interface at all.
@@ -315,7 +380,15 @@ inside a chain breaks every link after it:
 ```bash
 make audit-verify                                   # default host log
 python3 scripts/verify_audit_chain.py path/to.log   # or a specific one
+make audit-verify STRICT=1 LOG=path/to.log          # a log that should be complete
 ```
+
+`--strict` is for a log written from an empty file, for example one engagement
+with its own `CYBERSEC_MCP_AUDIT_LOG`: every chain has to begin at its first
+record and every record has to carry chain fields, so a chain whose first
+records were cut off, or a record placed ahead of the chains, is reported too.
+The default mode accepts both, because a rotated log legitimately starts
+mid-chain.
 
 The chain survives the trip out of the VM because the host appends the guest's
 lines verbatim; the tag is checked on the way in and not stored. Three limits are
@@ -327,6 +400,87 @@ read and write the host log can still append a well-formed record. The session
 key keeps forged records from arriving through the VM; the chain detects
 modification and deletion, not forgery by someone with access to the file.
 
+### A copy the account cannot rewrite
+
+The log file belongs to the account that runs the session, so that account can
+replace it. `CYBERSEC_MCP_AUDIT_FORWARD=syslog` sends every record to the system
+log as well, under the tag `cybersec-mcp-audit`: the host launcher does it in
+sandbox mode, the server itself in `--local` mode. On a systemd host that is the
+journal, which an unprivileged account can add to but cannot edit or trim.
+
+```bash
+journalctl -t cybersec-mcp-audit -o cat | python3 scripts/verify_audit_chain.py -
+```
+
+The forwarded lines are byte for byte the lines in the file, so the same chain
+verifies, and a record that is missing or different on one side shows up in a
+diff of the two. What this does not give you: root on the host can still alter
+the journal, the same account can still add a well-formed record of its own (the
+journal stores the sender's uid and command with each entry), and the journal
+rotates on its own schedule. Forward it off the host with the journal's or the
+syslog daemon's own remote transport when the records must outlive the machine.
+
+An unsupported value stops startup, so a typo cannot pass for a working copy.
+With `CYBERSEC_MCP_AUDIT_REQUIRED=1`, a missing syslog socket or a `logger(1)`
+older than util-linux 2.26 stops it too; without it, the session continues with
+the file alone and says so.
+
+## Host mode behind bubblewrap
+
+`--local` runs tools as you, with no VM. `CYBERSEC_LOCAL_SANDBOX=1` starts every
+tool and script inside [bubblewrap](https://github.com/containers/bubblewrap)
+instead. It is off by default, needs no root, and is a narrower boundary than
+the VM: it takes away what a hostile sample or a misled agent reaches for first.
+
+A tool started this way cannot see:
+
+- Credential stores in your home directory: SSH and GnuPG keys, password
+  stores and keyrings, `.netrc` and Git credentials, registry tokens, cloud and
+  cluster credentials, browser profiles and mail.
+- The agent client's own configuration (`~/.claude`, `~/.codex`, `~/.gemini`
+  and the like): the tokens in it, and the settings, hooks and memory a file
+  from a target could otherwise plant there.
+- The MCP state directory, so the audit log and the remote-host list.
+- Your runtime directory, which holds the session bus (through which a program
+  can ask the service manager to start another one outside the sandbox) and the
+  agent and keyring sockets.
+- Any other process of your account. It runs in its own process namespace, and
+  everything it started dies with it when a call ends or times out.
+
+It can read, but not change, your shell startup files, autostart and user
+service directories, your Git configuration, `~/.local/bin` and `~/bin`, and
+this checkout's code, client settings and `.git` directory. `writeups/` and
+`manual_scripts/` stay writable. The directories above those paths, and the
+checkout itself, cannot be renamed, so a protected directory cannot be moved
+aside and replaced.
+
+A protected name that is a symbolic link is protected where it leads: the data
+behind a linked `~/.ssh` is hidden at its real location, and a linked `~/.zshrc`
+cannot be written through the link. A link that loops, or one that leads to the
+whole home directory, stops the server instead of being skipped.
+
+Everything else is as before: the same uid, kernel and network, the same caches
+and output locations. Tools of the `cloud` and `containers` modules keep the
+cloud and cluster credentials, because using them on an authorized account is
+their job. `CYBERSEC_LOCAL_SANDBOX_EXPOSE=/abs/path:/abs/other` leaves the named
+paths visible for an engagement that needs them.
+
+What it does not do:
+
+- It is not a VM. A kernel exploit, or a tool that needs none because the file
+  it wants is not on the list above, is not stopped. Documents elsewhere in your
+  home directory remain readable.
+- It does not limit the network. A scope file applies to the VM only.
+- It protects what exists when the tool starts. Your home directory stays
+  writable, so a tool can create a startup file you do not have yet, replace a
+  protected name that is only a link with a file of its own, or add a file to
+  a writable place in this checkout. Hiding is exact; write protection is not a
+  guarantee against persistence. Use the VM when that matters.
+
+If the variable is set and bubblewrap cannot start, for example because
+unprivileged user namespaces are disabled, the server refuses to start. The
+`server_start` audit record carries `local_sandbox: bwrap` or `off`.
+
 ## Hardening applied to each VM
 
 `--cap-drop ALL`, `--security-opt no-new-privileges`, a non-root guest user
@@ -334,7 +488,9 @@ modification and deletion, not forgery by someone with access to the file.
 whose only writable paths are size-capped tmpfs mounts, so an unpacked sample
 cannot fill the host's Docker storage. The image drops setuid
 and setgid bits and ships no `sudo`. The container is created with `--rm` and
-labelled `cybersec-toolkit.sandbox=kata`.
+labelled `cybersec-toolkit.sandbox=kata`. With a scope file, `NET_ADMIN` is added
+to the bounding set for the setup step that loads the firewall; the guest user's
+effective and permitted sets stay empty.
 
 Two consequences worth knowing:
 
@@ -372,9 +528,12 @@ to reach the server from inside the VM.
 The OCI package in [`server.json`](../server.json) points at
 `ghcr.io/26zl/cybersec-toolkit`, the installer image. That image grants its
 `toolkit` user passwordless sudo so `install.sh` can manage packages, and it
-carries no Kata runtime — a client that launches it from the registry gets a
-root-capable container, not the boundary described here. Treat the registry
-package as the convenience path, and this document as the isolated one.
+carries no Kata runtime — a client that launches it from the registry gets an
+ordinary container, not the boundary described here. The registry launch adds
+`--security-opt no-new-privileges`, so sudo cannot elevate there and tools cannot
+be installed into that container: it serves the advisory tools and runs only what
+the image already holds. Treat the registry package as the convenience path, and
+this document as the isolated one.
 
 ## Troubleshooting
 
@@ -387,6 +546,9 @@ package as the convenience path, and this document as the isolated one.
 | `Kata sandbox requires Node.js 22+` | Install Node.js 22 or newer. |
 | `Install sandbox dependencies` | Run `npm --prefix sandbox ci --ignore-scripts`. |
 | `Rejected unauthenticated audit record` on every record | The sandbox image predates the launcher. Run `make sandbox-image`. |
+| `was not built from this checkout's server sources` | The image carries older server and policy code than the checkout. Run `make sandbox-image`, or set `CYBERSEC_SANDBOX_ALLOW_STALE_IMAGE=1` to boot it anyway. |
+| `Network scope '...' could not be enforced` | The reason follows the colon: a name that does not resolve, an image built before nftables was added (`make sandbox-image`), or a probe that got through. Nothing was started. |
+| `is inside the toolkit checkout` | Mount a case directory outside this repository: the client reads instruction files, skills and MCP settings from the project tree. |
 
 Report host readiness at any time with:
 

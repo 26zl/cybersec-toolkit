@@ -8,15 +8,7 @@
 [![Docker image](https://img.shields.io/badge/ghcr.io-cybersec--toolkit-2496ED?logo=docker&logoColor=white)](https://github.com/26zl/cybersec-toolkit/pkgs/container/cybersec-toolkit)
 [![Glama score](https://glama.ai/mcp/servers/26zl/cybersec-toolkit/badges/score.svg)](https://glama.ai/mcp/servers/26zl/cybersec-toolkit)
 
-```text
-    /\   /\        ______      __              _____
-   (o ) ( o)      / ____/_  __/ /_  ___  _____/ ___/___  _____
-    \ \_/ /      / /   / / / / __ \/ _ \/ ___/\__ \/ _ \/ ___/
-  <==\   /==>   / /___/ /_/ / /_/ /  __/ /   ___/ /  __/ /__
-     \ V /      \____/\__, /_.___/\___/_/   /____/\___/\___/
-     /_ _\           /____/                          by 26zl
-      |_|                     Toolkit
-```
+![Cybersec Toolkit by 26zl: the security toolkit AI agents can drive. One command installs 670+ tools, and an MCP server runs them in a disposable Kata VM under rules you set. 18 modules, 14 profiles, 15 MCP tools, 872 agent skills.](assets/social-preview.png)
 
 __A security toolkit that AI agents can drive, under rules you set.__ One command installs 670+ security tools on Linux or Termux. An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets Claude Code, Codex, Gemini CLI, OpenCode, and other MCP clients discover, recommend, and run those tools through a governed execution path, inside a disposable Kata Containers VM by default. 872 Agent Skills supply the methodology for CTF, pentest, bug bounty, DFIR, and blue-team work.
 
@@ -72,12 +64,13 @@ What runs, and what is gated:
 - __Default-safe MCP.__ `CYBERSEC_MCP_ALLOW_EXTERNAL=0` rejects network targets that do not resolve to private or loopback ranges, and `CYBERSEC_MCP_ALLOW_SCRIPTS=0` disables `run_script`. External scopes and scripting are explicit opt-ins.
 - __One gate for governed execution__ (`mcp_server/security.py`): registry allowlist, no shell (`create_subprocess_exec`, never `shell=True`), argument sanitization, a per-tool blocked-flag denylist (e.g. `sqlmap --os-shell`, `nmap -iL`, file-list and target-injection flags), target and network policy, rate limiting, output caps, and timeouts. The policy knows enough CLI grammar to tell a target from a header, wordlist, output path, or target-list flag. Tool output reaches the model without terminal escape sequences or LLM control markers, and lines addressed to an AI reader are flagged.
 - __Tools run in a disposable VM by default.__ The launcher boots a [Kata Containers](docs/SANDBOX.md) VM with its own kernel, no host filesystem beyond an optional `CYBERSEC_SANDBOX_WORKSPACE` mount, no Docker socket, a non-root user with every capability dropped, and memory, CPU, and process limits. It is destroyed when the client disconnects. Startup fails closed instead of falling back to the host; `--local` is the explicit opt-out.
-- __Know the limits.__ The VM is not a network boundary: it reaches whatever its Docker network reaches, and `CYBERSEC_MCP_ALLOW_EXTERNAL` is a preflight check on resolved addresses, not a firewall (set `CYBERSEC_SANDBOX_NETWORK=none` or use a filtered network). Inside the VM, and on your host in `--local` mode, allowed tools run with the server user's permissions, and some of them spawn child processes or load plugins.
+- __A scope file makes the VM a network boundary.__ `CYBERSEC_SANDBOX_SCOPE` names a file listing the addresses, ranges, names and ports of the engagement. The launcher loads it as a default-deny firewall inside the VM before the server starts, and refuses to start if it cannot; tools, their child processes and `run_script` bodies all sit behind it and cannot change it ([details and limits](docs/SANDBOX.md#network-scope)).
+- __Know the limits.__ Without a scope file the VM reaches whatever its Docker network reaches, and `CYBERSEC_MCP_ALLOW_EXTERNAL` is a preflight check on resolved addresses, not a firewall (`CYBERSEC_SANDBOX_NETWORK=none` removes the network). Inside the VM, and on your host in `--local` mode, allowed tools run with the server user's permissions, and some of them spawn child processes or load plugins. `--local` mode has no firewall of its own; `CYBERSEC_LOCAL_SANDBOX=1` at least starts its tools inside bubblewrap, without your credential stores, the agent client's configuration or other processes ([what it covers](docs/SANDBOX.md#host-mode-behind-bubblewrap)).
 - __Tool output goes to your model provider.__ Whatever a tool prints — scan results, page content, and any credential or personal data it finds on a target — is returned to the AI client and sent to the model it uses. By default only the local audit log is redacted; set `CYBERSEC_MCP_REDACT_OUTPUT=1` to also redact credential-shaped strings from what the client receives. If an engagement's rules forbid sharing client data with a third party, drive the server from a local model (see [AI clients](docs/AI_CLIENTS.md)).
 - __Repository hooks run automatically.__ Opening this repository in Claude Code runs the tracked hooks in `.claude/settings.json`: `scripts/agent-guard.sh` at session start and before each Bash command. They only emit routing context or a deny decision, make no network calls, and fail open; set `CYBERSEC_AGENT_GUARD=0` to disable them.
 - __Audit trail without leaks.__ Actions are logged as JSON lines to an owner-only (`0600`), rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never stored, only their SHA256 and length, and credential-shaped strings are redacted from tool arguments. A sandboxed server mirrors its records to the same host log, and records are hash-chained, so an edited or deleted record inside a chain shows up in `make audit-verify` ([limits](docs/SANDBOX.md#tamper-evidence)).
 - __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds, `go`/`cargo`/`gem` builds, and project setup steps (theHarvester, pwndbg); binary releases are SHA256-verified when checksums are published. `pipx` installs (into the shared `/opt/pipx`) and global `npm` installs still run as root, so their build and install scripts execute with root privileges — see the [supply chain model](#supply-chain-model). Go binaries are copied into `/usr/local/bin` as root-owned files; cargo, gem, cloned-repo, source-build, patator and Foundry tools are exposed there as links or wrappers into trees the invoking user owns, so that user can change what those commands run.
-- __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam` and `full` profiles set it); the MCP layer reflects this and never auto-runs them.
+- __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, wifiphisher, BeEF, …) are __off by default__ and install only with `--include-c2` (the `redteam` and `full` profiles set it); the MCP layer reflects this and never auto-runs them. The gate covers frameworks built to phish or to run implants. Exploitation and auditing suites that can also do those things, such as Metasploit, airgeddon and hostapd-mana, are in the default set.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [supply chain model](#supply-chain-model), and the [disclaimer](#disclaimer).
 
 ## Installer
@@ -137,7 +130,7 @@ sudo ./install.sh --upgrade-system      # Upgrade system packages before install
 sudo ./install.sh --rollback <id|last>  # Roll back a session's tools (add --yes when not on a terminal)
 ./install.sh --version                  # Show installer version and exit
 sudo ./install.sh --enable-docker       # Pull Docker images
-sudo ./install.sh --include-c2          # Include C2/phishing frameworks (Empire also needs --enable-docker)
+sudo ./install.sh --include-c2          # Include C2/phishing frameworks (Empire and BeEF also need --enable-docker)
 sudo ./install.sh -j 8                  # 8 parallel install jobs (default: 4)
 sudo ./install.sh -v                    # Verbose / debug output
 ```
@@ -162,7 +155,7 @@ The time goes to I/O-bound work that no scripting language can speed up:
 | Git clones | Cloning each repository |
 | Binary releases | Downloading pre-built binaries from GitHub |
 
-`./install.sh --dry-run` prints the live per-method breakdown. pipx, Go, git, and binary installs run in parallel (`-j 4` by default); the system package manager, Cargo, gem, npm, and source builds run sequentially. To go faster: install a profile or `--module` instead of everything, `--skip-cargo` to avoid Rust compilation, `-j 8` for more parallel jobs, and an [apt-cacher-ng](https://wiki.debian.org/AptCacherNg) proxy for repeated installs.
+`./install.sh --dry-run` prints the live per-method breakdown. System packages install first, in one transaction. The pipx, Go, Cargo, gem, npm, git, and binary batches then run side by side: pipx, Go, git, and binary releases install up to `-j` tools at once (4 by default), while Cargo, gem, and npm work through their lists one tool at a time. Source builds run last, one after another. To go faster: install a profile or `--module` instead of everything, `--skip-cargo` to avoid Rust compilation, `-j 8` for more parallel jobs, and an [apt-cacher-ng](https://wiki.debian.org/AptCacherNg) proxy for repeated installs.
 
 </details>
 
@@ -177,6 +170,8 @@ sudo ./install.sh --profile ctf                                                #
 ```
 
 Build it yourself with `docker build -t cybersec-toolkit .`, or run a throwaway install through the bundled Compose file with `docker compose run --rm installer --profile ctf`. On Apple silicon, add `--platform linux/amd64` to `docker build` and `docker run`. Podman works as a drop-in replacement (`podman compose` needs a compose provider). The image grants the `toolkit` user passwordless sudo so the installer can manage packages; treat code inside it as root-capable.
+
+Every published image carries a signed build-provenance attestation. To check that the one you pulled was built by this repository's release workflow, run `gh attestation verify oci://ghcr.io/26zl/cybersec-toolkit:<version> --repo 26zl/cybersec-toolkit` (needs the GitHub CLI).
 
 ### Termux (Android)
 
@@ -217,7 +212,7 @@ Docker and C2 show what each profile enables by default. A profile that enables 
 | `web` | 60 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | 15 | RSA attacks, cipher analysis, hash attacks, constraint solving |
 | `pwn` | 36 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
-| `reversing` | 34 | Disassemblers, debuggers, emulation, Java/Python reversing |
+| `reversing` | 35 | Disassemblers, debuggers, emulation, Java/Python reversing |
 | `forensics` | 59 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
 | `enterprise` | 81 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | 41 | WiFi cracking, Bluetooth, SDR, rogue AP |
@@ -262,7 +257,9 @@ All scripts support `--help` and `--version`. On Linux, `update.sh` and `remove.
 | `scripts/remove.sh --deep-clean` | Remove all toolkit tools, then purge caches and build artifacts | `sudo ./scripts/remove.sh --deep-clean --yes` |
 | `scripts/backup.sh` | Back up and restore tool configs | `./scripts/backup.sh backup` |
 
-After a full removal, `--deep-clean` removes the Go module/build cache, the Cargo registry, pip/pipx/npm/gem caches, orphaned pipx venvs, stale symlinks, and log files. Add `--remove-deps` to also purge Rustup toolchains.
+After a full removal, `--deep-clean` removes the Go module/build cache, the Cargo registry, pip/pipx/npm/gem caches, leftover venvs of the pipx tools it installed, dangling symlinks into its own trees, and log files. Venvs that other tools keep in the same pipx home (for example `pipx install --global`) stay, and so do symlinks that point anywhere else. Add `--remove-deps` to also purge Rustup toolchains.
+
+`update.sh` and `remove.sh` act on what `.versions` records as installed by this toolkit: a tool that was already on the system is recorded as `existing` and left alone. A record started by a release before 1.1.0 lists the host's own system packages as installed by the toolkit; `remove.sh` keeps every system package for such a record and says so.
 
 <details>
 <summary><strong>Tool locations</strong></summary>
@@ -277,7 +274,7 @@ Non-system tools land in `/usr/local/bin/` on Linux and `$PREFIX/bin` on Termux;
 | Git repos | `/usr/local/bin/` (symlinked) | `$PREFIX/bin/` (symlinked) | `/opt/<repo>/` or `~/tools/<repo>/` |
 | Binary releases | `/usr/local/bin/` | Skipped (glibc incompatible with Bionic) | -- |
 
-The `.versions` file records what was installed, how, and when.
+The `.versions` file records what was installed, how, and when. A release directory under `/opt` that this toolkit did not create is never written to.
 
 </details>
 
@@ -290,7 +287,7 @@ If `--enable-docker` is set and Docker is missing, the installer stops and asks 
 | ----- | ------ | ---- | ----------- |
 | `bcsecurity/empire` | misc | `--enable-docker --include-c2` | Empire C2 |
 | `spiderfoot/spiderfoot` | misc | `--enable-docker` | SpiderFoot OSINT |
-| `beefproject/beef` | web | `--enable-docker` | BeEF browser exploitation |
+| `beefproject/beef` | web | `--enable-docker --include-c2` | BeEF browser exploitation |
 | `opensecurity/mobile-security-framework-mobsf` | mobile | `--enable-docker` | MobSF |
 | `specterops/bloodhound` | enterprise | `--enable-docker` | BloodHound CE |
 | `trailofbits/echidna` | blockchain | `--enable-docker` | Echidna smart contract fuzzer |
@@ -344,7 +341,7 @@ The installer downloads and runs code from the internet. On Linux it runs as roo
 - __pipx/Go/Cargo/Gem/npm__: fetched from their registries without signature verification; pipx tools are isolated in venvs. Go, Cargo, and Gem builds run as the invoking user; pipx and global npm installs run as root, so package build backends and npm lifecycle scripts execute with root privileges.
 - __Binary releases__: SHA256-verified using upstream checksum files, exact-asset GitHub release digests, or reviewed repository/tag/asset checksums in `lib/release_checksums.tsv`. A mismatch always fails; `--require-checksums` or `--production` also fails when verification data is unavailable. These checks establish download integrity, not independent publisher authentication. `--fast` skips ordinary release verification and cannot be combined with strict flags; private runtime dependencies always require verification.
 - __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified; in strict mode (`--production`/`--require-checksums`) the rustup, uv, and cargo-binstall installers are skipped when they would run as root (i.e. without `sudo` from a normal user), and NodeSource's script is always skipped in favour of the distro's signed `nodejs`/`npm`. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
-- __Go SDK__: SHA256-verified against go.dev when the API is reachable; strict mode fails if it is not.
+- __Go SDK__: installed only when the system Go is older than `GO_MIN_VERSION`, and then kept until go.dev publishes a newer release. The tarball is SHA256-verified against go.dev, or against checksums embedded for the fallback release when go.dev's API cannot be reached; strict mode fails when neither is available.
 - __Git repos__: cloned at HEAD; the repo's own `setup.py` is never run. `requirements.txt` installs into a per-repo venv as the invoking user, where dependency sdists can still build, and outside strict mode (`--production` or `--require-checksums`) a failed pinned install is retried with `==` relaxed to `>=`.
 - __Build from source__: runs `make` as the invoking user, not root. Review what you build.
 - __MCP Python dependencies__: resolved by `uv` with a 5-day `exclude-newer` window, and Dependabot waits the same 5 days. This does not apply to the security tools themselves, which follow their upstream release channels.
@@ -424,8 +421,8 @@ The agent can query every tool and its install state, chain governed tool calls,
 
 #### Active Directory / internal
 
-- __"Low-priv creds on 10.10.0.0/24 — find a path to Domain Admin"__ — collects with `bloodhound`, kerberoasts with `impacket` (`GetUserSPNs.py`), cracks the TGS in `hashcat`, then validates lateral movement with `netexec`, all on a Kali box over SSH (`manage_remote_hosts`, host mode)
-- __"Check for DCSync rights and dump if the path exists"__ — enumerates replication ACLs, then runs `secretsdump.py` against the DC
+- __"Low-priv creds on 10.10.0.0/24 — find a path to Domain Admin"__ — collects with `bloodhound`, kerberoasts with `netexec` (`--kerberoasting`), cracks the TGS in `hashcat`, then validates lateral movement with `netexec`, all on a Kali box over SSH (`manage_remote_hosts`, host mode)
+- __"Check for DCSync rights and dump if the path exists"__ — enumerates replication ACLs, then runs secretsdump (the `impacket` tool) against the DC
 
 #### Binary exploitation & reversing
 
@@ -459,7 +456,7 @@ The agent can query every tool and its install state, chain governed tool calls,
 
 - __"Static-analyze this APK for secrets and insecure storage"__ — `apktool` / `jadx` decompile → MobSF-style checks, then greps for keys and endpoints
 - __"Audit this Wi-Fi capture"__ — parses the handshake and runs `aircrack-ng` / `hashcat` against it
-- __"Review this Solidity contract for reentrancy"__ — runs `slither` / `mythril` and explains the findings
+- __"Review this Solidity contract for reentrancy"__ — runs `slither-analyzer` / `mythril` and explains the findings
 
 `run_tool` and `run_pipeline` are argument-sanitized, network-policed, rate-limited, and audit-logged, and destructive flags (`--os-shell`, `-rf`, `--exploit`, …) are blocked. `run_script` is off by default: enabling it runs arbitrary code with the server user's filesystem and network permissions (inside the VM by default, on your host with `--local`), and the external-target policy does not constrain it. Use only against systems you are authorized to test.
 
@@ -467,7 +464,7 @@ The agent can query every tool and its install state, chain governed tool calls,
 
 ### Sandbox and host mode
 
-`scripts/mcp-launch.sh` starts the server inside a Kata Containers VM unless you pass `--local` or set `CYBERSEC_SANDBOX_MODE=local`. The VM is created by a [Sandcastle](https://github.com/mattpocock/sandcastle) isolated-sandbox provider (`sandbox/kata.mjs`) that pins the Kata runtime; the same provider can also back a Sandcastle agent-orchestration loop instead of an MCP client. Startup fails closed: a missing runtime, sandbox image, KVM device, Node.js, or launcher dependency stops the server with the reason instead of falling back to the host. `./install.sh --doctor` reports sandbox readiness. Setup, tuning, and the threat model are in [`docs/SANDBOX.md`](docs/SANDBOX.md).
+`scripts/mcp-launch.sh` starts the server inside a Kata Containers VM unless you pass `--local` or set `CYBERSEC_SANDBOX_MODE=local`. The VM is created by a [Sandcastle](https://github.com/mattpocock/sandcastle) isolated-sandbox provider (`sandbox/kata.mjs`) that pins the Kata runtime; the same provider can also back a Sandcastle agent-orchestration loop instead of an MCP client. Startup fails closed: a missing runtime, sandbox image, KVM device, Node.js, or launcher dependency, an image built from older server sources, or a scope that cannot be enforced stops the server with the reason instead of falling back to the host. `./install.sh --doctor` reports sandbox readiness. Setup, tuning, and the threat model are in [`docs/SANDBOX.md`](docs/SANDBOX.md).
 
 - __The VM has its own tool set.__ The sandbox image ships the MCP server plus `file`, `git`, `binutils`, `nmap`, `curl`, and Python. Tools installed on the host are not visible inside it, and `check_installed` and the advisors report the guest's tools. Bake a profile into the image instead, and rebuild after pulling server changes, because the image carries its own copy of the server:
 
@@ -475,8 +472,8 @@ The agent can query every tool and its install state, chain governed tool calls,
   make sandbox-image TOOLKIT_PROFILE=ctf
   ```
 
-- __Files__: the VM sees no host path unless `CYBERSEC_SANDBOX_WORKSPACE` names an absolute directory, which appears as `/workspace` (read-only with `CYBERSEC_SANDBOX_WORKSPACE_RO=1`). Pass guest paths to `run_tool`.
-- __Network__: the VM uses Docker's default bridge. Set `CYBERSEC_SANDBOX_NETWORK=none` for offline analysis, or a filtered Docker network to scope egress.
+- __Files__: the VM sees no host path unless `CYBERSEC_SANDBOX_WORKSPACE` names an absolute directory, which appears as `/workspace` (read-only with `CYBERSEC_SANDBOX_WORKSPACE_RO=1`). Use a case directory outside this checkout; one inside it is refused, because the client reads instruction files and skills from the project tree. Pass guest paths to `run_tool`.
+- __Network__: the VM uses Docker's default bridge. Set `CYBERSEC_SANDBOX_SCOPE` to a scope file to limit it to the engagement's destinations, or `CYBERSEC_SANDBOX_NETWORK=none` for offline analysis.
 - __Privileges__: uid 10001, all capabilities dropped, `no-new-privileges`, and 2 GB / 2 vCPUs / 512 processes by default. Raw-socket scans (`nmap -sS`, `-sU`, OS detection) are not available in the sandbox: the guest user is unprivileged and `no-new-privileges` is set, so an added `NET_RAW` capability never becomes effective. Use connect scans (`-sT`) or `--local` mode.
 - __Host mode only__: remote execution over SSH (`manage_remote_hosts`) and venvs under `~/.ctf-venvs/` that you created on the host.
 - __Audit__: records leave the VM on a stderr side channel and are appended to the host log, so the trail outlives the VM.
@@ -599,7 +596,7 @@ This opens the MCP Inspector for exercising each tool interactively. [`mcp_serve
 - 754 operational how-tos from [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) (Apache 2.0)
 - 58 offensive methodology skills from [SnailSploit Claude-Red](https://github.com/SnailSploit/Claude-Red) (MIT)
 - 14 code audit skills from [Trail of Bits](https://github.com/trailofbits/skills) (CC-BY-SA 4.0)
-- 10 bug bounty workflow skills from [BugHunter (claude-bug-bounty)](https://github.com/shuvonsec/claude-bug-bounty) (MIT)
+- 10 bug bounty workflow skills from [BugHunter (Agentic-Bug-Hunter)](https://github.com/awarexone/Agentic-Bug-Hunter) (MIT)
 - 4 high-level workflows from [Transilience](https://github.com/transilienceai/communitytools) (MIT)
 - 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
 
