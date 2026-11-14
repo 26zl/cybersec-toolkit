@@ -383,6 +383,10 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     ],
     "awk": _AWK_BLOCKED_FLAGS,
     "gawk": _AWK_BLOCKED_FLAGS,
+    "sort": [
+        # sort pipes its temporary files through the named program.
+        (re.compile(r"^--compress-program(?:$|=)"), "sort: external compressor (command execution)"),
+    ],
     "tar": [
         (re.compile(r"^--checkpoint-action"), "tar: checkpoint-action command execution"),
         (re.compile(r"^--to-command"), "tar: to-command command execution"),
@@ -500,7 +504,9 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
 # (GNU getopt_long, Python argparse/optparse, Ruby OptionParser). For these a
 # blocked long flag can be reached by an abbreviation, so the denylist above,
 # which anchors the full spelling, must also reject prefixes of it.
-_ABBREV_TOOLS = frozenset({"sed", "tar", "gdb", "wget", "zip", "arjun", "whatweb", "sqlmap", "awk", "gawk", "nmap"})
+_ABBREV_TOOLS = frozenset(
+    {"sed", "tar", "gdb", "wget", "zip", "arjun", "whatweb", "sqlmap", "awk", "gawk", "nmap", "sort"}
+)
 
 # Abbreviations that collide with a distinct, safe real option of the same tool.
 # getopt_long resolves an exact match before a prefix, so the tool reads these as
@@ -1366,6 +1372,8 @@ def _leads_with_host(value: str) -> bool:
     host = head.rsplit(":", 1)[0] if head.count(":") == 1 else head
     if not host or set(host) <= {"."}:
         return False
+    # Resolvers accept a fully qualified name with its root dot and labels with an underscore.
+    host = host.removesuffix(".")
     if _decode_encoded_ipv4(host) is not None:
         return True
     try:
@@ -1373,7 +1381,7 @@ def _leads_with_host(value: str) -> bool:
         return True
     except ValueError:
         pass
-    return "." in host and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", host) is not None
+    return "." in host and re.fullmatch(r"[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_])?", host) is not None
 
 
 def _is_local_path(value: str) -> bool:
@@ -1386,8 +1394,8 @@ def _is_local_path(value: str) -> bool:
     ``.sh``) are deliberately rejected here so an external host such as
     ``http://evil.zip`` or ``example.zip`` still gets target-validated.
     """
-    # A URL is never a local path, even though it contains "/".
-    if re.match(r"^https?://", value, re.IGNORECASE):
+    # A URL in any scheme (ftp, sftp, gopher, ...) is never a local path, even though it contains "/".
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", value):
         return False
     lower = value.lower()
     if "/" in value or "\\" in value:
@@ -1418,8 +1426,8 @@ def _looks_like_target(value: str) -> bool:
     # IP-like (digits and dots, at least one dot)
     if "." in value and re.match(r"^[\d.]+$", value):
         return True
-    # Hostname (contains dot, starts with alphanumeric)
-    if "." in value and re.match(r"^[a-zA-Z0-9]", value):
+    # Hostname (contains dot, starts with alphanumeric or the underscore of a service label)
+    if "." in value and re.match(r"^[a-zA-Z0-9_]", value):
         return True
     # localhost special case
     if value.lower() == "localhost":
@@ -1666,6 +1674,41 @@ def _flag_values(
                     values.append(arg[len(flag) :])
                     break
         i += 1
+    return values
+
+
+def _getopt_values(arg_list: list[str], *, shorts: str, longs: frozenset[str], value_shorts: str = "") -> list[str]:
+    """Values of the named options as GNU getopt_long reads them.
+
+    Covers the spellings a literal match misses: an unambiguous prefix of a long
+    option (``--outp=FILE``, ``--out FILE``) and a short option inside a bundle
+    (``-uo FILE``, ``-uoFILE``). *value_shorts* names the tool's other short options
+    that take a value, whose remaining characters are not options. The argument
+    after an option is reported as its value and still read as an option in its own
+    right, so an option whose value is optional cannot hide the one that follows.
+    """
+    values: list[str] = []
+    for i, arg in enumerate(arg_list):
+        if arg == "--":
+            break
+        following = arg_list[i + 1] if i + 1 < len(arg_list) else None
+        if arg.startswith("--"):
+            name, attached, value = arg[2:].partition("=")
+            if name and any(flag[2:].startswith(name) for flag in longs):
+                if attached:
+                    values.append(value)
+                elif following is not None:
+                    values.append(following)
+        elif arg.startswith("-") and len(arg) > 1:
+            for position, char in enumerate(arg[1:], start=2):
+                if char in shorts:
+                    if arg[position:]:
+                        values.append(arg[position:])
+                    elif following is not None:
+                        values.append(following)
+                    break
+                if char in value_shorts:
+                    break
     return values
 
 
@@ -2120,25 +2163,37 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
                 _raise_sensitive_write(name, os.path.splitext(source)[0] + ".txt")
         return
 
-    if name in {"sort", "shuf", "xmllint"}:
-        for dest in _flag_values(arg_list, short_flags=frozenset({"-o"}), long_flags=frozenset({"--output"})):
+    if name in {"sort", "shuf"}:
+        # Both use getopt_long, so -o also arrives abbreviated (--outp=) or bundled (-uo).
+        value_shorts = "kStT" if name == "sort" else "in"
+        for dest in _getopt_values(arg_list, shorts="o", longs=frozenset({"--output"}), value_shorts=value_shorts):
             _raise_sensitive_write(name, dest)
         return
 
+    if name == "xmllint":
+        # xmllint compares whole option names and takes the file as the next argument.
+        for flag, dest in zip(arg_list, arg_list[1:]):
+            if flag in {"-o", "-output", "--output"}:
+                _raise_sensitive_write(name, dest)
+        return
+
     if name in {"uniq", "xxd"}:
-        # Both take an optional second file operand that names the output.
+        # Both take an optional second file operand that names the output. Every operand
+        # after the first is checked: an option value in a spelling the tables do not list
+        # is counted as an operand and would otherwise push the output out of second place.
         operands = _file_operands(arg_list, _UNIQ_VALUE_FLAGS if name == "uniq" else _XXD_VALUE_FLAGS)
-        if len(operands) >= 2:
-            _raise_sensitive_write(name, operands[1])
+        for dest in operands[1:]:
+            _raise_sensitive_write(name, dest)
         return
 
     if name in {"awk", "gawk"}:
         # gawk writes these reports to the named file. A redirection is allowed only
         # to a file name spelled out as one literal, which is then checked like any other.
-        for dest in _flag_values(
+        for dest in _getopt_values(
             arg_list,
-            short_flags=frozenset({"-o", "-p", "-d"}),
-            long_flags=frozenset({"--pretty-print", "--profile", "--dump-variables"}),
+            shorts="opd",
+            longs=frozenset({"--pretty-print", "--profile", "--dump-variables"}),
+            value_shorts="fFveEilLD",
         ):
             _raise_sensitive_write(name, dest)
         for arg in arg_list:

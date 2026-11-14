@@ -2941,6 +2941,10 @@ class TestHostLedPathTargets:
             ("curl", ["-s", "203.0.113.9:8080/a.txt"]),
             ("curl", ["-s", "[2001:db8::1]/a.txt"]),
             ("httpx", ["-probe=203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe=203.0.113.9./a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe=ftp://203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe=sftp://203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
+            ("httpx", ["-probe", "gopher://203.0.113.9/a.txt", "-u", "http://10.0.0.1/"]),
         ],
     )
     @patch("mcp_server.security._allow_external", return_value=False)
@@ -2953,6 +2957,20 @@ class TestHostLedPathTargets:
     def test_dotted_hostname_with_file_extension_blocked(self, _mock_ext, _mock_dns) -> None:
         with pytest.raises(ValueError, match="not in a private/local"):
             check_policy("curl", ["-k", "attacker.example.com/x.html"])
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "attacker.example.com./x.html",
+            "my_host.example.com/x.html",
+            "_srv.example.com/x.html",
+        ],
+    )
+    @patch("mcp_server.security._resolve_with_timeout", return_value=[(2, 1, 6, "", ("203.0.113.9", 0))])
+    @patch("mcp_server.security._allow_external", return_value=False)
+    def test_root_dot_and_underscore_hostnames_blocked(self, _mock_ext, _mock_dns, value) -> None:
+        with pytest.raises(ValueError, match="not in a private/local"):
+            check_policy("httpx", [f"-probe={value}", "-u", "http://10.0.0.1/"])
 
     @pytest.mark.parametrize(
         "tool,args",
@@ -3104,6 +3122,25 @@ class TestTextUtilityWriteGuard:
             ("awk", ['{printf "%s", $0 >> "/etc/cron.d/x"}', "notes.txt"]),
             ("gawk", ["--pretty-print=/etc/cron.d/x", "BEGIN{}"]),
             ("gawk", ["-o/etc/cron.d/x", "BEGIN{}"]),
+            # The spellings getopt_long also accepts: abbreviated long options and bundles.
+            ("sort", ["--outp=/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["--out", "/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["--o=/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["-uo", "/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["-uo/etc/cron.d/x", "notes.txt"]),
+            ("sort", ["notes.txt", "-ro", "/etc/cron.d/x"]),
+            ("shuf", ["--o=/etc/cron.d/x", "notes.txt"]),
+            ("shuf", ["-zo", "/etc/cron.d/x", "notes.txt"]),
+            ("xmllint", ["-output", "/etc/cron.d/x", "a.xml"]),
+            ("xmllint", ["-o", "/etc/cron.d/x", "a.xml"]),
+            ("gawk", ["--prof=/etc/cron.d/x", "BEGIN{}"]),
+            ("gawk", ["--dump=/etc/cron.d/x", "BEGIN{}"]),
+            ("gawk", ["-bo/etc/cron.d/x", "BEGIN{}"]),
+            ("gawk", ["-o", "--profile=/etc/cron.d/x", "BEGIN{}"]),
+            # An option value the tables do not list must not push the output out of reach.
+            ("uniq", ["--skip-f", "1", "notes.txt", "/etc/cron.d/x"]),
+            ("uniq", ["-cf", "1", "notes.txt", "/etc/cron.d/x"]),
+            ("xxd", ["-cols", "16", "notes.hex", "/etc/cron.d/x"]),
         ],
     )
     def test_write_into_protected_path_blocked(self, tool, args) -> None:
@@ -3111,10 +3148,28 @@ class TestTextUtilityWriteGuard:
             check_policy(tool, args)
 
     @pytest.mark.parametrize(
+        "args",
+        [
+            ["--compress-program=sh", "notes.txt"],
+            ["--compress-program", "sh", "notes.txt"],
+            ["--comp=sh", "-S", "1k", "notes.txt"],
+        ],
+    )
+    def test_sort_cannot_name_a_program_to_run(self, args) -> None:
+        with pytest.raises(ValueError, match="external compressor"):
+            check_policy("sort", args)
+
+    @pytest.mark.parametrize(
         "tool,args",
         [
             ("sort", ["-o", "out.txt", "notes.txt"]),
             ("sort", ["-k", "2", "/etc/passwd"]),
+            ("sort", ["-k2,2", "-t,", "-uo", "out.txt", "/etc/passwd"]),
+            ("sort", ["--check", "/etc/passwd"]),
+            ("shuf", ["-n", "3", "-o", "out.txt", "/etc/passwd"]),
+            ("xmllint", ["--noout", "/etc/hostname"]),
+            ("gawk", ["-F:", "-v", "n=1", "{print $n}", "/etc/passwd"]),
+            ("gawk", ["--posix", "{print $1}", "/etc/passwd"]),
             ("uniq", ["notes.txt", "out.txt"]),
             ("uniq", ["-f", "1", "/etc/passwd"]),
             ("xxd", ["-l", "32", "/etc/hostname"]),

@@ -1068,6 +1068,13 @@ class TestCredentialToolRedaction:
             "bloodhound-python -u admin -p Synth3ticPw -d corp.local -c All",
             "curl -u admin:Synth3ticPw http://10.0.0.5/",
             "smbclient //10.0.0.5/share -U 'corp\\admin%Synth3ticPw'",
+            # A password that itself holds "@", ":" or "/" must not leak its tail.
+            "impacket-psexec corp.local/admin:Pw@Synth3ticPw@10.0.0.5",
+            "impacket-wmiexec corp/admin:Pw:Synth3ticPw@10.0.0.5",
+            "impacket-smbexec corp/admin:Pw/Synth3ticPw@10.0.0.5 whoami",
+            "impacket-psexec admin:Pw@x@Synth3ticPw@[fe80::1]",
+            "impacket-getTGT corp.local/svc -aesKey Synth3ticPw",
+            "impacket-getST -aesKey=Synth3ticPw corp.local/svc",
         ],
     )
     def test_secret_is_redacted_and_redaction_is_idempotent(self, command) -> None:
@@ -1083,6 +1090,10 @@ class TestCredentialToolRedaction:
             "netexec smb 10.0.0.5 -u admin --shares",
             "nmap -p 80,443 10.0.0.5",
             "scp notes.txt user@10.0.0.5:/tmp/x",
+            "curl -s https://10.0.0.5/@admin/profile",
+            "rsync -a backup:/data/a@b ./out",
+            "git clone git@10.0.0.5:team/repo.git",
+            "ssh -p 2222 user@10.0.0.5",
         ],
     )
     def test_targets_user_names_and_ports_stay_readable(self, command) -> None:

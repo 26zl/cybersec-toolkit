@@ -91,14 +91,16 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         r"\1" + _REDACTED,
     ),
-    # Scheme-less "user:password@host", as the impacket tools take it.
+    # Scheme-less "user:password@host", as the impacket tools take it. A password may hold
+    # "@", "/" and ":" itself, so it runs to the last "@" of the token; one that starts
+    # with "/" is left alone, which keeps URLs and remote paths readable.
     (
-        re.compile(r"(?<![\w:/@])((?:[\w.\-]+[/\\])?[\w.\-$]+):(?!\[REDACTED\])[^\s@/:]+@(?=[\w\[])"),
+        re.compile(r"(?<![\w:/@])((?:[\w.\-]+[/\\])?[\w.\-$]+):(?!\[REDACTED\])(?!/)\S+@(?=[\w\[][^\s@]*(?:\s|$))"),
         r"\1:" + _REDACTED + "@",
     ),
-    # Pass-the-hash material.
+    # Pass-the-hash material and Kerberos keys.
     (
-        re.compile(r"(-hashes[\s=]+)(?!\[REDACTED\])\S+", re.IGNORECASE),
+        re.compile(r"(--?(?:hashes|aesKey|aes-key|nthash|nt-hash)[\s=]+)(?!\[REDACTED\])\S+", re.IGNORECASE),
         r"\1" + _REDACTED,
     ),
     # Inline database password flags; preserve nmap port specifications.
