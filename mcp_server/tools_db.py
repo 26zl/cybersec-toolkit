@@ -105,6 +105,9 @@ PIPX_BIN_NAMES: dict[str, str] = {
 # scripts/verify.sh) — keep this list local to the MCP layer.
 APT_BIN_NAMES: dict[str, str] = {
     "libimage-exiftool-perl": "exiftool",
+    "libhivex-bin": "hivexml",
+    "pst-utils": "readpst",
+    "mdbtools": "mdb-tables",
     "netcat-openbsd": "nc",
     "wireshark-common": "tshark",
     "upx-ucl": "upx",

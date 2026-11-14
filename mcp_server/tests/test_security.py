@@ -32,6 +32,97 @@ from mcp_server.security import (
 )
 
 
+class TestSsldumpPolicy:
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize("tool,binary", [("ssldump", "ssldump"), ("alias", "ssldump"), ("ssldump", "alias")])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            [],
+            ["-i", "eth0"],
+            ["-r", "capture.pcap"],
+            ["-n"],
+            ["-nr", "capture.pcap", "host", "example.org"],
+            ["-n", "-r", "capture.pcap", "-F", "filter.txt"],
+            ["-nr", "capture.pcap", "-p", "secret"],
+            ["-n", "-r", "capture.pcap", "--", "host", "example.org"],
+            ["-nr", "capture.pcap", "-jw/etc/out.pcap"],
+            ["-w", "/etc/out.pcap", "-h"],
+            ["-h", "-w", "/etc/out.pcap"],
+            ["-r", "-h"],
+            ["-nwr", "capture.pcap"],
+        ],
+    )
+    def test_rejects_live_capture_dns_filters_and_sensitive_output(self, args, tool, binary, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy(tool, args, binary)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-nr", "capture.pcap"],
+            ["-n", "-rcapture.pcap", "-l", "tls.keys", "-jw", "decrypted.pcap"],
+            ["-nd", "-f", "capture.pcap", "-kprivate.key"],
+            ["-nr", "capture.pcap", "--"],
+            ["-h"],
+            ["-v"],
+        ],
+    )
+    def test_allows_offline_files_without_classifying_filenames_as_hosts(self, args):
+        with patch("mcp_server.security.socket.getaddrinfo", side_effect=AssertionError("unexpected DNS lookup")):
+            check_policy("ssldump", args)
+
+
+class TestReadpstPolicy:
+    @pytest.mark.parametrize("external", ["0", "1"])
+    @pytest.mark.parametrize("tool,binary", [("pst-utils", "readpst"), ("alias", "readpst"), ("pst-utils", "alias")])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-w", "mail.pst"],
+            ["-Sw", "mail.pst"],
+            ["-rw", "mail.pst"],
+            ["-o", "/etc", "mail.pst"],
+            ["-ro/etc", "mail.pst"],
+            ["-d/etc/pst-debug.log", "mail.pst"],
+            ["-rd", "/etc/pst-debug.log", "mail.pst"],
+            ["--unknown", "mail.pst"],
+        ],
+    )
+    def test_rejects_destructive_mode_and_sensitive_outputs(self, tool, binary, args, external, monkeypatch):
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+        with pytest.raises(ValueError, match="Blocked by policy"):
+            check_policy(tool, args, binary)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["-r", "-o", "extracted", "mail.pst"],
+            ["-rSoextracted", "mail.pst"],
+            ["-d", "debug.log", "-oextracted", "mail.pst"],
+            ["-Cwindows-1252", "-awav", "-t", "e", "mail.pst"],
+            ["-L2", "-L", "3", "mail.pst"],
+            ["-o", "w", "mail.pst"],
+            ["--", "-w"],
+            ["-h"],
+            ["-V"],
+        ],
+    )
+    def test_allows_extraction_and_does_not_read_option_values_as_flags(self, args, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        check_policy("pst-utils", args, "readpst")
+
+    def test_checks_default_directory_and_symlinks(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with patch("mcp_server.security.os.getcwd", return_value="/etc"):
+            with pytest.raises(ValueError, match="sensitive"):
+                check_policy("pst-utils", ["mail.pst"], "readpst")
+        (tmp_path / "output").symlink_to("/etc", target_is_directory=True)
+        with pytest.raises(ValueError, match="sensitive"):
+            check_policy("pst-utils", ["-o", str(tmp_path / "output"), "mail.pst"], "readpst")
+
+
 class TestCommandPolicies:
     @pytest.mark.parametrize(
         "tool,binary,args,reason",

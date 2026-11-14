@@ -2650,6 +2650,85 @@ def _check_rea_policy(arg_list: list[str]) -> None:
     )
 
 
+def _check_ssldump_policy(arg_list: list[str]) -> None:
+    """Permit offline TLS analysis without live capture, DNS resolution or BPF hostname lookups."""
+    has_capture = False
+    numeric = False
+    informational = False
+    value_options = frozenset("rfklw")
+    boolean_options = frozenset("vjyaTznsAxXhHVNdqeP")
+    i = 0
+    while i < len(arg_list):
+        arg = arg_list[i]
+        i += 1
+        if arg == "--" and i == len(arg_list):
+            break
+        if arg.startswith("--") or not arg.startswith("-") or arg == "-":
+            raise ValueError("Blocked by policy: ssldump: offline analysis does not accept capture filters or operands")
+        bundle = arg[1:]
+        for position, option in enumerate(bundle):
+            if option in value_options:
+                value = bundle[position + 1 :]
+                if not value:
+                    if i >= len(arg_list):
+                        raise ValueError("Blocked by policy: ssldump: option requires a value")
+                    value = arg_list[i]
+                    i += 1
+                if option in {"r", "f"}:
+                    has_capture = True
+                elif option == "w":
+                    _raise_sensitive_write("ssldump", value)
+                break
+            if option not in boolean_options:
+                raise ValueError("Blocked by policy: ssldump: unsupported option for offline analysis")
+            numeric |= option == "n"
+            informational |= option in {"h", "v"}
+    if not informational and not (has_capture and numeric):
+        raise ValueError("Blocked by policy: ssldump: MCP requires -n and -r capture.pcap for offline analysis")
+
+
+def _check_readpst_policy(arg_list: list[str]) -> None:
+    """Validate explicit PST output paths and refuse destructive overwrite mode."""
+    value_options = frozenset("CLacdjot")
+    boolean_options = frozenset("DMSVbehkmqru8")
+    output_directories: list[str] = []
+    debug_files: list[str] = []
+    informational = False
+    i = 0
+    while i < len(arg_list):
+        arg = arg_list[i]
+        i += 1
+        if arg == "--":
+            break
+        if arg == "-" or not arg.startswith("-"):
+            continue
+        if arg.startswith("--"):
+            raise ValueError("Blocked by policy: readpst: unsupported option")
+        bundle = arg[1:]
+        for position, option in enumerate(bundle):
+            if option == "w":
+                raise ValueError("Blocked by policy: readpst: -w can overwrite output and delete existing files")
+            if option in value_options:
+                value = bundle[position + 1 :]
+                if not value:
+                    if i >= len(arg_list):
+                        raise ValueError("Blocked by policy: readpst: option requires a value")
+                    value = arg_list[i]
+                    i += 1
+                if option == "o":
+                    output_directories.append(value)
+                elif option == "d":
+                    debug_files.append(value)
+                break
+            if option not in boolean_options:
+                raise ValueError("Blocked by policy: readpst: unsupported option")
+            informational |= option in {"h", "V"}
+    for destination in debug_files:
+        _raise_sensitive_write("readpst", destination)
+    for destination in output_directories or ([] if informational else [os.getcwd()]):
+        _raise_sensitive_write("readpst", destination)
+
+
 def _check_takajo_policy(arg_list: list[str]) -> None:
     if arg_list in ([], ["--help"], ["-h"], ["--version"], ["help"]):
         return
@@ -2669,6 +2748,9 @@ def _check_takajo_policy(arg_list: list[str]) -> None:
 
 
 _ARGUMENT_POLICIES: dict[str, Callable[[list[str]], None]] = {
+    "ssldump": _check_ssldump_policy,
+    "pst-utils": _check_readpst_policy,
+    "readpst": _check_readpst_policy,
     "strace": partial(_check_tracer_attach_only, "strace"),
     "ltrace": partial(_check_tracer_attach_only, "ltrace"),
     "gdb": _check_gdb_execution_commands,
