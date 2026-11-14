@@ -38,8 +38,12 @@ scripts/validate_distro_compat.py export-ignore
 scripts/validate_mcp_sync.py export-ignore
 scripts/validate_tools_config.py export-ignore
 scripts/_skill_frontmatter.py export-ignore
+scripts/_skill_text.py export-ignore
 scripts/bump_version.py export-ignore
 scripts/check_doc_links.py export-ignore
+scripts/pip-audit-lock.sh export-ignore
+scripts/revendor_skills.py export-ignore
+scripts/scan_skills.py export-ignore
 scripts/test-distros.sh export-ignore
 scripts/update-skills.sh export-ignore
 scripts/validate_agent_docs.py export-ignore

@@ -26,6 +26,7 @@ jobs:
     outputs:
       changed: ${{ steps.upgrade.outputs.changed }}
       summary: ${{ steps.upgrade.outputs.summary }}
+      lock_sha256: ${{ steps.upgrade.outputs.lock_sha256 }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
@@ -35,7 +36,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: $/.github/actions/setup-uv
         with:
           # This job runs freshly upgraded packages; keep them out of the shared cache.
           enable-cache: false
@@ -53,6 +54,8 @@ jobs:
             echo "No dependency updates available."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            # Recorded before any upgraded package runs, and checked again by the job that opens the PR.
+            echo "lock_sha256=$(sha256sum uv.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
             diff uv.lock.old uv.lock | grep '^[<>].*version' | head -30 > /tmp/diff_summary.txt || true
             {
               echo 'summary<<EOF'
@@ -65,7 +68,7 @@ jobs:
       - name: Verify upgraded lockfile (sync, import, lint, tests, audit, sync-check)
         if: steps.upgrade.outputs.changed == 'true'
         run: |
-          cd mcp_server && uv sync --quiet
+          cd mcp_server && uv sync --locked --quiet
           uv run python -c "
           import sys; sys.path.insert(0, '..')
           from mcp_server.server import mcp, _db
@@ -75,18 +78,9 @@ jobs:
           uv run --group dev ruff check .
           uv run --group dev ruff format --check .
           uv run --group dev python -m pytest tests/ -q
-          # Ignore IDs in known-vulnerabilities.txt (mirrors security.yml).
-          ignore_args=()
-          while IFS= read -r line; do
-            line="${line%%#*}"
-            line="$(echo "$line" | xargs)"
-            [[ -z "$line" ]] && continue
-            ignore_args+=(--ignore-vuln "$line")
-          done < known-vulnerabilities.txt
-          # Audit the full locked set incl. ctf extras (mirrors security.yml).
-          uv export --all-extras --no-hashes --frozen > /tmp/requirements.txt
-          uvx pip-audit@2.10.1 -r /tmp/requirements.txt "${ignore_args[@]}"
           cd ..
+          # Same audit as security.yml: every pinned version, extras included.
+          bash scripts/pip-audit-lock.sh
           python3 scripts/validate_mcp_sync.py
 
       - name: Upload verified lockfile
@@ -124,6 +118,11 @@ jobs:
           name: uv-lock
           path: mcp_server
 
+      - name: Check the lockfile is the one that was resolved
+        env:
+          LOCK_SHA256: ${{ needs.lock-and-verify.outputs.lock_sha256 }}
+        run: echo "${LOCK_SHA256}  mcp_server/uv.lock" | sha256sum -c -
+
       - name: Create pull request
         id: cpr
         uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8.1.2
@@ -141,7 +140,7 @@ jobs:
             ${{ needs.lock-and-verify.outputs.summary }}
             ```
 
-            Verified against the upgraded lock in a separate token-less job: `uv sync`, MCP import check, `ruff check`/`format --check`, `pytest`, `pip-audit`, and `validate_mcp_sync.py` all passed before this PR was opened.
+            Verified against the upgraded lock in a separate read-only job: `uv sync`, MCP import check, `ruff check`/`format --check`, `pytest`, `pip-audit`, and `validate_mcp_sync.py` all passed before this PR was opened.
           labels: dependencies
 
       - name: Enable auto-merge

@@ -34,6 +34,8 @@ jobs:
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The action's default, 8.24.3, ignores the [[allowlists]] blocks in .gitleaks.toml.
+          GITLEAKS_VERSION: "8.30.1"
 
   custom-security-scan:
     name: Custom Security Scanner
@@ -104,7 +106,7 @@ jobs:
               | grep -v 'example\.com' \
               | grep -v '127\.0\.0\.1' \
               | grep -v 'http://\$' \
-              | grep -v 'https\?://' || true)
+              | grep -vF 'https?://' || true)
 
             # 4. Unsafe eval usage
             while IFS= read -r match; do
@@ -168,23 +170,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: $/.github/actions/setup-uv
 
       - name: Audit MCP server dependencies
         run: |
-          cd mcp_server
-          uv sync --locked --quiet
-          # --all-extras so ctf-core/ctf-extra deps (pillow, requests, paramiko, ...) are audited too
-          uv export --all-extras --no-hashes --frozen > /tmp/requirements.txt
-          # Ignore IDs listed in known-vulnerabilities.txt (no fix available yet)
-          ignore_args=()
-          while IFS= read -r line; do
-            line="${line%%#*}"
-            line="$(echo "$line" | xargs)"
-            [[ -z "$line" ]] && continue
-            ignore_args+=(--ignore-vuln "$line")
-          done < known-vulnerabilities.txt
-          uvx pip-audit@2.10.1 -r /tmp/requirements.txt "${ignore_args[@]}"
+          (cd mcp_server && uv sync --locked --quiet)
+          # Every pinned version, extras included, whatever Python its marker names.
+          bash scripts/pip-audit-lock.sh
 
   pin-check:
     name: Enforce SHA-pinned Actions
@@ -204,13 +196,13 @@ jobs:
           errors=0
           echo "=== Checking GitHub Actions are SHA-pinned ==="
 
-          for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+          for wf in .github/workflows/*.yml .github/workflows/*.yaml .github/actions/*/action.yml; do
             [[ -f "$wf" ]] || continue
-            # Skip local (./) and docker:// references; the anchored grep never matches a commented line.
+            # Skip same-repository ($/, ./) and docker:// references; the anchored grep never matches a commented line.
             while IFS= read -r line; do
               ref=$(echo "$line" | grep -oP 'uses:\s*\K\S+')
 
-              if echo "$ref" | grep -qE '^\./|^docker://'; then
+              if echo "$ref" | grep -qE '^\$/|^\./|^docker://'; then
                 continue
               fi
 
@@ -228,12 +220,13 @@ jobs:
           fi
           echo "All actions are SHA-pinned"
 
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: $/.github/actions/setup-uv
 
       - name: Audit workflows and Dependabot config (zizmor)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uvx zizmor@1.31.1 --format=github .github/
+        # The release is pinned; the cooldown covers the dependencies it resolves at run time.
+        run: uvx --exclude-newer "5 days" zizmor@1.32.0 --format=github .github/
 
   scorecard:
     name: OSSF Scorecard

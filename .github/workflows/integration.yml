@@ -44,7 +44,7 @@ jobs:
           - distro: ubuntu
             image: ubuntu:26.04
           - distro: fedora
-            image: fedora:44
+            image: fedora:45
           - distro: arch
             image: archlinux:latest
           - distro: opensuse
@@ -250,7 +250,15 @@ jobs:
         run: node sandbox/smoke.mjs
 
       - name: Verify the audit chain that crossed the boundary
-        run: python3 scripts/verify_audit_chain.py "$RUNNER_TEMP/sandbox-audit.log"
+        # The log starts empty in this job, so every chain has to be complete.
+        run: python3 scripts/verify_audit_chain.py --strict "$RUNNER_TEMP/sandbox-audit.log"
+
+      # The rules are the same under runc and Kata; only the kernel that holds them differs.
+      - name: Enforce a network scope against a throwaway target
+        env:
+          CYBERSEC_SANDBOX_RUNTIME: runc
+          CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME: "1"
+        run: node sandbox/scope-smoke.mjs
 
       # A runtime named like Kata that shares the host kernel must be refused by the boot-id check.
       - name: Refuse a runc runtime registered under a Kata name
@@ -305,3 +313,56 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           severity: HIGH,CRITICAL
+
+  # The canary, sandbox and image jobs run on main only in the weekly run, so a
+  # failure there is otherwise seen by whoever opens the Actions tab.
+  report-weekly:
+    name: Report the weekly run
+    needs: [integration, method-canaries, sandbox-smoke, docker-build]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "- \(.key): \(.value.result)"' <<<"$NEEDS_JSON")
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=integration-failure" \
+            --jq '[.[] | select(.pull_request == null)][0].number // empty')
+
+          if [[ -z "$failed" ]]; then
+            if [[ -n "$existing" ]]; then
+              gh issue close "$existing" --repo "$GITHUB_REPOSITORY" \
+                --comment "The weekly integration run passed: $RUN_URL"
+            fi
+            exit 0
+          fi
+
+          {
+            echo "The weekly integration run did not pass:"
+            echo
+            echo "$failed"
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "These jobs install from live package repositories and upstream releases, so a"
+            echo "failure usually follows a change upstream, not a commit here."
+          } > issue-body.md
+
+          if [[ -n "$existing" ]]; then
+            gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --body-file issue-body.md
+          else
+            gh label create integration-failure --repo "$GITHUB_REPOSITORY" \
+              --description "The weekly integration run failed" --color d93f0b 2>/dev/null || true
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Weekly integration run failed" \
+              --body-file issue-body.md --label integration-failure
+          fi

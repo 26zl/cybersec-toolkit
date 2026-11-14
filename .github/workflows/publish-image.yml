@@ -9,8 +9,14 @@ on:
       - "writeups/**"
       - "assets/**"
       - ".github/**"
+      - ".claude/**"
+      - "tests/**"
+      - "mcp_server/tests/**"
       - "*.md"
       - "glama.json"
+  schedule:
+    # A rebuild picks up distro package fixes that arrive without a commit here.
+    - cron: "0 5 * * 3" # Every Wednesday 05:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -22,8 +28,108 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # CI and Security start from the same push, so nothing else orders them before the build.
+  gate:
+    name: Require green CI and Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: read
+      pull-requests: read
+    outputs:
+      proceed: ${{ steps.wait.outputs.proceed }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Wait for the CI and Security runs of this commit
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          required=(.github/workflows/ci.yml .github/workflows/security.yml)
+          checked_sha="$GITHUB_SHA"
+          # Only a push starts the runs this waits for; anything else finds them or not at once.
+          grace=30
+          [[ "$GITHUB_EVENT_NAME" == push ]] && grace=300
+          missing_deadline=$((SECONDS + grace))
+          deadline=$((SECONDS + 1800))
+          pending=" the workflow run list"
+          while :; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::Not publishing ${GITHUB_SHA}: still waiting for${pending} after 30 minutes."
+              exit 1
+            fi
+            # An API error is retried until the deadline; it never counts as a result.
+            if ! runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${checked_sha}&per_page=100" \
+              --jq '[.workflow_runs[] | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
+                     | {path, status, conclusion, run_started_at}]'); then
+              sleep 20
+              continue
+            fi
+            waiting="" missing="" cancelled="" failed=""
+            for path in "${required[@]}"; do
+              run=$(jq -c --arg path "$path" \
+                '[.[] | select(.path == $path)] | sort_by(.run_started_at) | last // empty' <<<"$runs")
+              if [[ -z "$run" ]]; then
+                missing+=" $path"
+                continue
+              fi
+              status=$(jq -r '.status' <<<"$run")
+              conclusion=$(jq -r '.conclusion' <<<"$run")
+              if [[ "$status" != completed ]]; then
+                waiting+=" $path"
+              elif [[ "$conclusion" == cancelled ]]; then
+                cancelled+=" $path"
+              elif [[ "$conclusion" != success ]]; then
+                failed+=" $path=$conclusion"
+              fi
+            done
+
+            if [[ -n "$failed" ]]; then
+              echo "::error::Not publishing ${GITHUB_SHA}: required workflows did not succeed on ${checked_sha}:${failed}"
+              exit 1
+            fi
+            if [[ -z "$waiting" && -z "$missing" ]]; then
+              if [[ -z "$cancelled" ]]; then
+                echo "proceed=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              # A newer push to the branch cancels the runs of the commit before it.
+              if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF_TYPE" == branch ]]; then
+                echo "::warning::Not publishing ${GITHUB_SHA}: superseded before${cancelled} finished. The next push, a manual run or the weekly rebuild publishes the branch."
+                echo "proceed=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "::error::Not publishing ${GITHUB_SHA}: cancelled before finishing on ${checked_sha}:${cancelled}. Re-run them, then re-run this workflow."
+              exit 1
+            fi
+            if [[ -n "$missing" && $SECONDS -ge $missing_deadline ]]; then
+              # A pull request merged with GITHUB_TOKEN (the weekly dependency update) starts no
+              # workflows on its merge commit; what the branch rules accepted are the runs on its head.
+              pr_head=""
+              if [[ "$checked_sha" == "$GITHUB_SHA" ]]; then
+                pr_head=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                  --jq '[.[] | select(.merged_at != null and .merge_commit_sha == env.GITHUB_SHA
+                                      and .head.repo.full_name == env.GITHUB_REPOSITORY)][0].head.sha // empty') || pr_head=""
+              fi
+              if [[ -z "$pr_head" ]]; then
+                echo "::error::Not publishing ${GITHUB_SHA}: no run of${missing} exists for ${checked_sha}. Publish a commit that CI has run on."
+                exit 1
+              fi
+              echo "::notice::${GITHUB_SHA} has no runs of its own; checking the head of its pull request, ${pr_head}."
+              checked_sha="$pr_head"
+              continue
+            fi
+            pending="${waiting}${missing}"
+            sleep 20
+          done
+
   publish:
     name: Build, scan, and push to GHCR
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -66,8 +172,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
-            # Tag builds rebuild the same commit; a second sha- tag would point at a different image.
-            type=sha,format=short,enable=${{ github.ref_type == 'branch' }}
+            # Tag builds and the weekly rebuild repeat a commit; a second sha- tag would point at a different image.
+            type=sha,format=short,enable=${{ github.ref_type == 'branch' && github.event_name != 'schedule' }}
 
       - name: Build image (load locally for scanning)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -86,6 +192,9 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          # The release job holds write tokens, so it does not run a scanner binary or
+          # vulnerability database restored from a cache that other jobs can write.
+          cache: "false"
 
       # The MCP Registry launches the image with server.json's arguments; prove that exact
       # command answers an MCP initialize before anything is pushed.
@@ -134,6 +243,8 @@ jobs:
           scan-type: image
           format: spdx-json
           output: sbom.spdx.json
+          cache: "false"
+          skip-setup-trivy: true
 
       - name: Attest SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
@@ -142,3 +253,93 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           sbom-path: sbom.spdx.json
           push-to-registry: true
+
+  # The version tag is built once and is what server.json points the MCP Registry at,
+  # so fixes that arrive after the release reach it only through a new release.
+  scan-release:
+    name: Scan the released image
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve the released image
+        id: release
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY}:$(tr -d '[:space:]' < VERSION)"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          # VERSION is bumped on main before the tag that builds its image is pushed.
+          if docker manifest inspect "$image" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$image is not published yet; nothing to scan."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan for fixable HIGH/CRITICAL CVEs
+        if: steps.release.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.image }}
+          format: json
+          output: trivy-release.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          cache: "false"
+
+      - name: Open, update or close the tracking issue
+        if: steps.release.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: |
+          # A report that cannot be read fails here instead of counting as clean.
+          count=$(jq 'if .SchemaVersion then
+                        [.Results[]?.Vulnerabilities[]? | [.VulnerabilityID, .PkgName, .InstalledVersion]]
+                        | unique | length
+                      else error("not a Trivy report") end' trivy-release.json)
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=image-scan" \
+            --jq '[.[] | select(.pull_request == null)][0].number // empty')
+
+          if [[ "$count" -eq 0 ]]; then
+            if [[ -n "$existing" ]]; then
+              gh issue close "$existing" --repo "$GITHUB_REPOSITORY" \
+                --comment "The weekly scan of \`$IMAGE\` found no fixable HIGH or CRITICAL vulnerabilities."
+            fi
+            exit 0
+          fi
+
+          # Build the body from a file (never interpolate report text into the shell).
+          {
+            echo "The weekly scan of \`$IMAGE\` found $count fixable HIGH or CRITICAL vulnerabilities."
+            echo
+            echo "The version tag is built once, at release, and \`server.json\` points the MCP Registry"
+            echo "at it. \`latest\` is rebuilt every week; the release gets these fixes only through a new"
+            echo "release (see docs/PUBLISHING.md)."
+            echo
+            echo '```'
+            jq -r '[.Results[]?.Vulnerabilities[]?
+                    | "\(.Severity)  \(.VulnerabilityID)  \(.PkgName) \(.InstalledVersion) -> \(.FixedVersion)"]
+                   | unique | .[]' trivy-release.json | tr -d '`'
+            echo '```'
+          } | head -c 60000 > issue-body.md
+
+          if [[ -n "$existing" ]]; then
+            gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --body-file issue-body.md
+          else
+            gh label create image-scan --repo "$GITHUB_REPOSITORY" \
+              --description "Released image has fixable vulnerabilities" --color b60205 2>/dev/null || true
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Released image has fixable HIGH/CRITICAL vulnerabilities" \
+              --body-file issue-body.md --label image-scan
+          fi

@@ -1,8 +1,10 @@
-name: Skills upstream drift check
+name: Vendored skills update
 
-# Weekly notifier for the vendored .claude/skills/ sources (they are copies, not
-# submodules, so Dependabot does not cover them). Reports only — re-vendoring is a
-# manual, reviewed step. Mirrors the deps 5-day cooldown via MIN_AGE_DAYS.
+# Weekly update of the vendored .claude/skills/ sources (they are copies, not
+# submodules, so Dependabot does not cover them). Upstream changes that merge
+# cleanly arrive as a pull request for review; a source that needs a hand merge,
+# or whose upstream moved, was rewritten or was archived, is tracked in an issue.
+# Mirrors the deps 5-day cooldown via MIN_AGE_DAYS.
 
 on:
   schedule:
@@ -17,13 +19,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  skills-drift:
-    name: Check vendored skills for upstream updates
+  # Merges and scans unreviewed upstream content with a read-only token. The
+  # write-scoped job below only applies the patch this job hands over.
+  revendor:
+    name: Merge upstream skill changes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
-      issues: write
+    outputs:
+      changed: ${{ steps.apply.outputs.changed }}
+      attention: ${{ steps.apply.outputs.attention }}
+      patch_sha256: ${{ steps.patch.outputs.sha256 }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
@@ -34,50 +41,208 @@ jobs:
           submodules: false
           persist-credentials: false
 
-      - name: Check upstream skill sources
-        id: check
+      - uses: $/.github/actions/setup-uv
+        with:
+          # The scanner runs on unreviewed content; keep it out of the shared cache.
+          enable-cache: false
+
+      - name: Merge upstream changes into the vendored skills
+        id: apply
+        env:
+          MIN_AGE_DAYS: "5"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          bash scripts/update-skills.sh --apply > skills-report.txt 2>&1 || rc=$?
+          cat skills-report.txt
+          # 3 means a source needs a hand merge; it was left untouched and is reported.
+          if [[ $rc -ne 0 && $rc -ne 3 ]]; then
+            echo "::error::Re-vendoring failed"
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -qE '^  (BLOCKED|MOVED|REWRITTEN|ARCHIVED|REMOVED-UPSTREAM|ERROR):' skills-report.txt; then
+            echo "attention=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "attention=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate the updated skills
+        if: steps.apply.outputs.changed == 'true'
+        run: |
+          python3 scripts/validate_claude_skills.py
+          python3 scripts/audit_skill_dependencies.py --check-declared
+          bash scripts/update-skills.sh --check-pins
+
+      - name: Scan the changed skills and list what the update adds
+        if: steps.apply.outputs.changed == 'true'
         env:
           MIN_AGE_DAYS: "5"
         run: |
-          bash scripts/update-skills.sh > skills-report.txt 2>&1 || true
-          cat skills-report.txt
-          if grep -q '^  ERROR:' skills-report.txt; then
-            echo "::error::At least one upstream skill source could not be checked"
-            exit 1
-          fi
-          updates=$(grep -c '^  UPDATE:' skills-report.txt || true)
-          newskills=$(grep -oE 'upstream-only:[[:space:]]+[0-9]+' skills-report.txt | grep -oE '[0-9]+' | head -1 || true)
-          echo "updates=${updates:-0}" >> "$GITHUB_OUTPUT"
-          echo "newskills=${newskills:-0}" >> "$GITHUB_OUTPUT"
+          python3 scripts/scan_skills.py --changed-since HEAD --output scan-new.json
+          python3 scripts/scan_skills.py --changed-since HEAD --at HEAD --output scan-old.json
+          python3 scripts/scan_skills.py --compare scan-old.json scan-new.json | tee scan-delta.txt
 
-      - name: Open or update tracking issue
-        if: steps.check.outputs.updates != '0' || steps.check.outputs.newskills != '0'
+      - name: Build the patch and the pull request text
+        id: patch
+        if: steps.apply.outputs.changed == 'true'
+        run: |
+          git add -A -- .claude/skills scripts/update-skills.sh THIRD_PARTY_NOTICES.md
+          git diff --cached --binary > skills.patch
+          echo "sha256=$(sha256sum skills.patch | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          # Report text comes from upstream repositories: backticks are dropped so it
+          # cannot close the code fences it is quoted in.
+          {
+            echo "Weekly update of the vendored skills to the newest upstream commits past the 5-day cooldown."
+            echo
+            echo "Local edits were kept by a three-way merge, and the skill validators passed on the result."
+            echo "Skill text is read by agents as instructions, so review the diff before merging."
+            echo
+            echo "<details><summary>Update report</summary>"
+            echo
+            echo '```'
+            tr -d '`' < skills-report.txt
+            echo '```'
+            echo "</details>"
+            echo
+            echo "<details><summary>Scanner findings the update adds (SkillSpector, static analysis)</summary>"
+            echo
+            echo '```'
+            tr -d '`' < scan-delta.txt
+            echo '```'
+            echo "</details>"
+          } | head -c 60000 > pr-body.md
+
+      - name: Upload the report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: skills-report
+          path: skills-report.txt
+          retention-days: 7
+
+      - name: Upload the patch
+        if: steps.apply.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: skills-patch
+          path: |
+            skills.patch
+            pr-body.md
+          retention-days: 1
+
+  # Opens the pull request. Holds the write-scoped token but runs nothing from
+  # upstream: it applies the patch produced above and checks it is that patch.
+  open-pr:
+    name: Open skills update PR
+    needs: revendor
+    if: needs.revendor.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Fetch the patch
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: skills-patch
+          path: ${{ runner.temp }}/skills-patch
+
+      - name: Apply the patch
+        env:
+          PATCH_SHA256: ${{ needs.revendor.outputs.patch_sha256 }}
+          PATCH_DIR: ${{ runner.temp }}/skills-patch
+        run: |
+          echo "${PATCH_SHA256}  ${PATCH_DIR}/skills.patch" | sha256sum -c -
+          git apply --whitespace=nowarn "${PATCH_DIR}/skills.patch"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update vendored skills"
+          branch: auto/skills-update
+          delete-branch: true
+          title: "chore: update vendored skills"
+          add-paths: |
+            .claude/skills
+            scripts/update-skills.sh
+            THIRD_PARTY_NOTICES.md
+          body-path: ${{ runner.temp }}/skills-patch/pr-body.md
+          labels: skills-update
+
+  # Keeps one issue open while a source needs a person, and closes it afterwards.
+  track:
+    name: Track sources that need attention
+    needs: revendor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Fetch the report
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: skills-report
+
+      - name: Open, update or close the tracking issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ATTENTION: ${{ needs.revendor.outputs.attention }}
         run: |
+          # Use the REST list endpoint for stable label filtering.
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=skills-update" \
+            --jq '[.[] | select(.pull_request == null)][0].number // empty' 2>/dev/null || true)
+
+          if [[ "$ATTENTION" != "true" ]]; then
+            if [[ -n "$existing" ]]; then
+              gh issue close "$existing" --repo "$GITHUB_REPOSITORY" \
+                --comment "The weekly check found nothing that needs a hand merge or an upstream review."
+            fi
+            exit 0
+          fi
+
           # Build the body from a file (never interpolate report text into the shell).
           {
-            echo "Weekly check found vendored skill sources that advanced past their pin"
-            echo "(past the 5-day cooldown) or upstream skills not yet vendored."
+            echo "The weekly skills update found a source it could not move on its own:"
+            echo "a merge conflict (BLOCKED), or an upstream that moved, was rewritten, was archived,"
+            echo "or dropped a vendored skill."
             echo
-            echo "Re-vendoring is manual and reviewed (see AGENTS.md \"Skills (portable via sync)\")."
-            echo "After re-vendoring, bump the pin in SKILLS.md, THIRD_PARTY_NOTICES.md,"
-            echo "scripts/update-skills.sh, and the re-vendored skills' upstream_commit frontmatter, then run"
-            echo "\`scripts/update-skills.sh --check-pins\`."
+            echo "For a conflict, run \`scripts/update-skills.sh --apply --mark-conflicts SOURCE\`, resolve"
+            echo "the markers, then run the \`--finalize\` command it prints (see AGENTS.md"
+            echo "\"Skills (portable via sync)\")."
             echo
             echo "<details><summary>Full report</summary>"
             echo
             echo '```'
-            cat skills-report.txt
+            tr -d '`' < skills-report.txt
             echo '```'
             echo "</details>"
-          } > issue-body.md
+          } | head -c 60000 > issue-body.md
 
-          # Use the REST list endpoint for stable label filtering.
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=skills-update" --jq '[.[] | select(.pull_request == null)][0].number // empty' 2>/dev/null || true)
           if [[ -n "$existing" ]]; then
-            gh issue edit "$existing" --body-file issue-body.md
+            gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --body-file issue-body.md
           else
-            gh label create skills-update --description "Vendored skill upstream drift" --color 0e8a16 2>/dev/null || true
-            gh issue create --title "Vendored skills: upstream updates available" --body-file issue-body.md --label skills-update
+            gh label create skills-update --repo "$GITHUB_REPOSITORY" \
+              --description "Vendored skill upstream drift" --color 0e8a16 2>/dev/null || true
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Vendored skills: a source needs attention" \
+              --body-file issue-body.md --label skills-update
           fi
