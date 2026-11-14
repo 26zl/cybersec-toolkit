@@ -1722,18 +1722,29 @@ def _getopt_values(arg_list: list[str], *, shorts: str, longs: frozenset[str], v
     return values
 
 
+# GNU tar short options that take a value, and the other value-taking short options of
+# curl, wget and unzip: inside a bundle, what follows one of them is its value, not more options.
+_TAR_VALUE_SHORTS = "bCfFgHIKLNTVX"
+_CURL_VALUE_SHORTS = "AbCdeEFHKmPQrtTuUwxXyYz"
+_WGET_VALUE_SHORTS = "eiBtTwQlARDIXU"
+_UNZIP_VALUE_SHORTS = "xP"
+
+
 def _tar_short_flag_values(arg_list: list[str], flag: str) -> list[str]:
     """Extract values for value-taking tar flags inside short-option bundles."""
     values: list[str] = []
     for i, arg in enumerate(arg_list):
-        body = ""
-        if arg.startswith("-") and not arg.startswith("--"):
-            body = arg[1:]
-        elif i == 0 and re.fullmatch(r"[A-Za-z]+", arg):
-            body = arg  # traditional tar syntax: ``tar xzf archive.tar.gz``
-        if flag not in body:
+        if i == 0 and re.fullmatch(r"[A-Za-z]+", arg):
+            # Traditional syntax (``tar xfC archive.tar dir``): the values follow the bundle
+            # in the order their letters appear in it.
+            takers = [letter for letter in arg if letter in _TAR_VALUE_SHORTS]
+            for position, letter in enumerate(takers):
+                if letter == flag and i + 1 + position < len(arg_list):
+                    values.append(arg_list[i + 1 + position])
             continue
-        suffix = body.split(flag, 1)[1]
+        if not arg.startswith("-") or arg.startswith("--") or flag not in arg[1:]:
+            continue
+        suffix = arg[1:].split(flag, 1)[1]
         if suffix:
             values.append(suffix)
         elif i + 1 < len(arg_list):
@@ -2033,6 +2044,9 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
             ),
         ):
             _raise_sensitive_write(name, dest)
+        # The same options inside a bundle, as in the everyday ``curl -sLo FILE``.
+        for dest in _getopt_values(arg_list, shorts="oDc", longs=frozenset(), value_shorts=_CURL_VALUE_SHORTS):
+            _raise_sensitive_write(name, dest)
         return
 
     if name == "wget":
@@ -2048,6 +2062,8 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
                 }
             ),
         ):
+            _raise_sensitive_write(name, dest)
+        for dest in _getopt_values(arg_list, shorts="OoaP", longs=frozenset(), value_shorts=_WGET_VALUE_SHORTS):
             _raise_sensitive_write(name, dest)
         return
 
@@ -2101,6 +2117,7 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
 
     if name == "unzip":
         destinations = _flag_values(arg_list, short_flags=frozenset({"-d"}))
+        destinations.extend(_getopt_values(arg_list, shorts="d", longs=frozenset(), value_shorts=_UNZIP_VALUE_SHORTS))
         for dest in destinations or [os.getcwd()]:
             _raise_sensitive_write(name, dest)
         return

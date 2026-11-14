@@ -3254,6 +3254,16 @@ class TestTextUtilityWriteGuard:
             ("ln", ["-st", "/etc/cron.d", "notes.txt"]),
             ("gpg", ["--outp", "/etc/cron.d/x", "--decrypt", "a.gpg"]),
             ("curl", ["--outp", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            # Short options inside a bundle, the way they are usually typed.
+            ("curl", ["-sLo", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("curl", ["-sD", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("curl", ["-sSLc/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("wget", ["-qO", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("wget", ["-qP", "/etc/cron.d", "http://10.0.0.5/x"]),
+            ("wget", ["-nvo/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("unzip", ["-od", "/etc/cron.d", "a.zip"]),
+            ("tar", ["xvfC", "a.tar", "/etc/cron.d"]),
+            ("tar", ["cvbf", "20", "/etc/cron.d/x.tar", "notes.txt"]),
             # A single character is enough when no other option starts with it.
             ("cp", ["--t=/etc/cron.d", "notes.txt"]),
             ("cp", ["--t", "/etc/cron.d", "notes.txt"]),
@@ -3276,6 +3286,14 @@ class TestTextUtilityWriteGuard:
             ("tar", ["-xf", "a.tar", "--dir=out"]),
             ("wget", ["--output-doc=page.html", "http://10.0.0.5/x"]),
             ("gpg", ["--outp", "plain.txt", "--decrypt", "a.gpg"]),
+            ("curl", ["-sLo", "page.html", "http://10.0.0.5/x"]),
+            ("curl", ["-sS", "-X", "POST", "-H", "Accept: text/plain", "-d", "a=b", "http://10.0.0.5/x"]),
+            ("curl", ["-sXPOST", "-HAccept:text/plain", "http://10.0.0.5/x"]),
+            ("wget", ["-qO", "page.html", "http://10.0.0.5/x"]),
+            ("wget", ["-qO-", "http://10.0.0.5/x"]),
+            ("unzip", ["-od", "out", "a.zip"]),
+            ("tar", ["xvfC", "a.tar", "out"]),
+            ("tar", ["tvf", "a.tar"]),
         ],
     )
     def test_the_same_spellings_into_the_working_directory_allowed(self, tool, args) -> None:
