@@ -1,3 +1,5 @@
+# Workflows reference this as $/.github/actions/setup-uv, which GitHub resolves from the source archive:
+# .gitattributes therefore keeps .github/actions/ in that archive.
 name: Set up uv
 description: Install the uv release the Dockerfile pins, so CI and the image resolve with one version.
 
