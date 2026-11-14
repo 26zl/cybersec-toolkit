@@ -83,9 +83,12 @@ audit.log.*
 manual_scripts/*
 !manual_scripts/.gitkeep
 
-# Security workflow writeups and findings (local only); keep the dir, ignore its contents
+# Security workflow writeups and findings (local only): keep the category folders,
+# ignore everything that is written into them or beside them
 /writeups/*
-!/writeups/.gitkeep
+!/writeups/*/
+/writeups/*/*
+!/writeups/*/.gitkeep
 
 # Local output from scripts/test-distros.sh
 test-distros-logs/

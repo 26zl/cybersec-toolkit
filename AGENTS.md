@@ -431,7 +431,9 @@ Use a descriptive filename that makes the subject obvious. Recommended format:
 `writeups/<category>/<descriptive-case-name>.md` (for example,
 `writeups/ctf/htb-pilgrimage.md`, `writeups/bug-bounty/example-idor.md`,
 `writeups/cve/CVE-2024-xxxx-reproduction.md`, or
-`writeups/guided-assessment/example-web-recon.md`). Writeups must pass
+`writeups/guided-assessment/example-web-recon.md`). The checkout ships empty folders for
+`ctf`, `bug-bounty`, `cve`, `pentest`, `dfir` and `guided-assessment`; add another when a
+case fits none of them. Writeups must pass
 `npx markdownlint-cli2 "writeups/**/*.md"`. Everything in the directory is git-ignored: writeups
 carry target details and stay local unless the operator shares them deliberately.
 
