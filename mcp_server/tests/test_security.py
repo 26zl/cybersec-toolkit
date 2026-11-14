@@ -2740,6 +2740,9 @@ class TestLongOptionAbbreviation:
             ("awk", ["--lo=x.so", "d"]),
             ("wget", ["--inp", "list.txt"]),
             ("sed", ["--in-plac", "s/a/b/", "f"]),
+            ("sed", ["--i", "s/a/b/", "f"]),
+            ("awk", ["--e", "x.awk", "d"]),
+            ("awk", ["--i", "lib", "BEGIN{}"]),
             ("sqlmap", ["-u", "http://10.0.0.1", "--os-she"]),
             ("sqlmap", ["-u", "http://10.0.0.1", "--fi=/etc/passwd"]),
             ("gdb", ["--comm=x"]),
@@ -3160,6 +3163,13 @@ class TestTextUtilityWriteGuard:
             ("ln", ["-st", "/etc/cron.d", "notes.txt"]),
             ("gpg", ["--outp", "/etc/cron.d/x", "--decrypt", "a.gpg"]),
             ("curl", ["--outp", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            # A single character is enough when no other option starts with it.
+            ("cp", ["--t=/etc/cron.d", "notes.txt"]),
+            ("cp", ["--t", "/etc/cron.d", "notes.txt"]),
+            ("mv", ["--t=/etc/cron.d", "notes.txt"]),
+            ("ln", ["-s", "--t", "/etc/cron.d", "notes.txt"]),
+            ("gpg", ["--o", "/etc/cron.d/x", "--decrypt", "a.gpg"]),
+            ("shuf", ["--o", "/etc/cron.d/x", "notes.txt"]),
         ],
     )
     def test_abbreviated_and_bundled_options_of_the_older_rules_blocked(self, tool, args) -> None:

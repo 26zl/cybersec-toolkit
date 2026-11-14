@@ -531,11 +531,11 @@ def _blocked_long_options(patterns: list[tuple[re.Pattern[str], str]]) -> list[t
 _ABBREV_BLOCKED: dict[str, list[tuple[str, str]]] = {
     tool: _blocked_long_options(TOOL_BLOCKED_FLAGS[tool]) for tool in _ABBREV_TOOLS if tool in TOOL_BLOCKED_FLAGS
 }
-# getopt_long resolves a 2-character prefix when unambiguous (e.g. gawk --lo →
-# --load), so 2 is the floor. A prefix that is ambiguous among the tool's own
+# getopt_long resolves any unambiguous prefix, down to a single character (sed --i
+# is --in-place, gawk --e is --exec). A prefix that is ambiguous among the tool's own
 # options makes the tool error out, so blocking it is harmless; only an exact
 # safe option (_ABBREV_SAFE) is a real false positive.
-_ABBREV_MIN_LEN = 2
+_ABBREV_MIN_LEN = 1
 
 
 def _check_long_option_abbreviations(tool_name: str, binary: str, arg_list: list[str]) -> None:
@@ -2013,7 +2013,7 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
             _raise_sensitive_write(name, dest)
         if name in {"cp", "mv", "ln"}:
             # -t also arrives inside a bundle (cp -vt DIR), which the literal match above does not see.
-            for dest in _getopt_values(arg_list, shorts="t", longs=frozenset(), value_shorts="S"):
+            for dest in _getopt_values(arg_list, shorts="t", longs=frozenset({"--target-directory"}), value_shorts="S"):
                 _raise_sensitive_write(name, dest)
         return
 
