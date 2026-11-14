@@ -1656,18 +1656,28 @@ def _flag_values(
     short_flags: frozenset[str] = frozenset(),
     long_flags: frozenset[str] = frozenset(),
 ) -> list[str]:
-    """Extract separated, ``--flag=value``, and attached short-flag values."""
+    """Extract separated, ``--flag=value``, and attached short-flag values.
+
+    A ``--`` option that abbreviates one of *long_flags* counts as that flag: getopt_long,
+    argparse and GnuPG all resolve an unambiguous prefix, so ``--outp=FILE`` is ``--output``.
+    """
     values: list[str] = []
     i = 0
     while i < len(arg_list):
         arg = arg_list[i]
-        if arg in short_flags or arg in long_flags:
+        name, attached, value = arg.partition("=")
+        is_long = name in long_flags or (
+            name.startswith("--")
+            and len(name) >= 2 + _ABBREV_MIN_LEN
+            and any(flag.startswith(name) for flag in long_flags)
+        )
+        if arg in short_flags or (is_long and not attached):
             if i + 1 < len(arg_list):
                 values.append(arg_list[i + 1])
                 i += 2
                 continue
-        if "=" in arg and arg.split("=", 1)[0] in long_flags:
-            values.append(arg.split("=", 1)[1])
+        if is_long and attached:
+            values.append(value)
         else:
             for flag in short_flags:
                 if arg.startswith(flag) and arg != flag:
@@ -2001,6 +2011,10 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
             long_flags=frozenset({"--target-directory"}),
         ):
             _raise_sensitive_write(name, dest)
+        if name in {"cp", "mv", "ln"}:
+            # -t also arrives inside a bundle (cp -vt DIR), which the literal match above does not see.
+            for dest in _getopt_values(arg_list, shorts="t", longs=frozenset(), value_shorts="S"):
+                _raise_sensitive_write(name, dest)
         return
 
     if name == "curl":

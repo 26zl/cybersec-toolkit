@@ -3148,6 +3148,39 @@ class TestTextUtilityWriteGuard:
             check_policy(tool, args)
 
     @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("wget", ["--output-doc=/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("wget", ["--output-d", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+            ("tar", ["-xf", "a.tar", "--dir=/etc/cron.d"]),
+            ("tar", ["-xf", "a.tar", "--direc", "/etc/cron.d"]),
+            ("cp", ["--target-dir=/etc/cron.d", "notes.txt"]),
+            ("cp", ["-vt", "/etc/cron.d", "notes.txt"]),
+            ("mv", ["-ft/etc/cron.d", "notes.txt"]),
+            ("ln", ["-st", "/etc/cron.d", "notes.txt"]),
+            ("gpg", ["--outp", "/etc/cron.d/x", "--decrypt", "a.gpg"]),
+            ("curl", ["--outp", "/etc/cron.d/x", "http://10.0.0.5/x"]),
+        ],
+    )
+    def test_abbreviated_and_bundled_options_of_the_older_rules_blocked(self, tool, args) -> None:
+        with pytest.raises(ValueError, match="sensitive"):
+            check_policy(tool, args)
+
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("cp", ["-v", "notes.txt", "copy.txt"]),
+            ("cp", ["-vt", "out", "notes.txt"]),
+            ("mv", ["--suffix=.bak", "notes.txt", "old.txt"]),
+            ("tar", ["-xf", "a.tar", "--dir=out"]),
+            ("wget", ["--output-doc=page.html", "http://10.0.0.5/x"]),
+            ("gpg", ["--outp", "plain.txt", "--decrypt", "a.gpg"]),
+        ],
+    )
+    def test_the_same_spellings_into_the_working_directory_allowed(self, tool, args) -> None:
+        check_policy(tool, args)
+
+    @pytest.mark.parametrize(
         "args",
         [
             ["--compress-program=sh", "notes.txt"],
