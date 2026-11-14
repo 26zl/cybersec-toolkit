@@ -252,7 +252,8 @@ such as `curl` remain normal `run_tool` calls.
   the host with no VM boundary
 - `CYBERSEC_LOCAL_SANDBOX=1` — host mode only: start every tool and script inside
   bubblewrap, without the operator's credential stores, the agent client's configuration,
-  the audit log, the session bus or other processes; startup fails if it cannot
+  the audit log, the session bus, other programs' control sockets or other processes;
+  startup fails if it cannot
 - `CYBERSEC_SANDBOX_WORKSPACE` — absolute host directory mounted at `/workspace` in
   the VM; the only host path the sandbox can reach, and never one inside this checkout
 - `CYBERSEC_SANDBOX_SCOPE` — absolute path of a scope file (addresses, ranges, names,

@@ -4,11 +4,14 @@ Host mode has no VM, so a tool runs as the operator. With CYBERSEC_LOCAL_SANDBOX
 each tool and script starts inside bubblewrap instead, away from what a hostile
 sample or a misled agent reaches for first: credential stores, browser profiles,
 the agent's own configuration, this checkout's code and settings, the audit log,
-the session bus, and every other process of the account.
+the session bus, the control sockets of other programs, and every other process
+of the account.
 
 It is a narrower boundary than the Kata VM. The tool keeps the operator's uid,
 the kernel and the network; everything not listed below stays as it was, so tools
-keep their caches and write their output where they always did.
+keep their caches and write their output where they always did. Because the
+network is shared, a service that listens on localhost or on an abstract socket
+stays reachable: only socket files can be hidden.
 
 Hiding is exact: the data a protected name leads to is out of reach, links
 followed. Write protection covers what exists when a tool starts. The home
@@ -21,6 +24,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -43,6 +47,8 @@ _HIDDEN_IN_HOME = (
     # The agent's own configuration: tokens to read, and settings, hooks and memory to plant
     ".claude", ".claude.json", ".codex", ".gemini", ".config/opencode", ".cursor", ".continue",
     ".config/goose", ".hermes", ".openclaw", ".config/github-copilot", ".config/Claude",
+    # Keys to the display server and the session manager
+    ".Xauthority", ".ICEauthority",
 )  # fmt: skip
 _CLOUD_PATHS = frozenset({".aws", ".azure", ".config/gcloud", ".kube", ".docker", ".oci", ".config/doctl"})
 # Tools of these modules exist to use those credentials on an authorized account.
@@ -63,6 +69,33 @@ _READ_ONLY_IN_CHECKOUT = (
     "AGENTS.md", "CLAUDE.md", "GEMINI.md", "mcp_server", "sandbox", "scripts", "lib", "modules",
     "profiles", "install.sh", "tools_config.json",
 )  # fmt: skip
+
+# A program that can connect to another program's control socket acts with what that
+# program is allowed: a container runtime hands out root, an editor or an agent client
+# runs commands outside the sandbox. Socket files this account can connect to are
+# hidden below these roots, to the given depth.
+_SOCKET_ROOTS: tuple[tuple[str, int], ...] = (("/run", 3), ("/tmp", 2))
+# Large trees under /run with nothing to find.
+_SOCKET_SCAN_SKIP = frozenset({"udev", "user", "log", "media", "mount", "credentials", "blkid", "initramfs"})
+# Name, user and log lookups, smart cards, and the local databases tools keep their data in.
+_SOCKETS_KEPT = (
+    "/run/systemd/journal/", "/run/systemd/userdb/", "/run/systemd/resolve/", "/run/systemd/notify",
+    "/run/nscd/", "/run/avahi-daemon/", "/run/pcscd/", "/run/postgresql/", "/run/mysqld/",
+)  # fmt: skip
+# Tools of these modules exist to drive the service behind the socket.
+_MODULE_SOCKETS = {
+    "containers": ("/run/docker.sock", "/run/podman/", "/run/containerd/", "/run/crio/"),
+    "wireless": ("/run/dbus/system_bus_socket",),
+}
+# Directories that hold only such sockets are hidden whole, so one created later is covered too.
+_SOCKET_DIR_NAMES = frozenset({".X11-unix", ".ICE-unix"})
+_SOCKET_DIR_PREFIXES = ("ssh-", "tmux-")
+# Where the display, the session bus, the ssh-agent and a container runtime are found.
+_UNSET_ENV = (
+    "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "ICEAUTHORITY", "SESSION_MANAGER",
+    "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK",
+)  # fmt: skip
+_UNSET_ENV_UNLESS = {"DOCKER_HOST": "containers", "CONTAINER_HOST": "containers"}
 
 _CHECKOUT = Path(__file__).resolve().parent.parent
 
@@ -99,6 +132,48 @@ def _resolve(path: Path) -> Path | None:
 
 def _is_within(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
+
+
+def _server_files() -> list[Path]:
+    """The audit log and the remote-host list, wherever the operator configured them."""
+    from mcp_server import audit, remote  # noqa: PLC0415
+
+    log = audit._AUDIT_LOG_PATH
+    files = [log, remote._DEFAULT_CONFIG_PATH]
+    try:
+        # Rotated generations and the lock file sit next to the log.
+        files.extend(sorted(log.parent.glob(log.name + ".*")))
+    except OSError:
+        pass
+    return files
+
+
+def _control_sockets(module: str | None) -> list[Path]:
+    """Socket files this account can connect to, apart from the ones every program needs."""
+    kept = _SOCKETS_KEPT + _MODULE_SOCKETS.get(module or "", ())
+    found: set[Path] = set()
+    for root, depth in _SOCKET_ROOTS:
+        pending = [(root, 0)]
+        while pending:
+            directory, level = pending.pop()
+            try:
+                with os.scandir(directory) as entries:
+                    listing = list(entries)
+            except OSError:
+                continue
+            name = os.path.basename(directory)
+            dedicated = level > 0 and (name in _SOCKET_DIR_NAMES or name.startswith(_SOCKET_DIR_PREFIXES))
+            for entry in listing:
+                try:
+                    mode = entry.stat(follow_symlinks=False).st_mode
+                except OSError:
+                    continue
+                if stat.S_ISDIR(mode):
+                    if level + 1 < depth and entry.name not in _SOCKET_SCAN_SKIP:
+                        pending.append((entry.path, level + 1))
+                elif stat.S_ISSOCK(mode) and os.access(entry.path, os.W_OK) and not entry.path.startswith(kept):
+                    found.add(Path(directory if dedicated else entry.path))
+    return sorted(found)
 
 
 def _plan(module: str | None = None) -> list[tuple[str, Path]]:
@@ -151,6 +226,12 @@ def _plan(module: str | None = None) -> list[tuple[str, Path]]:
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "").strip()
     if runtime_dir.startswith("/"):
         protect(Path(runtime_dir), hide=True)
+    # The same directory under its usual name, for a server started without the variable.
+    protect(Path(f"/run/user/{os.getuid()}"), hide=True)
+    for path in _server_files():
+        protect(path, hide=True)
+    for path in _control_sockets(module):
+        protect(path, hide=True)
 
     for relative in _READ_ONLY_IN_HOME:
         protect(home / relative, hide=False)
@@ -187,8 +268,15 @@ def build_args(module: str | None = None, cwd: str | None = None) -> list[str]:
         "--unshare-pid", "--unshare-ipc", "--unshare-uts",
         "--bind", "/", "/",
         "--dev-bind", "/dev", "/dev",
+        # Shared memory segments of the account's other programs stay out of reach.
+        "--tmpfs", "/dev/shm",
         "--proc", "/proc",
     ]  # fmt: skip
+    for name in _UNSET_ENV:
+        args.extend(["--unsetenv", name])
+    for name, keeper in _UNSET_ENV_UNLESS.items():
+        if module != keeper:
+            args.extend(["--unsetenv", name])
     for kind, real in _plan(module):
         if kind == "hide-dir":
             args.extend(["--tmpfs", str(real)])

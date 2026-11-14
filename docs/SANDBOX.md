@@ -444,6 +444,15 @@ A tool started this way cannot see:
 - Your runtime directory, which holds the session bus (through which a program
   can ask the service manager to start another one outside the sandbox) and the
   agent and keyring sockets.
+- The control sockets of other programs: any socket file under `/run` or `/tmp`
+  that your account can connect to. That covers a container runtime (membership
+  of the `docker` group is otherwise root), libvirt, the system bus, a VPN
+  client, the display server, ssh-agents and terminal multiplexers in `/tmp`,
+  and the sockets editors and agent clients listen on. Lookup and logging
+  sockets (name resolution, user database, journal, smart cards) and local
+  PostgreSQL and MySQL sockets stay. The display, session-bus and ssh-agent
+  variables are removed from the environment, `~/.Xauthority` is hidden, and
+  `/dev/shm` is private.
 - Any other process of your account. It runs in its own process namespace, and
   everything it started dies with it when a call ends or times out.
 
@@ -462,15 +471,22 @@ whole home directory, stops the server instead of being skipped.
 Everything else is as before: the same uid, kernel and network, the same caches
 and output locations. Tools of the `cloud` and `containers` modules keep the
 cloud and cluster credentials, because using them on an authorized account is
-their job. `CYBERSEC_LOCAL_SANDBOX_EXPOSE=/abs/path:/abs/other` leaves the named
-paths visible for an engagement that needs them.
+their job; `containers` tools also keep the container runtime sockets, and
+`wireless` tools the system bus. `CYBERSEC_LOCAL_SANDBOX_EXPOSE=/abs/path:/abs/other`
+leaves the named paths visible for an engagement that needs them, a socket included.
 
 What it does not do:
 
 - It is not a VM. A kernel exploit, or a tool that needs none because the file
   it wants is not on the list above, is not stopped. Documents elsewhere in your
   home directory remain readable.
-- It does not limit the network. A scope file applies to the VM only.
+- It does not limit the network. A scope file applies to the VM only. Because
+  the network is shared, anything that listens on localhost without asking who
+  is calling stays reachable (a local model server, a browser's debugging port,
+  a Docker daemon on TCP), and so does a service on an abstract socket, which
+  has no file to hide.
+- Sockets are hidden as they exist when the tool starts, to three levels under
+  `/run` and two under `/tmp`. One created later, or deeper, is not covered.
 - It protects what exists when the tool starts. Your home directory stays
   writable, so a tool can create a startup file you do not have yet, replace a
   protected name that is only a link with a file of its own, or add a file to

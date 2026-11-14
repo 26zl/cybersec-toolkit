@@ -361,5 +361,5 @@ server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md
 | `CYBERSEC_MCP_AUDIT_REQUIRED` | `""` (disabled) | Set to `1` to fail startup when file audit logging cannot be initialized |
 | `CYBERSEC_MCP_AUDIT_FORWARD` | `""` (disabled) | Set to `syslog` to also send every audit record to the system log (tag `cybersec-mcp-audit`), which the account running the session cannot rewrite. Any other value stops startup |
 | `CYBERSEC_MCP_REDACT_OUTPUT` | `""` (disabled) | Set to `1` to redact credential-shaped strings from tool output before it is returned to the client |
-| `CYBERSEC_LOCAL_SANDBOX` | `""` (disabled) | Host mode only. Set to `1` to start every tool and script inside bubblewrap, without access to credential stores, the agent client's configuration, the audit log, the session bus or other processes. Startup fails if bubblewrap cannot run. See `docs/SANDBOX.md` |
+| `CYBERSEC_LOCAL_SANDBOX` | `""` (disabled) | Host mode only. Set to `1` to start every tool and script inside bubblewrap, without access to credential stores, the agent client's configuration, the audit log, the session bus, other programs' control sockets or other processes. Startup fails if bubblewrap cannot run. See `docs/SANDBOX.md` |
 | `CYBERSEC_LOCAL_SANDBOX_EXPOSE` | unset | Colon-separated absolute paths that stay visible inside that sandbox |

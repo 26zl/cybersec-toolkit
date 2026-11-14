@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from mcp_server import local_sandbox
+from mcp_server import audit, local_sandbox
 
 
 @pytest.fixture
@@ -36,7 +39,25 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     monkeypatch.delenv(local_sandbox.LOCAL_SANDBOX_EXPOSE_ENV, raising=False)
+    # The machine's own sockets are not part of a test unless it asks for them.
+    monkeypatch.setattr(local_sandbox, "_SOCKET_ROOTS", ())
     return home
+
+
+@pytest.fixture
+def socket_root() -> Iterator[Path]:
+    """A directory with a short name: a socket path holds about a hundred bytes."""
+    root = Path(tempfile.mkdtemp(prefix="sbx", dir="/tmp"))
+    yield root
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def _listen(path: Path) -> socket.socket:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    server = socket.socket(socket.AF_UNIX)
+    server.bind(str(path))
+    server.listen(1)
+    return server
 
 
 def _pairs(args: list[str], flag: str) -> list[str]:
@@ -102,6 +123,90 @@ class TestArguments:
         runtime.mkdir()
         monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
         assert str(runtime) in _pairs(local_sandbox.build_args(), "--tmpfs")
+
+
+class TestControlSockets:
+    """Another program's control socket is as good as that program's rights."""
+
+    def test_a_connectable_socket_is_replaced_by_an_empty_file(
+        self, home: Path, socket_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        server = _listen(socket_root / "docker.sock")
+        nested = _listen(socket_root / "libvirt" / "libvirt-sock")
+        monkeypatch.setattr(local_sandbox, "_SOCKET_ROOTS", ((str(socket_root), 3),))
+        args = local_sandbox.build_args()
+        for path in (socket_root / "docker.sock", socket_root / "libvirt" / "libvirt-sock"):
+            assert _mount(args, path) == ["--dev-bind", "/dev/null"], path
+        server.close()
+        nested.close()
+
+    def test_a_directory_made_for_sockets_is_hidden_whole(
+        self, home: Path, socket_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        servers = [_listen(socket_root / "ssh-Ab12" / "agent.7"), _listen(socket_root / ".X11-unix" / "X0")]
+        monkeypatch.setattr(local_sandbox, "_SOCKET_ROOTS", ((str(socket_root), 2),))
+        hidden = _pairs(local_sandbox.build_args(), "--tmpfs")
+        assert str(socket_root / "ssh-Ab12") in hidden
+        assert str(socket_root / ".X11-unix") in hidden
+        for server in servers:
+            server.close()
+
+    def test_lookup_sockets_and_sockets_out_of_reach_are_left_alone(
+        self, home: Path, socket_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        kept = _listen(socket_root / "journal" / "socket")
+        too_deep = _listen(socket_root / "a" / "b" / "c" / "deep.sock")
+        closed = _listen(socket_root / "root-only.sock")
+        (socket_root / "root-only.sock").chmod(0o000)
+        monkeypatch.setattr(local_sandbox, "_SOCKET_ROOTS", ((str(socket_root), 3),))
+        monkeypatch.setattr(local_sandbox, "_SOCKETS_KEPT", (str(socket_root / "journal") + "/",))
+        joined = " ".join(local_sandbox.build_args())
+        assert str(socket_root / "journal") not in joined
+        assert "deep.sock" not in joined
+        if os.geteuid() != 0:
+            assert "root-only.sock" not in joined
+        for server in (kept, too_deep, closed):
+            server.close()
+
+    def test_a_module_keeps_the_socket_it_exists_to_use(
+        self, home: Path, socket_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        server = _listen(socket_root / "docker.sock")
+        monkeypatch.setattr(local_sandbox, "_SOCKET_ROOTS", ((str(socket_root), 3),))
+        monkeypatch.setattr(local_sandbox, "_MODULE_SOCKETS", {"containers": (str(socket_root / "docker.sock"),)})
+        assert _mount(local_sandbox.build_args(module="containers"), socket_root / "docker.sock") == []
+        assert _mount(local_sandbox.build_args(module="web"), socket_root / "docker.sock") == [
+            "--dev-bind",
+            "/dev/null",
+        ]
+        server.close()
+
+    def test_display_bus_and_agent_variables_are_dropped(self, home: Path) -> None:
+        dropped = _pairs(local_sandbox.build_args(), "--unsetenv")
+        for name in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK"):
+            assert name in dropped, name
+        assert "DOCKER_HOST" in dropped
+        assert "DOCKER_HOST" not in _pairs(local_sandbox.build_args(module="containers"), "--unsetenv")
+
+    def test_display_keys_and_shared_memory_are_out_of_reach(self, home: Path) -> None:
+        (home / ".Xauthority").write_text("synthetic display key\n")
+        args = local_sandbox.build_args()
+        assert _mount(args, home / ".Xauthority") == ["--dev-bind", "/dev/null"]
+        assert "/dev/shm" in _pairs(args, "--tmpfs")
+
+    def test_an_audit_log_moved_elsewhere_is_hidden_with_its_older_generations(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        log = home / "engagement" / "audit.log"
+        log.parent.mkdir()
+        log.write_text("{}\n")
+        (log.parent / "audit.log.1").write_text("{}\n")
+        (log.parent / "notes.txt").write_text("the operator's own file\n")
+        monkeypatch.setattr(audit, "_AUDIT_LOG_PATH", log)
+        args = local_sandbox.build_args()
+        assert _mount(args, log) == ["--dev-bind", "/dev/null"]
+        assert _mount(args, log.parent / "audit.log.1") == ["--dev-bind", "/dev/null"]
+        assert _mount(args, log.parent / "notes.txt") == []
 
 
 def _mount(args: list[str], path: Path) -> list[str]:
@@ -232,6 +337,34 @@ class TestRealSandbox:
         assert "netrc ''" in out
         # The real files are untouched.
         assert (self.home / ".ssh" / "id_ed25519").read_text() == "synthetic private key\n"
+
+    def test_a_control_socket_cannot_be_connected_to(self, socket_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        server = _listen(socket_root / "docker.sock")
+        monkeypatch.setattr(local_sandbox, "_SOCKET_ROOTS", ((str(socket_root), 3),))
+        code = (
+            "import socket\n"
+            "client = socket.socket(socket.AF_UNIX)\n"
+            "try:\n"
+            f"    client.connect({str(socket_root / 'docker.sock')!r})\n"
+            "    print('connected')\n"
+            "except OSError as exc:\n"
+            "    print('refused', type(exc).__name__)\n"
+        )
+        assert self._run(code).stdout.startswith("refused")
+        # The same connection works from outside, so it was the sandbox that stopped it.
+        outside = socket.socket(socket.AF_UNIX)
+        outside.connect(str(socket_root / "docker.sock"))
+        outside.close()
+        server.close()
+
+    def test_the_display_is_not_announced_and_shared_memory_is_private(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("DISPLAY", ":0")
+        monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/bus")
+        code = (
+            "import os\n"
+            "print(os.environ.get('DISPLAY'), os.environ.get('DBUS_SESSION_BUS_ADDRESS'), os.listdir('/dev/shm'))\n"
+        )
+        assert self._run(code).stdout.strip() == "None None []"
 
     def test_a_cloud_tool_still_reads_cloud_credentials(self) -> None:
         code = "import os; print(open(os.path.join(os.environ['HOME'], '.aws/credentials')).read().strip())"
