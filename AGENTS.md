@@ -420,12 +420,15 @@ until proven valid.
 
 ## Writeups (MANDATORY)
 
-After completing any substantive security workflow with this project, **always** write a
-clear technical writeup in `writeups/`. This applies to everything the project helps
-solve: CTF challenges, bug bounty findings, CVE reproduction or validation,
-vulnerability research, guided MCP assessments, pentest/recon workflows,
-malware/forensics/DFIR cases, cloud/API/mobile/network/web security reviews, and
-tool-assisted investigations or troubleshooting.
+Scope: target work, as defined above. After completing any substantive security workflow
+with this project, **always** write a clear technical writeup in `writeups/`. This applies
+to every case the project helps solve: CTF challenges, bug bounty findings, CVE
+reproduction or validation, vulnerability research, guided MCP assessments, pentest/recon
+workflows, malware/forensics/DFIR cases, and cloud/API/mobile/network/web security
+reviews of a target.
+
+Work on this repository itself is not a case. A code review, a tool inventory, a refactor
+or troubleshooting the toolkit gets no writeup and does not belong in `writeups/`.
 
 Use a descriptive filename that makes the subject obvious. Recommended format:
 `writeups/<category>/<descriptive-case-name>.md` (for example,
