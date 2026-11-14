@@ -1,61 +1,63 @@
-%%{init: {"theme": "base", "themeVariables": {"background": "#0d1117", "primaryColor": "#161b22", "primaryTextColor": "#e6edf3", "primaryBorderColor": "#8b949e", "lineColor": "#8b949e", "secondaryColor": "#161b22", "tertiaryColor": "#0d1117", "clusterBkg": "#0d1117", "clusterBorder": "#30363d", "edgeLabelBackground": "#0d1117", "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif"}}}%%
+%%{init: {"theme": "base", "themeVariables": {"background": "#0d1117", "primaryColor": "#161b22", "primaryTextColor": "#e6edf3", "primaryBorderColor": "#8b949e", "lineColor": "#8b949e", "secondaryColor": "#161b22", "tertiaryColor": "#0d1117", "clusterBkg": "#0d1117", "clusterBorder": "#30363d", "edgeLabelBackground": "#0d1117", "fontFamily": "Inter, Noto Sans, Liberation Sans, Helvetica, Arial"}, "flowchart": {"wrappingWidth": 460}}}%%
 flowchart TB
+    %% Mermaid blanks a theme variable that contains a hyphen, so the font list uses hyphen-free family names.
+    %% Edges attach to the MCP subgraph, not to its nodes: Mermaid then lays the server box out as one unit.
     clients["MCP / Agent Skills clients"]:::actor
+    operator(["Operator"]):::actor
+
+    subgraph SKILLS[" "]
+        direction TB
+        source[".claude/skills/<br/>source of truth<br/>native discovery"]:::skill
+        sync["scripts/sync-skills.sh"]:::core
+        mirror[".agents/skills/<br/>generated mirror<br/>portable discovery"]:::skill
+
+        source --> sync --> mirror
+    end
+
+    writeups[("writeups/<br/>findings.json")]:::data
     configs["Client configurations"]:::core
     launcher["scripts/mcp-launch.sh<br/>root-aware launcher"]:::core
-    sandbox["sandbox/mcp.mjs<br/>Sandcastle Kata provider · boots the VM (--local skips it)"]:::core
+    sandbox["sandbox/mcp.mjs · stdio bridge<br/>boots a disposable Kata VM<br/>Sandcastle provider: sandbox/kata.mjs"]:::core
 
+    clients -. "Agent Skills" .-> source
+    clients -->|"after target work"| writeups
     clients --> configs --> launcher
+    launcher -->|"default"| sandbox
+    sandbox --> MCP
+    launcher -->|"--local"| MCP
 
-    subgraph MCP["FastMCP server · Kata VM by default, host with --local"]
+    subgraph MCP["FastMCP server · Kata VM by default (opt-in scope-file firewall) · host with --local (opt-in bubblewrap)"]
         direction TB
         gateway["MCP transport and tool API"]:::core
         advisors["Discovery and advisors"]:::core
         governed["Governed tool execution<br/>run_tool · run_pipeline"]:::security
         scripts["Opt-in script execution<br/>run_script"]:::optin
-        remote["Authorized remote hosts<br/>--local only"]:::core
 
         gateway --> advisors
         gateway --> governed
         gateway --> scripts
-        governed --> remote
     end
 
-    launcher --> sandbox
-    sandbox --> gateway
-
-    subgraph INSTALLER["Tool installation"]
-        direction TB
-        operator(["Operator"]):::actor
-        installer["install.sh and module installers"]:::core
-        registry[("tools_config.json<br/>tool registry")]:::data
-        installed[("Installed security tools<br/>host, or baked into the VM image")]:::data
-
-        operator --> installer
-        installer --> registry
-        installer --> installed
-    end
-
-    registry --> advisors
-    registry --> governed
-    governed --> installed
-
-    subgraph SKILLS["Agent Skills"]
-        direction LR
-        source[".claude/skills/<br/>source of truth"]:::skill
-        sync["scripts/sync-skills.sh"]:::core
-        mirror[".agents/skills/<br/>generated mirror"]:::skill
-
-        source --> sync --> mirror
-    end
-
-    source -. "native client discovery" .-> clients
-    mirror -. "portable client discovery" .-> clients
-
+    installer["install.sh and<br/>module installers"]:::core
     ci["CI validation<br/>shell and Bats · registry and MCP<br/>Ruff and Pytest · skills and pins<br/>agent docs and client configs"]:::ci
-    ci -.-> registry
-    ci -.-> gateway
-    ci -.-> source
+    registry[("tools_config.json<br/>tool registry")]:::data
+
+    operator --> installer
+    installer -.- ci
+    ci -.- MCP
+    ci -.- registry
+    registry -->|"read"| MCP
+
+    audit[("Host audit log<br/>hash-chained<br/>optional syslog copy")]:::data
+    guard["scripts/agent-guard.sh<br/>client shell hook<br/>target work goes to MCP first"]:::core
+    remote["Authorized remote hosts<br/>over SSH · --local only"]:::core
+    installed[("Installed security tools<br/>host, or baked into the VM image")]:::data
+
+    MCP -->|"every call"| audit
+    audit -->|"advisor clearance"| guard
+    MCP --> remote
+    MCP -->|"runs"| installed
+    installer -->|"installs"| installed
 
     classDef actor fill:#1f6feb,stroke:#0b3d91,color:#ffffff;
     classDef core fill:#161b22,stroke:#8b949e,color:#e6edf3;
