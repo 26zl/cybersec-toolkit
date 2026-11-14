@@ -13,6 +13,7 @@
  * server process receives, and only records whose tag verifies are persisted.
  */
 
+import { spawn, spawnSync } from 'node:child_process';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
   appendFileSync,
@@ -33,6 +34,12 @@ export const AUDIT_STREAM_PREFIX = '@cybersec-audit@ ';
 // Carries the hex-encoded session key to the server; read by mcp_server/audit.py.
 export const AUDIT_KEY_ENV = 'CYBERSEC_MCP_AUDIT_KEY';
 export const AUDIT_KEY_BYTES = 32;
+
+// Read on the host only; mcp_server/audit.py reads the same variable in host mode.
+export const AUDIT_FORWARD_ENV = 'CYBERSEC_MCP_AUDIT_FORWARD';
+export const AUDIT_FORWARD_TAG = 'cybersec-mcp-audit';
+// logger cuts a message at 1 KiB by default, which would break a record's chain value.
+const FORWARD_MAX_BYTES = '131072';
 
 const TAG_PATTERN = /^[0-9a-f]{64}$/;
 // O_NOFOLLOW: a symlink planted at the log path must not redirect audit records.
@@ -182,16 +189,71 @@ const shiftBackups = (target) => {
   }
 };
 
+/** The forwarding target an environment asks for: '' or 'syslog'. Anything else is an error. */
+export const resolveAuditForward = (env = process.env) => {
+  const value = (env[AUDIT_FORWARD_ENV] ?? '').trim().toLowerCase();
+  if (['', '0', 'off', 'none'].includes(value)) return '';
+  if (value !== 'syslog') {
+    // A misspelt value must not leave the operator believing a copy is kept.
+    throw new Error(`${AUDIT_FORWARD_ENV}='${value}' is not supported; use 'syslog' or leave it unset.`);
+  }
+  return value;
+};
+
+/**
+ * A second copy of each record in the system log, through logger(1).
+ *
+ * The account running the session can add entries there but cannot rewrite or
+ * remove them. Returns null when logger is missing or too old to carry a whole
+ * record; the caller decides whether that stops the session.
+ */
+const openSyslogForwarder = () => {
+  const args = ['--tag', AUDIT_FORWARD_TAG, '--priority', 'auth.info', '--size', FORWARD_MAX_BYTES];
+  // --size is what an old or minimal logger lacks; checked without sending a message.
+  const probe = spawnSync('logger', [...args, '--version'], { stdio: 'ignore' });
+  if (probe.error || probe.status !== 0) return null;
+  const child = spawn('logger', args, { stdio: ['pipe', 'ignore', 'ignore'] });
+  let alive = true;
+  child.on('error', () => {
+    alive = false;
+  });
+  child.on('close', () => {
+    alive = false;
+  });
+  child.stdin.on('error', () => {
+    alive = false;
+  });
+  return {
+    write: (record) => alive && child.stdin.write(`${record}\n`),
+    close: () => child.stdin.end(),
+  };
+};
+
 /**
  * Open the host audit sink.
  *
  * With `required`, an unusable log aborts the session the way
  * CYBERSEC_MCP_AUDIT_REQUIRED does inside the server; otherwise the failure is
- * reported once and the session continues without a host-side trail.
+ * reported once and the session continues without a host-side trail. `forward`
+ * ('syslog') adds a copy in the system log under the same rule.
  */
-export const createAuditSink = ({ path, required = false, warn = (m) => process.stderr.write(`${m}\n`) } = {}) => {
+export const createAuditSink = ({
+  path,
+  required = false,
+  forward = '',
+  warn = (m) => process.stderr.write(`${m}\n`),
+} = {}) => {
   const target = path ?? resolveHostAuditPath();
   let disabled = false;
+  let forwarder = null;
+  if (forward === 'syslog') {
+    forwarder = openSyslogForwarder();
+    if (!forwarder) {
+      const message = 'Audit forwarding to the system log needs logger(1) from util-linux 2.26 or newer.';
+      if (required) throw new Error(message);
+      warn(`${message} Records are kept in the file only.`);
+    }
+  }
 
   const fail = (error) => {
     const message = `Host audit log unavailable at ${target}: ${error.message}`;
@@ -216,6 +278,8 @@ export const createAuditSink = ({ path, required = false, warn = (m) => process.
       return !disabled;
     },
     write(record) {
+      // Forwarded first: the copy must not depend on the file the account can edit.
+      forwarder?.write(record);
       if (disabled) return false;
       try {
         rotate(target);
@@ -230,6 +294,9 @@ export const createAuditSink = ({ path, required = false, warn = (m) => process.
         fail(error);
         return false;
       }
+    },
+    close() {
+      forwarder?.close();
     },
   };
 };

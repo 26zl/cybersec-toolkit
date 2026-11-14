@@ -13,15 +13,25 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { AUDIT_KEY_BYTES, AUDIT_KEY_ENV, createAuditSink, createAuditStderrTee } from './audit-sink.mjs';
+import {
+  AUDIT_KEY_BYTES,
+  AUDIT_KEY_ENV,
+  createAuditSink,
+  createAuditStderrTee,
+  resolveAuditForward,
+} from './audit-sink.mjs';
 import { kata } from './kata.mjs';
 
 const truthy = (value) => ['1', 'true', 'yes'].includes((value ?? '').trim().toLowerCase());
 
 let sandbox;
+let sink;
 try {
   // Opened before the VM boots so a required-but-unusable audit log fails closed.
-  const sink = createAuditSink({ required: truthy(process.env.CYBERSEC_MCP_AUDIT_REQUIRED) });
+  sink = createAuditSink({
+    required: truthy(process.env.CYBERSEC_MCP_AUDIT_REQUIRED),
+    forward: resolveAuditForward(),
+  });
   const auditKey = randomBytes(AUDIT_KEY_BYTES);
 
   sandbox = await kata().create({
@@ -57,4 +67,5 @@ try {
   process.exitCode = 1;
 } finally {
   if (sandbox) await sandbox.close();
+  sink?.close();
 }

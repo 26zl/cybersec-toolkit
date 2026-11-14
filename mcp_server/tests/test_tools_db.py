@@ -242,7 +242,7 @@ class TestReloadVersions:
         versions = tmp_tools_config / ".versions"
         versions.write_text("nmap|apt|7.94|2024-01-01T00:00:00\n", encoding="utf-8")
         db = ToolsDatabase(project_root=tmp_tools_config)
-        # A present-but-unreadable file must warn (DA-1), not silently degrade,
+        # A present-but-unreadable file must warn, not silently degrade,
         # and only once across repeated reads.
         with patch("builtins.open", side_effect=PermissionError("Permission denied")):
             with pytest.warns(RuntimeWarning, match="not readable"):

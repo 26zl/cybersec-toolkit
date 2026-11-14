@@ -1,5 +1,5 @@
 # A named stage (not COPY --from=<image>) so Dependabot tracks the uv image.
-FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv
 
 FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
 
@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # this project never uses; drop it so image scanners stay clean.
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
-        bash ca-certificates curl file git binutils nmap python3 python3-venv \
+        bash ca-certificates curl file git binutils nmap nftables python3 python3-venv \
     && rm -rf /usr/bin/pebble /var/lib/pebble \
     && rm -rf /var/lib/apt/lists/*
 

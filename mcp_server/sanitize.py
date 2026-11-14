@@ -29,24 +29,35 @@ _ANSI_RE = re.compile(
     r"|[\x80-\x9f]"  # remaining 8-bit C1 controls
 )
 
-# Known LLM prompt markers
+# Known LLM prompt markers: any <|name|> special token, plus the Llama and Gemma turn markers.
 _LLM_MARKERS = re.compile(
-    r"<\|im_start\|>|<\|im_end\|>|<\|system\|>|<\|user\|>|<\|assistant\|>"
-    r"|<\|begin_of_text\|>|<\|end_of_text\|>|<\|eot_id\|>"
-    r"|<\|start_header_id\|>|<\|end_header_id\|>"
-    r"|\[INST\]|\[/INST\]"
-)
-
-# XML-like tags that attempt to inject system/assistant roles
-_XML_INJECTION_RE = re.compile(
-    r"</?(?:system|assistant|tool_call|tool_result|tool_use|function_call|function_result|result)>",
+    r"<\|[A-Za-z0-9_]{1,40}\|>"
+    r"|\[/?INST\]"
+    r"|<</?SYS>>"
+    r"|</?(?:start|end)_of_turn>",
     re.IGNORECASE,
 )
 
-# Line-level injection prefixes (case-insensitive, at line start)
+# XML-like tags that attempt to inject system/assistant roles or a tool call. A namespace
+# prefix, attributes and trailing whitespace are accepted, since clients parse those forms too.
+_XML_INJECTION_RE = re.compile(
+    r"</?(?:[A-Za-z][\w.-]{0,30}:)?"
+    r"(?:system-reminder|system|assistant|human|tool_call|tool_result|tool_use"
+    r"|function_calls|function_call|function_results|function_result|invoke|result)"
+    r"(?:\s[^<>\n]{0,200})?\s*/?>",
+    re.IGNORECASE,
+)
+
+# The strip stages repeat until the text stops changing, so removing an inner match
+# cannot assemble a new marker from the characters around it.
+_MAX_STRIP_PASSES = 8
+
+# Line-level injection prefixes (case-insensitive, at line start, after optional
+# indentation or a quote/list/heading marker).
 # Marked with [SANITIZED] so the LLM sees them as neutralized; content preserved for debugging.
 _INJECTION_PREFIXES = re.compile(
-    r"^(IMPORTANT:|Ignore previous|You are now|As an AI|Human:|Assistant:|Disregard|New instructions"
+    r"^[ \t]*(?:[>*#-]+[ \t]*)?"
+    r"(IMPORTANT:|Ignore previous|You are now|As an AI|Human:|Assistant:|Disregard|New instructions"
     r"|Override|Forget (all )?previous|Your new (role|task)|System: you are|### Instruction"
     r"|Jailbreak|Ignore (the )?above|Follow these instructions instead|From now on|I am (now )?(re)?programming)",
     re.IGNORECASE | re.MULTILINE,
@@ -119,11 +130,11 @@ def sanitize_output(text: str) -> str:
     # Normalize Unicode to catch full-width character evasion
     text = unicodedata.normalize("NFKC", text)
 
-    text = _ANSI_RE.sub("", text)
-
-    text = _LLM_MARKERS.sub("", text)
-
-    text = _XML_INJECTION_RE.sub("", text)
+    for _ in range(_MAX_STRIP_PASSES):
+        stripped = _XML_INJECTION_RE.sub("", _LLM_MARKERS.sub("", _ANSI_RE.sub("", text)))
+        if stripped == text:
+            break
+        text = stripped
 
     text = _INJECTION_PREFIXES.sub(r"[SANITIZED] \1", text)
     text = _mark_ai_directives(text)

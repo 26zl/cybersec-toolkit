@@ -3,13 +3,17 @@
 # Modes (hook JSON on stdin):
 #   session-start  emit the contract as session context
 #   pre-bash       deny a security-tool invocation until the MCP server has been
-#                  consulted this session
+#                  consulted this session, and again once that is hours old
 # Escape hatch: CYBERSEC_AGENT_GUARD=0.
 set -uo pipefail
 
 MODE="${1:-}"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/cybersec-tools-mcp"
 AUDIT_LOG="${CYBERSEC_MCP_AUDIT_LOG:-$STATE_DIR/audit.log}"
+
+# An advisor call clears the shell for this long. A session can run for days through
+# compaction and resume, and one call must not cover whatever it later turns to.
+CLEARANCE_SECONDS=14400
 
 # Dual-use development tools are deliberately excluded.
 GOVERNED=(
@@ -40,7 +44,7 @@ deny() {
     printf '%s\t%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" \
         >> "$log" 2>/dev/null || true
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' \
-        "This project routes target work through its MCP server, and '$1' is target work.\\nStart with guided_assessment (or suggest_for_ctf / suggest_for_bounty if you already know the workflow) — it returns the relevant skills, which tools are installed, and any prior writeup.\\nAfter that advisor call this guard stays out of the way for the rest of the session. Repository maintenance is unaffected; only security tooling is gated.\\nOverride for this shell with CYBERSEC_AGENT_GUARD=0."
+        "This project routes target work through its MCP server, and '$1' is target work.\\nStart with guided_assessment (or suggest_for_ctf / suggest_for_bounty if you already know the workflow): it returns the relevant skills and which tools are installed.\\nThen run the tool with run_tool or run_pipeline, where the sandbox, the scope policy and the audit log apply; a direct shell invocation gets none of them.\\nRepository maintenance is unaffected; only security tooling is gated."
     exit 0
 }
 
@@ -183,6 +187,17 @@ _command_words() {
     _first_words "$1"
 }
 
+# _clearance_floor — the UTC time before which an advisor call no longer clears.
+# CYBERSEC_AGENT_GUARD_NOW (epoch seconds) lets the tests fix the clock.
+_clearance_floor() {
+    local now="${CYBERSEC_AGENT_GUARD_NOW:-}" cutoff
+    [[ "$now" =~ ^[0-9]+$ ]] || now=$(date +%s)
+    cutoff=$((now - CLEARANCE_SECONDS))
+    # GNU date, then BSD date.
+    date -u -d "@$cutoff" '+%Y-%m-%dT%H:%M:%S.000Z' 2>/dev/null \
+        || date -u -r "$cutoff" '+%Y-%m-%dT%H:%M:%S.000Z' 2>/dev/null
+}
+
 _advised_since() {
     local since="$1"
     if command -v jq >/dev/null 2>&1; then
@@ -307,6 +322,8 @@ pre-bash)
     [[ -n "$sid" && -f "$marker.$sid" ]] && marker="$marker.$sid"
     since=$(cat "$marker" 2>/dev/null) || since=""
     [[ -n "$since" ]] || allow                  # no marker (first session after install)
+    floor=$(_clearance_floor)
+    [[ -n "$floor" && "$floor" > "$since" ]] && since="$floor"
     _advised_since "$since" && allow
 
     deny "$hit"

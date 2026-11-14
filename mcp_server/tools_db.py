@@ -190,6 +190,13 @@ C2_TOOLS: frozenset[str] = frozenset(
         "Havoc",
         "PoshC2",
         "merlin",
+        # Rogue-AP credential-phishing frameworks (WIRELESS_C2_GIT_NAMES)
+        "fluxion",
+        "wifiphisher",
+        "eaphammer",
+        "wifipumpkin3",
+        # Browser hooking framework (Docker, gated in install_module_web)
+        "beef",
     }
 )
 

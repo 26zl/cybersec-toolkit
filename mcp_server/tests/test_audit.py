@@ -18,6 +18,7 @@ import pytest
 
 from mcp_server.audit import (
     _redact_script_code,
+    _redact_sensitive,
     get_audit_logger,
     log_blocked,
     log_execution,
@@ -321,6 +322,84 @@ class TestLogServerStart:
         log_server_start()
         entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
         assert entry["sandbox"] == "unknown"
+
+    def test_records_the_network_scope_the_launcher_loaded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CYBERSEC_SANDBOX_SCOPE", "lab: 10.10.11.5 tcp/80,443; DNS closed")
+        log_server_start()
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert entry["scope"] == "lab: 10.10.11.5 tcp/80,443; DNS closed"
+
+    def test_scope_is_none_without_one(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CYBERSEC_SANDBOX_SCOPE", raising=False)
+        log_server_start()
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert entry["scope"] == "none"
+
+
+class TestSyslogForwarding:
+    """A copy of each record in the system log, which the tool account cannot rewrite."""
+
+    @pytest.fixture
+    def syslog_socket(self, monkeypatch: pytest.MonkeyPatch):
+        import socket
+        import tempfile
+
+        import mcp_server.audit as mod
+
+        # AF_UNIX paths are limited to about 100 bytes; pytest's tmp_path can exceed that.
+        directory = tempfile.mkdtemp(prefix="cs-syslog-")
+        path = os.path.join(directory, "log")
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        server.bind(path)
+        server.settimeout(5)
+        monkeypatch.setattr(mod, "_SYSLOG_SOCKETS", (path,))
+        yield server
+        server.close()
+        os.unlink(path)
+        os.rmdir(directory)
+
+    def test_record_reaches_the_syslog_socket_unchanged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, syslog_socket
+    ) -> None:
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_FORWARD", "syslog")
+        log_server_start()
+
+        datagram = syslog_socket.recv(65536).decode()
+        prefix, _, forwarded = datagram.rstrip("\x00").partition("cybersec-mcp-audit: ")
+        assert prefix.startswith("<") and prefix.endswith(">")
+        # Byte for byte the line in the file, so the copy verifies with the same chain.
+        assert forwarded == (tmp_path / "audit.log").read_text(encoding="utf-8").strip()
+        assert json.loads(forwarded)["event"] == "server_start"
+
+    def test_off_by_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, syslog_socket) -> None:
+        import socket
+
+        monkeypatch.delenv("CYBERSEC_MCP_AUDIT_FORWARD", raising=False)
+        log_server_start()
+        syslog_socket.settimeout(0.2)
+        with pytest.raises(socket.timeout):
+            syslog_socket.recv(65536)
+
+    def test_unknown_target_stops_the_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_FORWARD", "journal")
+        with pytest.raises(RuntimeError, match="not supported"):
+            get_audit_logger()
+
+    def test_missing_socket_warns_or_fails_when_required(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setattr(mod, "_SYSLOG_SOCKETS", ("/nonexistent/cybersec-syslog",))
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_FORWARD", "syslog")
+        monkeypatch.delenv("CYBERSEC_MCP_AUDIT_REQUIRED", raising=False)
+        with pytest.warns(RuntimeWarning, match="forwarding to the system log is unavailable"):
+            get_audit_logger()
+
+        mod._logger = None
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", "1")
+        with pytest.raises(RuntimeError, match="forwarding to the system log is unavailable"):
+            get_audit_logger()
 
 
 class TestLogToolResult:
@@ -854,7 +933,7 @@ class TestAuditLogPermissions:
 
 class TestAuditRequiredFailsClosedAtRuntime:
     """CYBERSEC_MCP_AUDIT_REQUIRED=1 must also fail closed on a write that fails
-    after startup, not only when the log cannot be opened (OP-1)."""
+    after startup, not only when the log cannot be opened."""
 
     class _Boom:
         def log(self, *args, **kwargs):
@@ -905,7 +984,7 @@ class TestAuditRequiredFailsClosedAtRuntime:
 
 
 class TestConcurrentWriters:
-    """Several server processes append to one audit log (OP-2). Below the size cap,
+    """Several server processes append to one audit log. Below the size cap,
     concurrent rotation must not lose records."""
 
     def test_two_processes_lose_no_records_below_cap(self, tmp_path: Path) -> None:
@@ -968,3 +1047,43 @@ class TestConcurrentWriters:
         records = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
         assert len(records) == 1
         assert records[0]["params"]["module"] == "forensics"
+
+
+class TestCredentialToolRedaction:
+    """Passwords and hashes passed to AD and SMB tools must not reach the log."""
+
+    SECRET = "Synth3ticPw"
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "netexec smb 10.0.0.5 -u admin -p Synth3ticPw",
+            "nxc smb 10.0.0.5 -u admin -p 'Synth3ticPw' --shares",
+            "smbmap -H 10.0.0.5 -u admin -p Synth3ticPw",
+            "evil-winrm -i 10.0.0.5 -u admin -p Synth3ticPw",
+            "crackmapexec smb 10.0.0.5 -u admin -H aad3b435b51404eeaad3b435b51404ee:Synth3ticPw",
+            "sqlmap -u http://10.0.0.5/?id=1 --auth-cred=admin:Synth3ticPw",
+            "impacket-psexec corp.local/admin:Synth3ticPw@10.0.0.5",
+            "impacket-secretsdump -hashes aad3b435b51404ee:Synth3ticPw corp/admin@10.0.0.5",
+            "bloodhound-python -u admin -p Synth3ticPw -d corp.local -c All",
+            "curl -u admin:Synth3ticPw http://10.0.0.5/",
+            "smbclient //10.0.0.5/share -U 'corp\\admin%Synth3ticPw'",
+        ],
+    )
+    def test_secret_is_redacted_and_redaction_is_idempotent(self, command) -> None:
+        once = _redact_sensitive(command)
+        assert self.SECRET not in once
+        assert _redact_sensitive(once) == once
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "sqlmap -u http://10.0.0.5/?id=1 --batch",
+            "httpx -u http://10.0.0.5 -p 8080",
+            "netexec smb 10.0.0.5 -u admin --shares",
+            "nmap -p 80,443 10.0.0.5",
+            "scp notes.txt user@10.0.0.5:/tmp/x",
+        ],
+    )
+    def test_targets_user_names_and_ports_stay_readable(self, command) -> None:
+        assert _redact_sensitive(command) == command

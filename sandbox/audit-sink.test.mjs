@@ -26,6 +26,7 @@ import {
   createAuditSink,
   createAuditStderrTee,
   isAuditRecord,
+  resolveAuditForward,
   resolveHostAuditPath,
   splitAuditLines,
 } from './audit-sink.mjs';
@@ -249,7 +250,13 @@ const guardHarness = () => {
   writeFileSync(join(stateDir, 'guard-session'), '2026-09-10T18:00:00.000Z\n');
 
   const { CYBERSEC_MCP_AUDIT_LOG: _log, CYBERSEC_AGENT_GUARD: _guard, ...inherited } = process.env;
-  const env = { ...inherited, HOME: home, XDG_STATE_HOME: join(home, '.local', 'state') };
+  // The records are dated 2026-09-10 17:00-19:30 UTC; the guard's clock reads 20:00.
+  const env = {
+    ...inherited,
+    HOME: home,
+    XDG_STATE_HOME: join(home, '.local', 'state'),
+    CYBERSEC_AGENT_GUARD_NOW: '1789070400',
+  };
   const run = () =>
     execFileSync('bash', [join(ROOT, 'scripts', 'agent-guard.sh'), 'pre-bash'], {
       env,
@@ -262,7 +269,7 @@ const guardHarness = () => {
   return { sink, run };
 };
 
-// The regression this guards: a sandboxed server logs inside the VM, so without
+// A sandboxed server logs inside the VM, so without
 // the tee scripts/agent-guard.sh either finds no clearance at all or blocks
 // every governed tool for the rest of the session.
 test('a mirrored advisor call clears scripts/agent-guard.sh on the host', async () => {
@@ -422,4 +429,87 @@ test('the launcher hands the audit key to the server process alone', { timeout: 
 
   assert.deepEqual(readLines(hostLog).map((line) => JSON.parse(line).tool), ['guided_assessment']);
   assert.match(stderr, /Rejected unauthenticated audit record: .*suggest_for_ctf/);
+});
+
+// A logger(1) that accepts the options the sink passes and appends what it reads to a file.
+const fakeLogger = (dir, out) => {
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, 'logger'),
+    `#!/bin/sh\nfor arg in "$@"; do [ "$arg" = "--version" ] && exit 0; done\nexec cat >> '${out}'\n`,
+  );
+  chmodSync(join(bin, 'logger'), 0o755);
+  return bin;
+};
+
+const withPath = async (path, body) => {
+  const saved = process.env.PATH;
+  process.env.PATH = path;
+  try {
+    return await body();
+  } finally {
+    process.env.PATH = saved;
+  }
+};
+
+const waitForLines = async (path, count) => {
+  for (let attempt = 0; attempt < 100 && readLines(path).length < count; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return readLines(path);
+};
+
+test('resolveAuditForward accepts syslog, off, and nothing else', () => {
+  assert.equal(resolveAuditForward({}), '');
+  assert.equal(resolveAuditForward({ CYBERSEC_MCP_AUDIT_FORWARD: 'off' }), '');
+  assert.equal(resolveAuditForward({ CYBERSEC_MCP_AUDIT_FORWARD: ' Syslog ' }), 'syslog');
+  // A typo must not look like a working copy.
+  assert.throws(() => resolveAuditForward({ CYBERSEC_MCP_AUDIT_FORWARD: 'journal' }), /not supported/);
+});
+
+test('a forwarding sink hands every record to logger as well as the file', async () => {
+  const dir = scratch();
+  const forwarded = join(dir, 'forwarded.log');
+  const target = join(dir, 'audit.log');
+  const records = [record('guided_assessment', 1), record('run_tool', 2)];
+
+  await withPath(`${fakeLogger(dir, forwarded)}:${process.env.PATH}`, async () => {
+    const sink = createAuditSink({ path: target, forward: 'syslog' });
+    for (const line of records) assert.equal(sink.write(line), true);
+    sink.close();
+    assert.deepEqual(await waitForLines(forwarded, 2), records);
+  });
+  assert.deepEqual(readLines(target), records);
+});
+
+test('the copy does not depend on the file being writable', async () => {
+  const dir = scratch();
+  const forwarded = join(dir, 'forwarded.log');
+  const warnings = [];
+
+  await withPath(`${fakeLogger(dir, forwarded)}:${process.env.PATH}`, async () => {
+    const sink = createAuditSink({ path: 'relative/audit.log', forward: 'syslog', warn: (m) => warnings.push(m) });
+    assert.equal(sink.write(record('run_tool')), false);
+    sink.close();
+    assert.deepEqual(await waitForLines(forwarded, 1), [record('run_tool')]);
+  });
+});
+
+test('a missing logger warns, or stops a session that requires its audit trail', async () => {
+  const dir = scratch();
+  const empty = join(dir, 'empty');
+  mkdirSync(empty);
+  const warnings = [];
+
+  await withPath(empty, async () => {
+    const sink = createAuditSink({ path: join(dir, 'audit.log'), forward: 'syslog', warn: (m) => warnings.push(m) });
+    assert.match(warnings[0], /needs logger\(1\)/);
+    assert.equal(sink.write(record('run_tool')), true, 'the file trail still works');
+    sink.close();
+    assert.throws(
+      () => createAuditSink({ path: join(dir, 'audit.log'), forward: 'syslog', required: true }),
+      /needs logger\(1\)/,
+    );
+  });
 });

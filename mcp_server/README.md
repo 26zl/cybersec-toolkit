@@ -13,7 +13,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `get_profile_tools` | List every tool a profile installs, grouped by module with install status |
 | `suggest_for_ctf` | Tool suggestions for 14 CTF challenge categories with descriptions |
 | `suggest_for_bounty` | Tool suggestions for 7 bug bounty target types with methodology and common vulns |
-| `guided_assessment` | Companion-first solve assistant — classifies the target/finding, returns triage gates, recommends skills, auto-detects tools from all modules/profiles, then guides step-by-step; opt-in `autonomous` uses governed tool calls and the separately gated `run_script` capability; authorization-gated |
+| `guided_assessment` | Companion-first solve assistant — classifies the target/finding, returns triage gates, recommends skills, auto-detects tools from all modules/profiles, then guides step-by-step; opt-in `autonomous` uses governed tool calls and the separately gated `run_script` capability; network steps need the caller to pass `authorization_confirmed=true` |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
 | `list_profiles` | List all 14 installation profiles with tool counts and details |
@@ -329,7 +329,7 @@ whose permissions the policy cannot contain is a guest user in a disposable VM
 rather than the operator. With `--local` there is no such boundary — run the
 server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md).
 
-- **Registry check**: Only tools listed in `tools_config.json` (plus 128 system utilities) can be executed
+- **Registry check**: Only tools listed in `tools_config.json` (plus 127 system utilities) can be executed
 - **Install check**: Tool must be installed and in PATH
 - **Argument sanitization**: Shell injection patterns (`|`, `` ` ``, `$(`, `${`) are blocked. `;`, `&`, `$`, `>`, `<` are allowed — no shell is used (`create_subprocess_exec`, never `shell=True`), so they are literals and tools need them (`;`/`&` in URL query strings, `$` for regex/awk, `>`/`<` for XML/comparisons)
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
@@ -344,6 +344,8 @@ server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md
 - **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`. Under the Kata sandbox the in-VM log would die with the VM, so `CYBERSEC_MCP_AUDIT_STREAM=1` mirrors each record to stderr with an HMAC-SHA256 tag under a per-launch key the launcher hands the server alone (`CYBERSEC_MCP_AUDIT_KEY`, removed from the server's environment at startup), and the host launcher appends only records whose tag verifies to the host log ([`../docs/SANDBOX.md`](../docs/SANDBOX.md#authenticated-records))
 - **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)
+- **Filtered environment**: Tools and scripts start without the server's credential-shaped variables (tokens, keys, passwords, URLs with embedded credentials) and without `SSH_AUTH_SOCK`; only the SSH transport to a configured remote host receives the agent socket. Proxy settings and a Kerberos ticket cache (`KRB5CCNAME`) are passed on. A program that runs as the server's user can still open a socket it finds by path, so this limits what tools use by default, not what a script can reach
+- **awk output redirection**: `print > "file"` is accepted only when the file name is one literal, which is then held to the same protected locations as other writes; a computed name (a variable, a concatenation, an escape) is refused, as are `-e`, `@include` and the other ways to load program text
 - **Async DNS**: Network target validation runs in a worker thread to avoid blocking the event loop
 - **Timeout**: Configurable 1-300s; the direct process is killed on timeout, but independently forked descendants may survive
 - **Output limits**: Truncated at 200KB to prevent memory issues
@@ -357,4 +359,7 @@ server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md
 | `CYBERSEC_MCP_VENVS_DIR` | `~/.ctf-venvs` | Directory containing named Python venvs for the `venv` parameter |
 | `CYBERSEC_MCP_AUDIT_LOG` | `~/.local/state/cybersec-tools-mcp/audit.log` | Override the rotating JSON-lines audit log path |
 | `CYBERSEC_MCP_AUDIT_REQUIRED` | `""` (disabled) | Set to `1` to fail startup when file audit logging cannot be initialized |
+| `CYBERSEC_MCP_AUDIT_FORWARD` | `""` (disabled) | Set to `syslog` to also send every audit record to the system log (tag `cybersec-mcp-audit`), which the account running the session cannot rewrite. Any other value stops startup |
 | `CYBERSEC_MCP_REDACT_OUTPUT` | `""` (disabled) | Set to `1` to redact credential-shaped strings from tool output before it is returned to the client |
+| `CYBERSEC_LOCAL_SANDBOX` | `""` (disabled) | Host mode only. Set to `1` to start every tool and script inside bubblewrap, without access to credential stores, the agent client's configuration, the audit log, the session bus or other processes. Startup fails if bubblewrap cannot run. See `docs/SANDBOX.md` |
+| `CYBERSEC_LOCAL_SANDBOX_EXPOSE` | unset | Colon-separated absolute paths that stay visible inside that sandbox |

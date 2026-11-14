@@ -37,6 +37,7 @@ from mcp_server.audit import (  # noqa: E402
     log_validation,
     redact_credentials,
 )
+from mcp_server.local_sandbox import wrap as _sandbox_wrap  # noqa: E402
 from mcp_server.sanitize import sanitize_output, truncate_output  # noqa: E402
 from mcp_server.tools_db import ToolsDatabase, resolve_binary_name  # noqa: E402
 
@@ -55,6 +56,8 @@ NON_EXECUTABLE_METHODS = {"git", "docker", "snap"}
 #                 (these allow arbitrary code execution via -c/-e flags)
 #   Meta-exec:    timeout, xargs, parallel, find
 #                 (these execute other commands as arguments, bypassing allowlist)
+#   Shell escape: dc (its ! command runs a shell command, also from a program
+#                 read on stdin, so no flag check can cover it)
 SYSTEM_UTILITIES: frozenset[str] = frozenset(
     {
         # File analysis & forensics
@@ -199,7 +202,6 @@ SYSTEM_UTILITIES: frozenset[str] = frozenset(
         "shuf",
         # Misc CTF
         "bc",
-        "dc",
         "expr",
         "printf",
         "echo",
@@ -221,8 +223,11 @@ _SENSITIVE_ENV_RE = re.compile(
     r"|CONNECTION[_-]?STRING"
     r"|(?:API|ACCESS|PRIVATE|SECRET|SESSION)[_-]?KEY"
     # Any variable named like a key or password under an arbitrary prefix
-    # (OPENAI_KEY, FOO_KEY, DB_PASS) — a credential regardless of the vendor.
-    r"|[_-](?:KEY|PASS)$)",
+    # (OPENAI_KEY, FOO_KEY, DB_PASS, MYSQL_PWD, REDISCLI_AUTH) — a credential
+    # regardless of the vendor. PWD and OLDPWD have no separator and are kept.
+    r"|[_-](?:KEY|PASS|PWD|AUTH)$"
+    r"|AUTH[_-]?KEY"
+    r"|^(?:SSHPASS|BW_SESSION)$)",
     re.IGNORECASE,
 )
 _SENSITIVE_ENV_PREFIX_RE = re.compile(
@@ -240,18 +245,30 @@ _CREDENTIAL_URL_VALUE_RE = re.compile(r"://[^/\s:@]*:[^/\s@]+@")
 _PROXY_ENV_RE = re.compile(r"(?:HTTPS?|FTP|ALL|NO)_PROXY", re.IGNORECASE)
 
 
-def _child_env() -> dict[str, str]:
+# The path of the operator's ssh-agent: a program that inherits it can log in anywhere
+# their keys are accepted. Only the SSH transport to a configured remote host gets it.
+_SSH_AGENT_ENV = "SSH_AUTH_SOCK"
+
+
+def _tool_module(tool_name: str, tools_db: ToolsDatabase) -> str | None:
+    """The module a registry tool belongs to; decides which credentials the host sandbox leaves it."""
+    return (tools_db.tools_by_name.get(tool_name) or {}).get("module")
+
+
+def _child_env(*, ssh_agent: bool = False) -> dict[str, str]:
     """A copy of the process environment with credential-shaped variables removed.
 
     Drops variables named like a credential and, name-agnostically, any whose
     value embeds URL userinfo credentials (e.g. ``DATABASE_URL=postgres://u:p@h``),
-    except the standard proxy variables.
+    except the standard proxy variables. The ssh-agent socket is passed on only
+    with ``ssh_agent=True``.
     """
     return {
         key: value
         for key, value in os.environ.items()
         if not _SENSITIVE_ENV_RE.search(key)
         and not _SENSITIVE_ENV_PREFIX_RE.match(key)
+        and (ssh_agent or key != _SSH_AGENT_ENV)
         and (_PROXY_ENV_RE.fullmatch(key) or not _CREDENTIAL_URL_VALUE_RE.search(value))
     }
 
@@ -293,9 +310,15 @@ _AWK_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^-f"), "awk: -f program file (uninspected script execution)"),
     (re.compile(r"^--file(?:$|=)"), "awk: --file program file (uninspected script execution)"),
     (re.compile(r"^--source(?:$|=)"), "awk: --source inline program (uninspected script execution)"),
+    (re.compile(r"^-e"), "awk: -e inline program (uninspected script execution)"),
+    (re.compile(r"^-E"), "awk: -E program file (uninspected script execution)"),
+    (re.compile(r"^--exec(?:$|=)"), "awk: --exec program file (uninspected script execution)"),
+    (re.compile(r"^-i"), "awk: -i include file (uninspected script execution)"),
+    (re.compile(r"^--include(?:$|=)"), "awk: --include file (uninspected script execution)"),
     (re.compile(r"^--load(?:$|=)"), "awk: --load extension (command execution)"),
     (re.compile(r"^-l$"), "awk: -l load extension (command execution)"),
     (re.compile(r"(?:^|[\s;])@load\b"), "awk: @load extension directive (command execution)"),
+    (re.compile(r"(?:^|[\s;{}])@(?:ns)?include\b"), "awk: @include directive (uninspected script execution)"),
 ]
 
 # radare2/r2 share a command interface with shell-escape (`!`), pipe (`#!`) and
@@ -311,13 +334,30 @@ _R2_BLOCKED_FLAGS: list[tuple[re.Pattern[str], str]] = [
 # Tool-specific blocked flags — dangerous per-tool options.
 TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     "sqlmap": [
-        (re.compile(r"^--os-shell$"), "sqlmap: OS shell access"),
-        (re.compile(r"^--os-cmd$"), "sqlmap: OS command execution"),
-        (re.compile(r"^--os-pwn$"), "sqlmap: OOB exploitation"),
-        (re.compile(r"^--priv-esc$"), "sqlmap: privilege escalation"),
-        (re.compile(r"^--file-read$"), "sqlmap: arbitrary file read"),
-        (re.compile(r"^--file-write$"), "sqlmap: arbitrary file write"),
-        (re.compile(r"^--file-dest$"), "sqlmap: file write destination"),
+        (re.compile(r"^--os-shell(?:$|=)"), "sqlmap: OS shell access"),
+        (re.compile(r"^--os-cmd(?:$|=)"), "sqlmap: OS command execution"),
+        (re.compile(r"^--os-pwn(?:$|=)"), "sqlmap: OOB exploitation"),
+        (re.compile(r"^--priv-esc(?:$|=)"), "sqlmap: privilege escalation"),
+        (re.compile(r"^--file-read(?:$|=)"), "sqlmap: arbitrary file read"),
+        (re.compile(r"^--file-write(?:$|=)"), "sqlmap: arbitrary file write"),
+        (re.compile(r"^--file-dest(?:$|=)"), "sqlmap: file write destination"),
+        (re.compile(r"^--udf-inject(?:$|=)"), "sqlmap: user-defined function injection"),
+        (re.compile(r"^--shared-lib(?:$|=)"), "sqlmap: shared library injection"),
+        # These run Python or a host command chosen by the caller.
+        (re.compile(r"^--eval(?:$|=)"), "sqlmap: --eval Python code execution"),
+        (re.compile(r"^--tamper(?:$|=)"), "sqlmap: --tamper script (uninspected script execution)"),
+        (re.compile(r"^--preprocess(?:$|=)"), "sqlmap: --preprocess script (uninspected script execution)"),
+        (re.compile(r"^--postprocess(?:$|=)"), "sqlmap: --postprocess script (uninspected script execution)"),
+        (re.compile(r"^--alert(?:$|=)"), "sqlmap: --alert host command execution"),
+        # A config file can set every option above; the rest name targets or proxies
+        # in a file or search result, where target validation cannot see them.
+        (re.compile(r"^-c"), "sqlmap: -c config file (bypasses flag and target validation)"),
+        (re.compile(r"^-m"), "sqlmap: -m target list from file (bypasses target validation)"),
+        (re.compile(r"^-r"), "sqlmap: -r request file (bypasses target validation); use -u with --data"),
+        (re.compile(r"^-l"), "sqlmap: -l targets from a proxy log (bypasses target validation)"),
+        (re.compile(r"^-g"), "sqlmap: -g targets from a search dork (bypasses target validation)"),
+        (re.compile(r"^--second-req(?:$|=)"), "sqlmap: --second-req request file (bypasses target validation)"),
+        (re.compile(r"^--proxy-file(?:$|=)"), "sqlmap: --proxy-file proxy list (bypasses target validation)"),
     ],
     "sed": [
         (re.compile(r"^-i"), "sed: in-place file modification"),
@@ -336,6 +376,7 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^-iR"), "nmap: random target generation (bypasses target validation)"),
         # --script / --script-args load arbitrary NSE (Lua with os.execute) = RCE.
         (re.compile(r"^--script"), "nmap: NSE script execution (--script*)"),
+        (re.compile(r"^--resume(?:$|=)"), "nmap: resume from a log file (bypasses target validation)"),
     ],
     "masscan": [
         (re.compile(r"^--includefile(?:$|=)"), "masscan: target list from file"),
@@ -459,12 +500,12 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
 # (GNU getopt_long, Python argparse/optparse, Ruby OptionParser). For these a
 # blocked long flag can be reached by an abbreviation, so the denylist above,
 # which anchors the full spelling, must also reject prefixes of it.
-_ABBREV_TOOLS = frozenset({"sed", "tar", "gdb", "wget", "zip", "arjun", "whatweb", "sqlmap", "awk", "gawk"})
+_ABBREV_TOOLS = frozenset({"sed", "tar", "gdb", "wget", "zip", "arjun", "whatweb", "sqlmap", "awk", "gawk", "nmap"})
 
 # Abbreviations that collide with a distinct, safe real option of the same tool.
 # getopt_long resolves an exact match before a prefix, so the tool reads these as
 # the safe option, not the blocked one; blocking them would be a false positive.
-_ABBREV_SAFE: dict[str, frozenset[str]] = {"tar": frozenset({"checkpoint"})}
+_ABBREV_SAFE: dict[str, frozenset[str]] = {"tar": frozenset({"checkpoint"}), "sqlmap": frozenset({"proxy"})}
 
 _LONG_OPT_NAME_RE = re.compile(r"^\^--([a-z0-9][a-z0-9-]*)")
 _LONG_OPT_ARG_RE = re.compile(r"^--([a-z0-9][a-z0-9-]*)(?:=|$)", re.IGNORECASE)
@@ -1288,6 +1329,14 @@ _EXTENSION_TLDS: frozenset[str] = frozenset(
         ".zip",
         ".mobi",
         ".sh",
+        ".java",
+        ".md",
+        ".pl",
+        ".pub",
+        ".py",
+        ".report",
+        ".rs",
+        ".so",
         ".app",
         ".dev",
         ".bar",
@@ -1301,24 +1350,50 @@ _EXTENSION_TLDS: frozenset[str] = frozenset(
 )
 
 
+def _leads_with_host(value: str) -> bool:
+    """Return True when a scheme-less ``host/path`` token starts with an address or dotted host.
+
+    curl, wget and similar tools read such a token as a URL. A single-label first
+    segment (``out/a.txt``) stays a path: relative paths are written that way, and
+    such a name resolves only through local search domains. A relative directory
+    with a dot in its name is therefore validated as a host; write it as ``./dir.name/``.
+    """
+    head = value.split("/", 1)[0]
+    if "@" in head:
+        head = head.rsplit("@", 1)[1]
+    if head.startswith("["):
+        return True
+    host = head.rsplit(":", 1)[0] if head.count(":") == 1 else head
+    if not host or set(host) <= {"."}:
+        return False
+    if _decode_encoded_ipv4(host) is not None:
+        return True
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    return "." in host and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", host) is not None
+
+
 def _is_local_path(value: str) -> bool:
     """Return True if *value* is clearly a local filesystem path, not a target.
 
     A token counts as local when it contains a path separator (``/`` or ``\\``)
-    or ends in a known file extension that is NOT also a real TLD. URLs and
-    tokens that only "look like a file" because their extension doubles as a TLD
-    (``.zip``, ``.mobi``, ``.sh``) are deliberately rejected here so an external
-    host such as ``http://evil.zip`` or ``example.zip`` still gets
-    target-validated.
+    or ends in a known file extension that is NOT also a real TLD. URLs, tokens
+    whose first path segment is a host (``203.0.113.9/a.txt``), and tokens that only
+    "look like a file" because their extension doubles as a TLD (``.zip``, ``.md``,
+    ``.sh``) are deliberately rejected here so an external host such as
+    ``http://evil.zip`` or ``example.zip`` still gets target-validated.
     """
     # A URL is never a local path, even though it contains "/".
     if re.match(r"^https?://", value, re.IGNORECASE):
         return False
     lower = value.lower()
+    if "/" in value or "\\" in value:
+        return not _leads_with_host(value)
     if any(lower.endswith(ext) for ext in _EXTENSION_TLDS):
         return False
-    if "/" in value or "\\" in value:
-        return True
     return _has_file_extension(value)
 
 
@@ -1645,11 +1720,222 @@ def _check_curl_file_reads(tool_name: str, binary: str, arg_list: list[str]) -> 
             raise ValueError("Blocked by policy: curl: @file data reads an arbitrary host file")
 
 
+# A literal after ">" in awk source: a redirection target or the right side of a comparison.
+_AWK_REDIRECT_RE = re.compile(r'>>?\s*"([^"\\]+)"')
+
+# Only source with a print statement can redirect output; other arguments are not scanned.
+_AWK_PRINT_RE = re.compile(r"\bprintf?\b")
+
+# Words after which awk expects an operand, so a following "/" opens a regex.
+_AWK_OPERAND_EXPECTED_AFTER = frozenset(
+    "print printf return if while for do else in delete exit case switch default function func".split()
+)
+_AWK_CONTROL_WORDS = frozenset({"if", "while", "for", "switch"})
+
+
+def _awk_string_end(program: str, start: int) -> int:
+    """Index after the string literal opening at *start*; -1 when it does not close on its line."""
+    i = start + 1
+    while i < len(program):
+        ch = program[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == "\n":
+            return -1
+        if ch == '"':
+            return i + 1
+        i += 1
+    return -1
+
+
+def _awk_regex_end(program: str, start: int) -> int:
+    """Index after the regex literal opening at *start*; -1 when its end is not certain.
+
+    awk implementations disagree on whether "/" inside a bracket expression ends the
+    literal, so that spelling is treated as unreadable rather than guessed at.
+    """
+    i = start + 1
+    in_bracket = False
+    while i < len(program):
+        ch = program[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == "\n":
+            return -1
+        if in_bracket:
+            if ch == "/":
+                return -1
+            if ch == "]":
+                in_bracket = False
+        elif ch == "[":
+            in_bracket = True
+            # A "]" right after "[" or "[^" is a member of the set, not its end.
+            if program[i + 1 : i + 2] == "^":
+                i += 1
+            if program[i + 1 : i + 2] == "]":
+                i += 1
+        elif ch == "/":
+            return i + 1
+        i += 1
+    return -1
+
+
+def _awk_plain_target(program: str, start: int) -> str | None:
+    """The redirection target at *start* when it is one plain string literal ending the statement."""
+    i = start
+    while program[i : i + 1] in {" ", "\t"}:
+        i += 1
+    if program[i : i + 1] != '"':
+        return None
+    end = _awk_string_end(program, i)
+    if end < 0:
+        return None
+    literal = program[i + 1 : end - 1]
+    while program[end : end + 1] in {" ", "\t", "\r"}:
+        end += 1
+    if "\\" in literal or not literal or program[end : end + 1] not in {"", ";", "}", "\n", "#"}:
+        return None
+    return literal
+
+
+class _AwkUnreadable(ValueError):
+    """awk source whose string or regex literals cannot be delimited with certainty."""
+
+
+def _awk_redirect_targets(program: str) -> list[str | None]:
+    """Targets of the output redirections in awk source, in order.
+
+    ``None`` stands for a target that cannot be read before the run: a variable, a
+    concatenation or an escape sequence. ">" is a redirection only in a print statement
+    outside parentheses, and "/" opens a regex only where awk expects an operand; both
+    are tracked the way awk's own lexer does. Raises _AwkUnreadable when a literal has
+    no certain end, since everything after it could be read wrongly.
+    """
+    targets: list[str | None] = []
+    i, n = 0, len(program)
+    in_print = False
+    depth = 0
+    operand = False
+    continues = False
+    control_parens: list[bool] = []
+    pending_control = False
+    while i < n:
+        ch = program[i]
+        if ch in " \t\r":
+            i += 1
+            continue
+        if ch == "\\" and program[i + 1 : i + 2] == "\n":
+            i += 2
+            continue
+        if ch == "\n":
+            if in_print and depth == 0 and not continues:
+                in_print = False
+            operand = False
+            i += 1
+            continue
+        if ch == "#":
+            end = program.find("\n", i)
+            i = n if end < 0 else end
+            continue
+        was_control, pending_control = pending_control, False
+        continues = False
+        if ch == '"':
+            end = _awk_string_end(program, i)
+            if end < 0:
+                raise _AwkUnreadable("an unterminated string")
+            operand = True
+            i = end
+            continue
+        if ch == "/" and not operand:
+            end = _awk_regex_end(program, i)
+            if end < 0:
+                raise _AwkUnreadable('an unterminated regex, or one with "/" inside brackets')
+            operand = True
+            i = end
+            continue
+        if ch.isalpha() or ch == "_":
+            end = i + 1
+            while end < n and (program[end].isalnum() or program[end] == "_"):
+                end += 1
+            word = program[i:end]
+            if word in {"print", "printf"}:
+                in_print, depth = True, 0
+            pending_control = word in _AWK_CONTROL_WORDS
+            operand = word not in _AWK_OPERAND_EXPECTED_AFTER
+            i = end
+            continue
+        if ch.isdigit() or (ch == "." and program[i + 1 : i + 2].isdigit()):
+            end = i + 1
+            while end < n and (program[end].isalnum() or program[end] == "."):
+                end += 1
+            operand = True
+            i = end
+            continue
+        if ch in "([":
+            control_parens.append(ch == "(" and was_control)
+            if in_print:
+                depth += 1
+            operand = False
+        elif ch in ")]":
+            # The parenthesis that closes an if/while/for header is followed by a statement.
+            operand = not (control_parens.pop() if control_parens else False)
+            if in_print and depth > 0:
+                depth -= 1
+        elif ch in ";{}":
+            in_print = False
+            operand = False
+        elif ch == ">" and in_print and depth == 0:
+            end = i + 2 if program[i + 1 : i + 2] == ">" else i + 1
+            targets.append(_awk_plain_target(program, end))
+            in_print = False
+            operand = False
+            i = end
+            continue
+        elif program[i : i + 2] in {"++", "--"}:
+            i += 2
+            continue
+        else:
+            continues = ch == "," or program[i : i + 2] in {"&&", "||"}
+            operand = False
+            if program[i : i + 2] in {"&&", "||"}:
+                i += 1
+        i += 1
+    return targets
+
+
+# Short options that take a separate value, so the value is not read as a file operand.
+_UNIQ_VALUE_FLAGS: frozenset[str] = frozenset({"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"})
+_XXD_VALUE_FLAGS: frozenset[str] = frozenset(
+    {"-c", "-cols", "-g", "-groupsize", "-l", "-len", "-n", "-name", "-o", "-offset", "-s", "-seek"}
+)
+
+
+def _file_operands(arg_list: list[str], value_flags: frozenset[str]) -> list[str]:
+    """Return the non-option arguments, skipping the values of *value_flags*."""
+    operands: list[str] = []
+    i = 0
+    while i < len(arg_list):
+        arg = arg_list[i]
+        if arg == "--":
+            operands.extend(arg_list[i + 1 :])
+            break
+        if arg in value_flags:
+            i += 2
+            continue
+        if not arg.startswith("-") or arg == "-":
+            operands.append(arg)
+        i += 1
+    return operands
+
+
 def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) -> None:
     """Block file-mutating invocations that target a sensitive destination.
 
-    Covers the write-capable system utilities (cp/mv/ln/tee/touch/mkdir) and the
-    curl/wget output flags (``-o``/``--output``, ``-O``/``--output-document``).
+    Covers the write-capable system utilities (cp/mv/ln/tee/touch/mkdir), the
+    curl/wget output flags (``-o``/``--output``, ``-O``/``--output-document``),
+    and the output file of text utilities such as sort, uniq, xxd and awk.
     For ln, both the link path and the symlink target are checked. Positional
     arguments for the file utilities are all checked, since any of them can be a
     destination (cp/mv) and there is no benign reason to write into the blocked
@@ -1832,6 +2118,46 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
             source = _normalize_write_path(positionals[0])
             if source:
                 _raise_sensitive_write(name, os.path.splitext(source)[0] + ".txt")
+        return
+
+    if name in {"sort", "shuf", "xmllint"}:
+        for dest in _flag_values(arg_list, short_flags=frozenset({"-o"}), long_flags=frozenset({"--output"})):
+            _raise_sensitive_write(name, dest)
+        return
+
+    if name in {"uniq", "xxd"}:
+        # Both take an optional second file operand that names the output.
+        operands = _file_operands(arg_list, _UNIQ_VALUE_FLAGS if name == "uniq" else _XXD_VALUE_FLAGS)
+        if len(operands) >= 2:
+            _raise_sensitive_write(name, operands[1])
+        return
+
+    if name in {"awk", "gawk"}:
+        # gawk writes these reports to the named file. A redirection is allowed only
+        # to a file name spelled out as one literal, which is then checked like any other.
+        for dest in _flag_values(
+            arg_list,
+            short_flags=frozenset({"-o", "-p", "-d"}),
+            long_flags=frozenset({"--pretty-print", "--profile", "--dump-variables"}),
+        ):
+            _raise_sensitive_write(name, dest)
+        for arg in arg_list:
+            for dest in _AWK_REDIRECT_RE.findall(arg):
+                _raise_sensitive_write(name, dest)
+            try:
+                targets = _awk_redirect_targets(arg) if _AWK_PRINT_RE.search(arg) else []
+            except _AwkUnreadable as exc:
+                raise ValueError(
+                    f"Blocked by policy: awk: the program has {exc}, so its print statements "
+                    "cannot be checked for output redirection"
+                ) from None
+            for dest in targets:
+                if dest is None:
+                    raise ValueError(
+                        "Blocked by policy: awk: output redirection to a file name that is not one plain "
+                        'string literal. Spell the name out, as in print > "out.txt"'
+                    )
+                _raise_sensitive_write(name, dest)
         return
 
     if name == "yq" and any(arg in {"-i", "--inplace"} for arg in arg_list):
@@ -2664,8 +2990,12 @@ def _append_truncation_marker(text: str, max_bytes: int) -> str:
 
 
 def _redact_output_enabled() -> bool:
-    """Opt-in redaction of credential-shaped strings in returned tool output."""
-    return os.environ.get("CYBERSEC_MCP_REDACT_OUTPUT", "").strip() == "1"
+    """Opt-in redaction of credential-shaped strings in returned tool output.
+
+    A protective switch accepts the common truthy spellings, so ``=true`` does not
+    silently leave redaction off. The permissive switches above stay strict.
+    """
+    return os.environ.get("CYBERSEC_MCP_REDACT_OUTPUT", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _sanitize_for_model(text: str) -> str:
@@ -2795,7 +3125,7 @@ async def execute_tool(
     async with _rate_limiter._semaphore:
         try:
             process = await asyncio.create_subprocess_exec(
-                *command,
+                *_sandbox_wrap(command, module=_tool_module(tool_name, tools_db)),
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -2969,7 +3299,7 @@ async def _run_pipeline_steps(
 
         try:
             process = await asyncio.create_subprocess_exec(
-                *command,
+                *_sandbox_wrap(command, module=_tool_module(step["tool"], tools_db)),
                 stdin=stdin_mode,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -3373,8 +3703,7 @@ async def execute_script(
             # Execute
             try:
                 process = await asyncio.create_subprocess_exec(
-                    interpreter,
-                    script_path,
+                    *_sandbox_wrap([interpreter, script_path]),
                     stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
