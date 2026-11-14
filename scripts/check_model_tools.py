@@ -71,7 +71,7 @@ async def run(args: argparse.Namespace) -> int:
 
     api_key = os.environ.get(args.api_key_env) if args.api_key_env else None
     if args.api_key_env and not api_key:
-        print(f"error: {args.api_key_env} is not set", file=sys.stderr)
+        print("error: the environment variable named by --api-key-env is not set", file=sys.stderr)
         return 2
 
     async with Client(mcp) as client:
