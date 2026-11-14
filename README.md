@@ -207,13 +207,13 @@ Docker and C2 show what each profile enables by default. A profile that enables 
 | Module | Tools | Description |
 | ------ | ----- | ----------- |
 | `misc` | 40 | Post-exploitation, social engineering, wordlists, resources, C2 (Docker + Loki) |
-| `networking` | 57 | Port scanning, packet capture, tunneling, MITM, protocol tools |
+| `networking` | 58 | Port scanning, packet capture, tunneling, MITM, protocol tools |
 | `recon` | 82 | Subdomain enumeration, OSINT, DNS, automated recon frameworks |
 | `web` | 60 | Vulnerability scanning, fuzzing, SQLi, XSS, CMS scanners, API testing |
 | `crypto` | 15 | RSA attacks, cipher analysis, hash attacks, constraint solving |
 | `pwn` | 36 | Exploit frameworks, binary exploitation, fuzzing, payload generation |
 | `reversing` | 35 | Disassemblers, debuggers, emulation, Java/Python reversing |
-| `forensics` | 59 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
+| `forensics` | 62 | Disk/memory forensics, file carving, timeline analysis, log analysis, hardware/serial |
 | `enterprise` | 81 | Active Directory, Kerberos, Azure AD, credential harvesting, lateral movement |
 | `wireless` | 41 | WiFi cracking, Bluetooth, SDR, rogue AP |
 | `cracking` | 34 | Hash cracking (john, hashcat), brute force, wordlist generation |
@@ -231,7 +231,7 @@ Docker and C2 show what each profile enables by default. A profile that enables 
 | Method | Count | Examples |
 | ------ | ----- | ------- |
 | Git clone | 193 | GitHub repos with auto-setup, resources, wordlists |
-| System packages (apt/dnf/pacman/zypper) | 168 | nmap, wireshark, john, hashcat |
+| System packages (apt/dnf/pacman/zypper) | 172 | nmap, wireshark, john, hashcat |
 | pipx | 137 | sqlmap, impacket, bloodhound, volatility3 |
 | Go install | 63 | nuclei, subfinder, ffuf, httpx |
 | Binary release | 54 | gitleaks, chainsaw, findomain, FLOSS, Capa, Loki, Syft, Kubescape |
