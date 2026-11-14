@@ -1727,7 +1727,8 @@ def _getopt_values(arg_list: list[str], *, shorts: str, longs: frozenset[str], v
 _TAR_VALUE_SHORTS = "bCfFgHIKLNTVX"
 _CURL_VALUE_SHORTS = "AbCdeEFHKmPQrtTuUwxXyYz"
 _WGET_VALUE_SHORTS = "eiBtTwQlARDIXU"
-_UNZIP_VALUE_SHORTS = "xP"
+# unzip reads -x in the option bundle as "extract"; the exclusion list it also names follows the archive.
+_UNZIP_VALUE_SHORTS = "P"
 
 
 def _tar_short_flag_values(arg_list: list[str], flag: str) -> list[str]:

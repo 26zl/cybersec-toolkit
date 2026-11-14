@@ -3262,6 +3262,8 @@ class TestTextUtilityWriteGuard:
             ("wget", ["-qP", "/etc/cron.d", "http://10.0.0.5/x"]),
             ("wget", ["-nvo/etc/cron.d/x", "http://10.0.0.5/x"]),
             ("unzip", ["-od", "/etc/cron.d", "a.zip"]),
+            ("unzip", ["-xd", "/etc/cron.d", "a.zip"]),
+            ("unzip", ["-qxod/etc/cron.d", "a.zip"]),
             ("tar", ["xvfC", "a.tar", "/etc/cron.d"]),
             ("tar", ["cvbf", "20", "/etc/cron.d/x.tar", "notes.txt"]),
             # A single character is enough when no other option starts with it.
@@ -3292,6 +3294,8 @@ class TestTextUtilityWriteGuard:
             ("wget", ["-qO", "page.html", "http://10.0.0.5/x"]),
             ("wget", ["-qO-", "http://10.0.0.5/x"]),
             ("unzip", ["-od", "out", "a.zip"]),
+            ("unzip", ["-Psecretdata", "-d", "out", "a.zip"]),
+            ("unzip", ["a.zip", "-x", "docs/*", "-d", "out"]),
             ("tar", ["xvfC", "a.tar", "out"]),
             ("tar", ["tvf", "a.tar"]),
         ],
