@@ -95,7 +95,7 @@ Use these only for authorized security research, training, CTF/lab work, or test
 
 ## SnailSploit Claude-Red — offensive methodology (58)
 
-MIT — see `LICENSE-Claude-Red-MIT`. Source: <https://github.com/SnailSploit/Claude-Red>, commit `a8de813edc9f66f60d44cfe42d47750e89d9930b`.
+MIT — see `LICENSE-Claude-Red-MIT`. Source: <https://github.com/SnailSploit/Claude-Red>, commit `fd81441b613c7d4fab39256720a31c96859d138b`.
 
 Use these only for authorized security research, training, CTF/lab work, or scoped assessments.
 

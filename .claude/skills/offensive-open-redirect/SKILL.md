@@ -4,7 +4,7 @@ description: "Open redirect vulnerability checklist: parameter identification, b
 category: web
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: a8de813edc9f66f60d44cfe42d47750e89d9930b
+upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
 ---
 # SKILL: Open Redirect Vulnerabilities
 
