@@ -23,18 +23,45 @@ CONFIG_PATH = ROOT / "tools_config.json"
 
 ALL_MODULES = [
     "shared",  # pseudo-module: lib/shared.sh base dependencies
-    "misc", "networking", "recon", "web", "crypto", "pwn", "reversing",
-    "forensics", "enterprise", "wireless", "cracking", "stego",
-    "cloud", "containers", "blueteam", "mobile", "blockchain", "llm",
+    "misc",
+    "networking",
+    "recon",
+    "web",
+    "crypto",
+    "pwn",
+    "reversing",
+    "forensics",
+    "enterprise",
+    "wireless",
+    "cracking",
+    "stego",
+    "cloud",
+    "containers",
+    "blueteam",
+    "mobile",
+    "blockchain",
+    "llm",
 ]
 
 MODULE_PREFIX = {
-    "misc": "MISC", "networking": "NET", "recon": "RECON", "web": "WEB",
-    "crypto": "CRYPTO", "pwn": "PWN", "reversing": "RE",
-    "forensics": "FORENSICS", "enterprise": "ENTERPRISE",
-    "wireless": "WIRELESS", "cracking": "CRACKING", "stego": "STEGO",
-    "cloud": "CLOUD", "containers": "CONTAINER", "blueteam": "BLUETEAM",
-    "mobile": "MOBILE", "blockchain": "BLOCKCHAIN", "llm": "LLM",
+    "misc": "MISC",
+    "networking": "NET",
+    "recon": "RECON",
+    "web": "WEB",
+    "crypto": "CRYPTO",
+    "pwn": "PWN",
+    "reversing": "RE",
+    "forensics": "FORENSICS",
+    "enterprise": "ENTERPRISE",
+    "wireless": "WIRELESS",
+    "cracking": "CRACKING",
+    "stego": "STEGO",
+    "cloud": "CLOUD",
+    "containers": "CONTAINER",
+    "blueteam": "BLUETEAM",
+    "mobile": "MOBILE",
+    "blockchain": "BLOCKCHAIN",
+    "llm": "LLM",
 }
 
 APT_SUFFIXES = {"PACKAGES", "BASE_PACKAGES", "HEAVY_PACKAGES"}
@@ -42,8 +69,18 @@ APT_SUFFIXES = {"PACKAGES", "BASE_PACKAGES", "HEAVY_PACKAGES"}
 GIT_SUFFIXES = {"GIT", "C2_GIT"}
 
 VALID_METHODS = {
-    "apt", "pipx", "go", "cargo", "gem", "git",
-    "binary", "source", "docker", "snap", "special", "npm",
+    "apt",
+    "pipx",
+    "go",
+    "cargo",
+    "gem",
+    "git",
+    "binary",
+    "source",
+    "docker",
+    "snap",
+    "special",
+    "npm",
 }
 
 # Names that differ between code and JSON (code_name → json_name)
@@ -53,13 +90,15 @@ NAME_ALIASES = {
     "osqueryi": "osquery",
 }
 
+
 # Bash parsing helpers
 def strip_comments(text):
     """Remove full-line bash comments."""
-    return "\n".join(
-        line for line in text.split("\n")
-        if not line.lstrip().startswith("#")
-    )
+    return "\n".join(line for line in text.split("\n") if not line.lstrip().startswith("#"))
+
+
+# Arrays whose closing paren was never found; validate() reports them as errors.
+UNCLOSED_ARRAYS: set[str] = set()
 
 
 def parse_arrays(text):
@@ -70,33 +109,21 @@ def parse_arrays(text):
     """
     text = strip_comments(text)
     result = {}
-    for m in re.finditer(r'(\w+)\s*=\s*\(', text):
+    for m in re.finditer(r"(\w+)\s*=\s*\(", text):
         line_start = text.rfind("\n", 0, m.start()) + 1
-        declaration = text[line_start:m.start()]
-        if re.search(r'\bdeclare\s+-[a-zA-Z]*A[a-zA-Z]*\s+', declaration):
+        declaration = text[line_start : m.start()]
+        if re.search(r"\bdeclare\s+-[a-zA-Z]*A[a-zA-Z]*\s+", declaration):
             continue
         name = m.group(1)
         body = balanced_array_body(text, m.end() - 1)
         if body is None:
+            UNCLOSED_ARRAYS.add(name)
             continue
         entries = []
-        quoted_lines = 0
-        for raw_line in body.split("\n"):
-            line = raw_line.strip()
-            if not line:
-                continue
-            if re.fullmatch(r'(?:"[^"]*"\s*)+', line):
-                quoted_lines += len(re.findall(r'"[^"]*"', line))
         for item in re.finditer(r'"([^"]*)"|(\S+)', body):
             val = item.group(1) if item.group(1) is not None else item.group(2)
             if val:
                 entries.append(val)
-        quoted_entries = sum(1 for it in re.finditer(r'"[^"]*"', body))
-        if quoted_lines and quoted_entries != quoted_lines:
-            print(
-                f"WARNING: array '{name}' parsed {quoted_entries} quoted cells "
-                f"but found {quoted_lines} quoted-cell lines (possible truncation)"
-            )
         result[name] = entries
     return result
 
@@ -147,12 +174,22 @@ def canonical_package_url(method, name):
 # Map BINARY_RELEASES_* suffix → module name
 # MISC_C2: the INCLUDE_C2-gated binary array in lib/installers.sh (belongs to misc).
 BINARY_RELEASE_MODULE = {
-    "MISC": "misc", "MISC_C2": "misc", "NETWORKING": "networking", "RECON": "recon",
-    "WEB": "web", "REVERSING": "reversing", "FORENSICS": "forensics",
-    "ENTERPRISE": "enterprise", "BLUETEAM": "blueteam",
-    "CONTAINERS": "containers", "MOBILE": "mobile", "STEGO": "stego",
-    "BLOCKCHAIN": "blockchain", "WIRELESS": "wireless",
+    "MISC": "misc",
+    "MISC_C2": "misc",
+    "NETWORKING": "networking",
+    "RECON": "recon",
+    "WEB": "web",
+    "REVERSING": "reversing",
+    "FORENSICS": "forensics",
+    "ENTERPRISE": "enterprise",
+    "BLUETEAM": "blueteam",
+    "CONTAINERS": "containers",
+    "MOBILE": "mobile",
+    "STEGO": "stego",
+    "BLOCKCHAIN": "blockchain",
+    "WIRELESS": "wireless",
 }
+
 
 def extract_binary_releases():
     """Parse BINARY_RELEASES_* arrays from lib/installers.sh.
@@ -165,7 +202,7 @@ def extract_binary_releases():
     for arr_name, entries in arrays.items():
         if not arr_name.startswith("BINARY_RELEASES_"):
             continue
-        suffix = arr_name[len("BINARY_RELEASES_"):]
+        suffix = arr_name[len("BINARY_RELEASES_") :]
         module = BINARY_RELEASE_MODULE.get(suffix)
         if module is None:
             continue
@@ -205,7 +242,7 @@ def extract_module_tools(module_name):
     for arr_name, entries in arrays.items():
         if not arr_name.startswith(prefix + "_"):
             continue
-        suffix = arr_name[len(prefix) + 1:]
+        suffix = arr_name[len(prefix) + 1 :]
 
         if suffix in APT_SUFFIXES:
             for e in entries:
@@ -271,9 +308,7 @@ def extract_module_tools(module_name):
     # Function-call tools
 
     # download_github_release "owner/repo" "tool_name" ...
-    for m in re.finditer(
-        r'download_github_release\s+"([^"]+)"\s+"([^"]+)"', clean
-    ):
+    for m in re.finditer(r'download_github_release\s+"([^"]+)"\s+"([^"]+)"', clean):
         owner_repo, name = m.group(1), m.group(2)
         name = NAME_ALIASES.get(name, name)
         url = f"https://github.com/{owner_repo}"
@@ -294,11 +329,7 @@ def extract_module_tools(module_name):
             continue  # bash variable, not a literal name
         image = m.group(1).split(":", 1)[0]
         name = raw_name.lower().replace(" ", "-")
-        url = (
-            f"https://{image}"
-            if image.startswith(("ghcr.io/", "quay.io/"))
-            else f"https://hub.docker.com/r/{image}"
-        )
+        url = f"https://{image}" if image.startswith(("ghcr.io/", "quay.io/")) else f"https://hub.docker.com/r/{image}"
         if name not in docker_names:
             tools.append({"name": name, "method": "docker", "url": url})
             docker_names.add(name)
@@ -306,39 +337,54 @@ def extract_module_tools(module_name):
     # install_cargo_batch "label" tool1 tool2 ...
     cargo_names = {t["name"] for t in tools if t["method"] == "cargo"}
     for m in re.finditer(r'install_cargo_batch\s+"[^"]+"\s+(.+)', clean):
-        rest = re.split(r'\s*\|\||\s*;|\s*#', m.group(1))[0].strip()
+        rest = re.split(r"\s*\|\||\s*;|\s*#", m.group(1))[0].strip()
         for name in rest.split():
-            if re.match(r'^[\w-]+$', name) and name not in cargo_names:
+            if re.match(r"^[\w-]+$", name) and name not in cargo_names:
                 tools.append({"name": name, "method": "cargo", "url": ""})
                 cargo_names.add(name)
 
     # Special installers
     if "install_metasploit" in clean:
-        tools.append({
-            "name": "metasploit", "method": "special",
-            "url": "https://github.com/rapid7/metasploit-framework",
-        })
+        tools.append(
+            {
+                "name": "metasploit",
+                "method": "special",
+                "url": "https://github.com/rapid7/metasploit-framework",
+            }
+        )
     if "install_zap" in clean:
-        tools.append({
-            "name": "zaproxy", "method": "snap",
-            "url": "https://github.com/zaproxy/zaproxy",
-        })
+        tools.append(
+            {
+                "name": "zaproxy",
+                "method": "snap",
+                "url": "https://github.com/zaproxy/zaproxy",
+            }
+        )
     if "foundryup" in clean:
-        tools.append({
-            "name": "foundry", "method": "special",
-            "url": "https://github.com/foundry-rs/foundry",
-        })
+        tools.append(
+            {
+                "name": "foundry",
+                "method": "special",
+                "url": "https://github.com/foundry-rs/foundry",
+            }
+        )
     if "steampipe" in clean:
-        tools.append({
-            "name": "steampipe", "method": "special",
-            "url": "https://github.com/turbot/steampipe",
-        })
+        tools.append(
+            {
+                "name": "steampipe",
+                "method": "special",
+                "url": "https://github.com/turbot/steampipe",
+            }
+        )
     # patator gets a dedicated venv rather than a pipx one (cx-Oracle, see cracking.sh)
     if "_pat_dir" in clean:
-        tools.append({
-            "name": "patator", "method": "special",
-            "url": "https://pypi.org/project/patator/",
-        })
+        tools.append(
+            {
+                "name": "patator",
+                "method": "special",
+                "url": "https://pypi.org/project/patator/",
+            }
+        )
 
     # install_ctf_venv <name>: Python libraries with no console scripts, which
     # pipx cannot install. Registered as one "ctf-<name>-venv" entry — the venv
@@ -347,26 +393,27 @@ def extract_module_tools(module_name):
         tools.append({"name": f"ctf-{m.group(1)}-venv", "method": "special", "url": ""})
 
     # pipx install git+URL patterns (not in PIPX arrays)
-    for m in re.finditer(
-        r'pipx\s+install\s+"git\+https://github\.com/([^"]+)"', clean
-    ):
+    for m in re.finditer(r'pipx(?:_|\s+)install\s+"git\+https://github\.com/([^"]+)"', clean):
         repo_path = m.group(1)
         name = repo_path.split("/")[-1].lower()
-        tools.append({
-            "name": name, "method": "pipx",
-            "url": f"https://github.com/{repo_path}",
-        })
+        tools.append(
+            {
+                "name": name,
+                "method": "pipx",
+                "url": f"https://github.com/{repo_path}",
+            }
+        )
 
     # pipx install <name> (plain package name, not git+URL)
     pipx_names = {t["name"] for t in tools if t["method"] == "pipx"}
-    for m in re.finditer(r'pipx\s+install\s+([\w][\w-]*)', clean):
+    for m in re.finditer(r"pipx(?:_|\s+)install\s+([\w][\w-]*)", clean):
         name = m.group(1)
         if name not in pipx_names and name != "git":
             tools.append({"name": name, "method": "pipx", "url": ""})
             pipx_names.add(name)
 
     # snap_install calls
-    for m in re.finditer(r'snap_install\s+(\S+)', clean):
+    for m in re.finditer(r"snap_install\s+(\S+)", clean):
         name = m.group(1)
         tools.append({"name": name, "method": "snap", "url": ""})
 
@@ -500,6 +547,10 @@ def validate(strict=False):
             )
             errors += 1
 
+    for name in sorted(UNCLOSED_ARRAYS):
+        print(f"ERROR: array {name} is never closed")
+        errors += 1
+
     # Summary
     print(f"\ntools_config.json: {len(config)} tools")
     print(f"Module arrays:     {len(module_tools)} tools parsed")
@@ -551,6 +602,9 @@ def main():
 
     check_args({"--strict", "--sync"}, "usage: validate_tools_config.py [--strict | --sync]")
     if "--sync" in sys.argv:
+        if "--strict" in sys.argv[1:]:
+            print("usage: validate_tools_config.py [--strict | --sync]", file=sys.stderr)
+            sys.exit(2)
         sync()
     else:
         sys.exit(validate(strict="--strict" in sys.argv[1:]))

@@ -5,16 +5,19 @@ description: Use when solving a CTF web challenge — SQLi, XSS, SSRF, SSTI, IDO
 
 # CTF web methodology
 
+> **Pre-flight.** Confirm the event rules allow AI assistance (`authorization-gate`). Start with `suggest_for_ctf` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command, tell the operator; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
+
 ## 1. Recon (always)
 
-```bash
-# Always start with these — in parallel
-curl -sI http://target/                                  # headers
-run_tool("ffuf", "-w wordlist -u http://target/FUZZ")   # dir bust
-run_tool("gobuster", "dir -u http://target -w wordlist")
+```text
+# Always start with these — in parallel (wordlist paths: see security-wordlists)
+run_tool("curl", "-sI http://target/")                   # headers
+run_tool("ffuf", "-w /opt/SecLists/Discovery/Web-Content/common.txt -u http://target/FUZZ")
+run_tool("gobuster", "dir -u http://target -w /opt/SecLists/Discovery/Web-Content/common.txt")
 run_tool("whatweb", "http://target")                     # tech stack
-nikto -h http://target                                   # web scanner
 ```
+
+`nikto`, `jwt_tool`, `XSStrike`, `tplmap`, `Gopherus` and `phpggc` have supported Git CLI routes through `run_tool`. Check `get_tool_info` for executable readiness and argument restrictions; a repository clone alone does not prove the CLI is installed.
 
 Source view:
 
@@ -53,16 +56,19 @@ For each endpoint:
 
 ### SQLi
 
-```bash
+```text
 # Boolean-based, time-based, UNION
-sqlmap -u "http://target/page?id=1" --batch --level=5 --risk=3 --dbs
+run_tool("sqlmap", "-u http://target/page?id=1 --batch --level=5 --risk=3 --dbs")
+# level 5 / risk 3 is for lab and CTF targets only; use bounty-web's lower values on bounty or production targets
 
 # Cookie/header injection
-sqlmap -u http://target/ --cookie="session=*" --level=5
+run_tool("sqlmap", "-u http://target/ --cookie=session=* --level=5 --batch")
 
 # POST data
-sqlmap -u http://target/login --data="user=*&pass=*"
+run_tool("sqlmap", "-u http://target/login --data=user=*&pass=* --batch")
 ```
+
+Policy blocks `-r`, `-m`, `-c`, `-l`, `-g`, `--tamper`, `--eval`, `--os-shell`, `--file-read` and `--file-write`; pass the request with `-u` plus `--data`/`--cookie`/`-H`.
 
 ### SSTI
 
@@ -83,12 +89,13 @@ Try in order: rename extension (.php → .phtml/.php5/.phar), MIME spoofing, dou
 
 ### JWT
 
-```bash
-jwt_tool <token>                          # decode + check
-jwt_tool <token> -X a                     # alg=none
-jwt_tool <token> -X i                     # weak HMAC
-jwt_tool <token> -X k -pk public.pem      # key confusion (RS→HS)
-jwt-cracker <token> -d wordlist.txt       # crack HMAC secret
+```text
+# Decode and test through the registered CLI; substitute the actual token.
+run_pipeline([{"tool": "echo", "args": "<token>"}, {"tool": "cut", "args": "-d. -f1,2"}])   # base64url parts
+run_tool("jwt_tool", "<token> -X a")                     # alg=none
+run_tool("jwt_tool", "<token> -X i")                     # weak HMAC
+run_tool("jwt_tool", "<token> -X k -pk public.pem")      # key confusion (RS→HS)
+# crack an HMAC secret: hashcat mode 16500 (registry tool hashcat) with a wordlist
 ```
 
 ## 5. Don't waste time on

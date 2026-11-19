@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -41,6 +42,9 @@ _NOTICES_ROWS = {
 _NOTICES_REMAINING_BUCKETS = {"project", "coverage-anchor", "ctf", "bug-bounty"}
 
 
+_IMPORT_ERROR: list[str] = []
+
+
 def _import_curate():
     """Import scripts/curate_claude_skills.py without running it (main() is guarded)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -48,7 +52,8 @@ def _import_curate():
         import curate_claude_skills  # noqa: PLC0415 — lazy import to keep validator standalone
 
         return curate_claude_skills
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        _IMPORT_ERROR[:] = [f"{type(exc).__name__}: {exc}"]
         return None
 
 
@@ -121,11 +126,15 @@ def _validate_powershell_scripts(skill_dirs: list[Path], errors: list[str]) -> t
 def _validate_visible_text(skill_dirs: list[Path], errors: list[str]) -> None:
     """Reject text an agent would read and a reviewer would not see."""
     for skill_dir in skill_dirs:
-        for path in sorted(p for p in skill_dir.rglob("*") if p.is_file()):
+        for path in sorted(p for p in skill_dir.rglob("*") if p.is_file() and not p.is_symlink()):
             try:
-                text = path.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
+                raw = path.read_bytes()
+            except OSError:
                 continue
+            # Binary files (NUL bytes) are skipped; an invalid UTF-8 byte in a text file must not hide a payload.
+            if b"\0" in raw and path.name != "SKILL.md":
+                continue
+            text = raw.decode("utf-8", errors="surrogateescape")
             hidden = find_invisible(text)
             if hidden:
                 line = text.count("\n", 0, hidden.start()) + 1
@@ -135,13 +144,25 @@ def _validate_visible_text(skill_dirs: list[Path], errors: list[str]) -> None:
                 )
 
 
+def _validate_no_links(skill_dirs: list[Path], errors: list[str]) -> None:
+    """A skill holds regular files only: a link can point an agent at files outside the repository."""
+    for skill_dir in skill_dirs:
+        for root, dirs, files in os.walk(skill_dir, followlinks=False):
+            for name in (*dirs, *files):
+                path = Path(root) / name
+                if path.is_symlink():
+                    errors.append(f"{path.relative_to(ROOT)}: symbolic link inside a skill")
+                elif name in files and not path.is_file():
+                    errors.append(f"{path.relative_to(ROOT)}: not a regular file")
+
+
 def _validate_tool_grants(skill_dirs: list[Path], errors: list[str]) -> None:
     """A skill may pre-approve workspace lookups, nothing that executes, writes or fetches."""
     for skill_dir in skill_dirs:
         skill_file = skill_dir / "SKILL.md"
         if not skill_file.is_file():
             continue
-        granted = granted_tools(skill_file.read_text(encoding="utf-8", errors="replace"))
+        granted = granted_tools(skill_file.read_text(encoding="utf-8", errors="surrogateescape"))
         refused = sorted(set(granted or ()) - PROMPT_FREE_TOOLS)
         if refused:
             errors.append(
@@ -183,7 +204,9 @@ def _validate_curation(skill_dirs: list[Path], errors: list[str]) -> None:
     # uses and compare against the committed files, so stale/hand-edited content fails CI.
     curate = _import_curate()
     if curate is None:
-        errors.append("scripts/curate_claude_skills.py: could not import to verify curation freshness")
+        errors.append(
+            f"scripts/curate_claude_skills.py: could not import to verify curation freshness ({''.join(_IMPORT_ERROR)})"
+        )
         return
     try:
         skills = curate.load_skills()
@@ -211,7 +234,9 @@ def _validate_third_party_notices(skill_dirs: list[Path], errors: list[str]) -> 
         return
     curate = _import_curate()
     if curate is None:
-        errors.append("scripts/curate_claude_skills.py: could not import to verify notices counts")
+        errors.append(
+            f"scripts/curate_claude_skills.py: could not import to verify notices counts ({''.join(_IMPORT_ERROR)})"
+        )
         return
 
     from collections import Counter
@@ -319,6 +344,7 @@ def main() -> int:
 
     python_script_count = _validate_python_scripts(skill_dirs, errors)
     powershell_script_count, powershell_skipped = _validate_powershell_scripts(skill_dirs, errors)
+    _validate_no_links(skill_dirs, errors)
     _validate_visible_text(skill_dirs, errors)
     _validate_tool_grants(skill_dirs, errors)
     _validate_curation(skill_dirs, errors)

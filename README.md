@@ -114,7 +114,7 @@ sudo ./install.sh --tool sqlmap --tool nmap          # Individual tools
 ./install.sh --help                     # Full help
 ./install.sh --list-profiles            # Show profiles
 ./install.sh --list-modules             # Show modules
-sudo ./install.sh --skip-heavy          # Skip large/slow packages
+sudo ./install.sh --skip-heavy          # Skip the large SDR packages (gnuradio, gqrx-sdr)
 sudo ./install.sh --skip-pipx           # Skip all pipx (Python) installs
 sudo ./install.sh --skip-go             # Skip all Go tool installs
 sudo ./install.sh --skip-cargo          # Skip all Cargo (Rust) installs
@@ -135,9 +135,9 @@ sudo ./install.sh -j 8                  # 8 parallel install jobs (default: 4)
 sudo ./install.sh -v                    # Verbose / debug output
 ```
 
-`--tool` installs only the named tool, without the full dependency setup. Dry-run time estimates count install entries across methods, so they can exceed the de-duplicated 670+ tool registry.
+`--tool` installs only the named tool, without the full dependency setup, and logs to `cybersec_tool.log` in the checkout. `--skip-heavy` skips only the wireless module's `gnuradio` and `gqrx-sdr` packages. Dry-run time estimates count install entries across methods, so they can exceed the de-duplicated 670+ tool registry.
 
-Tuning variables (environment): `GITHUB_TOOL_DIR` (default `/opt`, `~/tools` on Termux) sets where repositories are cloned; `GO_MIN_VERSION` (default `1.21`), `PYTHON_MIN_VERSION` / `PYTHON_TRY_MAX` (`3.11` / `3.13`) and `NODE_MIN_VERSION` (`22`) set the runtime versions the bootstrap accepts; `ZYPPER_REFRESH_ATTEMPTS` / `ZYPPER_REFRESH_DELAY` (`3` / `15` seconds, doubling) tune openSUSE metadata retries; `CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS=1` trusts new repository keys on refresh (see the [supply chain model](#supply-chain-model)); `PKG_AUTOREMOVE=1` adds `apt-get autoremove` to package removal (`remove.sh --remove-deps` sets it).
+Tuning variables (environment): `GITHUB_TOOL_DIR` (default `/opt`, `~/tools` on Termux) sets where repositories are cloned; `GO_MIN_VERSION` (default `1.21`), `PYTHON_MIN_VERSION` / `PYTHON_TRY_MAX` (`3.11` / `3.13`) and `NODE_MIN_VERSION` (`22`) set the runtime versions the bootstrap accepts; `ZYPPER_REFRESH_ATTEMPTS` / `ZYPPER_REFRESH_DELAY` (`3` / `15` seconds, doubling) tune openSUSE metadata retries; `CYBERSEC_ZYPPER_AUTO_IMPORT_KEYS=1` trusts new repository keys on refresh (see the [supply chain model](#supply-chain-model)); `CYBERSEC_ALLOW_PPA=0` stops the installer from adding the third-party deadsnakes PPA on Ubuntu (see the [supply chain model](#supply-chain-model)); `PKG_AUTOREMOVE=1` adds `apt-get autoremove` to package removal (`remove.sh --remove-deps` sets it).
 
 </details>
 
@@ -197,7 +197,7 @@ git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
 | `blockchain` | misc, blockchain, web, crypto | yes | — | Smart contract auditing and blockchain security |
 | `wireless` | misc, wireless, networking | — | — | WiFi, Bluetooth, and SDR security |
 | `lightweight` | misc, networking, recon, web, cracking | — | — | Hobby ethical hacking essentials (HTB, THM, bug bounty) |
-| `crackstation` | misc, cracking, crypto | — | — | Hash cracking |
+| `crackstation` | misc, cracking, crypto | — | — | Hash cracking tools; no wordlist is downloaded |
 | `blueteam` | misc, blueteam, forensics, reversing, mobile, containers, networking, cloud, recon | yes | — | Defensive security, IR, malware analysis |
 
 Docker and C2 show what each profile enables by default. A profile that enables Docker stops with an error when Docker is not installed; install Docker first, or select the same modules with `--module` instead of the profile.
@@ -254,10 +254,17 @@ All scripts support `--help` and `--version`. On Linux, `update.sh` and `remove.
 | `scripts/verify.sh` | Check which tools are installed | `./scripts/verify.sh --module web --skip-heavy` |
 | `scripts/update.sh` | Update the tools this toolkit installed | `sudo ./scripts/update.sh --skip-system` |
 | `scripts/remove.sh` | Remove tools by module | `sudo ./scripts/remove.sh --module enterprise --yes` |
+| `scripts/remove.sh --dry-run` | Print what would be removed; changes nothing and needs no root | `./scripts/remove.sh --module web --dry-run` |
 | `scripts/remove.sh --deep-clean` | Remove all toolkit tools, then purge caches and build artifacts | `sudo ./scripts/remove.sh --deep-clean --yes` |
 | `scripts/backup.sh` | Back up and restore tool configs | `./scripts/backup.sh backup` |
 
-After a full removal, `--deep-clean` removes the Go module/build cache, the Cargo registry, pip/pipx/npm/gem caches, leftover venvs of the pipx tools it installed, dangling symlinks into its own trees, and log files. Venvs that other tools keep in the same pipx home (for example `pipx install --global`) stay, and so do symlinks that point anywhere else. Add `--remove-deps` to also purge Rustup toolchains.
+After a full removal, `--deep-clean` removes the Go module/build cache, the Cargo registry, pip/pipx/npm/gem caches, leftover venvs of the pipx tools it installed, dangling symlinks into its own trees, and the checkout's log files (including `cybersec_tool.log`). Toolkit symlinks are matched by canonical path, so links behind a symlinked home or prefix are still removed. Venvs that other tools keep in the same pipx home (for example `pipx install --global`) stay, and so do symlinks that point anywhere else. Add `--remove-deps` to also purge Rustup toolchains.
+
+`verify.sh --installed-only` checks only the tools `.versions` records and `--summary` prints counts without per-tool lines. `update.sh --skip-docker` skips the Docker image update and `--skip-special` skips Metasploit, promptfoo, ZAP, Foundry, the ctf-crypto venv and Steampipe. `remove.sh` refuses to run without a `.versions` install record; `--force-unrecorded` overrides that and removes every listed tool found on the system, including copies this toolkit did not install.
+
+`--dry-run` (`-n`) prints `Would remove ...` lines and exits 0 without root, the lock, a log file or the confirmation prompt.
+
+`install.sh` (before its install stages) and a full `remove.sh` run delete artefacts that an install-method change left behind (the commix and manspider pipx venvs, the apktool git clone) when `.versions` records the tool with the old method, then drop that row (a git clone with uncommitted changes is kept, with a warning); `update.sh` leaves them alone. The list lives in `scripts/stale_artefacts.sh`, which both scripts source.
 
 `update.sh` and `remove.sh` act on what `.versions` records as installed by this toolkit: a tool that was already on the system is recorded as `existing` and left alone. A record started by a release before 1.1.0 lists the host's own system packages as installed by the toolkit; `remove.sh` keeps every system package for such a record and says so.
 
@@ -286,7 +293,6 @@ If `--enable-docker` is set and Docker is missing, the installer stops and asks 
 | Image | Module | Flag | Description |
 | ----- | ------ | ---- | ----------- |
 | `bcsecurity/empire` | misc | `--enable-docker --include-c2` | Empire C2 |
-| `spiderfoot/spiderfoot` | misc | `--enable-docker` | SpiderFoot OSINT |
 | `beefproject/beef` | web | `--enable-docker --include-c2` | BeEF browser exploitation |
 | `opensecurity/mobile-security-framework-mobsf` | mobile | `--enable-docker` | MobSF |
 | `specterops/bloodhound` | enterprise | `--enable-docker` | BloodHound CE |
@@ -343,6 +349,7 @@ The installer downloads and runs code from the internet. On Linux it runs as roo
 - __Runtime bootstraps__: the rustup, uv, and cargo-binstall installers and NodeSource's setup script (run as root) are fetched over HTTPS and sanity-checked before they run, but not signature-verified; in strict mode (`--production`/`--require-checksums`) the rustup, uv, and cargo-binstall installers are skipped when they would run as root (i.e. without `sudo` from a normal user), and NodeSource's script is always skipped in favour of the distro's signed `nodejs`/`npm`. cargo-binstall then downloads prebuilt Rust binaries where available; `--skip-source` skips its installer on a fresh host, so Rust tools compile from crates.io.
 - __Go SDK__: installed only when the system Go is older than `GO_MIN_VERSION`, and then kept until go.dev publishes a newer release. The tarball is SHA256-verified against go.dev, or against checksums embedded for the fallback release when go.dev's API cannot be reached; strict mode fails when neither is available.
 - __Git repos__: cloned at HEAD; the repo's own `setup.py` is never run. `requirements.txt` installs into a per-repo venv as the invoking user, where dependency sdists can still build, and outside strict mode (`--production` or `--require-checksums`) a failed pinned install is retried with `==` relaxed to `>=`.
+- __deadsnakes PPA__: on Ubuntu the installer may add the third-party deadsnakes PPA (as root) to get a newer Python for pipx. It is never added on other distros or in strict mode (`--production`/`--require-checksums`); `CYBERSEC_ALLOW_PPA=0` opts out and pipx then uses the system Python.
 - __Build from source__: runs `make` as the invoking user, not root. Review what you build.
 - __MCP Python dependencies__: resolved by `uv` with a 5-day `exclude-newer` window, and Dependabot waits the same 5 days. This does not apply to the security tools themselves, which follow their upstream release channels.
 - __Toolkit Docker images__: Ubuntu and uv are digest-pinned; apt packages resolve from the current signed Ubuntu repositories, so rebuilds are not bit-for-bit reproducible.
@@ -630,7 +637,7 @@ make setup    # submodules, MCP deps, sandbox deps, skill mirror
 make check    # lint, validators, bats, pytest, sandbox tests
 ```
 
-`make help` lists every target; the raw commands are in [`AGENTS.md`](AGENTS.md). The MCP Python project resolves dependencies with `uv` and `exclude-newer = "5 days"`, so fresh releases are ignored for five days to limit the blast radius of a compromised upload; Dependabot and the weekly uv update workflow use the same cooldown. Run the shell tests on Linux, macOS, or WSL: native Windows checkouts can rewrite the Bats submodules with CRLF and fail with `$'\r'`.
+`make help` lists every target; the raw commands are in [`AGENTS.md`](AGENTS.md). The MCP Python project resolves dependencies with `uv` and `exclude-newer = "5 days"`, so fresh releases are ignored for five days to limit the blast radius of a compromised upload; Dependabot and the weekly uv update workflow use the same cooldown. The shell tests run on Linux, WSL and macOS (a few skip where `flock` or `/proc` is missing); native Windows checkouts can rewrite the Bats submodules with CRLF and fail with `$'\r'`.
 
 Release notes for every version, including security fixes and upgrade steps, are on the [GitHub Releases](https://github.com/26zl/cybersec-toolkit/releases) page; `git log $(git describe --tags --abbrev=0)..` shows what has landed since the latest release.
 

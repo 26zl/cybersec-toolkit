@@ -179,26 +179,27 @@ class TestScriptExecution:
         assert "timed out" in result["stderr"].lower()
 
     @pytest.mark.asyncio
-    async def test_timeout_clamped_to_300(self) -> None:
-        """Timeout > 300 is clamped; script still runs successfully."""
-        proc = _make_proc(b"ok\n")
-        with (
-            patch("mcp_server.security._allow_scripts", return_value=True),
-            _patch_exec(proc),
-        ):
-            result = await execute_script("print('ok')", timeout=999)
-        assert result["exit_code"] == 0
+    @pytest.mark.parametrize(("requested", "expected"), [(999, 300), (-5, 1), (7, 7)])
+    async def test_timeout_clamped(self, monkeypatch, requested: int, expected: int) -> None:
+        """The timeout handed to wait_for is clamped to 1..300 seconds."""
+        import mcp_server.security as sec
 
-    @pytest.mark.asyncio
-    async def test_timeout_clamped_to_1(self) -> None:
-        """Timeout < 1 is clamped to 1; script still runs successfully."""
+        seen: list[float] = []
+        real_wait_for = asyncio.wait_for
+
+        async def spy(awaitable, timeout=None):
+            seen.append(timeout)
+            return await real_wait_for(awaitable, timeout)
+
+        monkeypatch.setattr(sec.asyncio, "wait_for", spy)
         proc = _make_proc(b"ok\n")
         with (
             patch("mcp_server.security._allow_scripts", return_value=True),
             _patch_exec(proc),
         ):
-            result = await execute_script("print('ok')", timeout=-5)
+            result = await execute_script("print('ok')", timeout=requested)
         assert result["exit_code"] == 0
+        assert seen == [expected]
 
 
 class TestScriptOutputHandling:
@@ -536,3 +537,128 @@ class TestScriptVenvParam:
         assert result["exit_code"] == 0
         call_args = mock_exec.call_args[0]
         assert call_args[0] == sys.executable
+
+
+class TestScriptEncodingAndErrors:
+    @pytest.mark.asyncio
+    async def test_unencodable_code_returns_structured_error(self) -> None:
+        with (
+            patch("mcp_server.security._allow_scripts", return_value=True),
+            patch("mcp_server.security.log_script_execution") as logged,
+        ):
+            result = await execute_script("print('\ud800')")
+        assert result["exit_code"] == -1
+        assert "not valid UTF-8" in result["stderr"]
+        logged.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mkstemp_failure_returns_structured_error(self) -> None:
+        with (
+            patch("mcp_server.security._allow_scripts", return_value=True),
+            patch("mcp_server.security.tempfile.mkstemp", side_effect=OSError("No space left on device")),
+        ):
+            result = await execute_script("print('ok')")
+        assert result["exit_code"] == -1
+        assert "No space left" in result["stderr"]
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_script_is_audited_as_blocked(self) -> None:
+        import mcp_server.security as mod
+
+        mod._rate_limiter = _RateLimiter(max_concurrent=5, max_per_minute=0)
+        with (
+            patch("mcp_server.security._allow_scripts", return_value=True),
+            patch("mcp_server.security.log_blocked") as blocked,
+        ):
+            result = await execute_script("print('ok')")
+        assert result["exit_code"] == -1
+        blocked.assert_called_once()
+        assert "Rate limit" in blocked.call_args.kwargs["reason"]
+
+
+posix_only = pytest.mark.skipif(os.name == "nt", reason="process groups and bash are POSIX-only")
+
+
+@posix_only
+class TestRealSubprocess:
+    """No mocks: the real spawn, timeout, group kill and environment paths."""
+
+    @staticmethod
+    def _alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    @staticmethod
+    async def _wait_gone(pid: int, seconds: float = 3.0) -> bool:
+        deadline = asyncio.get_running_loop().time() + seconds
+        while asyncio.get_running_loop().time() < deadline:
+            if not TestRealSubprocess._alive(pid):
+                return True
+            await asyncio.sleep(0.05)
+        return False
+
+    @pytest.mark.asyncio
+    async def test_timeout_kills_grandchild_and_returns_partial_output(self, tmp_path) -> None:
+        pidfile = tmp_path / "pid"
+        code = f"echo partial\nsleep 300 &\necho $! > {pidfile}\nwait\n"
+        with patch("mcp_server.security._allow_scripts", return_value=True):
+            result = await execute_script(code, language="bash", timeout=1, working_dir=str(tmp_path))
+        assert result["exit_code"] == -1
+        assert "timed out" in result["stderr"]
+        assert "partial" in result["stdout"]
+        pid = int(pidfile.read_text())
+        assert await self._wait_gone(pid), "grandchild survived the timeout"
+
+    @pytest.mark.asyncio
+    async def test_detached_background_process_is_killed_after_normal_exit(self, tmp_path) -> None:
+        pidfile = tmp_path / "pid"
+        code = f"sleep 300 >/dev/null 2>&1 &\necho $! > {pidfile}\necho done\n"
+        with patch("mcp_server.security._allow_scripts", return_value=True):
+            result = await execute_script(code, language="bash", timeout=20, working_dir=str(tmp_path))
+        assert result["exit_code"] == 0
+        assert "done" in result["stdout"]
+        assert await self._wait_gone(int(pidfile.read_text())), "background process outlived the call"
+
+    @pytest.mark.asyncio
+    async def test_grandchild_holding_pipes_does_not_cost_the_full_timeout(self, monkeypatch, tmp_path) -> None:
+        import mcp_server.security as sec
+
+        monkeypatch.setattr(sec, "_DRAIN_GRACE_SECONDS", 0.3)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        with patch("mcp_server.security._allow_scripts", return_value=True):
+            result = await execute_script(
+                "echo finished\nsleep 300 &\n", language="bash", timeout=60, working_dir=str(tmp_path)
+            )
+        assert loop.time() - started < 15
+        assert result["exit_code"] == 0
+        assert "finished" in result["stdout"]
+
+    @pytest.mark.asyncio
+    async def test_script_environment_is_scrubbed(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setenv("SECRET_TOKEN", "do-not-leak")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "do-not-leak")
+        monkeypatch.setenv("BENIGN_SETTING", "kept")
+        with patch("mcp_server.security._allow_scripts", return_value=True):
+            result = await execute_script("env\n", language="bash", working_dir=str(tmp_path))
+        assert result["exit_code"] == 0
+        assert "SECRET_TOKEN" not in result["stdout"]
+        assert "AWS_ACCESS_KEY_ID" not in result["stdout"]
+        assert "do-not-leak" not in result["stdout"]
+        assert "BENIGN_SETTING=kept" in result["stdout"]
+
+    @pytest.mark.asyncio
+    async def test_spawn_uses_new_session_and_scrubbed_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("PLANTED_TOKEN", "x")
+        proc = _make_proc(b"ok\n")
+        with (
+            patch("mcp_server.security._allow_scripts", return_value=True),
+            _patch_exec(proc) as spawn,
+        ):
+            await execute_script("print('ok')")
+        kwargs = spawn.call_args.kwargs
+        assert kwargs["start_new_session"] is True
+        assert "PLANTED_TOKEN" not in kwargs["env"]

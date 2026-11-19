@@ -11,7 +11,7 @@ MARKDOWNLINT_VERSION := 0.24.0
 MD_EXCLUDE :=^tests/bats/|^tests/test_helper/|^mcp_server/\.venv/|^\.claude/skills/|^\.agents/skills/
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py test-sandbox validate-packages check-links test-distros \
+.PHONY: help setup lint lint-sh lint-py lint-md format test test-bats test-py test-scripts test-sandbox validate-packages check-links test-distros \
 	validate check-pins check-skills update-skills scan-skills sync-skills curate check doctor bump mcp docker sandbox-image \
 	audit-verify audit-deps clean
 
@@ -35,37 +35,45 @@ lint-sh: ## shellcheck + bash syntax on all shell scripts
 	rc=0; for f in $(SH_FILES); do bash -n "$$f" || rc=1; done; exit $$rc
 
 lint-py: ## ruff check on the MCP server and repo-root scripts
-	cd mcp_server && uv run --group dev ruff check . && uv run --group dev ruff format --check . \
-		&& uv run --group dev ruff check ../scripts/ ../lib/ \
-		&& uv run --group dev ruff format --check ../lib/
+	cd mcp_server && uv run --locked --group dev ruff check . && uv run --locked --group dev ruff format --check . \
+		&& uv run --locked --group dev ruff check ../scripts/ ../lib/ \
+		&& uv run --locked --group dev ruff format --check ../scripts/ ../lib/
 
 lint-md: ## markdownlint on tracked and untracked docs (mirrors the CI job)
 	git ls-files --cached --others --exclude-standard '*.md' | grep -vE '$(MD_EXCLUDE)' | xargs npx --yes markdownlint-cli2@$(MARKDOWNLINT_VERSION)
 
 format: ## Auto-format the MCP server with ruff
-	cd mcp_server && uv run --group dev ruff format .
+	cd mcp_server && uv run --locked --group dev ruff format .
 
-test: test-bats test-py test-sandbox ## Run all tests
+test: test-bats test-py test-scripts test-sandbox ## Run all tests
 
 test-bats: ## Bash unit tests (bats)
 	./tests/bats/bin/bats tests/*.bats
 
 test-py: ## MCP server tests (pytest)
-	cd mcp_server && uv run --group dev pytest tests/ -q
+	cd mcp_server && uv run --locked --group dev pytest tests/ -q
+
+test-scripts: ## Repository tooling tests (unittest over scripts/test_*.py)
+	python3 -m unittest discover -s scripts -p "test_*.py"
 
 test-sandbox: ## Kata sandbox provider tests (node --test; needs sandbox deps)
 	@if [ -d sandbox/node_modules ]; then node --test sandbox/*.test.mjs; \
 	else echo "ERROR: sandbox deps missing — run 'npm --prefix sandbox ci --ignore-scripts' (or 'make setup')" >&2; exit 1; fi
 
-validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles, version, agent docs)
+validate: ## Run every data-consistency validator (tools, MCP sync, distros, skills, profiles, version, agent docs, client configs, internal doc links)
 	python3 scripts/validate_tools_config.py --strict
 	python3 scripts/validate_mcp_sync.py
 	python3 scripts/validate_distro_compat.py
 	python3 scripts/validate_claude_skills.py
 	python3 scripts/audit_skill_dependencies.py --check-declared
 	bash scripts/update-skills.sh --check-pins
+	python3 scripts/validate_agent_docs.py --selftest
 	python3 scripts/validate_agent_docs.py
 	python3 scripts/verify_audit_chain.py --selftest
+	python3 scripts/validate_client_configs.py --selftest
+	python3 scripts/validate_client_configs.py
+	python3 scripts/check_doc_links.py --self-test
+	python3 scripts/check_doc_links.py --internal
 	bash scripts/validate_profiles.sh
 	bash scripts/validate_version.sh
 

@@ -7,7 +7,7 @@ WEB_PACKAGES=(whatweb)
 
 WEB_PIPX=(
     sqlmap wafw00f sslyze arjun
-    droopescan mitmproxy2swagger commix
+    droopescan mitmproxy2swagger
     raccoon-scanner git-dumper corscanner xsrfprobe
     dirsearch clairvoyance
 )
@@ -41,7 +41,7 @@ WEB_GIT=(
     "jwt_tool=https://github.com/ticarpi/jwt_tool.git"
     "smuggler=https://github.com/defparam/smuggler.git"
     "NoSQLMap=https://github.com/codingo/NoSQLMap.git"
-    "testssl.sh=https://github.com/drwetter/testssl.sh.git"
+    "testssl.sh=https://github.com/testssl/testssl.sh.git"
     "Gopherus=https://github.com/tarunkant/Gopherus.git"
     "CMSmap=https://github.com/dionach/CMSmap.git"
     "PhpSploit=https://github.com/nil0x42/phpsploit.git"
@@ -58,11 +58,12 @@ WEB_GIT=(
     "SSRFmap=https://github.com/swisskyrepo/SSRFmap.git"
     "graphw00f=https://github.com/dolevf/graphw00f.git"
     "Oralyzer=https://github.com/r0075h3ll/Oralyzer.git"
+    "commix=https://github.com/commixproject/commix.git"
 )
 
 # Binary names for verify/remove
 WEB_GO_BINS=(nuclei katana ffuf crlfuzz dalfox kxss cariddi Gxss webanalyze jaeles proxify tlsx jsluice gobuster nomore403)
-WEB_GIT_NAMES=(nikto XSStrike Corsy jwt_tool smuggler NoSQLMap testssl.sh Gopherus CMSmap PhpSploit phpggc PadBuster h2csmuggler pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider ghauri tplmap SSRFmap graphw00f Oralyzer)
+WEB_GIT_NAMES=(nikto XSStrike Corsy jwt_tool smuggler NoSQLMap testssl.sh Gopherus CMSmap PhpSploit phpggc PadBuster h2csmuggler pp-finder symfony-exploits tomcatwardeployer XXEinjector paramspider ghauri tplmap SSRFmap graphw00f Oralyzer commix)
 
 install_module_web() {
     install_apt_batch "Web - Packages" "${WEB_PACKAGES[@]}"

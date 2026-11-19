@@ -22,7 +22,7 @@ FORENSICS_PIPX=(volatility3 oletools usbrip mvt hachoir unblob peepdf-3 vcdvcd p
 
 FORENSICS_GIT=(
     "RegRipper=https://github.com/keydet89/RegRipper3.0.git"
-    "Depix=https://github.com/spipm/Depix.git"
+    "Depix=https://github.com/spipm/Depixelization_poc.git"
     "dvcs-ripper=https://github.com/kost/dvcs-ripper.git"
     "firefox_decrypt=https://github.com/unode/firefox_decrypt.git"
     "firmware-mod-kit=https://github.com/rampageX/firmware-mod-kit.git"

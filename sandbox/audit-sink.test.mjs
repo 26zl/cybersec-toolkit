@@ -26,6 +26,7 @@ import {
   createAuditSink,
   createAuditStderrTee,
   isAuditRecord,
+  protectionEnabled,
   resolveAuditForward,
   resolveHostAuditPath,
   splitAuditLines,
@@ -41,6 +42,14 @@ const record = (tool, seq = 1, ts = '2026-09-10T19:00:00.000Z') =>
 const tagged = (line, key = KEY) => `${AUDIT_STREAM_PREFIX}${auditRecordTag(key, line)} ${line}\n`;
 const readLines = (path) => (existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean) : []);
 const endOf = (tee) => new Promise((done) => tee.end(done));
+
+test('protection flags accept boolean spellings and enable protection for unknown values', () => {
+  for (const value of ['1', 'true', ' YES ', 'ON']) assert.equal(protectionEnabled(value, 'test'), true);
+  for (const value of [undefined, '', '0', 'false', ' NO ', 'OFF']) assert.equal(protectionEnabled(value, 'test'), false);
+  const warnings = [];
+  for (let i = 0; i < 2; i++) assert.equal(protectionEnabled('typo', 'test-invalid', (message) => warnings.push(message)), true);
+  assert.equal(warnings.length, 1);
+});
 
 const collectingTee = (target) => {
   const forwarded = [];
@@ -60,7 +69,8 @@ test('splitAuditLines rejects an oversized audit line and drops its remainder', 
   const first = splitAuditLines('', huge);
   assert.deepEqual(first.audit, []);
   assert.match(first.passthrough[0], /^Rejected oversized audit record/);
-  const second = splitAuditLines(first.rest, 'tail of the record\nStarting MCP server\n');
+  assert.equal(first.discarding, true);
+  const second = splitAuditLines(first.rest, 'tail of the record\nStarting MCP server\n', first.discarding);
   assert.deepEqual(second.passthrough, ['Starting MCP server']);
   assert.equal(second.rest, '');
 });
@@ -191,6 +201,39 @@ test('createAuditSink degrades to a single warning when the log is unusable', ()
 test('createAuditSink fails closed when the audit log is required', () => {
   assert.throws(() => createAuditSink({ path: 'relative/audit.log', required: true }), /Host audit log unavailable/);
 });
+
+test('createAuditSink checks the log itself before returning a required sink', () => {
+  const dir = scratch();
+  assert.throws(() => createAuditSink({ path: dir, required: true }), /Host audit log unavailable/);
+  const victim = join(dir, 'victim');
+  writeFileSync(victim, 'unchanged');
+  const link = join(dir, 'audit.log');
+  symlinkSync(victim, link);
+  assert.throws(() => createAuditSink({ path: link, required: true }), /Host audit log unavailable/);
+  assert.equal(readFileSync(victim, 'utf8'), 'unchanged');
+});
+
+for (const required of ['on', 'typo']) {
+  test(`the launcher requires the host log before Docker starts (AUDIT_REQUIRED=${required})`, async () => {
+    const dir = scratch();
+    const blocked = join(dir, 'blocked');
+    writeFileSync(blocked, 'not a directory');
+    const dockerLog = join(dir, 'docker-called');
+    const docker = join(dir, 'docker');
+    writeFileSync(docker, `#!/bin/sh\nprintf called > '${dockerLog}'\nexit 1\n`);
+    chmodSync(docker, 0o755);
+    const launcher = spawn(process.execPath, [join(import.meta.dirname, 'mcp.mjs')], {
+      env: { PATH: dir, HOME: dir, CYBERSEC_MCP_AUDIT_LOG: join(blocked, 'audit.log'), CYBERSEC_MCP_AUDIT_REQUIRED: required },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    launcher.stderr.on('data', (chunk) => { stderr += chunk; });
+    const [exitCode] = await once(launcher, 'close');
+    assert.equal(exitCode, 1, stderr);
+    assert.match(stderr, /Host audit log unavailable/);
+    assert.equal(existsSync(dockerLog), false, stderr);
+  });
+}
 
 test('the stderr tee persists authenticated records and forwards ordinary stderr', async () => {
   const target = join(scratch(), 'audit.log');
@@ -333,7 +376,13 @@ const { appendFileSync } = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
 const args = process.argv.slice(2);
-appendFileSync(process.env.FAKE_DOCKER_LOG, JSON.stringify({ args, key: process.env.${AUDIT_KEY_ENV} ?? null }) + '\\n');
+appendFileSync(process.env.FAKE_DOCKER_LOG, JSON.stringify({
+  args, key: process.env.${AUDIT_KEY_ENV} ?? null,
+  hostControl: {
+    CYBERSEC_MCP_ALLOW_USBKILL: process.env.CYBERSEC_MCP_ALLOW_USBKILL ?? null,
+    CYBERSEC_MCP_ALLOW_NIPE: process.env.CYBERSEC_MCP_ALLOW_NIPE ?? null,
+  },
+}) + '\\n');
 if (args[0] !== 'exec') {
   process.stdout.write({ info: '{"kata":{}}', image: 'sha256:fake', run: 'fake-container' }[args[0]] ?? '');
   process.exit(0);
@@ -382,54 +431,62 @@ line = json.dumps({"ts": "2026-09-10T19:30:00.000Z", "event": "tool_call", "tool
 print("${AUDIT_STREAM_PREFIX}" + hmac.new(key, line.encode(), hashlib.sha256).hexdigest() + " " + line, file=sys.stderr)
 `;
 
-test('the launcher hands the audit key to the server process alone', { timeout: 60_000 }, async () => {
-  const dir = scratch();
-  const bin = join(dir, 'bin');
-  mkdirSync(bin);
-  writeFileSync(join(dir, 'fake-docker.cjs'), FAKE_DOCKER);
-  writeFileSync(join(bin, 'docker'), `#!/bin/sh\nexec '${process.execPath}' '${join(dir, 'fake-docker.cjs')}' "$@"\n`);
-  chmodSync(join(bin, 'docker'), 0o755);
-  writeFileSync(join(dir, 'guest-server.py'), GUEST_SERVER);
-  writeFileSync(join(dir, 'guest-tool.py'), GUEST_TOOL);
+for (const hostControl of [{}, { CYBERSEC_MCP_ALLOW_USBKILL: '1', CYBERSEC_MCP_ALLOW_NIPE: '1' }]) {
+  test(`the launcher forwards host-control opt-ins and protects the audit key (${Object.keys(hostControl).length ? 'enabled' : 'default'})`, { timeout: 60_000 }, async () => {
+    const dir = scratch();
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(dir, 'fake-docker.cjs'), FAKE_DOCKER);
+    writeFileSync(join(bin, 'docker'), `#!/bin/sh\nexec '${process.execPath}' '${join(dir, 'fake-docker.cjs')}' "$@"\n`);
+    chmodSync(join(bin, 'docker'), 0o755);
+    writeFileSync(join(dir, 'guest-server.py'), GUEST_SERVER);
+    writeFileSync(join(dir, 'guest-tool.py'), GUEST_TOOL);
 
-  const hostLog = join(dir, 'host-audit.log');
-  const dockerLog = join(dir, 'docker-calls.jsonl');
-  const launcher = spawn(process.execPath, [join(import.meta.dirname, 'mcp.mjs')], {
-    env: {
-      PATH: `${bin}:${process.env.PATH}`,
-      HOME: dir,
-      CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME: '1',
-      CYBERSEC_MCP_AUDIT_LOG: hostLog,
-      FAKE_DOCKER_LOG: dockerLog,
-      FAKE_GUEST_AUDIT_LOG: join(dir, 'guest-audit.log'),
-      FAKE_GUEST_PYTHONPATH: ROOT,
-      FAKE_GUEST_SERVER: join(dir, 'guest-server.py'),
-      FAKE_GUEST_TOOL: join(dir, 'guest-tool.py'),
-    },
-    stdio: ['ignore', 'ignore', 'pipe'],
+    const hostLog = join(dir, 'host-audit.log');
+    const dockerLog = join(dir, 'docker-calls.jsonl');
+    const launcher = spawn(process.execPath, [join(import.meta.dirname, 'mcp.mjs')], {
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        HOME: dir,
+        CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME: '1',
+        CYBERSEC_MCP_AUDIT_LOG: hostLog,
+        FAKE_DOCKER_LOG: dockerLog,
+        FAKE_GUEST_AUDIT_LOG: join(dir, 'guest-audit.log'),
+        FAKE_GUEST_PYTHONPATH: ROOT,
+        FAKE_GUEST_SERVER: join(dir, 'guest-server.py'),
+        FAKE_GUEST_TOOL: join(dir, 'guest-tool.py'),
+        ...hostControl,
+      },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    launcher.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    const [exitCode] = await once(launcher, 'close');
+    assert.equal(exitCode, 0, stderr);
+
+    const calls = readLines(dockerLog).map((line) => JSON.parse(line));
+    const create = calls.find((call) => call.args[0] === 'run');
+    for (const name of ['CYBERSEC_MCP_ALLOW_USBKILL', 'CYBERSEC_MCP_ALLOW_NIPE']) {
+      assert.equal(create.hostControl[name], hostControl[name] ?? '0');
+      assert.ok(create.args.some((arg, index) => arg === '--env' && create.args[index + 1] === name));
+    }
+    const exec = calls.find((call) => call.args[0] === 'exec');
+    assert.match(exec?.key ?? '', /^[0-9a-f]{64}$/, 'docker exec resolves the key from its own environment');
+    const flag = exec.args.indexOf('--env');
+    assert.deepEqual(exec.args.slice(flag, flag + 2), ['--env', AUDIT_KEY_ENV], 'passed by name only');
+    for (const call of calls) {
+      assert.equal(call.args.join(' ').includes(exec.key), false, `docker ${call.args[0]}: key on its command line`);
+      if (call === exec) continue;
+      assert.equal(call.key, null, `docker ${call.args[0]}: key in its environment`);
+      assert.equal(call.args.join(' ').includes(AUDIT_KEY_ENV), false, `docker ${call.args[0]}: key forwarded`);
+    }
+
+    assert.deepEqual(readLines(hostLog).map((line) => JSON.parse(line).tool), ['guided_assessment']);
+    assert.match(stderr, /Rejected unauthenticated audit record: .*suggest_for_ctf/);
   });
-  let stderr = '';
-  launcher.stderr.on('data', (chunk) => {
-    stderr += chunk;
-  });
-  const [exitCode] = await once(launcher, 'close');
-  assert.equal(exitCode, 0, stderr);
-
-  const calls = readLines(dockerLog).map((line) => JSON.parse(line));
-  const exec = calls.find((call) => call.args[0] === 'exec');
-  assert.match(exec?.key ?? '', /^[0-9a-f]{64}$/, 'docker exec resolves the key from its own environment');
-  const flag = exec.args.indexOf('--env');
-  assert.deepEqual(exec.args.slice(flag, flag + 2), ['--env', AUDIT_KEY_ENV], 'passed by name only');
-  for (const call of calls) {
-    assert.equal(call.args.join(' ').includes(exec.key), false, `docker ${call.args[0]}: key on its command line`);
-    if (call === exec) continue;
-    assert.equal(call.key, null, `docker ${call.args[0]}: key in its environment`);
-    assert.equal(call.args.join(' ').includes(AUDIT_KEY_ENV), false, `docker ${call.args[0]}: key forwarded`);
-  }
-
-  assert.deepEqual(readLines(hostLog).map((line) => JSON.parse(line).tool), ['guided_assessment']);
-  assert.match(stderr, /Rejected unauthenticated audit record: .*suggest_for_ctf/);
-});
+}
 
 // A logger(1) that accepts the options the sink passes and appends what it reads to a file.
 const fakeLogger = (dir, out) => {
@@ -512,4 +569,44 @@ test('a missing logger warns, or stops a session that requires its audit trail',
       /needs logger\(1\)/,
     );
   });
+});
+
+test('a logger that exits mid-session is reported once, not silently', async () => {
+  const dir = scratch();
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, 'logger'),
+    '#!/bin/sh\nfor arg in "$@"; do [ "$arg" = "--version" ] && exit 0; done\nhead -n 1 > /dev/null\nexit 0\n',
+  );
+  chmodSync(join(bin, 'logger'), 0o755);
+  const warnings = [];
+
+  await withPath(`${bin}:${process.env.PATH}`, async () => {
+    const sink = createAuditSink({ path: join(dir, 'audit.log'), forward: 'syslog', warn: (m) => warnings.push(m) });
+    sink.write(record('run_tool', 1));
+    for (let attempt = 0; attempt < 100 && warnings.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    sink.write(record('run_tool', 2));
+    sink.close();
+  });
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /forwarding to the system log stopped/);
+});
+
+test('the stderr tee keeps a multi-byte character split across chunks intact', async () => {
+  const { tee, forwarded } = collectingTee(join(scratch(), 'audit.log'));
+  const bytes = Buffer.from('café € done\n', 'utf8');
+  const cut = bytes.indexOf(0xe2) + 1;
+  tee.write(bytes.subarray(0, cut));
+  tee.write(bytes.subarray(cut));
+  await endOf(tee);
+  assert.equal(forwarded.join(''), 'café € done\n');
+});
+
+test('a stderr line that starts with NUL is passed through, not dropped', () => {
+  const split = splitAuditLines('', '\u0000odd line\nnext\n');
+  assert.deepEqual(split.passthrough, ['\u0000odd line', 'next']);
+  assert.equal(split.discarding, false);
 });

@@ -15,7 +15,7 @@ ENTERPRISE_PIPX=(
     adidnsdump dploot bloodyad hekatomb
     certsync masky pywhisker autobloody
     krbjack roadtx pywerview pysnaffler powerview aclpwn
-    ldeep smbclientng ldapsearchad manspider
+    ldeep smbclientng ldapsearchad man-spider
 )
 
 ENTERPRISE_GO=(
@@ -38,7 +38,7 @@ ENTERPRISE_GIT=(
     "petitpotam=https://github.com/topotam/PetitPotam.git"
     "shadowcoerce=https://github.com/ShutdownRepo/shadowcoerce.git"
     "noPac=https://github.com/Ridter/noPac.git"
-    "zerologon=https://github.com/SecuraBV/CVE-2020-1472.git"
+    "zerologon=https://github.com/bvcyber/CVE-2020-1472.git"
     "ntlm_theft=https://github.com/Greenwolf/ntlm_theft.git"
     "ntlmv1-multi=https://github.com/evilmog/ntlmv1-multi.git"
     "PassTheCert=https://github.com/AlmondOffSec/PassTheCert.git"
@@ -75,7 +75,7 @@ ENTERPRISE_GIT_NAMES=(Responder enum4linux-ng linWinPwn PCredz krbrelayx sprayka
 ENTERPRISE_BUILD_NAMES=(azurehound gosecretsdump GoExec GoMapEnum rusthound rusthound-ce)
 # -g: verify/update/remove source modules from inside a function.
 declare -gA ENTERPRISE_BUILD_URLS=(
-    [azurehound]="https://github.com/BloodHoundAD/AzureHound.git"
+    [azurehound]="https://github.com/SpecterOps/AzureHound.git"
     [gosecretsdump]="https://github.com/c-sto/gosecretsdump.git"
     [GoExec]="https://github.com/FalconOpsLLC/goexec.git"
     [GoMapEnum]="https://github.com/nodauf/GoMapEnum.git"
@@ -83,12 +83,20 @@ declare -gA ENTERPRISE_BUILD_URLS=(
     [rusthound-ce]="https://github.com/g0h4n/RustHound-CE.git"
 )
 declare -gA ENTERPRISE_BUILD_CMDS=(
-    [azurehound]="go build"
+    [azurehound]="go build -o azurehound ."
     [gosecretsdump]="go build"
     [GoExec]="go build -o GoExec ."
     [GoMapEnum]="go build -o GoMapEnum ./src"
     [rusthound]="cargo build --release"
     [rusthound-ce]="cargo build --release"
+)
+declare -gA ENTERPRISE_BUILD_BINS=(
+    [azurehound]="azurehound|azurehound"
+    [gosecretsdump]="gosecretsdump|gosecretsdump"
+    [GoExec]="GoExec|GoExec"
+    [GoMapEnum]="GoMapEnum|GoMapEnum"
+    [rusthound]="target/release/rusthound|rusthound"
+    [rusthound-ce]="target/release/rusthound-ce|rusthound-ce"
 )
 
 # Direct module selection installs the full offensive Active Directory tool set.
@@ -102,7 +110,7 @@ install_module_enterprise() {
             _track_already_present "nxc" "pipx"
         else
             log_info "Installing NetExec from GitHub..."
-            if pipx install "git+https://github.com/Pennyw0rth/NetExec" >> "$LOG_FILE" 2>&1; then
+            if pipx_install "git+https://github.com/Pennyw0rth/NetExec"; then
                 log_success "NetExec installed"
                 track_version "nxc" "pipx" "git"
             else

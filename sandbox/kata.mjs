@@ -18,11 +18,12 @@ import { execFile, execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { createIsolatedSandboxProvider } from '@ai-hero/sandcastle';
 
+import { protectionEnabled, resolveHostAuditPath } from './audit-sink.mjs';
 import { applyScope, buildHostArgs, loadScope, resolveScope, summarize } from './scope.mjs';
 
 export const SANDBOX_LABEL_KEY = 'cybersec-toolkit.sandbox';
@@ -43,8 +44,19 @@ const MAX_TAIL_CHARS = 64 * 1024;
 // Runtime names Kata registers under, most specific first.
 const KATA_RUNTIME_PREFERENCE = ['kata', 'kata-runtime', 'kata-qemu', 'io.containerd.kata.v2'];
 
+const OPTION_FORMATS = {
+  user: [
+    /^(\d+|[a-z_][a-z0-9_-]*)(:(\d+|[a-z_][a-z0-9_-]*))?$/i,
+    'CYBERSEC_SANDBOX_USER',
+    'a user name or uid, optionally followed by :group',
+  ],
+  memory: [/^\d+(\.\d+)?[kmgt]?i?b?$/i, 'CYBERSEC_SANDBOX_MEMORY', 'a size such as 2g'],
+  cpus: [/^\d+(\.\d+)?$/, 'CYBERSEC_SANDBOX_CPUS', 'a number such as 2 or 1.5'],
+  pidsLimit: [/^\d+$/, 'CYBERSEC_SANDBOX_PIDS_LIMIT', 'a whole number'],
+  scratchSize: [/^\d+(\.\d+)?[kmgt]?i?b?$/i, 'CYBERSEC_SANDBOX_SCRATCH_SIZE', 'a size such as 1g'],
+};
+
 const asString = (value) => (value === undefined || value === null ? undefined : String(value));
-const truthy = (value) => ['1', 'true', 'yes'].includes((value ?? '').trim().toLowerCase());
 
 /** Whether a runtime name denotes Kata, i.e. an actual VM boundary. */
 export const isKataRuntime = (name) => /kata/i.test(name ?? '');
@@ -54,6 +66,17 @@ export const isKataRuntime = (name) => /kata/i.test(name ?? '');
 // opt-in); anything else is labelled with the runtime that actually ran.
 export const sandboxModeLabel = (runtime, allowUnsafe) =>
   isKataRuntime(runtime) && !allowUnsafe ? 'kata' : `unsafe:${runtime}`;
+
+export const SANDBOX_UNAVAILABLE = 'SANDBOX_UNAVAILABLE';
+
+// An environmental failure (no runtime, no docker, no image) as opposed to a refusal by policy.
+const unavailable = (message) => Object.assign(new Error(message), { code: SANDBOX_UNAVAILABLE });
+
+/** The advice printed after a launch failure; the host-mode hint only fits an unavailable sandbox. */
+export const launchFailureHint = (error) =>
+  error?.code === SANDBOX_UNAVAILABLE
+    ? 'Run `bash scripts/mcp-launch.sh --local` to execute on the host instead (no VM boundary).'
+    : 'Fix the configuration; a refused sandbox, scope or workspace is the boundary, not a fault to bypass.';
 
 const assertKataRuntime = (name, allowUnsafe) => {
   // A non-Kata runtime is a namespace container sharing the host kernel — the
@@ -122,19 +145,27 @@ export const resolveOptions = (options = {}, env = process.env) => {
     throw new Error(`CYBERSEC_SANDBOX_WORKSPACE must be an absolute path, got '${workspace}'.`);
   }
 
+  const checked = (key, fallback) => {
+    const [pattern, name, expected] = OPTION_FORMATS[key];
+    const value = pick(options[key], name) ?? fallback;
+    if (!pattern.test(value)) throw new Error(`${name} must be ${expected}, got '${value}'.`);
+    if (key === 'user' && /^(root|0+)(:|$)/i.test(value)) throw new Error(`${name} must not be root, got '${value}'.`);
+    return value;
+  };
+
   return {
     image: pick(options.image, 'CYBERSEC_SANDBOX_IMAGE') ?? DEFAULT_IMAGE,
     runtime: pick(options.runtime, 'CYBERSEC_SANDBOX_RUNTIME'),
     network: pick(options.network, 'CYBERSEC_SANDBOX_NETWORK'),
-    user: pick(options.user, 'CYBERSEC_SANDBOX_USER') ?? DEFAULT_USER,
-    memory: pick(options.memory, 'CYBERSEC_SANDBOX_MEMORY') ?? DEFAULT_MEMORY,
-    cpus: pick(options.cpus, 'CYBERSEC_SANDBOX_CPUS') ?? DEFAULT_CPUS,
-    pidsLimit: pick(options.pidsLimit, 'CYBERSEC_SANDBOX_PIDS_LIMIT') ?? DEFAULT_PIDS_LIMIT,
-    scratchSize: pick(options.scratchSize, 'CYBERSEC_SANDBOX_SCRATCH_SIZE') ?? DEFAULT_SCRATCH_SIZE,
+    user: checked('user', DEFAULT_USER),
+    memory: checked('memory', DEFAULT_MEMORY),
+    cpus: checked('cpus', DEFAULT_CPUS),
+    pidsLimit: checked('pidsLimit', DEFAULT_PIDS_LIMIT),
+    scratchSize: checked('scratchSize', DEFAULT_SCRATCH_SIZE),
     capAdd: parseCapabilities(options.capAdd ?? env.CYBERSEC_SANDBOX_CAP_ADD),
     allowUnsafeRuntime: (pick(options.allowUnsafeRuntime, 'CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME') ?? '0') === '1',
     workspace,
-    workspaceReadonly: truthy(pick(options.workspaceReadonly, 'CYBERSEC_SANDBOX_WORKSPACE_RO')),
+    workspaceReadonly: protectionEnabled(pick(options.workspaceReadonly, 'CYBERSEC_SANDBOX_WORKSPACE_RO'), 'CYBERSEC_SANDBOX_WORKSPACE_RO'),
     scope: pick(options.scope, 'CYBERSEC_SANDBOX_SCOPE'),
     allowStaleImage: (pick(options.allowStaleImage, 'CYBERSEC_SANDBOX_ALLOW_STALE_IMAGE') ?? '0') === '1',
   };
@@ -152,7 +183,7 @@ export const selectRuntime = (runtimes, requested, { allowUnsafe = false } = {})
 
   if (requested) {
     if (!names.includes(requested)) {
-      throw new Error(`Runtime '${requested}' is not registered with Docker (available: ${available}).`);
+      throw unavailable(`Runtime '${requested}' is not registered with Docker (available: ${available}).`);
     }
     return assertKataRuntime(requested, allowUnsafe);
   }
@@ -160,7 +191,7 @@ export const selectRuntime = (runtimes, requested, { allowUnsafe = false } = {})
   const kata = names.filter((name) => isKataRuntime(name)).sort();
   const chosen = KATA_RUNTIME_PREFERENCE.find((name) => kata.includes(name)) ?? kata[0];
   if (!chosen) {
-    throw new Error(
+    throw unavailable(
       `No Kata runtime is registered with Docker (available: ${available}). ` +
         'Install Kata Containers and register it in /etc/docker/daemon.json, ' +
         'or set CYBERSEC_SANDBOX_RUNTIME. See docs/SANDBOX.md.',
@@ -178,6 +209,9 @@ export const buildRunArgs = ({ name, runtime, options, env, hostArgs = [] }) => 
     // An init as PID 1 reaps orphaned tool processes; `sleep infinity` would leave
     // zombies counting against --pids-limit in long sessions.
     '--init',
+    // The image was inspected and checked a moment ago; never substitute a pulled one.
+    '--pull',
+    'never',
     '--name',
     name,
     '--runtime',
@@ -216,8 +250,15 @@ export const buildRunArgs = ({ name, runtime, options, env, hostArgs = [] }) => 
   args.push(...hostArgs);
 
   // The only host path the VM can see, and only when the operator names one.
+  // --mount, not --volume: a ':' in a directory name would be read as a field separator.
   if (options.workspace) {
-    args.push('--volume', `${options.workspace}:${WORKTREE_PATH}${options.workspaceReadonly ? ':ro' : ''}`);
+    if (/[,\u0000-\u001f\u007f]/.test(options.workspace)) {
+      throw new Error(`Workspace '${options.workspace}' contains a comma or control character and cannot be mounted.`);
+    }
+    args.push(
+      '--mount',
+      `type=bind,src=${options.workspace},dst=${WORKTREE_PATH}${options.workspaceReadonly ? ',readonly' : ''}`,
+    );
   }
 
   // Names only: the values travel in the docker CLI's own environment (see
@@ -257,18 +298,30 @@ export const appendTail = (tail, chunk, limit = MAX_TAIL_CHARS) => {
   return next.length > limit ? next.slice(next.length - limit) : next;
 };
 
-const dockerExec = (args, { maxBuffer = 10 * 1024 * 1024, env } = {}) =>
+const DAEMON_UNREACHABLE =
+  /cannot connect to the docker daemon|permission denied while trying to connect|is the docker daemon running|error during connect/i;
+
+const QUERY_TIMEOUT_MS = 30_000;
+
+// `timeout` bounds the calls that must answer promptly; docker run is left open for slow VM boots.
+const dockerExec = (args, { maxBuffer = 10 * 1024 * 1024, env, timeout = 0 } = {}) =>
   new Promise((resolve, reject) => {
-    execFile('docker', args, { maxBuffer, env }, (error, stdout, stderr) => {
+    execFile('docker', args, { maxBuffer, env, timeout }, (error, stdout, stderr) => {
       if (!error) {
         resolve(stdout.toString());
         return;
       }
       if (error.code === 'ENOENT') {
-        reject(new Error('docker CLI not found on PATH; see docs/SANDBOX.md for host prerequisites.'));
+        reject(unavailable('docker CLI not found on PATH; see docs/SANDBOX.md for host prerequisites.'));
         return;
       }
-      reject(new Error(`docker ${args[0]} failed: ${stderr?.toString().trim() || error.message}`));
+      if (error.killed) {
+        reject(unavailable(`docker ${args[0]} timed out after ${timeout / 1000}s`));
+        return;
+      }
+      const detail = stderr?.toString().trim() || error.message;
+      const message = `docker ${args[0]} failed: ${detail}`;
+      reject(DAEMON_UNREACHABLE.test(detail) ? unavailable(message) : new Error(message));
     });
   });
 
@@ -294,7 +347,7 @@ const dockerExecInput = (args, input) =>
   });
 
 const readRuntimes = async () => {
-  const raw = await dockerExec(['info', '--format', '{{json .Runtimes}}']);
+  const raw = await dockerExec(['info', '--format', '{{json .Runtimes}}'], { timeout: QUERY_TIMEOUT_MS });
   try {
     return JSON.parse(raw.trim() || '{}');
   } catch {
@@ -304,7 +357,7 @@ const readRuntimes = async () => {
 
 const currentSourceHash = () => {
   try {
-    return execFileSync('bash', [resolve(_CHECKOUT_ROOT, 'scripts/sandbox-source-hash.sh')], {
+    return execFileSync('bash', [resolve(CHECKOUT_ROOT, 'scripts/sandbox-source-hash.sh')], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
@@ -333,12 +386,15 @@ export const assertImageCurrent = (labels, current, image, allowStale = false) =
   );
 };
 
-const assertImagePresent = async (image, allowStale) => {
+export const assertImagePresent = async (image, allowStale) => {
   let raw;
   try {
-    raw = await dockerExec(['image', 'inspect', image, '--format', '{{json .Config.Labels}}']);
-  } catch {
-    throw new Error(`Sandbox image '${image}' not found. Build it with: ${BUILD_HINT}`);
+    raw = await dockerExec(['image', 'inspect', image, '--format', '{{json .Config.Labels}}'], {
+      timeout: QUERY_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (!/no such (image|object)/i.test(error.message)) throw error;
+    throw unavailable(`Sandbox image '${image}' not found. Build it with: ${BUILD_HINT}`);
   }
   let labels;
   try {
@@ -346,24 +402,32 @@ const assertImagePresent = async (image, allowStale) => {
   } catch {
     return; // Unreadable labels leave staleness unknown; that is no reason to refuse the image.
   }
-  assertImageCurrent(labels, currentSourceHash(), image, allowStale);
+  const current = currentSourceHash();
+  if (!current) process.stderr.write('WARNING: could not compute the source hash; image staleness check skipped.\n');
+  assertImageCurrent(labels, current, image, allowStale);
 };
 
 // a is an ancestor of, or equal to, b.
-const _isAncestorOrSame = (a, b) => b === a || b.startsWith(a.endsWith(sep) ? a : a + sep);
+const isAncestorOrSame = (a, b) => b === a || b.startsWith(a.endsWith(sep) ? a : a + sep);
 
 // Mounting these (read-write by default) would hand VM code a host path it could
 // use to escape the VM boundary on the next launch. System trees are blocked in
 // both directions (do not mount /etc, nor /etc/x); $HOME and the checkout are
 // blocked only when the workspace is them or above them, so a case directory
 // *under* $HOME still works.
-const _SYSTEM_TREES = [
+const SYSTEM_TREES = [
   '/etc', '/usr', '/bin', '/sbin', '/lib', '/lib64', '/boot', '/dev', '/proc', '/sys', '/root',
-  '/opt/kata', '/var/lib/docker', '/var/lib/containerd', '/run/docker', '/run/docker.sock', '/run/containerd',
+  '/opt/kata', '/var/lib/docker', '/var/lib/containerd', '/var/lib/kata-containers', '/var/lib/kubelet',
+  '/var/snap/docker', '/run/docker', '/run/docker.sock', '/run/containerd', '/run/user',
 ];
-const _CHECKOUT_ROOT = resolve(import.meta.dirname, '..');
+// Under $HOME: credential stores, agent client configuration and the host audit log.
+const HOME_PROTECTED = [
+  '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gcloud', '.claude', '.codex',
+  '.local/state/cybersec-tools-mcp',
+];
+const CHECKOUT_ROOT = resolve(import.meta.dirname, '..');
 
-const _realpathOrNull = (p) => {
+const realpathOrNull = (p) => {
   try {
     return realpathSync(p);
   } catch {
@@ -371,8 +435,30 @@ const _realpathOrNull = (p) => {
   }
 };
 
-export const assertWorkspaceUsable = (workspace) => {
-  if (!workspace) return;
+/** realpath of the longest existing ancestor of `p`, joined with the segments that do not exist yet. */
+export const resolveDeepest = (p) => {
+  let current = resolve(p);
+  const missing = [];
+  for (;;) {
+    const real = realpathOrNull(current);
+    if (real) return missing.length ? join(real, ...missing.reverse()) : real;
+    const parent = dirname(current);
+    if (parent === current) return current;
+    missing.push(basename(current));
+    current = parent;
+  }
+};
+
+/**
+ * Refuse a workspace the VM must not write to; returns its resolved path, which is what gets mounted.
+ *
+ * `home`, `trees`, `scope` and `env` are injectable so a test can stage a fake host.
+ */
+export const assertWorkspaceUsable = (
+  workspace,
+  { home = homedir(), trees = SYSTEM_TREES, scope, env = process.env } = {},
+) => {
+  if (!workspace) return undefined;
   let stats;
   try {
     stats = statSync(workspace);
@@ -385,24 +471,39 @@ export const assertWorkspaceUsable = (workspace) => {
   const refuse = (why) => {
     throw new Error(`Workspace '${workspace}' ${why}; mount a dedicated case directory instead.`);
   };
+  const overlaps = (path) => isAncestorOrSame(real, path) || isAncestorOrSame(path, real);
 
   if (real === '/') refuse('resolves to the host root');
-  for (const tree of _SYSTEM_TREES) {
-    if (_isAncestorOrSame(real, tree) || _isAncestorOrSame(tree, real)) {
-      refuse(`overlaps the system directory ${tree}`);
+  // Each tree is also checked through its symlinks (macOS /etc, a relocated /var/lib/docker).
+  for (const tree of trees) {
+    if (overlaps(tree) || overlaps(resolveDeepest(tree))) refuse(`overlaps the system directory ${tree}`);
+  }
+  const realHome = realpathOrNull(home);
+  if (realHome && isAncestorOrSame(real, realHome)) refuse('is your home directory or an ancestor of it');
+  // Only a workspace that is, or contains, the directory exposes the file; a sibling subdirectory does not.
+  const protectedFiles = [
+    ['the host audit log directory', resolveHostAuditPath(env)],
+    ...(scope ? [['the directory of the scope file', scope]] : []),
+  ];
+  for (const [label, path] of protectedFiles) {
+    const directories = [resolveDeepest(dirname(path)), dirname(resolveDeepest(path))];
+    if (directories.some((directory) => isAncestorOrSame(real, directory))) refuse(`overlaps ${label}`);
+  }
+  if (realHome) {
+    for (const dir of HOME_PROTECTED) {
+      if (overlaps(resolveDeepest(join(realHome, dir)))) refuse(`overlaps the protected directory ~/${dir}`);
     }
   }
-  const home = _realpathOrNull(homedir());
-  if (home && _isAncestorOrSame(real, home)) refuse('is your home directory or an ancestor of it');
-  const checkout = _realpathOrNull(_CHECKOUT_ROOT);
-  if (checkout && _isAncestorOrSame(real, checkout)) {
+  const checkout = realpathOrNull(CHECKOUT_ROOT);
+  if (checkout && isAncestorOrSame(real, checkout)) {
     refuse('is the toolkit checkout or an ancestor of it (VM code could rewrite the launcher)');
   }
   // Clients load instruction files, skills and MCP settings from inside the project
   // tree, so a directory the VM writes to must not be part of it.
-  if (checkout && _isAncestorOrSame(checkout, real)) {
+  if (checkout && isAncestorOrSame(checkout, real)) {
     refuse('is inside the toolkit checkout (the client would read files the VM writes there as project content)');
   }
+  return real;
 };
 
 /**
@@ -411,9 +512,10 @@ export const assertWorkspaceUsable = (workspace) => {
  * A container that outlives its launcher keeps a VM — and any target access it
  * was granted — alive, so teardown also runs from the exit and signal paths.
  * A signal that lands while `pending()` is still booting the VM waits for it:
- * removing a container that does not exist yet would leave it orphaned.
+ * removing a container that does not exist yet would leave it orphaned. The wait
+ * is bounded by `graceMs` so a boot that never settles cannot block the exit.
  */
-export const registerShutdown = (cleanup, pending = () => undefined, proc = process) => {
+export const registerShutdown = (cleanup, pending = () => undefined, proc = process, graceMs = 10_000) => {
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
   const onExit = () => cleanup();
   const onSignal = (signal) => {
@@ -422,8 +524,19 @@ export const registerShutdown = (cleanup, pending = () => undefined, proc = proc
       proc.exit(signal === 'SIGINT' ? 130 : 143);
     };
     const booting = pending();
-    if (booting) booting.then(finish, finish);
-    else finish();
+    if (!booting) {
+      finish();
+      return;
+    }
+    let settled = false;
+    const once = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      finish();
+    };
+    const timer = setTimeout(once, graceMs);
+    booting.then(once, once);
   };
 
   proc.on('exit', onExit);
@@ -448,10 +561,10 @@ export const kata = (options = {}) => {
     name: 'kata',
     env: options.env,
     create: async (createOptions) => {
-      assertWorkspaceUsable(resolved.workspace);
+      assertWorkspaceUsable(resolved.workspace, { scope: resolved.scope });
       // Read and resolved before anything boots: a scope that cannot be applied in full stops the launch.
       const scope = resolved.scope ? await resolveScope(loadScope(resolved.scope)) : null;
-      if (scope && resolved.user.split(':')[0] === '0') {
+      if (scope && /^(root|0+)$/i.test(resolved.user.split(':')[0])) {
         throw new Error('A network scope cannot be enforced when the sandbox user is root; unset CYBERSEC_SANDBOX_USER.');
       }
       const runtime = selectRuntime(await readRuntimes(), resolved.runtime, {
@@ -487,13 +600,15 @@ export const kata = (options = {}) => {
 
       // Registered before `docker run`, which is where the VM boots: a signal
       // in that window must still remove it.
+      // Checked again after the awaits above; the validated path, not the configured one, is mounted.
+      const workspace = assertWorkspaceUsable(resolved.workspace, { scope: resolved.scope });
       let booting;
       const unregisterShutdown = registerShutdown(removeSync, () => booting);
       booting = dockerExec(
         buildRunArgs({
           name: containerName,
           runtime,
-          options: resolved,
+          options: { ...resolved, workspace },
           env,
           hostArgs: scope ? buildHostArgs(scope) : [],
         }),
@@ -520,7 +635,7 @@ export const kata = (options = {}) => {
         };
         let guestBootId;
         try {
-          guestBootId = (await dockerExec(['exec', containerName, 'cat', BOOT_ID_PATH])).trim();
+          guestBootId = (await dockerExec(['exec', containerName, 'cat', BOOT_ID_PATH], { timeout: QUERY_TIMEOUT_MS })).trim();
         } catch (error) {
           teardownAndThrow(new Error(`Could not verify the sandbox is a VM: ${error.message}`));
         }
@@ -559,6 +674,8 @@ export const kata = (options = {}) => {
             });
             child.on('error', (error) => reject(new Error(`docker exec failed: ${error.message}`)));
             if (opts.stdin !== undefined) {
+              // A docker exec that exits early closes the pipe; that must not crash the launcher.
+              child.stdin.on('error', () => {});
               child.stdin.write(opts.stdin);
               child.stdin.end();
             }

@@ -10,6 +10,7 @@
 #   sudo ./scripts/remove.sh --module web          # Remove web module only
 #   sudo ./scripts/remove.sh --remove-deps          # Also remove base packages (dangerous)
 #   sudo ./scripts/remove.sh --yes                 # Skip confirmation
+#   ./scripts/remove.sh --dry-run                  # List what would be removed, change nothing
 
 set -uo pipefail
 
@@ -18,6 +19,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/shared.sh"
 _source_all_modules "$SCRIPT_DIR"
+source "$SCRIPT_DIR/scripts/stale_artefacts.sh"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     cat << EOF
@@ -35,6 +37,8 @@ Options:
                        registry, pip/pipx cache, npm cache, rustup toolchains,
                        log files).
                        Full removal only; not combinable with --module.
+  -n, --dry-run      Print what would be removed and change nothing (no root
+                       needed, no confirmation, no log file or lock written)
   -y, --yes          Skip confirmation prompt (required when not on a terminal)
   --force-unrecorded Remove listed tools even when no .versions install record
                        is present — treats every known tool as the toolkit's.
@@ -61,6 +65,7 @@ REMOVE_MODULES=()
 REMOVE_DEPS=false
 DEEP_CLEAN=false
 AUTO_YES=false
+DRY_RUN=false
 FORCE_UNRECORDED=false
 REMOVAL_FAILURES=0
 REMOVED_TOOLS=()
@@ -71,6 +76,7 @@ while [[ $# -gt 0 ]]; do
                              REMOVE_MODULES+=("$2"); shift 2 ;;
         --remove-deps)       REMOVE_DEPS=true; shift ;;
         --deep-clean)        DEEP_CLEAN=true; shift ;;
+        -n|--dry-run)        DRY_RUN=true; shift ;;
         -y|--yes)            AUTO_YES=true; shift ;;
         --force-unrecorded)  FORCE_UNRECORDED=true; shift ;;
         -v|--verbose)        VERBOSE=true; shift ;;
@@ -103,16 +109,20 @@ else
     fi
 fi
 
-check_root
-_acquire_run_lock
-# After the lock: a refused second run must not truncate the log of the run that holds it.
-_init_log_file "$SCRIPT_DIR/tool_removal.log"
+if [[ "$DRY_RUN" == "true" ]]; then
+    LOG_FILE=/dev/null
+else
+    check_root
+    _acquire_run_lock
+    # After the lock: a refused second run must not truncate the log of the run that holds it.
+    _init_log_file "$SCRIPT_DIR/tool_removal.log"
+fi
 print_banner
 
 # When disk space is critically low, free package cache FIRST so that
 # subsequent pkg_remove calls have enough room for dpkg temp files.
 _avail_mb=$(_avail_disk_mb)
-if [[ "$_avail_mb" =~ ^[0-9]+$ ]] && [[ "$_avail_mb" -lt 100 ]]; then
+if [[ "$DRY_RUN" != "true" && "$_avail_mb" =~ ^[0-9]+$ && "$_avail_mb" -lt 100 ]]; then
     log_warn "Very low disk space (${_avail_mb}MB free) — clearing package cache first"
     case "$PKG_MANAGER" in
         apt)     maybe_sudo apt-get clean 2>/dev/null || true ;;
@@ -140,8 +150,10 @@ _setup_verbose
 _VERSIONS_FILE="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
 declare -A _TOOLKIT_INSTALLED=()
 if [[ -f "$_VERSIONS_FILE" ]]; then
-    while IFS='|' read -r _vt _ _vv _; do
+    while IFS='|' read -r _vt _vm _vv _; do
         [[ -z "$_vt" || "$_vt" == \#* || "$_vv" == "existing" ]] && continue
+        # A row left by an install-method change does not vouch for the tool's current form.
+        _stale_row_matches "$_vt" "$_vm" && continue
         _TOOLKIT_INSTALLED["$_vt"]=1
     done < "$_VERSIONS_FILE"
 elif [[ "$FORCE_UNRECORDED" == "true" ]]; then
@@ -154,7 +166,7 @@ else
 fi
 
 # Confirmation
-if [[ "$AUTO_YES" == "false" ]]; then
+if [[ "$AUTO_YES" == "false" && "$DRY_RUN" == "false" ]]; then
     log_warn "This will remove cybersecurity tools and their configurations."
     log_warn "Modules to remove: ${REMOVE_MODULES[*]}"
     if [[ "$REMOVE_DEPS" == "true" ]]; then
@@ -265,6 +277,126 @@ filter_untracked GIT_NAMES_TO_REMOVE   "Git/source trees"
 filter_untracked GEMS_TO_REMOVE        "gems"
 filter_untracked CARGO_TO_REMOVE       "cargo crates"
 filter_untracked NPM_TO_REMOVE         "npm packages"
+
+# Dry run: report what a real run would remove, then stop before any removal code
+# runs, so nothing below this block can change the system.
+if [[ "$DRY_RUN" == "true" ]]; then
+    _plan_count=0
+    _plan() { log_info "Would remove $1: $2"; _plan_count=$((_plan_count + 1)); }
+    _plan_full=false
+    [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]] && _plan_full=true
+    _plan_known() { _version_known "$1" && ! _is_preexisting "$1"; }
+
+    if command_exists pipx; then
+        _plan_pipx=$(pipx list --short 2>/dev/null \
+            | while read -r _pl_name _; do _pipx_venv_name "$_pl_name"; done || true)
+        for tool in ${PIPX_TO_REMOVE[@]+"${PIPX_TO_REMOVE[@]}"}; do
+            grep -qxF -- "$(_pipx_venv_name "$tool")" <<< "$_plan_pipx" && _plan "pipx package" "$tool"
+        done
+    else
+        for tool in ${PIPX_TO_REMOVE[@]+"${PIPX_TO_REMOVE[@]}"}; do
+            [[ -d "$PIPX_HOME/venvs/$(_pipx_venv_name "$tool")" ]] && _plan "pipx venv (pipx not found)" "$tool"
+        done
+    fi
+    if command_exists gem; then
+        _plan_gems=$(_as_builder "$(_builder_cmd gem) list --no-details" 2>/dev/null || true)
+        for tool in ${GEMS_TO_REMOVE[@]+"${GEMS_TO_REMOVE[@]}"}; do
+            awk -v t="$tool" '$1==t{f=1} END{exit !f}' <<< "$_plan_gems" && _plan "gem" "$tool"
+        done
+    fi
+    if command_exists npm; then
+        for tool in ${NPM_TO_REMOVE[@]+"${NPM_TO_REMOVE[@]}"}; do
+            npm list -g "$tool" &>/dev/null && _plan "npm package" "$tool"
+        done
+    fi
+    _plan_cargo_home="$(_builder_home)/.cargo/bin"
+    for tool in ${CARGO_TO_REMOVE[@]+"${CARGO_TO_REMOVE[@]}"}; do
+        _plan_bin="${_CARGO_BIN_NAMES[$tool]:-$tool}"
+        if command_exists "$_plan_bin" || [[ -f "$_plan_cargo_home/$_plan_bin" ]]; then
+            _plan "cargo crate" "$tool"
+        fi
+    done
+    if [[ ${#PKGS_TO_REMOVE[@]} -gt 0 && -f "$_VERSIONS_FILE" && "$(_versions_schema)" -lt 2 ]]; then
+        log_warn "System packages would be kept: $_VERSIONS_FILE predates provenance tracking"
+        PKGS_TO_REMOVE=()
+    fi
+    _plan_pkgs=()
+    for _pkg_generic in ${PKGS_TO_REMOVE[@]+"${PKGS_TO_REMOVE[@]}"}; do
+        _pkg_fx=("$_pkg_generic")
+        fixup_package_names _pkg_fx
+        for _pkg_name in "${_pkg_fx[@]}"; do
+            if _removable "$_pkg_generic" || _removable "$_pkg_name"; then
+                _plan_pkgs+=("$_pkg_name")
+            fi
+        done
+    done
+    [[ ${#_plan_pkgs[@]} -gt 0 ]] && filter_preexisting _plan_pkgs "system packages"
+    for pkg in ${_plan_pkgs[@]+"${_plan_pkgs[@]}"}; do
+        pkg_is_installed "$pkg" && _plan "system package" "$pkg"
+    done
+    for bin in ${GO_BINS_TO_REMOVE[@]+"${GO_BINS_TO_REMOVE[@]}"}; do
+        [[ -f "$GOBIN/$bin" ]] && _plan "Go binary" "$GOBIN/$bin"
+    done
+    for name in ${GIT_NAMES_TO_REMOVE[@]+"${GIT_NAMES_TO_REMOVE[@]}"}; do
+        [[ -d "$GITHUB_TOOL_DIR/$name" ]] && _plan "git/source tree" "$GITHUB_TOOL_DIR/$name"
+    done
+    _plan_bins=()
+    for _br_mod in "${REMOVE_MODULES[@]}"; do
+        for _br_arr in "BINARY_RELEASES_${_br_mod^^}" "BINARY_RELEASES_${_br_mod^^}_C2"; do
+            declare -p "$_br_arr" &>/dev/null || continue
+            declare -n _br_ref="$_br_arr"
+            for _br_entry in "${_br_ref[@]}"; do
+                IFS='|' read -r _ _br_binary _ <<< "$_br_entry"
+                _plan_bins+=("$_br_binary")
+            done
+        done
+    done
+    filter_preexisting _plan_bins "binary releases"
+    filter_untracked _plan_bins "binary releases"
+    for bin in ${_plan_bins[@]+"${_plan_bins[@]}"}; do
+        _br_pattern=$(_binary_release_entry "$bin" | cut -d'|' -f3)
+        if [[ "$_br_pattern" == *deb* ]] && command_exists "$bin"; then
+            _plan "binary release (.deb)" "$bin"
+        elif [[ -f "$PIPX_BIN_DIR/$bin" ]]; then
+            _plan "binary release" "$PIPX_BIN_DIR/$bin"
+        fi
+    done
+    for _plan_special in "pwn:metasploit" "web:zaproxy" "blockchain:foundry" "cloud:steampipe" \
+        "enterprise:nxc" "cracking:patator" "llm:promptfoo" "crypto:ctf-crypto-venv"; do
+        should_remove "${_plan_special%%:*}" && _plan_known "${_plan_special#*:}" \
+            && _plan "special tool (if present)" "${_plan_special#*:}"
+    done
+    if command_exists docker && [[ "$_plan_full" == "true" ]]; then
+        for _docker_entry in "${ALL_DOCKER_IMAGES[@]}"; do
+            IFS='|' read -r _docker_img _docker_label <<< "$_docker_entry"
+            _removable "$_docker_label" || continue
+            docker images "${_docker_img%%:*}" -q 2>/dev/null | grep -q . && _plan "Docker image" "$_docker_img"
+        done
+    fi
+    if [[ "$_plan_full" == "true" && -f "$_VERSIONS_FILE" ]]; then
+        for _entry in "${STALE_ARTEFACTS[@]}"; do
+            IFS='|' read -r _st_tool _st_method _st_artefact <<< "$_entry"
+            awk -F'|' -v t="$_st_tool" -v m="$_st_method" '$1==t && $2==m && $3!="existing"{f=1} END{exit !f}' \
+                "$_VERSIONS_FILE" && _plan "stale $_st_method artefact" "$_st_tool ($_st_artefact)"
+        done
+        _plan "install record" "$_VERSIONS_FILE"
+    fi
+    if [[ "$DEEP_CLEAN" == "true" ]]; then
+        _plan_home="$(_builder_home)"
+        for _path in "$GOPATH/pkg" "$_plan_home/.cache/go-build" "$_plan_home/.cargo/registry" \
+            "$_plan_home/.cargo/git" "$_plan_home/.cache/pip" "$_plan_home/.cache/pipx" \
+            "$_plan_home/.gem/specs" "$PIPX_HOME/shared" \
+            "$SCRIPT_DIR/cybersec_install.log" "$SCRIPT_DIR/cybersec_tool.log" \
+            "$SCRIPT_DIR/cybersec_rollback.log" "$SCRIPT_DIR/tool_verification.log" \
+            "$SCRIPT_DIR/tool_update.log" "$SCRIPT_DIR/tool_removal.log"; do
+            [[ -e "$_path" ]] && _plan "deep-clean path" "$_path"
+        done
+        [[ "$REMOVE_DEPS" == "true" && -d "$_plan_home/.rustup" ]] && _plan "deep-clean path" "$_plan_home/.rustup"
+    fi
+    echo ""
+    log_info "Dry run: $_plan_count item(s) would be removed; nothing was changed"
+    exit 0
+fi
 
 # Execute removal
 # ORDER: Tools that need runtime commands (pipx, gem, cargo) are removed FIRST,
@@ -486,10 +618,7 @@ echo ""
 _remove_repo_links() {
     local lower="${1,,}" link
     for link in "$PIPX_BIN_DIR/$1" "$PIPX_BIN_DIR/$lower" "$PIPX_BIN_DIR/${lower//-/_}"; do
-        if [[ -L "$link" ]]; then
-            [[ "$(readlink "$link")" == "$2/"* ]] && rm -f "$link"
-        elif [[ -f "$link" && "$(head -c 2 "$link" 2>/dev/null)" == "#!" ]] \
-            && grep -qF -e "$2/" -e "$2\"" "$link" 2>/dev/null; then
+        if _git_launcher_is_managed "$link" "$2"; then
             rm -f "$link"
         fi
     done
@@ -801,9 +930,15 @@ echo ""
 # 9) Cleanup
 log_info "Cleaning up..."
 
+# Artefacts of tools that changed install method (their rows are dropped here).
+if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
+    _cleanup_stale_artefacts "$_VERSIONS_FILE"
+    REMOVAL_FAILURES=$((REMOVAL_FAILURES + $?))
+fi
+
 # Clean up empty PIPX_HOME on full removal
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]] && [[ -d "$PIPX_HOME/venvs" ]]; then
-    _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    _remaining=$(( $(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l) ))
     if [[ "$_remaining" -eq 0 ]]; then
         rm -rf "$PIPX_HOME"
         log_success "Removed empty PIPX_HOME ($PIPX_HOME)"
@@ -827,17 +962,24 @@ fi
 if [[ ${#REMOVE_MODULES[@]} -ne ${#ALL_MODULES[@]} ]] && [[ ${#REMOVED_TOOLS[@]} -gt 0 ]] && [[ -f "$_VERSIONS_FILE" ]]; then
     _drop_removed_rows() {
         local _tmp
-        _tmp=$(mktemp "${_VERSIONS_FILE}.XXXXXX")
-        awk -F'|' 'NR==FNR{gone[$0]=1; next} !($1 in gone)' \
-            <(printf '%s\n' "${REMOVED_TOOLS[@]}") "$_VERSIONS_FILE" > "$_tmp"
-        chmod 644 "$_tmp" 2>/dev/null || true
-        mv -f "$_tmp" "$_VERSIONS_FILE"
+        _tmp=$(mktemp "${_VERSIONS_FILE}.XXXXXX") || return 1
+        if ! awk -F'|' 'NR==FNR{gone[$0]=1; next} !($1 in gone)' \
+            <(printf '%s\n' "${REMOVED_TOOLS[@]}") "$_VERSIONS_FILE" > "$_tmp" \
+            || ! chmod 644 "$_tmp" || ! mv -f "$_tmp" "$_VERSIONS_FILE"; then
+            rm -f "$_tmp"
+            return 1
+        fi
     }
     _unlink_if_symlink "${_VERSIONS_FILE}.lock"
+    _record_cleanup_failed=false
     if command -v flock &>/dev/null; then
-        ( flock -x 200; _drop_removed_rows ) 200>"${_VERSIONS_FILE}.lock"
+        ( flock -x 200 && _drop_removed_rows ) 200>"${_VERSIONS_FILE}.lock" || _record_cleanup_failed=true
     else
-        _drop_removed_rows
+        _drop_removed_rows || _record_cleanup_failed=true
+    fi
+    if [[ "$_record_cleanup_failed" == true ]]; then
+        log_warn "Failed to update install records at $_VERSIONS_FILE — keeping the original rows for retry"
+        REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
     fi
 fi
 if [[ ${#REMOVE_MODULES[@]} -eq ${#ALL_MODULES[@]} ]]; then
@@ -863,21 +1005,29 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     # Go module cache (downloaded module source)
     if [[ -d "$GOPATH/pkg" ]]; then
         _sz=$(du -sm "$GOPATH/pkg" 2>/dev/null | cut -f1 || echo 0)
-        rm -rf "$GOPATH/pkg"
-        log_success "Removed Go module cache ($GOPATH/pkg — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$GOPATH/pkg"; then
+            log_success "Removed Go module cache ($GOPATH/pkg — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $GOPATH/pkg"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
     # Go build cache
     _go_cache="${_user_home}/.cache/go-build"
     if [[ -d "$_go_cache" ]]; then
         _sz=$(du -sm "$_go_cache" 2>/dev/null | cut -f1 || echo 0)
-        _rm_user_tree "$_go_cache"
-        log_success "Removed Go build cache ($_go_cache — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$_go_cache"; then
+            log_success "Removed Go build cache ($_go_cache — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $_go_cache"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
     # Empty GOPATH dir after cache removal
     if [[ -d "$GOPATH" ]]; then
-        _gopath_remaining=$(find "$GOPATH" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+        _gopath_remaining=$(( $(find "$GOPATH" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l) ))
         if [[ "$_gopath_remaining" -eq 0 ]]; then
             rmdir "$GOPATH" 2>/dev/null && log_success "Removed empty GOPATH ($GOPATH)"
         fi
@@ -887,28 +1037,40 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     # Cargo registry (crate source downloads)
     if [[ -d "$_user_home/.cargo/registry" ]]; then
         _sz=$(du -sm "$_user_home/.cargo/registry" 2>/dev/null | cut -f1 || echo 0)
-        _rm_user_tree "$_user_home/.cargo/registry"
-        log_success "Removed Cargo registry cache (~/.cargo/registry — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$_user_home/.cargo/registry"; then
+            log_success "Removed Cargo registry cache (~/.cargo/registry — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $_user_home/.cargo/registry"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
     # Cargo git checkouts
     if [[ -d "$_user_home/.cargo/git" ]]; then
         _sz=$(du -sm "$_user_home/.cargo/git" 2>/dev/null | cut -f1 || echo 0)
-        _rm_user_tree "$_user_home/.cargo/git"
-        log_success "Removed Cargo git cache (~/.cargo/git — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$_user_home/.cargo/git"; then
+            log_success "Removed Cargo git cache (~/.cargo/git — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $_user_home/.cargo/git"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
     # Rustup toolchains (only with --remove-deps — these are runtimes)
     if [[ "$REMOVE_DEPS" == "true" ]] && [[ -d "$_user_home/.rustup" ]]; then
         _sz=$(du -sm "$_user_home/.rustup" 2>/dev/null | cut -f1 || echo 0)
-        _rm_user_tree "$_user_home/.rustup"
-        log_success "Removed Rustup toolchains (~/.rustup — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$_user_home/.rustup"; then
+            log_success "Removed Rustup toolchains (~/.rustup — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $_user_home/.rustup"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
     # Drop ~/.cargo only when no binaries are left, and never its config.toml,
     # credentials.toml or env: rmdir fails while any of those remain.
     if [[ -d "$_user_home/.cargo" ]]; then
-        _cargo_bins=$(find "$_user_home/.cargo/bin" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+        _cargo_bins=$(( $(find "$_user_home/.cargo/bin" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l) ))
         if [[ "$_cargo_bins" -eq 0 ]]; then
             rmdir "$_user_home/.cargo/bin" 2>/dev/null || true
             for _cargo_meta in .crates.toml .crates2.json .package-cache .package-cache-mutate .global-cache; do
@@ -934,7 +1096,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     done
     [[ "$_orphans" -gt 0 ]] && log_success "Removed $_orphans orphaned pipx venvs ($PIPX_HOME/venvs)"
     _remaining=0
-    [[ -d "$PIPX_HOME/venvs" ]] && _remaining=$(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+    [[ -d "$PIPX_HOME/venvs" ]] && _remaining=$(( $(find "$PIPX_HOME/venvs" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l) ))
     if [[ "$_remaining" -gt 0 ]]; then
         # The venvs that stay load pipx's shared libraries.
         log_info "Keeping $_remaining pipx venvs this toolkit did not install ($PIPX_HOME/venvs), and pipx's shared libraries"
@@ -952,7 +1114,7 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     fi
     # Remove PIPX_HOME if now empty
     if [[ -d "$PIPX_HOME" ]]; then
-        _ph_remaining=$(find "$PIPX_HOME" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+        _ph_remaining=$(( $(find "$PIPX_HOME" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l) ))
         if [[ "$_ph_remaining" -eq 0 ]]; then
             rmdir "$PIPX_HOME" 2>/dev/null && log_success "Removed empty PIPX_HOME ($PIPX_HOME)"
         fi
@@ -961,17 +1123,25 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     _pip_cache="${_user_home}/.cache/pip"
     if [[ -d "$_pip_cache" ]]; then
         _sz=$(du -sm "$_pip_cache" 2>/dev/null | cut -f1 || echo 0)
-        _rm_user_tree "$_pip_cache"
-        log_success "Removed pip cache (~/.cache/pip — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$_pip_cache"; then
+            log_success "Removed pip cache (~/.cache/pip — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $_pip_cache"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
     # pipx download cache
     _pipx_cache="${_user_home}/.cache/pipx"
     if [[ -d "$_pipx_cache" ]]; then
         _sz=$(du -sm "$_pipx_cache" 2>/dev/null | cut -f1 || echo 0)
-        _rm_user_tree "$_pipx_cache"
-        log_success "Removed pipx cache (~/.cache/pipx — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$_pipx_cache"; then
+            log_success "Removed pipx cache (~/.cache/pipx — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $_pipx_cache"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
 
     # npm cache
@@ -989,32 +1159,62 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     _gem_cache="${_user_home}/.gem/specs"
     if [[ -d "$_gem_cache" ]]; then
         _sz=$(du -sm "$_gem_cache" 2>/dev/null | cut -f1 || echo 0)
-        _rm_user_tree "$_gem_cache"
-        log_success "Removed gem cache (~/.gem/specs — ${_sz}MB)"
-        _deep_freed=$((_deep_freed + _sz))
+        if _rm_user_tree "$_gem_cache"; then
+            log_success "Removed gem cache (~/.gem/specs — ${_sz}MB)"
+            _deep_freed=$((_deep_freed + _sz))
+        else
+            log_warn "Failed to remove $_gem_cache"
+            REMOVAL_FAILURES=$((REMOVAL_FAILURES + 1))
+        fi
     fi
 
     # Stale symlinks in bin dirs — only links into trees this toolkit installs to.
     # A dangling link that points elsewhere can be the user's own, for example into
     # a volume that is not mounted right now.
+    # Both sides are compared in canonical form so a symlinked prefix (HOME, /home,
+    # a bind mount) does not hide a toolkit link.
+    _canon_path() {
+        local p="$1" rest="" d
+        [[ "$p" == /* ]] || p="$PWD/$p"
+        while [[ "$p" != "/" && ! -d "$p" ]]; do
+            rest="/${p##*/}$rest"
+            p="${p%/*}"
+            [[ -n "$p" ]] || p="/"
+        done
+        d=$(cd -P -- "$p" 2>/dev/null && pwd -P) || d="$p"
+        [[ "$d" == "/" ]] && d=""
+        printf '%s%s\n' "$d" "$rest"
+    }
+    _canon_roots=("$(_canon_path "$PIPX_HOME")" "$(_canon_path "$GITHUB_TOOL_DIR")" "$(_canon_path "$GOPATH")")
+    _canon_user_roots=("$(_canon_path "$_user_home/.cargo")" "$(_canon_path "$_user_home/.local/share/gem")" "$(_canon_path "$_user_home/.foundry")")
     _stale=0
     for _bindir in "$PIPX_BIN_DIR" "$GOBIN"; do
         [[ -d "$_bindir" ]] || continue
         while IFS= read -r -d '' _link; do
+            [[ -e "$_link" ]] && continue
             _target=$(readlink "$_link" 2>/dev/null) || continue
-            case "$_target" in
-                "$PIPX_HOME"/*|"$GITHUB_TOOL_DIR"/*|"$GOPATH"/*) ;;
-                "$_user_home"/.cargo/*|"$_user_home"/.local/share/gem/*|"$_user_home"/.foundry/*) ;;
-                *) continue ;;
-            esac
+            [[ "$_target" == /* ]] || _target="${_link%/*}/$_target"
+            _ctarget=$(_canon_path "$_target")
+            _owned=false
+            for _root in "$PIPX_HOME" "$GITHUB_TOOL_DIR" "$GOPATH" "$_user_home/.cargo" \
+                "$_user_home/.local/share/gem" "$_user_home/.foundry" \
+                "${_canon_roots[@]}" "${_canon_user_roots[@]}"; do
+                [[ -n "$_root" ]] || continue
+                if [[ "$_target" == "$_root"/* || "$_ctarget" == "$_root"/* ]]; then
+                    _owned=true
+                    break
+                fi
+            done
+            [[ "$_owned" == "true" ]] || continue
             rm -f "$_link"
             _stale=$((_stale + 1))
-        done < <(find "$_bindir" -maxdepth 1 -xtype l -print0 2>/dev/null)
+        done < <(find "$_bindir" -maxdepth 1 -type l -print0 2>/dev/null)
     done
     [[ "$_stale" -gt 0 ]] && log_success "Removed $_stale stale symlinks"
 
     # Log files
     for _logfile in "$SCRIPT_DIR/cybersec_install.log" \
+                    "$SCRIPT_DIR/cybersec_tool.log" \
                     "$SCRIPT_DIR/cybersec_rollback.log" \
                     "$SCRIPT_DIR/tool_verification.log" \
                     "$SCRIPT_DIR/tool_update.log" \

@@ -29,49 +29,71 @@ Pick one directory per engagement and treat it as the only source of truth:
 
 ```text
 engagement/
-  scope.json        # authorized targets + policy — the contract every agent obeys
-  findings.jsonl    # append-only; one JSON object per finding
+  engagement.json   # coordination note: targets, rules of engagement (not enforced)
+  findings.jsonl    # append-only; one finding per line, format in docs/FINDINGS.md
   state.json        # phase/status per role
   notes/            # freeform per-agent notes
   artifacts/        # captured output and evidence (sanitize before sharing)
 ```
 
-`scope.json` is written once and read by every agent:
+`engagement.json` is a note that humans and agents read to stay on the same
+page. **Nothing enforces it.** The server reads its policy from the environment
+and the VM firewall reads its own scope file, so the note must match both:
 
 ```json
 {
   "engagement": "acme-external-2026-08",
   "authorized_targets": ["10.10.0.0/24", "app.internal.example"],
-  "allow_external": false,
-  "allow_scripts": false,
+  "launch_env_must_match": {
+    "CYBERSEC_MCP_ALLOW_EXTERNAL": "0",
+    "CYBERSEC_MCP_ALLOW_SCRIPTS": "0"
+  },
   "notes": "Companion mode. Autonomous only on explicit written approval."
 }
 ```
 
-Each finding is a single append-only line, so concurrent writers never clobber
-each other:
+Enforcement comes from two places, set per agent session:
+
+- `CYBERSEC_MCP_ALLOW_EXTERNAL` and `CYBERSEC_MCP_ALLOW_SCRIPTS` in the launch
+  environment of every agent.
+- `CYBERSEC_SANDBOX_SCOPE`, a scope file in the `name` / `allow` / `dns` format
+  described in [`docs/SANDBOX.md`](SANDBOX.md#network-scope). The VM firewall
+  rejects every destination outside it.
+
+Findings use the schema in [`docs/FINDINGS.md`](FINDINGS.md) and are checked
+with `python3 scripts/validate_findings.py engagement/findings.jsonl`. Each
+finding is a single line appended to the file, so concurrent writers never
+clobber each other. A recon agent records what a tool showed once as `observed`
+(or what the target says as `claimed`), with its evidence and what is unchecked:
 
 ```json
-{"id": "F-001", "role": "recon", "target": "app.internal.example", "status": "lead", "summary": "Login form reflects `next` param", "next": "test open redirect / XSS"}
+{"id": "F-001", "title": "Login form reflects the next parameter", "kind": "observation", "status": "observed", "target": "app.internal.example", "evidence": [{"source": "run_tool", "tool": "curl", "command": "curl -s 'https://app.internal.example/login?next=%22x'", "captured_at": "2026-08-12T09:30:00Z", "locator": "response body, line 42", "excerpt": "value=\"\"x\""}], "uncertainty": "Not tested for XSS or open redirect."}
 ```
+
+A status never changes in place. The agent that makes a second, independent
+check appends a new line that reuses the target and adds the confirmation (a
+new `id`, status `confirmed`, `derivation`, `confirmed_by`, evidence with a
+hash). A lead that does not hold up is appended as `rejected` with the evidence
+that ruled it out. Readers take the latest line per target and title
+(see `docs/FINDINGS.md`).
 
 ## Roles and handoff
 
-Give each agent one role and the same `scope.json`. Handoff happens by writing to
-`findings.jsonl` and `state.json`, not by passing messages.
+Give each agent one role and the same `engagement.json`. Handoff happens by
+writing to `findings.jsonl` and `state.json`, not by passing messages.
 
 | Role | Reads | Does | Writes |
 | --- | --- | --- | --- |
-| recon | `scope.json` | `guided_assessment`, `run_tool`, `run_pipeline` | new `lead` findings |
-| exploit | `findings.jsonl` (`status = lead`) | validate with `run_tool` / `run_script` | `confirmed` / `dead-end` |
-| report | `findings.jsonl` (`status = confirmed`) | synthesize | a writeup under `writeups/` |
+| recon | `engagement.json` | `guided_assessment`, `run_tool`, `run_pipeline` | new `observed` / `claimed` findings |
+| exploit | `findings.jsonl` (`observed` and `claimed`) | validate with `run_tool` / `run_script` | new `confirmed` / `rejected` lines |
+| report | `findings.jsonl` (`confirmed`) | synthesize | a writeup under `writeups/` |
 
 ```mermaid
 flowchart LR
-    S[scope.json] --> R[recon agent]
-    R -->|append leads| F[(findings.jsonl)]
+    S[engagement.json] --> R[recon agent]
+    R -->|append observed| F[(findings.jsonl)]
     F --> X[exploit agent]
-    X -->|update status| F
+    X -->|append confirmed or rejected| F
     F --> W[report agent]
     W --> D[writeups/]
 ```
@@ -83,36 +105,39 @@ Two sessions against the same directory, in any two MCP clients:
 1. **Recon session.** Start with `guided_assessment` (or `suggest_for_ctf` /
    `suggest_for_bounty`) to classify the target, then execute with
    `run_tool` / `run_pipeline`. Append each anomaly to `findings.jsonl` with
-   `status: "lead"`.
-2. **Exploit session.** Read `findings.jsonl`, take every `lead`, and validate it
-   with `run_tool` (or `run_script` only when programming logic is the smallest
-   reliable path). Rewrite each line's status to `confirmed` or `dead-end` and
-   record the proof in `artifacts/`.
+   `status: "observed"`, or `"claimed"` when the target only says so.
+2. **Exploit session.** Read `findings.jsonl`, take every `observed` or
+   `claimed` finding, and validate it with `run_tool` (or `run_script` only when
+   programming logic is the smallest reliable path). Repeat the derivation from
+   the original data, append a `confirmed` or `rejected` line and keep the proof
+   in `artifacts/`. Another agent reading the same output is not a second check.
 3. **Report.** Read the `confirmed` findings and write the mandatory technical
    writeup under `writeups/`. Sanitize evidence first — flag credentials by
    existence and access method, never by spreading the secret across outputs.
 
 Because state is on disk, step 2 can start before step 1 finishes: the exploit
-agent simply polls `findings.jsonl` for new `lead` rows.
+agent simply polls `findings.jsonl` for new `observed` lines.
 
 ## Governance and safety
 
 - **Companion by default; autonomous only when asked.** Escalate a role to
   `guided_assessment(mode="autonomous")` only with explicit authorization
-  recorded in `scope.json`.
-- **`scope.json` is the boundary.** Every agent re-reads it and acts only within
+  recorded in `engagement.json`.
+- **The boundary is the launch environment and `CYBERSEC_SANDBOX_SCOPE`, not
+  `engagement.json`.** Agents also re-read the note and act only within
   `authorized_targets`. The server's `CYBERSEC_MCP_ALLOW_EXTERNAL=0` default is a
   preflight policy, not a network sandbox — keep the scope honest.
 - **One audit trail.** All agents share the server's audit log, so the whole
   engagement is reconstructable from a single place.
-- **Reusable helpers** go under `manual_scripts/`; **findings** go under
-  `writeups/`. Both are shared across every agent in the run.
+- **Reusable helpers** go under `manual_scripts/`; **writeups** go under
+  `writeups/`; findings stay in `engagement/findings.jsonl` next to the
+  writeup. Both are shared across every agent in the run.
 
 ## Single-agent fallback
 
 The pattern degrades cleanly to one session: the same directory makes a solo
 run resumable after context compaction, since each phase reconstructs its state
-from `scope.json`, `findings.jsonl`, and `state.json` rather than from chat
+from `engagement.json`, `findings.jsonl`, and `state.json` rather than from chat
 history.
 
 ## Host accelerators (optional)

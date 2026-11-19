@@ -9,7 +9,7 @@ from collections.abc import Container
 from pathlib import Path
 from typing import Optional
 
-from mcp_server.tools_db import ToolsDatabase
+from mcp_server.tools_db import ToolsDatabase, execution_summary
 
 # Display name -> tools_config.json registry name.
 # Only needed when the user-facing name differs from the registry entry.
@@ -69,7 +69,7 @@ def check_tool_installed(tool_name: str, tools_db: ToolsDatabase) -> tuple[bool,
     to PATH checks for tools not in the registry.
     """
     registry_name = TOOL_ALIASES.get(tool_name, tool_name)
-    in_registry = registry_name in tools_db.tools_by_name
+    in_registry = tools_db.get_tool(registry_name) is not None
 
     if in_registry:
         status = tools_db.check_installed(registry_name)
@@ -104,6 +104,13 @@ def build_tool_status_list(tools: list[tuple[str, str]], tools_db: ToolsDatabase
         registry_name = TOOL_ALIASES.get(tool_name)
         if registry_name:
             entry["registry_name"] = registry_name
+        registry_tool = tools_db.get_tool(registry_name or tool_name)
+        if registry_tool is not None:
+            if registry_tool["name"] != tool_name:
+                entry["registry_name"] = registry_tool["name"]
+            entry["execution"] = execution_summary(registry_tool)
+            status = tools_db.execution_status(registry_name or tool_name)
+            entry["execution"].update({key: status[key] for key in ("binary", "ready")})
         entries.append(entry)
     installed_count = sum(1 for entry in entries if entry["installed"])
     return entries, installed_count

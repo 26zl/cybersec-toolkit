@@ -14,6 +14,12 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/shared.sh"
 
+# Run before successor installs overwrite the old method's provenance row.
+_cleanup_stale_method_artefacts() {
+    source "$SCRIPT_DIR/scripts/stale_artefacts.sh"
+    _cleanup_stale_artefacts "${VERSION_FILE:-$SCRIPT_DIR/.versions}" "$@" || true
+}
+
 # Argument parsing
 PROFILE=""
 SELECTED_MODULES=()
@@ -75,7 +81,7 @@ Options:
                          On Arch every package refresh is already a full
                          'pacman -Syu' (Arch does not support partial upgrades),
                          so installing anything there upgrades the system.
-  --skip-heavy         Skip large/slow packages defined in HEAVY_PACKAGES arrays
+  --skip-heavy         Skip the large SDR packages (WIRELESS_HEAVY_PACKAGES: gnuradio, gqrx-sdr)
   --skip-pipx          Skip all pipx (Python) tool installs
   --skip-go            Skip all Go tool installs (and the Go SDK bootstrap)
   --skip-cargo         Skip all Cargo (Rust) tool installs (and the rustup bootstrap)
@@ -375,6 +381,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)         DRY_RUN=true; shift ;;
         -j|--parallel)     [[ $# -lt 2 ]] && { log_error "-j/--parallel requires a number"; exit 2; }
                            PARALLEL_JOBS="$2"
+                           [[ "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] && PARALLEL_JOBS=$((10#$PARALLEL_JOBS))
                            if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
                                log_error "-j/--parallel requires a positive number (got '$2')"
                                exit 2
@@ -397,6 +404,12 @@ while [[ $# -gt 0 ]]; do
                            exit 2 ;;
     esac
 done
+
+for _flag in SKIP_HEAVY SKIP_PIPX SKIP_GO SKIP_CARGO SKIP_GEMS SKIP_GIT SKIP_BINARY SKIP_SOURCE \
+             ENABLE_DOCKER INCLUDE_C2 REQUIRE_CHECKSUMS PRODUCTION_MODE VERBOSE; do
+    _normalize_bool "$_flag"
+done
+unset _flag
 
 [[ "$PRODUCTION_MODE" == "true" ]] && REQUIRE_CHECKSUMS=true
 
@@ -606,9 +619,12 @@ install_single_tool() {
                 local _gver; _gver=$(_tree_provenance "$gname" "$dest/.git")
                 log_info "Cloning $tool..."
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
-                    setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || log_warn "setup_git_repo failed for $tool"
-                    log_success "Installed: $tool → $dest"
                     track_version "$tool" "git" "$_gver"
+                    if ! setup_git_repo "$dest" >> "$LOG_FILE" 2>&1; then
+                        log_error "CLI setup failed for $tool; clone retained at $dest"
+                        return 1
+                    fi
+                    log_success "Installed: $tool → $dest"
                 else
                     log_error "Failed: $tool"
                     return 1
@@ -715,9 +731,13 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
         source "$SCRIPT_DIR/modules/${mod}.sh"
     done
     # Lock first: a run refused by the lock must not truncate the active run's log.
+    _check_pkg_manager
     check_root
     _acquire_run_lock
-    _init_log_file "$SCRIPT_DIR/cybersec_install.log"
+    # Its own log: the full-install log is the record of the run the user may be repairing.
+    _init_log_file "$SCRIPT_DIR/cybersec_tool.log"
+    trap '_global_cleanup; exit 130' INT TERM
+    _setup_verbose
     _versions_stamp_schema
     # A session of its own, so `--rollback last` undoes this run, not the previous one.
     _init_session "tool" "${SELECTED_TOOLS[*]}"
@@ -728,15 +748,18 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     log_info "Installing ${#SELECTED_TOOLS[@]} individual tool(s)..."
     TOOL_FAILED=0
     for tool in "${SELECTED_TOOLS[@]}"; do
+        _cleanup_stale_method_artefacts "$tool"
         install_single_tool "$tool" || TOOL_FAILED=$((TOOL_FAILED + 1))
     done
     if [[ "$TOOL_FAILED" -gt 0 ]]; then
         _finalize_session "partial"
         log_warn "$TOOL_FAILED tool(s) failed"
         _show_log_tail 40
+        disable_debug_trace
         exit 1
     fi
     _finalize_session "complete"
+    disable_debug_trace
     exit 0
 fi
 
@@ -745,7 +768,7 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
     # Sanitize rollback target: only "last" or session ID (no path traversal)
     if [[ "$ROLLBACK_TARGET" != "last" ]] && [[ "$ROLLBACK_TARGET" == */* || "$ROLLBACK_TARGET" == *..* ]]; then
         log_error "Invalid rollback target (no path components allowed): $ROLLBACK_TARGET"
-        exit 1
+        exit 2
     fi
     check_root
     _acquire_run_lock
@@ -1327,6 +1350,7 @@ fi
 VERSION_FILE="$SCRIPT_DIR/.versions"
 
 main() {
+    _check_pkg_manager
     check_root
     _acquire_run_lock
     # Created here, not at file scope, so sourcing install.sh never truncates the log;
@@ -1335,7 +1359,6 @@ main() {
     trap '_global_cleanup; exit 130' INT TERM
     print_banner
 
-    _check_pkg_manager
     _setup_verbose
 
     # Termux Docker override + WSL wireless filter (shared with the dry-run path)
@@ -1355,6 +1378,7 @@ main() {
     check_disk_space "${#MODULES_TO_INSTALL[@]}"
 
     _versions_stamp_schema
+    _cleanup_stale_method_artefacts
     _init_session "${PROFILE:-full}" "${MODULES_TO_INSTALL[*]}"
     log_info "Session: $_SESSION_ID"
     log_info "Starting installation..."

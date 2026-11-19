@@ -137,8 +137,18 @@ python3 scripts/validate_claude_skills.py
 # Validate optional Python deps used by skill helper scripts are declared
 python3 scripts/audit_skill_dependencies.py --check-declared
 
-# Check AGENTS.md claims and the Claude/Gemini import contracts
+# Check AGENTS.md claims and the Claude/Gemini import contracts; also requires every
+# mcp_server/*.py module to be named in the MCP Server Module Layout section and every
+# `make validate` command to be named in .claude/skills/validate-all/SKILL.md
 python3 scripts/validate_agent_docs.py
+
+# Check that .mcp.json, opencode.jsonc, .codex/config.toml and .gemini/settings.json share
+# the launch command, carry exactly ALLOW_EXTERNAL=0 / ALLOW_SCRIPTS=0 and never pass --local
+python3 scripts/validate_client_configs.py
+
+# Check relative file links and #anchors in tracked Markdown offline (make check-links
+# checks external URLs over the network)
+python3 scripts/check_doc_links.py --internal
 
 # Verify the audit log's hash chain (--selftest runs in `make validate`)
 python3 scripts/verify_audit_chain.py --selftest
@@ -164,6 +174,9 @@ git submodule update --init --recursive
 ./tests/bats/bin/bats tests/common.bats
 ```
 
+`make test-scripts` runs the repository tooling tests (`python3 -m unittest discover -s scripts -p 'test_*.py'`,
+currently `scripts/test_tooling.py`); `make test` includes it and CI runs it as the `tooling-tests` job.
+
 Test files: `tests/common.bats`, `tests/install.bats`, `tests/installers.bats`,
 `tests/modules.bats`, `tests/profiles.bats`, `tests/runtime_launcher.bats`,
 `tests/scripts.bats`. Helper at `tests/test_helper.bash`.
@@ -171,8 +184,8 @@ Test files: `tests/common.bats`, `tests/install.bats`, `tests/installers.bats`,
 ### MCP Server
 
 ```bash
-# Install uv (one-time)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install uv (one-time): see CONTRIBUTING.md for a version-pinned installer,
+# or use pipx install uv / your distro package
 
 # Interactive MCP Inspector (web UI)
 cd mcp_server && uv run fastmcp dev inspector server.py
@@ -223,11 +236,24 @@ such as `curl` remain normal `run_tool` calls.
 - `CYBERSEC_MCP_ALLOW_SCRIPTS=1` — enables Python/Bash execution outside the policy
   layer, with the MCP process user's filesystem and network permissions (inside the
   Kata VM by default, on the host with `--local`)
+- `CYBERSEC_MCP_AUDIT_REQUIRED`, `CYBERSEC_MCP_AUDIT_STREAM`, `CYBERSEC_MCP_REDACT_OUTPUT` and
+  `CYBERSEC_LOCAL_SANDBOX` accept `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`/empty,
+  case-insensitively; any other non-empty value enables the protection and prints one warning on
+  stderr. The `CYBERSEC_MCP_ALLOW_EXTERNAL`, `CYBERSEC_MCP_ALLOW_SCRIPTS`,
+  `CYBERSEC_MCP_ALLOW_USBKILL` and `CYBERSEC_MCP_ALLOW_NIPE` permission switches stay strict: only `1` enables them
 - `CYBERSEC_MCP_ALLOW_EXTERNAL=0` — safest default; governed network tools and
   SSH remotes reject direct targets outside private/loopback ranges. This is a
   preflight policy, not a network sandbox: DNS can change after validation and
   tools can follow redirects
 - `CYBERSEC_MCP_ALLOW_EXTERNAL=1` — opt in only for explicitly authorized external scopes
+- `CYBERSEC_MCP_ALLOW_USBKILL=1` — enable usbkill operations, including its configured
+  shutdown, command execution and file/RAM/swap wiping. Disabled by default; only `1`
+  enables it. Configured commands are arbitrary code outside argv network preflight;
+  the sandbox scope firewall still applies. Requires explicit authorization for the intended action
+- `CYBERSEC_MCP_ALLOW_NIPE=1` — enable Nipe host routing/firewall operations. Disabled
+  by default; only `1` enables it. Network operations also require
+  `CYBERSEC_MCP_ALLOW_EXTERNAL=1`; `stop` performs local cleanup without that flag.
+  Neither flag changes OS privileges, sandbox isolation or the enforced network scope
 - `CYBERSEC_MCP_VENVS_DIR` — custom location for script venvs (default: `~/.ctf-venvs/`).
   `--module crypto` populates `crypto` there (pycryptodome, sympy, gmpy2, numpy, z3,
   fpylll+cysignals, cypari2) for `run_script(venv="crypto")`
@@ -297,6 +323,7 @@ Separate Python package (FastMCP), managed with `uv` (`pyproject.toml`), not pip
   `run_script` capability for scoped helpers; scripts must not bypass authorization,
   scope, or policy decisions
 - `security.py` — execution engine + policy enforcement + argument sanitization
+- `local_sandbox.py` — bubblewrap confinement for host mode (`CYBERSEC_LOCAL_SANDBOX=1`)
 - `tools_db.py` — tool registry loader, install checks, version tracking
 - `advisor_utils.py` — shared alias map + install-status helpers used by the advisor modules
 - `profiles.py` — profile data (synced from `profiles/*.conf`)
@@ -405,6 +432,9 @@ skills route through: `finding-triage` (finding → disposition), `security-comm
   — including `.deb` assets whose maintainer scripts then run as root — so use
   `--production` / `--require-checksums` for non-interactive or production installs to
   fail closed
+- On Ubuntu the installer adds the third-party deadsnakes PPA by default to get a newer
+  Python for pipx; `CYBERSEC_ALLOW_PPA=0` opts out, and it is never added on other
+  distros or in strict mode (`--production` / `--require-checksums`)
 - GitHub API auth: auto-detects `gh auth token` if `GITHUB_TOKEN` is unset (60 → 5000 req/hr)
 - `fixup_package_names()` in `lib/installers.sh` translates package names per distro from
   `lib/distro_compat.tsv`
@@ -529,6 +559,14 @@ silently falling back to a hand-written substitute.
    `lib/installers.sh`; Docker → `ALL_DOCKER_IMAGES` + `docker_pull` call; source →
    `build_from_source` + `<PREFIX>_BUILD_NAMES`).
 2. Add an entry to `tools_config.json` (`name`, `method`, `module`, `url`).
+   For Git tools, classify the entry in `mcp_server/tools_db.py` as a CLI or a
+   resource/runtime with access guidance. Add any nonstandard entry point,
+   package console or build artifact to the matching `_GIT_*` map in
+   `lib/installers.sh`. For source builds, declare `<PREFIX>_BUILD_BINS` and keep
+   `SOURCE_BIN_NAMES` in sync. Inspect `execution.ready` before execution;
+   `.versions` and clone directories prove presence, not a working launcher.
+   Use `list_tools(query="...", limit=50)` and follow `next_offset` to discover
+   the full registry. See [tool execution](docs/TOOL_EXECUTION.md).
 3. Run `python3 scripts/validate_tools_config.py --strict` — must show 0 errors, 0 warnings (--strict makes warnings fail).
 4. If the tool touches a data source mirrored in the MCP server, update the Python
    constant and run `python3 scripts/validate_mcp_sync.py`.

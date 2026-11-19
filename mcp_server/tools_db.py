@@ -61,6 +61,7 @@ PROJECT_ROOT = _discover_project_root()
 # Pipx package name → binary name mapping (from _PIPX_BIN_NAMES in scripts/verify.sh).
 # Most pipx packages install a binary with the same name — these are the exceptions.
 PIPX_BIN_NAMES: dict[str, str] = {
+    "netexec": "nxc",
     "arsenal-cli": "arsenal",
     "sherlock-project": "sherlock",
     "osrframework": "usufy",
@@ -96,6 +97,7 @@ PIPX_BIN_NAMES: dict[str, str] = {
     "principalmapper": "pmapper",
     "dissect.target": "target-query",
     "python-evtx": "evtx_dump",
+    "man-spider": "manspider",
 }
 
 # apt package name -> primary executable name, for packages whose binary differs
@@ -104,6 +106,21 @@ PIPX_BIN_NAMES: dict[str, str] = {
 # NOT sync-pinned (unlike PIPX_BIN_NAMES, which validate_mcp_sync.py mirrors to
 # scripts/verify.sh) — keep this list local to the MCP layer.
 APT_BIN_NAMES: dict[str, str] = {
+    "snmp": "snmpwalk",
+    "wireless-tools": "iwconfig",
+    "bluez": "bluetoothctl",
+    "auditd": "ausearch",
+    "poppler-utils": "pdftotext",
+    "zbar-tools": "zbarimg",
+    "ewf-tools": "ewfinfo",
+    "binutils": "readelf",
+    "qemu-user-static": "qemu-x86_64-static",
+    "qemu-system-x86": "qemu-system-x86_64",
+    "hcxtools": "hcxpcapngtool",
+    "dns2tcp": "dns2tcpc",
+    "clamav": "clamscan",
+    "ettercap-text-only": "ettercap",
+    "apparmor-utils": "aa-unconfined",
     "libimage-exiftool-perl": "exiftool",
     "libhivex-bin": "hivexml",
     "pst-utils": "readpst",
@@ -113,6 +130,7 @@ APT_BIN_NAMES: dict[str, str] = {
     "upx-ucl": "upx",
     "dnsutils": "dig",
     "openscap-scanner": "oscap",
+    "sleuthkit": "fls",
 }
 
 # "special"-method tool name -> primary executable name, for tools installed via
@@ -124,6 +142,431 @@ SPECIAL_BIN_NAMES: dict[str, str] = {
     "metasploit": "msfconsole",
     "foundry": "forge",
 }
+
+# Source-build names follow the artifacts and PATH links declared by module BUILD_BINS.
+SOURCE_BIN_NAMES: dict[str, str] = {
+    "massdns": "massdns",
+    "hash_extender": "hash_extender",
+    "PkCrack": "pkcrack",
+    "yafu": "yafu",
+    "fastcoll": "fastcoll",
+    "pemcrack": "pemcrack",
+    "Donut": "donut",
+    "ScareCrow": "ScareCrow",
+    "Freeze": "Freeze",
+    "QueenSono": "QueenSono",
+    "Ivy": "Ivy",
+    "AFLplusplus": "afl-fuzz",
+    "honggfuzz": "honggfuzz",
+    "radamsa": "radamsa",
+    "ELFkickers": "sstrip",
+    "rappel": "rappel",
+    "azurehound": "azurehound",
+    "rusthound": "rusthound",
+    "rusthound-ce": "rusthound-ce",
+    "GoExec": "GoExec",
+    "GoMapEnum": "GoMapEnum",
+    "gosecretsdump": "gosecretsdump",
+    "duplicut": "duplicut",
+    "kernel-hardening-checker": "kernel-hardening-checker",
+    "pycdc": "pycdc",
+}
+# Release labels can differ from the executable selected in BINARY_RELEASES_*.
+BINARY_BIN_NAMES: dict[str, str] = {
+    "dex2jar": "d2j-dex2jar",
+    "osquery": "osqueryi",
+    "heimdall-rs": "heimdall",
+}
+PRIMARY_NATIVE_BINARIES: dict[str, tuple[str, ...]] = {"netexec": ("netexec", "NetExec")}
+NON_CLI_TOOLS: dict[str, tuple[str, str, str]] = {
+    "forensics-extra": (
+        "metapackage",
+        "Installs other forensic packages; it has no executable of its own.",
+        'Use list_tools(module="forensics") to find the individual CLI packages it provides.',
+    ),
+    "libnfc-dev": (
+        "library",
+        "Development headers and library files; it has no standalone CLI.",
+        "Use the library from a program or use a registered NFC CLI such as mfoc.",
+    ),
+}
+
+
+# Git is an installation transport, not an execution capability. Names below
+# match the installer's PATH launchers; the executable must still exist at runtime.
+GIT_BIN_NAMES: dict[str, str] = {
+    "libc-database": "libc-database",
+    "dnscat2": "dnscat2",
+    "firmware-mod-kit": "firmware-mod-kit",
+    "pkinittools": "pkinittools",
+    "libnfc-crypto1-crack": "libnfc-crypto1-crack",
+    "USB-HID-decoders": "usb-hid-decoders",
+    "Qiling": "qiling",
+    "Krakatau": "krakatau",
+    "PurplePanda": "purplepanda",
+    "cloudmapper": "cloudmapper",
+    "dvcs-ripper": "dvcs-ripper",
+    "linux-smart-enumeration": "linux-smart-enumeration",
+    "SUDO_KILLER": "sudo_killer",
+    "LaZagne": "lazagne",
+    "mimipenguin": "mimipenguin",
+    "usbkill": "usbkill",
+    "SET": "set",
+    "Zphisher": "zphisher",
+    "SquarePhish": "squarephish",
+    "CredMaster": "credmaster",
+    "Modlishka": "modlishka",
+    "spiderfoot": "spiderfoot",
+    "bettercap": "bettercap",
+    "nipe": "nipe",
+    "PRET": "pret",
+    "pwnat": "pwnat",
+    "recon-ng": "recon-ng",
+    "reconftw": "reconftw",
+    "nmapAutomator": "nmapautomator",
+    "Sn1per": "sn1per",
+    "blackbird": "blackbird",
+    "GooFuzz": "goofuzz",
+    "Telepathy": "telepathy",
+    "certSniff": "certsniff",
+    "linkedin2username": "linkedin2username",
+    "EyeWitness": "eyewitness",
+    "osmedeus": "osmedeus",
+    "nikto": "nikto",
+    "commix": "commix",
+    "XSStrike": "xsstrike",
+    "jwt_tool": "jwt_tool",
+    "smuggler": "smuggler",
+    "testssl.sh": "testssl.sh",
+    "CMSmap": "cmsmap",
+    "PhpSploit": "phpsploit",
+    "phpggc": "phpggc",
+    "PadBuster": "padbuster",
+    "h2csmuggler": "h2csmuggler",
+    "pp-finder": "pp-finder",
+    "tomcatwardeployer": "tomcatwardeployer",
+    "XXEinjector": "xxeinjector",
+    "paramspider": "paramspider",
+    "RsaCtfTool": "rsactftool",
+    "rsatool": "rsatool",
+    "exploitdb": "searchsploit",
+    "RouterSploit": "routersploit",
+    "Penelope": "penelope",
+    "ShellNoob": "shellnoob",
+    "unicorn": "unicorn",
+    "nanodump": "nanodump",
+    "eviltree": "eviltree",
+    "Hoaxshell": "hoaxshell",
+    "DNSExfiltrator": "dnsexfiltrator",
+    "Egress-Assess": "egress-assess",
+    "pyinstxtractor": "pyinstxtractor",
+    "RegRipper": "regripper",
+    "Depix": "depix",
+    "firefox_decrypt": "firefox_decrypt",
+    "Responder": "responder",
+    "enum4linux-ng": "enum4linux-ng",
+    "linWinPwn": "linwinpwn",
+    "PCredz": "pcredz",
+    "krbrelayx": "krbrelayx",
+    "spraykatz": "spraykatz",
+    "dfscoerce": "dfscoerce",
+    "petitpotam": "petitpotam",
+    "shadowcoerce": "shadowcoerce",
+    "noPac": "nopac",
+    "zerologon": "zerologon",
+    "ntlm_theft": "ntlm_theft",
+    "ntlmv1-multi": "ntlmv1-multi",
+    "PassTheCert": "passthecert",
+    "privexchange": "privexchange",
+    "GPOddity": "gpoddity",
+    "gmsadumper": "gmsadumper",
+    "ExtractBitlockerKeys": "extractbitlockerkeys",
+    "PXEThief": "pxethief",
+    "sccmsecrets": "sccmsecrets",
+    "sccmwtf": "sccmwtf",
+    "cmloot": "cmloot",
+    "pywsus": "pywsus",
+    "RemoteMonologue": "remotemonologue",
+    "roastinthemiddle": "roastinthemiddle",
+    "lnkup": "lnkup",
+    "ruler": "ruler",
+    "bqm": "bqm",
+    "cypheroth": "cypheroth",
+    "abuseACL": "abuseacl",
+    "asrepcatcher": "asrepcatcher",
+    "conpass": "conpass",
+    "freeipscanner": "freeipscanner",
+    "goldencopy": "goldencopy",
+    "keytabextract": "keytabextract",
+    "ldaprelayscan": "ldaprelayscan",
+    "LDAPWordlistHarvester": "ldapwordlistharvester",
+    "wifite2": "wifite2",
+    "fluxion": "fluxion",
+    "airgeddon": "airgeddon",
+    "hostapd-mana": "hostapd-mana",
+    "wifiphisher": "wifiphisher",
+    "PSKracker": "pskracker",
+    "eaphammer": "eaphammer",
+    "wifipumpkin3": "wifipumpkin3",
+    "proxmark3": "proxmark3",
+    "mfdread": "mfdread",
+    "DefaultCreds-cheat-sheet": "defaultcreds-cheat-sheet",
+    "pipal": "pipal",
+    "username-anarchy": "username-anarchy",
+    "gpp-decrypt": "gpp-decrypt",
+    "openstego": "openstego",
+    "stegextract": "stegextract",
+    "stegosaurus": "stegosaurus",
+    "CloudBrute": "cloudbrute",
+    "enumerate-iam": "enumerate-iam",
+    "GCPBucketBrute": "gcpbucketbrute",
+    "cloud_enum": "cloud_enum",
+    "deepce": "deepce",
+    "docker-bench-security": "docker-bench-security",
+    "peirates": "peirates",
+    "theHarvester": "theHarvester",
+    "Villain": "villain",
+    "Corsy": "corsy",
+    "NoSQLMap": "nosqlmap",
+    "Gopherus": "gopherus",
+    "dnschef": "dnschef",
+    "yersinia": "yersinia",
+    "stringcheese": "stringcheese",
+    "FuzzyAI": "fuzzyai",
+    "ctf-usb-keyboard-parser": "ctf-usb-keyboard-parser",
+    "LinkFinder": "linkfinder",
+    "SecretFinder": "secretfinder",
+    "FavFreak": "favfreak",
+    "Photon": "photon",
+    "ghauri": "ghauri",
+    "tplmap": "tplmap",
+    "SSRFmap": "ssrfmap",
+    "graphw00f": "graphw00f",
+    "Oralyzer": "oralyzer",
+    "ropium": "ropium",
+    "featherduster": "featherduster",
+    "targetedKerberoast": "targetedkerberoast",
+    "cupp": "cupp",
+    "changeme": "changeme",
+    "crowbar": "crowbar",
+    "kwprocessor": "kwprocessor",
+    "medusa-frida": "medusa-frida",
+}
+GIT_NATIVE_BINARIES: dict[str, tuple[str, ...]] = {
+    "usbkill": ("usbkill.py",),
+    "nipe": ("nipe.pl",),
+    "SET": ("setoolkit",),
+    "wifite2": ("wifite",),
+    "RegRipper": ("rip", "rip.pl"),
+    "nikto": ("nikto.pl",),
+    "PCredz": ("Pcredz",),
+    "RsaCtfTool": ("RsaCtfTool", "rsacrack"),
+    "asrepcatcher": ("ASRepCatcher",),
+    "Qiling": ("qltool",),
+    "Krakatau": ("krak2",),
+    "theHarvester": ("theharvester",),
+}
+HOST_CONTROL_OPT_INS: dict[str, str] = {
+    "usbkill": "CYBERSEC_MCP_ALLOW_USBKILL",
+    "nipe": "CYBERSEC_MCP_ALLOW_NIPE",
+}
+EXECUTABLE_GIT: frozenset[str] = frozenset(GIT_BIN_NAMES)
+_GIT_NETWORK_REGISTRY: frozenset[str] = frozenset(
+    [
+        "dnscat2",
+        "pkinittools",
+        "libnfc-crypto1-crack",
+        "RsaCtfTool",
+        "PurplePanda",
+        "cloudmapper",
+        "dvcs-ripper",
+        "DNSExfiltrator",
+        "PCredz",
+        "CMSmap",
+        "CloudBrute",
+        "Corsy",
+        "CredMaster",
+        "DefaultCreds-cheat-sheet",
+        "Egress-Assess",
+        "EyeWitness",
+        "FavFreak",
+        "FuzzyAI",
+        "GCPBucketBrute",
+        "GPOddity",
+        "GooFuzz",
+        "Hoaxshell",
+        "LDAPWordlistHarvester",
+        "LinkFinder",
+        "Modlishka",
+        "NoSQLMap",
+        "Oralyzer",
+        "PRET",
+        "PXEThief",
+        "PadBuster",
+        "PassTheCert",
+        "Penelope",
+        "Photon",
+        "PhpSploit",
+        "Responder",
+        "RouterSploit",
+        "SET",
+        "SSRFmap",
+        "SecretFinder",
+        "Sn1per",
+        "SquarePhish",
+        "Telepathy",
+        "Villain",
+        "XSStrike",
+        "XXEinjector",
+        "Zphisher",
+        "abuseACL",
+        "airgeddon",
+        "asrepcatcher",
+        "bettercap",
+        "blackbird",
+        "bqm",
+        "certSniff",
+        "changeme",
+        "cloud_enum",
+        "cmloot",
+        "commix",
+        "conpass",
+        "crowbar",
+        "cypheroth",
+        "dfscoerce",
+        "dnschef",
+        "eaphammer",
+        "enum4linux-ng",
+        "enumerate-iam",
+        "fluxion",
+        "freeipscanner",
+        "ghauri",
+        "gmsadumper",
+        "goldencopy",
+        "graphw00f",
+        "h2csmuggler",
+        "hostapd-mana",
+        "jwt_tool",
+        "krbrelayx",
+        "ldaprelayscan",
+        "linWinPwn",
+        "linkedin2username",
+        "lnkup",
+        "medusa-frida",
+        "nikto",
+        "nipe",
+        "nmapAutomator",
+        "noPac",
+        "osmedeus",
+        "paramspider",
+        "peirates",
+        "petitpotam",
+        "pp-finder",
+        "privexchange",
+        "pwnat",
+        "pywsus",
+        "recon-ng",
+        "reconftw",
+        "roastinthemiddle",
+        "ruler",
+        "sccmsecrets",
+        "sccmwtf",
+        "shadowcoerce",
+        "smuggler",
+        "spiderfoot",
+        "spraykatz",
+        "targetedKerberoast",
+        "testssl.sh",
+        "theHarvester",
+        "tomcatwardeployer",
+        "tplmap",
+        "wifiphisher",
+        "wifipumpkin3",
+        "wifite2",
+        "yersinia",
+        "zerologon",
+    ]
+)
+GIT_NETWORK_TOOLS: frozenset[str] = _GIT_NETWORK_REGISTRY | frozenset(
+    GIT_BIN_NAMES[name] for name in _GIT_NETWORK_REGISTRY
+)
+GIT_NON_EXECUTABLE: dict[str, str] = {
+    "robin": "service",
+    "pallms": "resource",
+    "SecLists": "resource",
+    "PayloadsAllTheThings": "resource",
+    "InternalAllTheThings": "resource",
+    "PEASS-ng": "resource",
+    "PyExfil": "framework",
+    "Vigil": "framework",
+    "EvilGoPhish": "framework",
+    "CyberChef": "framework",
+    "Caldera": "framework",
+    "Loki-C2": "framework",
+    "axiom": "framework",
+    "iKy": "framework",
+    "symfony-exploits": "suite",
+    "vulscan": "resource",
+    "pwndbg": "framework",
+    "GEF": "framework",
+    "peda": "framework",
+    "decomp2dbg": "framework",
+    "mousejack": "framework",
+    "Hob0Rules": "resource",
+    "Pantagrule": "resource",
+    "OneRuleToRuleThemStill": "resource",
+    "stegsolve": "gui",
+    "sigma-rules": "resource",
+    "maltrail": "framework",
+    "MISP-docker": "framework",
+    "wazuh-docker": "framework",
+    "shannon": "framework",
+    "pentagi": "framework",
+    "preeny": "framework",
+    "atomic-red-team": "resource",
+    "Mythic": "framework",
+    "Havoc": "framework",
+    "PoshC2": "framework",
+    "merlin": "framework",
+    "PurpleLlama": "framework",
+}
+
+
+# Registry tool -> further executables its package installs. run_tool accepts these names and
+# applies the owning tool's install check, e.g. sleuthkit ships fls, mmls and icat.
+PACKAGE_EXTRA_BINARIES: dict[str, frozenset[str]] = {
+    "ELFkickers": frozenset({"elfls", "objres", "rebind", "elftoc", "ebfc", "infect"}),
+    "pycdc": frozenset({"pycdas"}),
+    "binutils": frozenset({"readelf", "objdump", "nm", "strings"}),
+    "sleuthkit": frozenset(
+        {"fls", "mmls", "icat", "fsstat", "istat", "ils", "blkls", "tsk_recover", "mactime"},
+    ),
+}
+_EXTRA_BINARY_OWNER: dict[str, str] = {
+    binary: package for package, binaries in PACKAGE_EXTRA_BINARIES.items() for binary in binaries
+}
+
+
+def package_for_extra_binary(binary: str) -> str | None:
+    """The registry tool whose package installs *binary* besides its primary executable."""
+    owner = _EXTRA_BINARY_OWNER.get(binary)
+    if owner:
+        return owner
+    mappings = (
+        PIPX_BIN_NAMES,
+        APT_BIN_NAMES,
+        SPECIAL_BIN_NAMES,
+        NPM_BIN_NAMES,
+        CARGO_BIN_NAMES,
+        GIT_BIN_NAMES,
+        SOURCE_BIN_NAMES,
+        BINARY_BIN_NAMES,
+    )
+    owners = {name for mapping in mappings for name, alias in mapping.items() if alias == binary and alias != name}
+    owners.update(name for name, aliases in GIT_NATIVE_BINARIES.items() if binary in aliases and binary != name)
+    owners.update(name for name, aliases in PRIMARY_NATIVE_BINARIES.items() if binary in aliases and binary != name)
+    return next(iter(owners)) if len(owners) == 1 else None
+
 
 # npm / cargo package name -> installed binary name, for the packages where they
 # differ. Sync-pinned: validate_mcp_sync.py mirrors these to _NPM_BIN_NAMES and
@@ -145,6 +588,12 @@ def resolve_binary_name(method: str, tool_name: str) -> str:
     (otherwise apt-renamed/special-method tools always report "not installed" on
     remote hosts). Returns *tool_name* unchanged when no mapping applies.
     """
+    if method == "source":
+        return SOURCE_BIN_NAMES.get(tool_name, tool_name)
+    if method == "binary":
+        return BINARY_BIN_NAMES.get(tool_name, tool_name)
+    if method == "git":
+        return GIT_BIN_NAMES.get(tool_name, tool_name)
     if method == "pipx":
         return PIPX_BIN_NAMES.get(tool_name, tool_name)
     if method == "apt":
@@ -156,6 +605,145 @@ def resolve_binary_name(method: str, tool_name: str) -> str:
     if method == "cargo":
         return CARGO_BIN_NAMES.get(tool_name, tool_name)
     return tool_name
+
+
+def binary_candidates(method: str, tool_name: str) -> tuple[str, ...]:
+    """Known installer and native launchers, ordered by the toolkit's canonical name."""
+    canonical = resolve_binary_name(method, tool_name)
+    if method != "git" or tool_name not in GIT_BIN_NAMES:
+        return tuple(dict.fromkeys((canonical, *PRIMARY_NATIVE_BINARIES.get(tool_name, ()))))
+    return tuple(dict.fromkeys((canonical, *GIT_NATIVE_BINARIES.get(tool_name, ()), tool_name)))
+
+
+def resolve_installed_binary(method: str, tool_name: str) -> str:
+    """Select a known launcher present in PATH, or return the canonical missing name."""
+    candidates = binary_candidates(method, tool_name)
+    return next((candidate for candidate in candidates if shutil.which(candidate)), candidates[0])
+
+
+def execution_metadata(tool: dict) -> dict:
+    """Describe supported invocation separately from installation state."""
+    name, method = tool["name"], tool["method"]
+    # Imported lazily because the policy engine consumes this metadata too.
+    from mcp_server.security import _NETWORK_TOOLS
+
+    binary = resolve_binary_name(method, name)
+    kind, executable = "cli", True
+    reason = (
+        "CLI executable; installation and argument/network policies are checked before launch. "
+        "Operator authorization for the target remains required."
+    )
+    access = f'Use run_tool(tool_name="{name}", args="...").'
+    if name in NON_CLI_TOOLS:
+        kind, reason, access = NON_CLI_TOOLS[name]
+        executable, binary = False, None
+    elif method == "git":
+        executable = name in GIT_BIN_NAMES
+        kind = "cli" if executable else GIT_NON_EXECUTABLE.get(name, "unreviewed")
+        if not executable:
+            binary = None
+            if kind == "resource":
+                reason = "Repository of data, rules, payloads or supporting scripts; no single CLI launcher."
+                access = (
+                    "Use run_tool with file/ls/cat/grep on the installed resource files, or pass their paths to a CLI."
+                )
+            elif kind == "gui":
+                reason = "Desktop application; no reviewed non-interactive CLI launcher."
+                access = "Open the installed application through its desktop interface."
+            elif kind == "suite":
+                reason = "Repository contains multiple independent entry points; no single project-named CLI."
+                access = "Inspect the upstream entry points and install a named CLI before calling run_tool."
+            elif kind == "service":
+                reason = "Web application or MCP service; no standalone project-named CLI launcher."
+                access = "Use the documented service API or MCP client after operator-approved setup."
+            elif kind == "framework":
+                reason = (
+                    "Framework, service, plugin or library requiring its own runtime/setup; no reviewed CLI launcher."
+                )
+                access = "Use the upstream setup/client instructions; the repository remains discoverable here."
+            else:
+                reason = "Git project has no reviewed executable metadata; review its launcher and policies first."
+                access = "Use get_tool_info to inspect its upstream URL and installation module."
+    elif method == "docker":
+        executable, binary, kind = False, None, "container"
+        reason = "Installed as a container image; no host CLI wrapper is registered."
+        access = "Use its documented container command or service client after operator-approved setup."
+    elif name == "ctf-crypto-venv":
+        executable, binary, kind = False, None, "environment"
+        reason = "Python environment for script execution; not a standalone executable."
+        access = 'Use run_script(venv="crypto") only after scripts are explicitly enabled.'
+    result = {
+        "executable": executable,
+        "binary": binary,
+        "kind": kind,
+        "network": name in GIT_NETWORK_TOOLS
+        or binary in GIT_NETWORK_TOOLS
+        or name in _NETWORK_TOOLS
+        or binary in _NETWORK_TOOLS,
+        "reason": reason,
+        "access": access,
+    }
+    if method == "docker":
+        label = DOCKER_TOOL_LABELS.get(name, name)
+        result["image"] = next(
+            (image for key, image in DOCKER_IMAGES.items() if key.casefold() == label.casefold()), None
+        )
+    if executable and method == "git":
+        result["binary_candidates"] = list(binary_candidates(method, name))
+        if name in {"NoSQLMap", "Gopherus", "DNSExfiltrator", "featherduster"}:
+            result["runtime_requirements"] = (
+                "Legacy Python 2 CLI; requires a compatible Python 2 interpreter and dependencies."
+            )
+        elif name == "nanodump":
+            result["runtime_requirements"] = (
+                "Windows native CLI; requires a compatible Windows build and execution host."
+            )
+        elif name == "RemoteMonologue":
+            result["runtime_requirements"] = (
+                "Python front end with Windows target components and their runtime requirements."
+            )
+        elif name in {
+            "proxmark3",
+            "hostapd-mana",
+            "wifite2",
+            "fluxion",
+            "airgeddon",
+            "wifiphisher",
+            "eaphammer",
+            "wifipumpkin3",
+        }:
+            result["runtime_requirements"] = (
+                "Requires supported hardware/drivers and, for active operations, appropriate host privileges."
+            )
+        elif name in {"usbkill", "nipe"}:
+            opt_in = HOST_CONTROL_OPT_INS[name]
+            result["activation"] = {
+                "environment_variable": opt_in,
+                "enabled": os.environ.get(opt_in, "").strip() == "1",
+                "requires_external_for": ["install", "start", "restart", "status"] if name == "nipe" else [],
+            }
+            if name == "usbkill":
+                result["runtime_requirements"] = (
+                    f"Full host-control functionality requires {opt_in}=1 and appropriate host permissions; "
+                    "configured actions can shut down the system or wipe files, RAM and swap."
+                )
+            else:
+                result["runtime_requirements"] = (
+                    f"Requires Perl/CPAN dependencies, appropriate network privileges and {opt_in}=1. "
+                    "Network operations also require CYBERSEC_MCP_ALLOW_EXTERNAL=1; stop remains local."
+                )
+    aliases = set(binary_candidates(method, name)) | set(PACKAGE_EXTRA_BINARIES.get(name, ()))
+    aliases.discard(name)
+    if executable and aliases:
+        result["aliases"] = sorted(aliases)
+    return result
+
+
+def execution_summary(tool: dict) -> dict:
+    """Keep large discovery lists compact; detailed guidance lives in get_tool_info."""
+    metadata = execution_metadata(tool)
+    fields = ("kind", "executable", "binary", "network", "runtime_requirements", "activation")
+    return {key: metadata[key] for key in fields if key in metadata}
 
 
 # Registry tools installed ONLY when INCLUDE_C2=true (the redteam/full profiles, or
@@ -231,7 +819,6 @@ DOCKER_IMAGES: dict[str, str] = {
     "BeEF": "beefproject/beef",
     "Empire": "bcsecurity/empire",
     "MobSF": "opensecurity/mobile-security-framework-mobsf",
-    "SpiderFoot": "spiderfoot/spiderfoot",
     "BloodHound CE": "specterops/bloodhound",
     "TheHive": "strangebee/thehive:latest",
     "Cortex": "thehiveproject/cortex:latest",
@@ -241,6 +828,12 @@ DOCKER_IMAGES: dict[str, str] = {
     "Zircolite": "wagga40/zircolite:latest",
     "KICS": "checkmarx/kics:latest",
     "SageMath": "sagemath/sagemath:latest",
+}
+
+# Registry names whose DOCKER_IMAGES label (also the .versions key docker_pull writes) differs.
+DOCKER_TOOL_LABELS: dict[str, str] = {
+    "bloodhound-ce": "BloodHound CE",
+    "pentagi-docker": "PentAGI",
 }
 
 
@@ -260,9 +853,70 @@ class ToolsDatabase:
 
     def _load_tools(self) -> None:
         config_path = _resolve_registry_path(self.root)
-        with open(config_path, "r", encoding="utf-8") as f:
-            self._tools = json.load(f)
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                tools = json.load(f)
+            if not isinstance(tools, list):
+                raise ValueError("top level must be a list of tool objects")
+            names: set[str] = set()
+            for index, entry in enumerate(tools):
+                if not isinstance(entry, dict):
+                    raise ValueError(f"entry {index} is not an object")
+                for key in ("name", "method", "module"):
+                    if not isinstance(entry.get(key), str):
+                        raise ValueError(f"entry {index} lacks a string '{key}'")
+                if entry["name"] in names:
+                    raise ValueError(f"duplicate tool name: {entry['name']}")
+                names.add(entry["name"])
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise ValueError(f"{config_path}: invalid registry ({exc})") from exc
+        self._tools = tools
         self.tools_by_name = {t["name"]: t for t in self._tools}
+
+    def get_tool(self, tool_name: str) -> dict | None:
+        """Resolve registry names and unambiguous installed executable aliases."""
+        tool = self.tools_by_name.get(tool_name)
+        if tool is not None:
+            return tool
+        owner = package_for_extra_binary(tool_name)
+        return self.tools_by_name.get(owner) if owner else None
+
+    def execution_candidates(self, tool_name: str) -> tuple[str, ...]:
+        """Keep explicit executable aliases distinct from the package's primary CLI."""
+        tool = self.get_tool(tool_name)
+        if tool is None:
+            return ()
+        if tool_name != tool["name"]:
+            return (tool_name,)
+        return binary_candidates(tool["method"], tool["name"])
+
+    def execution_status(self, tool_name: str) -> dict:
+        """Report launch readiness without treating a clone or version record as a CLI."""
+        tool = self.get_tool(tool_name)
+        if tool is None:
+            return {"executable": False, "ready": False, "reason": "Tool not found in registry"}
+        result = execution_metadata(tool)
+        candidates = self.execution_candidates(tool_name) if result["executable"] else ()
+        selected = next(
+            (candidate for candidate in candidates if shutil.which(candidate)), candidates[0] if candidates else None
+        )
+        binary_path = shutil.which(selected) if selected else None
+        if selected:
+            result["binary"] = selected
+        if tool_name != tool["name"]:
+            result["access"] = f'Use run_tool(tool_name="{tool_name}", args="...").'
+        result["ready"] = binary_path is not None
+        if binary_path:
+            result["path"] = binary_path
+        elif result["executable"]:
+            result["readiness_reason"] = "CLI launcher is not in PATH; a clone or version record alone is insufficient."
+        if tool["method"] == "git":
+            custom_dir = os.environ.get("GITHUB_TOOL_DIR")
+            roots = [Path(custom_dir or "/opt")]
+            if os.environ.get("TERMUX_VERSION"):
+                roots.insert(0, Path.home() / "tools")
+            result["location_candidates"] = [str(root / tool["name"]) for root in roots]
+        return result
 
     def reload_versions(self, ttl: float = 2.0) -> dict[str, dict]:
         """Parse .versions file (tool|method|version|timestamp format).
@@ -316,7 +970,7 @@ class ToolsDatabase:
 
         Returns dict with: installed (bool), method (str), details (str).
         """
-        tool = self.tools_by_name.get(tool_name)
+        tool = self.get_tool(tool_name)
         if not tool:
             return {
                 "installed": False,
@@ -324,10 +978,27 @@ class ToolsDatabase:
                 "details": f"Tool '{tool_name}' not found in registry",
             }
 
+        if tool_name != tool["name"]:
+            path = shutil.which(tool_name)
+            return {
+                "installed": path is not None,
+                "method": "path",
+                "details": f"Found in PATH: {path}"
+                if path
+                else f"Binary '{tool_name}' is not installed or not in PATH",
+            }
+
+        tool_name = tool["name"]
+
         # 1. Check .versions tracking
         versions = self.reload_versions()
-        if tool_name in versions:
-            v = versions[tool_name]
+        tracked_key = tool_name
+        if tool_name not in versions and tool["method"] == "docker":
+            tracked_key = DOCKER_TOOL_LABELS.get(tool_name, tool_name)
+        elif tool_name not in versions and resolve_binary_name(tool["method"], tool_name) in versions:
+            tracked_key = resolve_binary_name(tool["method"], tool_name)
+        if tracked_key in versions:
+            v = versions[tracked_key]
             return {
                 "installed": True,
                 "method": "versions_tracked",
@@ -335,15 +1006,16 @@ class ToolsDatabase:
             }
 
         # 2. PATH check via shutil.which
-        if shutil.which(tool_name):
+        found = shutil.which(tool_name)
+        if found:
             return {
                 "installed": True,
                 "method": "path",
-                "details": f"Found in PATH: {shutil.which(tool_name)}",
+                "details": f"Found in PATH: {found}",
             }
 
         # 3. Binary name fallback (package name != executable name)
-        resolved = resolve_binary_name(tool["method"], tool_name)
+        resolved = resolve_installed_binary(tool["method"], tool_name)
         bin_name = resolved if resolved != tool_name else None
         if bin_name and shutil.which(bin_name):
             return {
@@ -399,7 +1071,7 @@ class ToolsDatabase:
 
     def _find_docker_image(self, tool_name: str) -> Optional[str]:
         """Find the docker image for a tool name."""
-        name_lower = tool_name.lower()
+        name_lower = DOCKER_TOOL_LABELS.get(tool_name, tool_name).lower()
         # Exact match on label (case-insensitive)
         for label, image in DOCKER_IMAGES.items():
             if name_lower == label.lower():
@@ -451,6 +1123,8 @@ class ToolsDatabase:
         module: Optional[str] = None,
         method: Optional[str] = None,
         installed_only: bool = False,
+        query: Optional[str] = None,
+        executable_only: bool = False,
     ) -> list[dict]:
         """Filter and return tools from the registry."""
         results = self._tools
@@ -459,6 +1133,28 @@ class ToolsDatabase:
             results = [t for t in results if t["module"] == module]
         if method:
             results = [t for t in results if t["method"] == method]
+
+        if query:
+            terms = query.casefold().split()
+            results = [
+                t
+                for t in results
+                if all(
+                    term
+                    in " ".join(
+                        (
+                            t["name"],
+                            *binary_candidates(t["method"], t["name"]),
+                            *PACKAGE_EXTRA_BINARIES.get(t["name"], ()),
+                            t["module"],
+                            t.get("url", ""),
+                        )
+                    ).casefold()
+                    for term in terms
+                )
+            ]
+        if executable_only:
+            results = [t for t in results if execution_metadata(t)["executable"]]
 
         if installed_only:
             filtered = []

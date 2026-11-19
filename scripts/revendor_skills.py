@@ -47,7 +47,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _skill_text import FRONTMATTER_FENCE, FRONTMATTER_KEY, drop_tool_grant, show_invisible  # noqa: E402
+from _skill_text import FRONTMATTER_FENCE, FRONTMATTER_KEY, drop_tool_grant, has_unparsed_grant, show_invisible  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
@@ -83,7 +83,7 @@ class Git:
         return proc.stdout
 
     def text(self, *args: str) -> str:
-        return self.run(*args).decode()
+        return self.run(*args).decode("utf-8", errors="surrogateescape")
 
     def exists(self, obj: str) -> bool:
         return subprocess.run(["git", "cat-file", "-e", obj], capture_output=True, env=self._env).returncode == 0
@@ -95,7 +95,7 @@ class Git:
                 continue
             meta, path = record.split(b"\t", 1)
             mode, _kind, oid = meta.decode().split()
-            found[path.decode()] = (mode, oid)
+            found[path.decode("utf-8", errors="surrogateescape")] = (mode, oid)
         return found
 
     def write_tree(self, entries: Entries) -> str:
@@ -313,15 +313,17 @@ def merge_skill(
             raise UnsafeSkill(f"upstream {rel} has mode {mode}")
         if ours.get(rel, ("", ""))[1] == oid:
             continue
-        try:
-            text = git.blob(oid).decode()
-        except UnicodeDecodeError:
-            continue
+        blob = git.blob(oid)
+        if b"\0" in blob and rel != "SKILL.md":
+            continue  # binary; rewriting bytes that merely look like escapes would corrupt it
+        text = blob.decode("utf-8", errors="surrogateescape")
         visible = show_invisible(text)
         # An upstream skill does not get to pre-approve tools for itself.
         incoming = drop_tool_grant(visible) if rel == "SKILL.md" else visible
+        if rel == "SKILL.md" and has_unparsed_grant(incoming):
+            raise UnsafeSkill("SKILL.md names allowed-tools in a form that cannot be removed")
         if incoming != text:
-            theirs[rel] = (mode, git.store(incoming.encode()))
+            theirs[rel] = (mode, git.store(incoming.encode("utf-8", errors="surrogateescape")))
         if visible != text:
             shown.append(rel)
     base, predates_pin, edited = pick_base(git, pin, path_at_pin, ours, theirs)
@@ -368,7 +370,7 @@ def marked_files(skill_dir: Path) -> list[str]:
 
 
 def bump_frontmatter_pin(skill_md: Path, old: str, new: str) -> bool:
-    text = skill_md.read_text(encoding="utf-8")
+    text = skill_md.read_text(encoding="utf-8", errors="surrogateescape")
     fences = list(FRONTMATTER_FENCE.finditer(text))
     if len(fences) < 2 or fences[0].start() != 0:
         return False
@@ -376,7 +378,7 @@ def bump_frontmatter_pin(skill_md: Path, old: str, new: str) -> bool:
     head = re.sub(rf"(?m)^(upstream_commit:\s*){re.escape(old)}[ \t]*$", rf"\g<1>{new}", text[:end])
     if head == text[:end]:
         return False
-    skill_md.write_text(head + text[end:], encoding="utf-8")
+    skill_md.write_text(head + text[end:], encoding="utf-8", errors="surrogateescape")
     return True
 
 
@@ -402,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
             if not git.exists(f"{commit}^{{commit}}"):
                 raise RuntimeError(f"commit {commit} is not in {args.clone}")
         at_pin, at_target = skill_paths(git, args.pin), skill_paths(git, args.target)
-    except (RuntimeError, subprocess.CalledProcessError, OSError) as exc:
+    except (RuntimeError, subprocess.CalledProcessError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

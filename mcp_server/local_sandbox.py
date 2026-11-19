@@ -26,6 +26,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 LOCAL_SANDBOX_ENV = "CYBERSEC_LOCAL_SANDBOX"
@@ -39,6 +40,10 @@ _HIDDEN_IN_HOME = (
     ".config/git/credentials", ".vault-token", ".config/op", ".config/1Password", ".config/Bitwarden",
     ".config/gh", ".config/hub", ".config/rclone", ".config/sops", ".terraform.d", ".npmrc", ".pypirc",
     ".cargo/credentials", ".cargo/credentials.toml", ".gem/credentials",
+    ".pgpass", ".my.cnf", ".s3cfg", ".boto", ".m2/settings.xml", ".gradle/gradle.properties", ".yarnrc",
+    ".config/pip", ".pip", ".config/containers/auth.json",
+    # Shell and client histories: pasted tokens and command-line passwords
+    ".bash_history", ".zsh_history", ".python_history", ".psql_history", ".mysql_history", ".local/share/fish",
     # Cloud and cluster credentials (kept for the cloud and containers modules, see _MODULE_NEEDS)
     ".aws", ".azure", ".config/gcloud", ".kube", ".docker", ".oci", ".config/doctl",
     # Browser profiles and mail: cookies, saved logins, session tokens
@@ -47,6 +52,7 @@ _HIDDEN_IN_HOME = (
     # The agent's own configuration: tokens to read, and settings, hooks and memory to plant
     ".claude", ".claude.json", ".codex", ".gemini", ".config/opencode", ".cursor", ".continue",
     ".config/goose", ".hermes", ".openclaw", ".config/github-copilot", ".config/Claude",
+    ".local/share/opencode/auth.json", ".local/share/goose", ".copilot", ".config/Code", ".vscode",
     # Keys to the display server and the session manager
     ".Xauthority", ".ICEauthority",
 )  # fmt: skip
@@ -59,6 +65,8 @@ _READ_ONLY_IN_HOME = (
     ".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".profile", ".zshrc", ".zshenv",
     ".zprofile", ".zlogin", ".config/fish", ".config/autostart", ".config/systemd", ".local/share/systemd",
     ".config/environment.d", ".pam_environment", ".xprofile", ".xinitrc", ".gitconfig", ".config/git",
+    # Sourced by the shell, editor or Python at start.
+    ".bash_aliases", ".bashrc.d", ".config/zsh", ".config/nvim", ".vimrc", ".tmux.conf", ".local/lib",
     # Directories on PATH: a program dropped here runs the next time its name is typed.
     ".local/bin", "bin",
 )  # fmt: skip
@@ -100,8 +108,34 @@ _UNSET_ENV_UNLESS = {"DOCKER_HOST": "containers", "CONTAINER_HOST": "containers"
 _CHECKOUT = Path(__file__).resolve().parent.parent
 
 
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_VALUES = frozenset({"", "0", "false", "no", "off"})
+_warned_flags: set[tuple[str, str]] = set()
+
+
+def protective_flag(name: str) -> bool:
+    """Parse a switch that turns a protection on.
+
+    1/true/yes/on enable it and 0/false/no/off/empty disable it, case-insensitively. Any other
+    value enables it with one warning on stderr, so a typo cannot silently drop the protection.
+    """
+    value = os.environ.get(name, "").strip().lower()
+    if value in _TRUE_VALUES:
+        return True
+    if value in _FALSE_VALUES:
+        return False
+    if (name, value) not in _warned_flags:
+        _warned_flags.add((name, value))
+        print(
+            f"warning: {name}={value!r} is not a recognised value (use 1/true/yes/on or 0/false/no/off); "
+            "treating it as enabled",
+            file=sys.stderr,
+        )
+    return True
+
+
 def enabled() -> bool:
-    return os.environ.get(LOCAL_SANDBOX_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+    return protective_flag(LOCAL_SANDBOX_ENV)
 
 
 def _state_dir() -> Path:

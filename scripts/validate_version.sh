@@ -2,7 +2,8 @@
 # Assert every release surface reports the same version.
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
+# BUMP_VERSION_ROOT lets tests validate a copy of the release surfaces.
+cd "${BUMP_VERSION_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}" || exit 2
 
 v_file="$(tr -d '[:space:]' < VERSION)"
 v_py="$(grep -m1 '^version' mcp_server/pyproject.toml | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"

@@ -5,6 +5,8 @@ description: Use when solving steganography CTF challenges — hidden data in im
 
 # CTF stego methodology
 
+> **Pre-flight.** Confirm the event rules allow AI assistance (`authorization-gate`). Start with `suggest_for_ctf` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command, tell the operator; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
+
 ## 0. CRITICAL — never `Read` an unvalidated image
 
 Per CLAUDE.md: reading a corrupt image poisons the conversation. Validate first:
@@ -20,12 +22,12 @@ Only `Read` the image after both checks pass.
 
 ## 1. Triage every input
 
-```bash
-file <file>
-xxd <file> | head -30
-exiftool <file>            # metadata — flag often hides here
-strings <file> | grep -i "ctf\|flag\|key\|pass" | head
-binwalk <file>             # multi-file polyglots
+```text
+run_tool("file", "<file>")
+run_pipeline([{"tool": "xxd", "args": "<file>"}, {"tool": "head", "args": "-30"}])
+run_tool("exiftool", "<file>")             # metadata — flag often hides here
+run_pipeline([{"tool": "strings", "args": "<file>"}, {"tool": "grep", "args": "-i -e ctf -e flag -e key -e pass"}, {"tool": "head"}])
+run_tool("binwalk", "<file>")              # multi-file polyglots
 ```
 
 Always check metadata first. ~30% of intro stego is just `exiftool`.
@@ -44,15 +46,14 @@ Always check metadata first. ~30% of intro stego is just `exiftool`.
 | Modified/extra chunks | `pngcheck -v`, `pngcsum` |
 | Width/height tampering (PNG) | edit IHDR width/height, recalc CRC — `tweakpng` style |
 
-```bash
+```text
 # zsteg covers most LSB cases for PNG/BMP
-zsteg -a image.png
+run_tool("zsteg", "-a image.png")
 
-# steghide brute (jpg/wav/bmp)
-stegseek image.jpg rockyou.txt
+# steghide brute (jpg/wav/bmp); wordlist path: see security-wordlists (the misc module unpacks rockyou when SecLists is installed)
+run_tool("stegseek", "image.jpg /opt/SecLists/Passwords/Leaked-Databases/rockyou.txt")
 
-# Multi-tool sweep
-stegsolve image.png        # GUI, manual layer toggle
+# stegsolve is a GUI git clone (not run_tool); the operator toggles layers manually
 ```
 
 ## 3. Audio (WAV / MP3 / FLAC / OGG)

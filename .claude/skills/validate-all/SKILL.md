@@ -1,11 +1,22 @@
 ---
 name: validate-all
-description: Run the full local validation suite for this installer before pushing or opening a PR. Runs shellcheck, bash syntax checks, tools_config validators, MCP sync validator, distro-compat validator, Claude skills validator, bats tests, ruff lint, and pytest. Triggers on phrases like "validate", "check before push", "run all checks", "make sure everything passes", "pre-commit check".
+description: Run the full local validation suite for this installer before pushing or opening a PR. Covers `make check` (lint, every validator, bats, pytest, sandbox node tests) and the individual commands behind it. Triggers on phrases like "validate", "check before push", "run all checks", "make sure everything passes", "pre-commit check".
 ---
 
 # Run the full validation suite
 
-Run these in parallel where possible. Goal: zero errors, zero warnings before pushing.
+Goal: zero errors, zero warnings before pushing.
+
+## Shortcut
+
+```bash
+make check          # lint + validate + test
+# or in pieces:
+make lint validate test
+make lint-sh lint-py lint-md validate test-bats test-py test-sandbox
+```
+
+`make lint-py` also lints `scripts/` and `lib/`; `make validate` runs the validators listed below plus `audit_skill_dependencies.py --check-declared`, `update-skills.sh --check-pins`, `validate_agent_docs.py`, `validate_client_configs.py`, `check_doc_links.py`, `verify_audit_chain.py --selftest`, `validate_profiles.sh` and `validate_version.sh`. The individual commands follow.
 
 ## Bash side
 
@@ -42,13 +53,13 @@ python3 scripts/validate_distro_compat.py
 python3 scripts/validate_claude_skills.py
 ```
 
-All four must report **0 errors** (validate_tools_config.py also requires 0 warnings).
+Every validator must report **0 errors** (validate_tools_config.py also requires 0 warnings).
 
 > If you added, removed, or renamed a skill dir under `.claude/skills/`, first update
-> the `SKILLS.md` counts and regenerate the curation index, otherwise step 7 fails:
+> the `SKILLS.md` counts and regenerate the curation index and requirements, otherwise step 7 fails:
 >
 > ```bash
-> python3 scripts/curate_claude_skills.py --write
+> make curate
 > ```
 
 ## Python (MCP server) side
@@ -63,7 +74,7 @@ uv run --group dev pytest tests/ -q
 ## Markdown (writeups + project docs)
 
 ```bash
-npx markdownlint-cli2 "**/*.md" "#node_modules" "#tests/bats"
+make lint-md    # pinned markdownlint over tracked docs, vendored skills excluded
 ```
 
 If only working on writeups:
@@ -75,8 +86,7 @@ npx markdownlint-cli2 "writeups/**/*.md"
 ## Profiles
 
 ```bash
-# Implicit in CI: validate-profiles checks profiles/*.conf module names against ALL_MODULES
-grep -h '^MODULES=' profiles/*.conf | sort -u
+bash scripts/validate_profiles.sh
 ```
 
 ## Reporting

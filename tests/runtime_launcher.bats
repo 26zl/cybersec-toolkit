@@ -3,6 +3,8 @@
 setup() {
     load 'test_helper'
     make_test_tmpdir
+    # The launcher anchors on the physical working directory, so fixtures use physical paths.
+    TEST_TMPDIR="$(cd "$TEST_TMPDIR" && pwd -P)"; export TEST_TMPDIR
     BUNDLE_DIR="$TEST_TMPDIR/install folder/scanner"
     CALLER_DIR="$TEST_TMPDIR/caller folder"
     mkdir -p "$BUNDLE_DIR/.runtime" "$CALLER_DIR" "$TEST_TMPDIR/bin"
@@ -82,6 +84,15 @@ data=json.load(open(sys.argv[1]))
 assert data['cwd']==sys.argv[2]
 assert data['library']==sys.argv[2]+'/.runtime:/synthetic/inherited'
 PY
+}
+
+@test "Runtime launcher anchors relative paths on the physical working directory" {
+    ln -s "$CALLER_DIR" "$TEST_TMPDIR/link"
+    cd "$TEST_TMPDIR/link" || return 1
+    run "$TEST_TMPDIR/bin/scanner" inspect-items -t timeline.jsonl
+
+    assert_success
+    _context_assert "--timeline=$CALLER_DIR/timeline.jsonl"
 }
 
 @test "Runtime launcher supports cligen style aliases prefixes colon assignments and bool bundles" {

@@ -140,13 +140,16 @@ jobs:
             ${{ needs.lock-and-verify.outputs.summary }}
             ```
 
+            Pull requests opened with the workflow token do not start CI: close and reopen this PR (or push a maintainer commit) so the required checks run before it merges.
+
             Verified against the upgraded lock in a separate read-only job: `uv sync`, MCP import check, `ruff check`/`format --check`, `pytest`, `pip-audit`, and `validate_mcp_sync.py` all passed before this PR was opened.
           labels: dependencies
 
       - name: Enable auto-merge
         if: steps.cpr.outputs.pull-request-number != ''
         run: |
-          gh pr merge --auto --squash "$PR_NUMBER" || true
+          gh pr merge --auto --squash "$PR_NUMBER" \
+            || echo "::warning::auto-merge could not be enabled for PR $PR_NUMBER"
           # If this fails with "Auto merge is not allowed", enable it under
           # repo Settings → General → Pull Requests → Allow auto-merge.
           # Branch protection's required approvals/checks still gate the actual merge.

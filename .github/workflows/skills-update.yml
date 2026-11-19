@@ -53,19 +53,21 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           rc=0
-          bash scripts/update-skills.sh --apply > skills-report.txt 2>&1 || rc=$?
-          cat skills-report.txt
+          report="$RUNNER_TEMP/skills-report.txt"
+          bash scripts/update-skills.sh --apply > "$report" 2>&1 || rc=$?
+          cat "$report"
           # 3 means a source needs a hand merge; it was left untouched and is reported.
           if [[ $rc -ne 0 && $rc -ne 3 ]]; then
             echo "::error::Re-vendoring failed"
             exit 1
           fi
-          if [[ -n "$(git status --porcelain)" ]]; then
+          # Only the paths the patch step stages count as a change.
+          if [[ -n "$(git status --porcelain -- .claude/skills scripts/update-skills.sh THIRD_PARTY_NOTICES.md)" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
-          if grep -qE '^  (BLOCKED|MOVED|REWRITTEN|ARCHIVED|REMOVED-UPSTREAM|ERROR):' skills-report.txt; then
+          if grep -qE '^  (BLOCKED|MOVED|REWRITTEN|ARCHIVED|REMOVED-UPSTREAM|ERROR):' "$report"; then
             echo "attention=true" >> "$GITHUB_OUTPUT"
           else
             echo "attention=false" >> "$GITHUB_OUTPUT"
@@ -93,6 +95,10 @@ jobs:
         run: |
           git add -A -- .claude/skills scripts/update-skills.sh THIRD_PARTY_NOTICES.md
           git diff --cached --binary > skills.patch
+          if [[ ! -s skills.patch ]]; then
+            echo "::error::Files changed but the staged patch is empty"
+            exit 1
+          fi
           echo "sha256=$(sha256sum skills.patch | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           # Report text comes from upstream repositories: backticks are dropped so it
           # cannot close the code fences it is quoted in.
@@ -101,11 +107,12 @@ jobs:
             echo
             echo "Local edits were kept by a three-way merge, and the skill validators passed on the result."
             echo "Skill text is read by agents as instructions, so review the diff before merging."
+            echo "Pull requests opened with the workflow token do not start CI: close and reopen this PR so the required checks run."
             echo
             echo "<details><summary>Update report</summary>"
             echo
             echo '```'
-            tr -d '`' < skills-report.txt
+            tr -d '`' < "$RUNNER_TEMP/skills-report.txt"
             echo '```'
             echo "</details>"
             echo
@@ -121,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: skills-report
-          path: skills-report.txt
+          path: ${{ runner.temp }}/skills-report.txt
           retention-days: 7
 
       - name: Upload the patch

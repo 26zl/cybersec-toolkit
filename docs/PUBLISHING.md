@@ -44,10 +44,14 @@ Registry at, so it only gets a fix through a new release: fixable HIGH/CRITICAL
 findings open an issue labelled `image-scan`, which the scan closes again once
 the released image is clean.
 
+A `v*.*.*` tag build fails when the image for that version is already published, so a partially failed release needs a new tag.
+
 Merges that the `uv-update` workflow auto-merges are pushed with `GITHUB_TOKEN`,
 which does not trigger other workflows, so they are not published until the next
 push to `main` or the weekly rebuild. To ship a dependency fix sooner, run
 **Publish image** manually from `main` (Actions → Publish image → Run workflow).
+
+Pull requests that the `uv-update` and `skills-update` workflows open (`auto/uv-update`, `auto/skills-update`) use `GITHUB_TOKEN` too, so they do not start CI: close and reopen the PR so the required checks run before merging.
 
 The image must carry `LABEL io.modelcontextprotocol.server.name=` (set in the
 `Dockerfile`) — the registry checks this annotation before accepting the OCI

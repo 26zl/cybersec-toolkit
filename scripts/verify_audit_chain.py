@@ -65,11 +65,16 @@ def verify(lines: list[str], strict: bool = False) -> tuple[list[str], dict[str,
             continue
 
         stats["records"] += 1
+        if not isinstance(record, dict):
+            problems.append(f"line {number}: record is not a JSON object")
+            continue
         chain = record.get("chain")
         prev = record.get("prev")
         seq = record.get("seq")
-        if not isinstance(chain, str) or not isinstance(prev, str) or not isinstance(seq, int):
+        if not isinstance(chain, str) or not isinstance(prev, str) or type(seq) is not int:
             stats["unchained"] += 1
+            if any(field in record for field in ("chain", "prev", "seq")):
+                problems.append(f"line {number}: malformed chain fields")
             # Records predating the chain come first; once chaining has started, the
             # server always writes chain fields, so a bare record here was inserted.
             if expected:
@@ -142,6 +147,11 @@ def selftest() -> int:
     assert verify([], strict=True)[0], "selftest: strict mode accepted an empty log"
     renumbered = [json.dumps({"event": "a", "chain": "d" * 32, "seq": 7, "prev": CHAIN_GENESIS})]
     assert verify(renumbered)[0], "selftest: a chain starting from genesis at a later seq was not caught"
+
+    for odd in ("[1]", "123", '"text"', "null"):
+        assert verify([odd])[0], f"selftest: a non-object record {odd} was not reported"
+    bool_seq = [json.dumps({"event": "a", "chain": "e" * 32, "seq": True, "prev": CHAIN_GENESIS})]
+    assert verify(bool_seq)[0], "selftest: a boolean seq was accepted"
 
     print("selftest OK")
     return 0

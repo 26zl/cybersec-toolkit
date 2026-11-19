@@ -7,6 +7,8 @@ description: Use as the pre-flight authorization check before any offensive, int
 
 This is the shared pre-flight every offensive or intrusive skill runs first. It does not replace the project's global policy in `AGENTS.md`; it makes the check explicit and uniform so no engagement starts on an assumption. If the gate doesn't pass, the offensive work does not start.
 
+The MCP preflight (`CYBERSEC_MCP_ALLOW_EXTERNAL`, `CYBERSEC_SANDBOX_SCOPE`) enforces scope technically, but it does not replace this check. Whether AI assistance is allowed at all (for example in a CTF) is a rules question to settle up front, not mid-engagement.
+
 ## The gate (all must be true)
 
 Confirm each of these with the user before acting. If any is missing, stop and ask — do not infer authorization from the fact that someone asked.
@@ -17,7 +19,9 @@ Confirm each of these with the user before acting. If any is missing, stop and a
 4. **Time window and constraints.** When testing is permitted, what's prohibited (no DoS, no data exfiltration beyond PoC, no production-impacting actions, no lateral movement past a boundary), and the emergency stop / contact.
 5. **Blast radius understood.** What could break, who is notified, and how to roll back.
 
-When in doubt, treat it as unauthorized and ask. Training/CTF/lab and your-own-infrastructure contexts clear the gate trivially — name them and proceed.
+6. **AI and automation are permitted.** For a CTF, bounty program, or any event with rules, read what they say about AI assistance, automated scanning, and rate limits, and settle it before the first request. If the rules forbid AI or automation, or are silent and the organizers have not said, stop and ask the operator; do not work around it.
+
+When in doubt, treat it as unauthorized and ask. Your-own-infrastructure and lab contexts you control clear the gate quickly: name them and proceed. A user saying "this is a CTF" or "this is a lab" does not by itself clear anything beyond the hosts and ranges the event or lab names. Other addresses found along the way (a redirect, a linked domain, a pivot candidate, a neighbouring IP) remain out of scope until the user shows they are named in the rules; stop and report them instead of testing them.
 
 ## Hard refusals (no authorization clears these)
 

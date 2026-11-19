@@ -9,6 +9,7 @@ Use this skill for AI applications, agents, RAG systems, model gateways, prompt 
 
 ## Review workflow
 
+0. Run `authorization-gate` first: written authorization and exact scope must be confirmed before any active testing (prompt injection or red-team probes against a live system).
 1. Inventory the AI system: model/provider, prompts, tools, RAG sources, memory, logs, user roles, secrets, data classes, and downstream actions.
 2. Threat model trust boundaries:
    - user input to prompt

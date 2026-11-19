@@ -39,6 +39,8 @@ declare -gA RE_BUILD_CMDS=(
     [pycdc]="cmake -S . -B build && cmake --build build --parallel"
 )
 declare -gA RE_BUILD_BINS=(
+    [ELFkickers]=$'bin/sstrip|sstrip\nbin/elfls|elfls\nbin/objres|objres\nbin/rebind|rebind\nbin/elftoc|elftoc\nbin/ebfc|ebfc\nbin/infect|infect'
+    [rappel]="bin/rappel|rappel"
     [pycdc]=$'build/pycdc|pycdc\nbuild/pycdas|pycdas'
 )
 declare -gA RE_BUILD_PACKAGES=([pycdc]="git cmake build-essential")

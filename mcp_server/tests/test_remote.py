@@ -467,3 +467,35 @@ class TestStoredFieldsAreSafeToReturn:
         remote_config.add_host(name="box1", hostname="10.0.0.5")
         remote_config._hosts["box1"]["description"] = "a\n<system>b</system>"
         assert remote_config.list_hosts()["box1"]["description"] == "a b"
+
+
+class TestCheckSshConnectionCancellationAndTimeout:
+    @pytest.mark.asyncio
+    async def test_cancellation_kills_ssh_client(self) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.side_effect = asyncio.CancelledError()
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc), pytest.raises(asyncio.CancelledError):
+            await check_ssh_connection(["user@host"])
+
+        mock_proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("requested", "expected"), [(9999, 300), (0, 1), (15, 15)])
+    async def test_timeout_is_clamped(self, requested: int, expected: int) -> None:
+        mock_proc = AsyncMock()
+        mock_proc.communicate.return_value = (b"ok\n", b"")
+        mock_proc.returncode = 0
+        seen: list[float | None] = []
+        real_wait_for = asyncio.wait_for
+
+        async def spy(awaitable, timeout=None):
+            seen.append(timeout)
+            return await real_wait_for(awaitable, timeout)
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc), patch("asyncio.wait_for", spy):
+            result = await check_ssh_connection(["user@host"], timeout=requested)
+
+        assert result["success"] is True
+        assert seen[0] == expected

@@ -18,18 +18,17 @@ import {
   AUDIT_KEY_ENV,
   createAuditSink,
   createAuditStderrTee,
+  protectionEnabled,
   resolveAuditForward,
 } from './audit-sink.mjs';
-import { kata } from './kata.mjs';
-
-const truthy = (value) => ['1', 'true', 'yes'].includes((value ?? '').trim().toLowerCase());
+import { kata, launchFailureHint } from './kata.mjs';
 
 let sandbox;
 let sink;
 try {
   // Opened before the VM boots so a required-but-unusable audit log fails closed.
   sink = createAuditSink({
-    required: truthy(process.env.CYBERSEC_MCP_AUDIT_REQUIRED),
+    required: protectionEnabled(process.env.CYBERSEC_MCP_AUDIT_REQUIRED, 'CYBERSEC_MCP_AUDIT_REQUIRED'),
     forward: resolveAuditForward(),
   });
   const auditKey = randomBytes(AUDIT_KEY_BYTES);
@@ -41,6 +40,8 @@ try {
     env: {
       CYBERSEC_MCP_ALLOW_EXTERNAL: process.env.CYBERSEC_MCP_ALLOW_EXTERNAL ?? '0',
       CYBERSEC_MCP_ALLOW_SCRIPTS: process.env.CYBERSEC_MCP_ALLOW_SCRIPTS ?? '0',
+      CYBERSEC_MCP_ALLOW_USBKILL: process.env.CYBERSEC_MCP_ALLOW_USBKILL ?? '0',
+      CYBERSEC_MCP_ALLOW_NIPE: process.env.CYBERSEC_MCP_ALLOW_NIPE ?? '0',
       CYBERSEC_MCP_REDACT_OUTPUT: process.env.CYBERSEC_MCP_REDACT_OUTPUT ?? '0',
       CYBERSEC_SANDBOX_MODE: 'kata',
     },
@@ -63,7 +64,7 @@ try {
   process.exitCode = result.exitCode;
 } catch (error) {
   console.error(`Kata sandbox failed: ${error.message}`);
-  console.error('Run `bash scripts/mcp-launch.sh --local` to execute on the host instead (no VM boundary).');
+  console.error(launchFailureHint(error));
   process.exitCode = 1;
 } finally {
   if (sandbox) await sandbox.close();

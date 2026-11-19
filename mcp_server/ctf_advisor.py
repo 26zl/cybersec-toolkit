@@ -563,7 +563,6 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("solc-select", "Solidity compiler version manager"),
             ("echidna", "Ethereum smart contract fuzzer"),
             ("halmos", "Symbolic testing for Foundry contracts (a16z)"),
-            ("aderyn", "Fast Rust-based Solidity static analyzer (Cyfrin)"),
             ("heimdall-rs", "EVM bytecode decompiler and disassembler"),
             ("crytic-medusa", "Parallelized smart contract fuzzer (Crytic)"),
             ("ityfuzz", "Hybrid fuzzer with flashloan and DeFi support"),
@@ -573,7 +572,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         "methodology": [
             "1. ANALYZE: Read smart contract code, understand business logic and storage layout",
             "2. DECOMPILE: If no source — heimdall for bytecode decompilation and disassembly",
-            "3. STATIC: slither + aderyn for automatic vulnerability scanning, mythril for EVM analysis",
+            "3. STATIC: slither for automatic vulnerability scanning, mythril for EVM analysis",
             "4. FUZZ: echidna/medusa for property-based fuzzing, ityfuzz for DeFi-specific bugs",
             "5. SYMBOLIC: halmos for formal verification of Foundry test properties",
             "6. INTERACT: foundry cast for on-chain interaction, eth-ape for Python scripting",
@@ -581,7 +580,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             "8. VERIFY: Confirm vulnerability, document attack vector and impact",
         ],
         "quick_wins": [
-            "Run slither + aderyn for automatic detection of common weaknesses",
+            "Run slither for automatic detection of common weaknesses",
             "Check for reentrancy, integer overflow, access control, delegatecall issues",
             "Use foundry cast to interact with the contract directly",
             "heimdall decompile for unverified contracts without source code",
@@ -684,6 +683,18 @@ CATEGORY_ALIASES: dict[str, str] = {
     "jailbreak": "llm",
     "gpt": "llm",
     "chatbot": "llm",
+    "web3": "blockchain",
+    "smart contract": "blockchain",
+    "reverse engineering": "reversing",
+    "reverse-engineering": "reversing",
+    "steg": "stego",
+    "rsa": "crypto",
+    "ecc": "crypto",
+    "aes": "crypto",
+    "sqli": "web",
+    "xss": "web",
+    "ssrf": "web",
+    "sql injection": "web",
 }
 
 

@@ -19,6 +19,7 @@ import {
   appendFileSync,
   closeSync,
   constants,
+  fstatSync,
   mkdirSync,
   openSync,
   renameSync,
@@ -29,6 +30,7 @@ import {
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { Writable } from 'node:stream';
+import { StringDecoder } from 'node:string_decoder';
 
 export const AUDIT_STREAM_PREFIX = '@cybersec-audit@ ';
 // Carries the hex-encoded session key to the server; read by mcp_server/audit.py.
@@ -43,13 +45,36 @@ const FORWARD_MAX_BYTES = '131072';
 
 const TAG_PATTERN = /^[0-9a-f]{64}$/;
 // O_NOFOLLOW: a symlink planted at the log path must not redirect audit records.
-const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
+const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const MAX_BYTES = 5 * 1024 * 1024;
 const BACKUP_COUNT = 3;
 // A rotation lock older than this was left by a crashed holder.
 const STALE_ROTATE_LOCK_MS = 30_000;
 // A stderr line this long is malformed; flush it rather than buffer forever.
 const MAX_PARTIAL_LINE = 1024 * 1024;
+const warnedFlags = new Set();
+
+export const protectionEnabled = (value, name, warn = (message) => process.stderr.write(`${message}\n`)) => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['', '0', 'false', 'no', 'off'].includes(normalized)) return false;
+  if (!warnedFlags.has(name)) {
+    warnedFlags.add(name);
+    warn(`WARNING: ${name} has an unrecognised value; enabling the protection (use 1/true/yes/on or 0/false/no/off).`);
+  }
+  return true;
+};
+
+const openAuditLog = (target) => {
+  const fd = openSync(target, APPEND_FLAGS, 0o600);
+  try {
+    if (!fstatSync(fd).isFile()) throw new Error('audit log must be a regular file');
+    return fd;
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
+};
 
 const expandUser = (value, env) => {
   if (value === '~') return env.HOME || homedir();
@@ -70,22 +95,22 @@ export const resolveHostAuditPath = (env = process.env) => {
  * Split a stderr chunk into audit records and ordinary lines.
  *
  * Returns the trailing partial line so the caller can prepend it to the next
- * chunk; records are only recognised at the start of a complete line.
+ * chunk; records are only recognised at the start of a complete line. After an
+ * oversized audit line `discarding` is true: pass it back in to drop input
+ * until the next newline.
  */
-// Carried as `rest` after an oversized audit line: drop input until the next newline.
-const DISCARD = '\u0000';
-
-export const splitAuditLines = (buffered, chunk) => {
+export const splitAuditLines = (buffered, chunk, discarding = false) => {
   let text = buffered + chunk;
-  if (text.startsWith(DISCARD)) {
+  if (discarding) {
     const newline = text.indexOf('\n');
-    if (newline < 0) return { audit: [], passthrough: [], rest: DISCARD };
+    if (newline < 0) return { audit: [], passthrough: [], rest: '', discarding: true };
     text = text.slice(newline + 1);
   }
   const parts = text.split('\n');
   let rest = parts.pop() ?? '';
   const audit = [];
   const passthrough = [];
+  let discard = false;
 
   for (const line of parts) {
     if (line.startsWith(AUDIT_STREAM_PREFIX)) audit.push(line.slice(AUDIT_STREAM_PREFIX.length));
@@ -96,14 +121,15 @@ export const splitAuditLines = (buffered, chunk) => {
     if (rest.startsWith(AUDIT_STREAM_PREFIX)) {
       // Never authenticated, so never persisted; say so instead of dumping it raw.
       passthrough.push(`Rejected oversized audit record (over ${MAX_PARTIAL_LINE} chars)`);
-      rest = DISCARD;
+      rest = '';
+      discard = true;
     } else {
       passthrough.push(rest);
       rest = '';
     }
   }
 
-  return { audit, passthrough, rest };
+  return { audit, passthrough, rest, discarding: discard };
 };
 
 /** Hex HMAC-SHA256 tag of a serialized record under the session key. */
@@ -207,25 +233,28 @@ export const resolveAuditForward = (env = process.env) => {
  * remove them. Returns null when logger is missing or too old to carry a whole
  * record; the caller decides whether that stops the session.
  */
-const openSyslogForwarder = () => {
+const openSyslogForwarder = (onDead = () => {}) => {
   const args = ['--tag', AUDIT_FORWARD_TAG, '--priority', 'auth.info', '--size', FORWARD_MAX_BYTES];
   // --size is what an old or minimal logger lacks; checked without sending a message.
   const probe = spawnSync('logger', [...args, '--version'], { stdio: 'ignore' });
   if (probe.error || probe.status !== 0) return null;
   const child = spawn('logger', args, { stdio: ['pipe', 'ignore', 'ignore'] });
   let alive = true;
-  child.on('error', () => {
+  let closing = false;
+  const died = () => {
+    if (!alive) return;
     alive = false;
-  });
-  child.on('close', () => {
-    alive = false;
-  });
-  child.stdin.on('error', () => {
-    alive = false;
-  });
+    if (!closing) onDead();
+  };
+  child.on('error', died);
+  child.on('close', died);
+  child.stdin.on('error', died);
   return {
     write: (record) => alive && child.stdin.write(`${record}\n`),
-    close: () => child.stdin.end(),
+    close: () => {
+      closing = true;
+      child.stdin.end();
+    },
   };
 };
 
@@ -247,7 +276,9 @@ export const createAuditSink = ({
   let disabled = false;
   let forwarder = null;
   if (forward === 'syslog') {
-    forwarder = openSyslogForwarder();
+    forwarder = openSyslogForwarder(() =>
+      warn('Audit forwarding to the system log stopped: logger(1) exited. Records continue in the file only.'),
+    );
     if (!forwarder) {
       const message = 'Audit forwarding to the system log needs logger(1) from util-linux 2.26 or newer.';
       if (required) throw new Error(message);
@@ -257,7 +288,10 @@ export const createAuditSink = ({
 
   const fail = (error) => {
     const message = `Host audit log unavailable at ${target}: ${error.message}`;
-    if (required) throw new Error(message);
+    if (required) {
+      forwarder?.close();
+      throw new Error(message);
+    }
     if (!disabled) warn(message);
     disabled = true;
   };
@@ -267,6 +301,7 @@ export const createAuditSink = ({
   } else {
     try {
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+      closeSync(openAuditLog(target));
     } catch (error) {
       fail(error);
     }
@@ -283,7 +318,7 @@ export const createAuditSink = ({
       if (disabled) return false;
       try {
         rotate(target);
-        const fd = openSync(target, APPEND_FLAGS, 0o600);
+        const fd = openAuditLog(target);
         try {
           appendFileSync(fd, `${record}\n`);
         } finally {
@@ -315,6 +350,8 @@ export const createAuditStderrTee = (out, sink, key) => {
     throw new Error(`The audit stderr tee needs a session key of at least ${AUDIT_KEY_BYTES} bytes.`);
   }
   let rest = '';
+  let discarding = false;
+  const decoder = new StringDecoder('utf8');
   const lastSeq = new Map();
 
   const rejection = (record) => {
@@ -335,18 +372,21 @@ export const createAuditStderrTee = (out, sink, key) => {
   };
 
   const flush = (chunk) => {
-    const split = splitAuditLines(rest, chunk);
+    const split = splitAuditLines(rest, chunk, discarding);
     rest = split.rest;
+    discarding = split.discarding;
     for (const line of split.audit) persist(line);
     if (split.passthrough.length) out.write(`${split.passthrough.join('\n')}\n`);
   };
 
   return new Writable({
     write(chunk, _encoding, done) {
-      flush(chunk.toString('utf8'));
+      flush(decoder.write(chunk));
       done();
     },
     final(done) {
+      const tail = decoder.end();
+      if (tail) flush(tail);
       if (rest) flush('\n');
       done();
     },

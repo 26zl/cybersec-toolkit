@@ -26,8 +26,11 @@ Dev dependencies:
 # Shell linting
 sudo apt install shellcheck
 
-# MCP server (requires uv)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# MCP server (requires uv; the version matches the Dockerfile pin)
+curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/0.13.8/install.sh -o uv-install.sh
+# review uv-install.sh, then:
+sh uv-install.sh
+# or: pipx install uv
 make setup    # submodules, locked MCP deps, sandbox deps, skill mirror
 ```
 
@@ -43,6 +46,8 @@ make setup    # submodules, locked MCP deps, sandbox deps, skill mirror
    | `_CARGO` | Rust tools | `crate-name` |
    | `_GEMS` | Ruby gems | `gem-name` |
    | `_GIT` + `_GIT_NAMES` | Git repos | `name=url` + directory name |
+
+   Binary, Docker, source and npm tools need extra wiring (`BINARY_RELEASES_<MODULE>`, `ALL_DOCKER_IMAGES` + `docker_pull`, `build_from_source` + `<PREFIX>_BUILD_NAMES`); see `AGENTS.md` > Adding a New Tool.
 
    If the package name differs across distros, add a row to `lib/distro_compat.tsv` (columns: `debian dnf pacman zypper pkg`; use `-` to skip, empty for passthrough, `a+b` to expand).
 

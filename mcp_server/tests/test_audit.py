@@ -310,6 +310,21 @@ class TestLogExecution:
 
 
 class TestLogServerStart:
+    def test_host_control_defaults_are_recorded_as_disabled(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_USBKILL", raising=False)
+        monkeypatch.delenv("CYBERSEC_MCP_ALLOW_NIPE", raising=False)
+        log_server_start()
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert entry["allow_usbkill"] == entry["allow_nipe"] == "0"
+
+    def test_records_host_control_opt_ins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_USBKILL", "1")
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_NIPE", "0")
+        log_server_start()
+        entry = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
+        assert entry["allow_usbkill"] == "1"
+        assert entry["allow_nipe"] == "0"
+
     def test_records_sandbox_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CYBERSEC_SANDBOX_MODE", "kata")
         log_server_start()
@@ -1098,3 +1113,199 @@ class TestCredentialToolRedaction:
     )
     def test_targets_user_names_and_ports_stay_readable(self, command) -> None:
         assert _redact_sensitive(command) == command
+
+
+class TestRedactionIsLinear:
+    """Long tokens of word characters, dots and dashes must not stall the event loop."""
+
+    @pytest.mark.parametrize("unit", ["a.", "-a", "$", "a:", "a://"])
+    def test_long_token_redacts_quickly(self, unit: str) -> None:
+        import time
+
+        from mcp_server.audit import redact_credentials
+
+        text = unit * 100000
+        start = time.monotonic()
+        _redact_script_code(text)
+        redact_credentials(text)
+        assert time.monotonic() - start < 2.0
+
+
+class TestCookieAndBindPasswordRedaction:
+    @pytest.mark.parametrize(
+        ("command", "secret"),
+        [
+            ("curl -b 'PHPSESSID=abcdef123' http://10.0.0.5", "abcdef123"),
+            ("curl --cookie 'sid=abcdef' http://10.0.0.5", "abcdef"),
+            ("sqlmap -u http://10.0.0.5 --cookie='a=sessval'", "sessval"),
+            ("curl --proxy-user bob:pw1234 http://10.0.0.5", "pw1234"),
+            ("ldapsearch -w s3cretbind -D cn=admin", "s3cretbind"),
+        ],
+    )
+    def test_secret_is_redacted_and_idempotent(self, command: str, secret: str) -> None:
+        once = _redact_script_code(command)
+        assert secret not in once
+        assert _redact_script_code(once) == once
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "curl --cookie-jar jar.txt http://10.0.0.5",
+            "sqlmap -b -u http://10.0.0.5",
+            "ldapsearch -b dc=example,dc=com -D cn=admin",
+        ],
+    )
+    def test_unrelated_flags_stay_readable(self, command: str) -> None:
+        assert _redact_script_code(command) == command
+
+    def test_closing_quote_of_a_header_survives(self) -> None:
+        assert _redact_script_code("curl -H 'X-Auth-Token: abc123' http://10.0.0.5") == (
+            "curl -H 'X-Auth-Token: [REDACTED]' http://10.0.0.5"
+        )
+
+
+class TestFileSinkFailureKeepsOtherHandlers:
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink semantics")
+    def test_symlinked_log_still_reaches_later_handlers(self, tmp_path: Path) -> None:
+        import mcp_server.audit as mod
+
+        if mod.fcntl is None:
+            pytest.skip("Cross-process rotation locking requires POSIX")
+        mod._file_sink_warned = False
+        log_tool_call("list_tools", {"module": "web"})
+        logger = get_audit_logger()
+        seen: list[str] = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                seen.append(record.getMessage())
+
+        logger.addHandler(_Capture())
+        log = tmp_path / "audit.log"
+        log.rename(tmp_path / "audit.log.1")
+        log.symlink_to(os.devnull)
+
+        with pytest.warns(RuntimeWarning, match="Audit file write failed"):
+            log_tool_call("list_tools", {"module": "crypto"})
+        assert len(seen) == 1
+        assert json.loads(seen[0])["params"]["module"] == "crypto"
+
+
+class TestOutcomeField:
+    def _last(self) -> dict:
+        import mcp_server.audit as mod
+
+        return json.loads(mod._AUDIT_LOG_PATH.read_text().splitlines()[-1])
+
+    def test_execution_defaults_to_ok_and_records_given_outcome(self) -> None:
+        from mcp_server.audit import log_execution
+
+        log_execution("cat", "")
+        assert self._last()["outcome"] == "ok"
+        for outcome in ("timeout", "cancelled", "error"):
+            log_execution("cat", "", exit_code=-1, outcome=outcome)
+            assert self._last()["outcome"] == outcome
+
+    def test_unknown_outcome_is_recorded_as_error(self) -> None:
+        from mcp_server.audit import log_execution
+
+        log_execution("cat", "", outcome="weird")
+        assert self._last()["outcome"] == "error"
+
+    def test_script_and_pipeline_results_carry_outcome(self) -> None:
+        from mcp_server.audit import log_pipeline_result, log_script_result
+
+        log_script_result("python", -1, 1.0, outcome="cancelled")
+        assert self._last()["outcome"] == "cancelled"
+        log_pipeline_result("pipe_1", -1, 1.0, 1, outcome="timeout")
+        assert self._last()["outcome"] == "timeout"
+
+    def test_chain_still_verifies_with_outcome(self) -> None:
+        import importlib.util
+
+        import mcp_server.audit as mod
+        from mcp_server.audit import log_execution
+
+        log_execution("cat", "", outcome="timeout")
+        log_execution("cat", "")
+        spec = importlib.util.spec_from_file_location(
+            "verify_audit_chain", Path(__file__).resolve().parents[2] / "scripts" / "verify_audit_chain.py"
+        )
+        verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(verifier)
+        problems, _stats = verifier.verify(mod._AUDIT_LOG_PATH.read_text().splitlines())
+        assert problems == []
+
+
+class TestScriptHashMatchesWrittenBytes:
+    def test_hash_is_of_utf8_bytes(self) -> None:
+        import mcp_server.audit as mod
+
+        code = "print('héllo ☃')"
+        log_script_execution(language="python", code=code)
+        record = json.loads(mod._AUDIT_LOG_PATH.read_text().splitlines()[-1])
+        assert record["code_sha256"] == hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+    def test_unencodable_code_is_not_hashed_as_something_else(self) -> None:
+        with pytest.raises(UnicodeEncodeError):
+            log_script_execution(language="python", code="x = '\ud800'")
+
+    @pytest.mark.asyncio
+    async def test_execute_script_rejects_unencodable_code_before_auditing(self) -> None:
+        from unittest.mock import patch
+
+        from mcp_server.security import execute_script
+
+        with (
+            patch("mcp_server.security._allow_scripts", return_value=True),
+            patch("mcp_server.security.log_script_execution") as logged,
+        ):
+            result = await execute_script("x = '\ud800'")
+        assert result["exit_code"] == -1
+        logged.assert_not_called()
+
+
+class TestProtectiveSwitches:
+    @pytest.mark.parametrize("value", ["1", "true", "YES", "On", " on "])
+    def test_truthy_enable(self, monkeypatch, value) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", value)
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_STREAM", value)
+        assert mod._audit_required() is True
+        assert mod._stream_audit_enabled() is True
+
+    @pytest.mark.parametrize("value", ["", "0", "false", "No", "OFF"])
+    def test_falsy_disable(self, monkeypatch, capsys, value) -> None:
+        import mcp_server.audit as mod
+
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", value)
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_STREAM", value)
+        assert mod._audit_required() is False
+        assert mod._stream_audit_enabled() is False
+        assert capsys.readouterr().err == ""
+
+    def test_typo_enables_with_one_warning(self, monkeypatch, capsys) -> None:
+        import mcp_server.audit as mod
+        from mcp_server import local_sandbox
+
+        local_sandbox._warned_flags.clear()
+        monkeypatch.setenv("CYBERSEC_MCP_AUDIT_REQUIRED", "ture")
+        assert mod._audit_required() is True
+        assert mod._audit_required() is True
+        err = capsys.readouterr().err
+        assert err.count("CYBERSEC_MCP_AUDIT_REQUIRED") == 1
+        assert "enabled" in err
+
+    def test_permissive_switches_stay_strict(self, monkeypatch) -> None:
+        from mcp_server.security import _allow_external, _allow_scripts
+
+        for value in ("true", "yes", "on", "ture", "2"):
+            monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", value)
+            monkeypatch.setenv("CYBERSEC_MCP_ALLOW_SCRIPTS", value)
+            assert _allow_external() is False
+            assert _allow_scripts() is False
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "1")
+        monkeypatch.setenv("CYBERSEC_MCP_ALLOW_SCRIPTS", "1")
+        assert _allow_external() is True
+        assert _allow_scripts() is True

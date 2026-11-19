@@ -55,13 +55,13 @@ RECON_GIT=(
     "Sn1per=https://github.com/1N3/Sn1per.git"
     "robin=https://github.com/apurvsinghgautam/robin.git"
     "stringcheese=https://github.com/MathisHammel/stringcheese.git"
-    "blackbird=https://github.com/p1ngul1n0/blackbird.git"
+    "blackbird=https://github.com/antoniaci/blackbird.git"
     "GooFuzz=https://github.com/m3n0sd0n4ld/GooFuzz.git"
     "Telepathy=https://github.com/prose-intelligence-ltd/Telepathy-Community.git"
     "iKy=https://github.com/kennbroorg/iKy.git"
     "certSniff=https://github.com/A-poc/certSniff.git"
     "linkedin2username=https://github.com/initstring/linkedin2username.git"
-    "EyeWitness=https://github.com/FortyNorthSecurity/EyeWitness.git"
+    "EyeWitness=https://github.com/RedSiege/EyeWitness.git"
     "osmedeus=https://github.com/j3ssie/osmedeus.git"
     "recon-ng=https://github.com/lanmaster53/recon-ng.git"
     "vulscan=https://github.com/scipag/vulscan.git"
@@ -70,11 +70,12 @@ RECON_GIT=(
     "SecretFinder=https://github.com/m4ll0k/SecretFinder.git"
     "FavFreak=https://github.com/devanshbatham/FavFreak.git"
     "Photon=https://github.com/s0md3v/Photon.git"
+    "spiderfoot=https://github.com/smicallef/spiderfoot.git"
 )
 
 # Binary names for verify/remove
 RECON_GO_BINS=(subfinder amass waybackurls gau hakrawler httprobe unfurl meg puredns shuffledns github-subdomains hakcheckurl chaos uncover asnmap mapcidr alterx dnsx gowitness naabu httpx commit-stream metabigor subzy mosint hakrevdns smap assetfinder gospider subjs)
-RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username EyeWitness osmedeus recon-ng vulscan theHarvester LinkFinder SecretFinder FavFreak Photon)
+RECON_GIT_NAMES=(reconftw nmapAutomator axiom Sn1per robin stringcheese blackbird GooFuzz Telepathy iKy certSniff linkedin2username EyeWitness osmedeus recon-ng vulscan theHarvester LinkFinder SecretFinder FavFreak Photon spiderfoot)
 RECON_BUILD_NAMES=(massdns)
 # Source of truth for build-from-source url + command (install + update).
 # -g: verify/update/remove source modules from inside a function.
@@ -84,6 +85,9 @@ declare -gA RECON_BUILD_URLS=(
 declare -gA RECON_BUILD_CMDS=(
     [massdns]="make"
 )
+declare -gA RECON_BUILD_BINS=(
+    [massdns]="bin/massdns|massdns"
+)
 
 install_module_recon() {
     install_apt_batch "Recon / OSINT - Packages" "${RECON_PACKAGES[@]}"
@@ -91,21 +95,25 @@ install_module_recon() {
     install_go_batch "Recon / OSINT - Go" "${RECON_GO[@]}"
     install_git_batch "Recon / OSINT - Git" "${RECON_GIT[@]}"
 
+    # Preserve a manually prepared SpiderFoot command when the Git batch is skipped.
+    local _sf_dir="$GITHUB_TOOL_DIR/spiderfoot" _sf_py _sf_py_q _sf_sf_q
+    if [[ -f "$_sf_dir/sf.py" && ! -e "$PIPX_BIN_DIR/spiderfoot" ]]; then
+        _sf_py="python3"
+        [[ -x "$_sf_dir/venv/bin/python" ]] && _sf_py="$_sf_dir/venv/bin/python"
+        printf -v _sf_py_q '%q' "$_sf_py"
+        printf -v _sf_sf_q '%q' "$_sf_dir/sf.py"
+        printf '#!/bin/bash\nexec %s %s "$@"\n' "$_sf_py_q" "$_sf_sf_q" > "$PIPX_BIN_DIR/spiderfoot" 2>/dev/null \
+            && chmod +x "$PIPX_BIN_DIR/spiderfoot" 2>/dev/null || true
+    fi
+
     # theHarvester (requires uv — not pipx compatible).
     local _th_dir="$GITHUB_TOOL_DIR/theHarvester"
     if [[ -f "$_th_dir/pyproject.toml" ]]; then
         ensure_uv || true
         if command_exists uv; then
             _start_spinner "Setting up theHarvester with uv..."
-            # uv sync runs the project's build backend; drop to the builder so this
-            # does not execute as root (the clone dir is builder-owned).
-            if _as_builder "cd '$(_escape_single_quoted "$_th_dir")' && '$(_builder_cmd uv)' sync" >> "$LOG_FILE" 2>&1; then
+            if setup_git_repo "$_th_dir" >> "$LOG_FILE" 2>&1; then
                 _stop_spinner
-                cat > "$PIPX_BIN_DIR/theHarvester" 2>/dev/null << THWRAP
-#!/bin/bash
-cd "$_th_dir" && exec uv run theHarvester "\$@"
-THWRAP
-                chmod +x "$PIPX_BIN_DIR/theHarvester" 2>/dev/null || true
                 log_success "theHarvester installed (uv)"
                 # The git batch records provenance at clone time; a clone it never saw predates the toolkit.
                 _version_known "theHarvester" || _track_already_present "theHarvester" "git"

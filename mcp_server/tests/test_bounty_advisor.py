@@ -144,3 +144,38 @@ class TestMethodologyAndVulns:
             result = suggest_for_bounty("web_app", tools_db)
         assert "common_vulns" in result
         assert len(result["common_vulns"]) > 0
+
+
+class TestNaturalPhrasings:
+    @pytest.mark.parametrize("phrase,expected", [("host", "network"), ("ip", "network")])
+    def test_phrasing_resolves(self, phrase: str, expected: str) -> None:
+        assert resolve_target_type(phrase) == expected
+
+
+class TestCuratedDataIntegrity:
+    def test_tools_resolve_to_registry_or_system_utility(self) -> None:
+        from mcp_server.advisor_utils import TOOL_ALIASES
+        from mcp_server.security import SYSTEM_UTILITIES
+
+        registry = set(ToolsDatabase().tools_by_name)
+        missing = [
+            (kind, name)
+            for kind, info in BOUNTY_TARGET_MAP.items()
+            for name, _desc in info["tools"]
+            if TOOL_ALIASES.get(name, name) not in registry and name not in SYSTEM_UTILITIES
+        ]
+        assert missing == []
+
+    def test_modules_exist(self) -> None:
+        from mcp_server.tools_db import MODULE_DESCRIPTIONS
+
+        missing = [
+            (kind, m)
+            for kind, info in BOUNTY_TARGET_MAP.items()
+            for m in info["modules"]
+            if m not in MODULE_DESCRIPTIONS
+        ]
+        assert missing == []
+
+    def test_alias_targets_are_canonical(self) -> None:
+        assert [a for a, t in TARGET_ALIASES.items() if t not in BOUNTY_TARGET_MAP] == []

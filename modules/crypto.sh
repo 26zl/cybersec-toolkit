@@ -21,10 +21,7 @@ CRYPTO_GIT=(
 CRYPTO_GIT_NAMES=(RsaCtfTool rsatool featherduster)
 CRYPTO_BUILD_NAMES=(hash_extender PkCrack yafu fastcoll pemcrack)
 # Source of truth for build-from-source url + command (used by install + update).
-# yafu/pemcrack patches are idempotent (grep-guarded) so re-running on update does
-# not double-apply: yafu strips hardcoded gmp/ecm/CUDA paths, adds -lpthread (modern
-# GCC needs it for pthread_create) and -Wno-implicit-function-declaration (GCC 14+
-# hard-errors); pemcrack.c is missing #include <ctype.h>.  PkCrack declares
+# The pemcrack patch is idempotent; its source omits <ctype.h>. PkCrack declares
 # cmake_minimum_required(VERSION 2.x), dropped in CMake 4 —
 # CMAKE_POLICY_VERSION_MINIMUM is the escape hatch (ignored by CMake < 3.31).
 # -g: verify/update/remove source modules from inside a function.
@@ -38,9 +35,16 @@ declare -gA CRYPTO_BUILD_URLS=(
 declare -gA CRYPTO_BUILD_CMDS=(
     [hash_extender]="make"
     [PkCrack]="cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 . && make"
-    [yafu]="sed -i 's|-I\.\./gmp-install/[^ ]*||g; s|-L\.\./gmp-install/[^ ]*||g; s|-I\.\./ecm-install/[^ ]*||g; s|-L\.\./ecm-install/[^ ]*||g; s|-lcuda||g; s|-lcudart||g; s|-lrt||g; s|-Werror||g' Makefile.gcc && { grep -q -- '-lpthread' Makefile.gcc || sed -i '/^LIBS/s/\$/ -lpthread/' Makefile.gcc; } && { grep -q 'Wno-implicit-function-declaration' Makefile.gcc || sed -i '/^CFLAGS/s/\$/ -Wno-implicit-function-declaration/' Makefile.gcc; } && make -f Makefile.gcc yafu NFS=1 USE_CUDA=0"
+    [yafu]='make yafu SYS_INC_PATHS="/usr/include /usr/local/include /opt/local/include /usr/include/$(${CC:-cc} -dumpmachine)"'
     [fastcoll]="make"
     [pemcrack]="{ grep -q 'ctype.h' pemcrack.c || sed -i '1i #include <ctype.h>' pemcrack.c; } && make"
+)
+declare -gA CRYPTO_BUILD_BINS=(
+    [hash_extender]="hash_extender|hash_extender"
+    [PkCrack]="bin/pkcrack|pkcrack"
+    [yafu]="yafu|yafu"
+    [fastcoll]="fastcoll|fastcoll"
+    [pemcrack]="bin/pemcrack|pemcrack"
 )
 
 install_module_crypto() {

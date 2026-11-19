@@ -9,6 +9,7 @@ Use this skill for SAP, S/4HANA, NetWeaver, HANA, ABAP, RFC, Gateway, transports
 
 ## Guardrails
 
+- Run `authorization-gate` first: written authorization and exact scope must be confirmed before any active testing.
 - Coordinate with SAP Basis, application owners, and change management before active testing.
 - Avoid destructive transactions, mass role changes, and production data extraction unless explicitly approved.
 - Separate technical security risks from segregation-of-duties and business-process risks.

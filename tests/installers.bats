@@ -12,7 +12,7 @@ setup() {
     printf '#!/bin/sh\n' > "$TEST_TMPDIR/stage/tool"
     chmod 0600 "$TEST_TMPDIR/stage/tool"
     _install_staged_bin "$TEST_TMPDIR/stage/tool" "$TEST_TMPDIR/bin/tool"
-    [[ "$(stat -c %a "$TEST_TMPDIR/bin/tool")" == "755" ]]
+    [[ "$(stat -c %a "$TEST_TMPDIR/bin/tool" 2>/dev/null || stat -f %Lp "$TEST_TMPDIR/bin/tool")" == "755" ]]
     [[ ! -e "$TEST_TMPDIR/stage/tool" ]]
 
     printf 'secret\n' > "$TEST_TMPDIR/private"
@@ -459,6 +459,33 @@ _go_installed() {
     [[ "${pkgs[*]}" == "${original[*]}" ]]
 }
 
+@test "fixup: x86-only packages are dropped on ARM and kept on x86" {
+    source_libs --installers debian apt
+    local -a pkgs=(nasm edb-debugger qemu-system-x86)
+    IS_ARM=true
+    fixup_package_names pkgs
+    [[ "${pkgs[*]}" == "nasm" ]]
+    pkgs=(nasm edb-debugger qemu-system-x86)
+    IS_ARM=false
+    fixup_package_names pkgs
+    [[ "${pkgs[*]}" == "nasm edb-debugger qemu-system-x86" ]]
+}
+
+@test "fixup: apktool is dropped where only Debian-family repos package it" {
+    local manager distro
+    for pair in "fedora dnf" "arch pacman" "opensuse-tumbleweed zypper"; do
+        read -r distro manager <<< "$pair"
+        source_libs --installers "$distro" "$manager"
+        local -a pkgs=(adb apktool)
+        fixup_package_names pkgs
+        [[ " ${pkgs[*]} " != *" apktool "* ]] || { echo "$manager kept apktool"; return 1; }
+    done
+    source_libs --installers debian apt
+    local -a apt_pkgs=(apktool)
+    fixup_package_names apt_pkgs
+    [[ "${apt_pkgs[*]}" == "apktool" ]]
+}
+
 # fixup_package_names — dnf translations
 
 @test "fixup: dnf translates netcat-openbsd to nmap-ncat" {
@@ -721,7 +748,7 @@ _go_installed() {
     _builder_cmd() { return 1; }
 
     local status=0
-    install_cargo_batch "Cargo test" rustscan aderyn || status=$?
+    install_cargo_batch "Cargo test" rustscan ropr || status=$?
 
     [[ "$status" -eq 1 ]]
     [[ "$TOTAL_TOOL_FAILURES" -eq 2 ]]
@@ -1005,7 +1032,7 @@ _run_c2_aggregation() {
     _run_c2_aggregation misc
     [[ "${_ALL_GIT[*]}" == *"SET=https://github.com/trustedsec/social-engineer-toolkit.git"* ]]
     [[ "${_ALL_GIT[*]}" == *"Loki-C2=https://github.com/boku7/Loki.git"* ]]
-    [[ "${_ALL_GIT[*]}" == *"Caldera=https://github.com/mitre/caldera.git"* ]]
+    [[ "${_ALL_GIT[*]}" == *"Caldera=https://github.com/apache/caldera.git"* ]]
 }
 
 @test "C2 aggregation: INCLUDE_C2=true includes misc C2 binary releases" {
@@ -1201,7 +1228,7 @@ _stub_module_installers() {
 
     run remove_snap_tool zaproxy
     assert_failure 2
-    run remove_docker_tool SpiderFoot
+    run remove_docker_tool MobSF
     assert_failure 2
 }
 
@@ -1308,6 +1335,27 @@ _stub_module_installers() {
     grep -q "^ourtool|git|existing|" "$_SESSION_FILE"
     ! grep -q "^ourtool|git|installed|" "$_SESSION_FILE" || false
     grep -q "^ourtool|git|HEAD|" "$VERSION_FILE"
+}
+
+@test "Git batches report CLI setup failures while retaining clone provenance" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    git_clone_or_pull() { mkdir -p "$2/.git"; }
+    setup_git_repo() { return 1; }
+    show_progress() { :; }
+    local jobs status
+    for jobs in 1 2; do
+        VERSION_FILE="$TEST_TMPDIR/versions-$jobs"
+        GITHUB_TOOL_DIR="$TEST_TMPDIR/tools-$jobs"
+        PARALLEL_JOBS=$jobs
+        TOTAL_TOOL_FAILURES=0
+        status=0
+
+        install_git_batch synthetic 'fixture-tool=https://example.invalid/fixture-tool.git' || status=$?
+
+        [[ "$status" -eq 1 && "$TOTAL_TOOL_FAILURES" -eq 1 ]]
+        grep -q '^fixture-tool|git|HEAD|' "$VERSION_FILE"
+    done
 }
 
 @test "docker_pull records an image the host already had as existing" {
@@ -2577,4 +2625,711 @@ EOF
     _as_builder() { return 1; }
     run _cargo_install cargo "'broken'"
     assert_failure
+}
+
+@test "setup_git_repo JAR wrapper does not evaluate shell syntax in the jar filename" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR" "$TEST_TMPDIR/stub" "$TEST_TMPDIR/repo/sub"
+    printf 'x' > "$TEST_TMPDIR/repo/sub/"'a$(touch PWNED).jar'
+    printf '#!/bin/sh\nexit 0\n' > "$TEST_TMPDIR/stub/java"
+    chmod +x "$TEST_TMPDIR/stub/java"
+
+    setup_git_repo "$TEST_TMPDIR/repo" || true
+    [[ -x "$PIPX_BIN_DIR/repo" ]]
+    mkdir "$TEST_TMPDIR/cwd"
+    (cd "$TEST_TMPDIR/cwd" && PATH="$TEST_TMPDIR/stub:$PATH" bash "$PIPX_BIN_DIR/repo")
+    [[ ! -e "$TEST_TMPDIR/cwd/PWNED" ]]
+}
+
+@test "setup_git_repo Python launcher uses its venv and preserves the caller working directory" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/ExampleTool"
+    mkdir -p "$PIPX_BIN_DIR" "$repo/venv/bin" "$TEST_TMPDIR/cwd"
+    touch "$repo/requirements.txt"
+    printf '#!/bin/sh\nprintf "venv:%%s:%%s:%%s\\n" "$PWD" "$1" "$2"\n' > "$repo/venv/bin/python"
+    chmod +x "$repo/venv/bin/python"
+    printf 'print("synthetic tool")\n' > "$repo/ExampleTool.py"
+    _as_builder() { return 0; }
+
+    setup_git_repo "$repo"
+    [[ -x "$PIPX_BIN_DIR/exampletool" ]]
+    run bash -c 'cd "$1" && "$2" "argument with spaces"' _ "$TEST_TMPDIR/cwd" "$PIPX_BIN_DIR/exampletool"
+    assert_success
+    assert_output "venv:$TEST_TMPDIR/cwd:$repo/ExampleTool.py:argument with spaces"
+}
+
+@test "setup_git_repo Perl wrapper treats shell syntax in the path literally" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/"'tool$(touch PWNED)'
+    mkdir -p "$PIPX_BIN_DIR" "$repo" "$TEST_TMPDIR/stub" "$TEST_TMPDIR/cwd"
+    printf 'synthetic\n' > "$repo/$(basename "$repo").pl"
+    printf '#!/bin/sh\nprintf "%%s\\n" "$1"\n' > "$TEST_TMPDIR/stub/perl"
+    chmod +x "$TEST_TMPDIR/stub/perl"
+
+    setup_git_repo "$repo"
+    (cd "$TEST_TMPDIR/cwd" && PATH="$TEST_TMPDIR/stub:$PATH" bash "$PIPX_BIN_DIR/$(basename "$repo")")
+    [[ ! -e "$TEST_TMPDIR/cwd/PWNED" ]]
+    [[ ! -e "$repo/PWNED" ]]
+}
+
+@test "setup_git_repo wraps verified nested CLI entry points" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/EyeWitness"
+    mkdir -p "$PIPX_BIN_DIR" "$repo/Python" "$repo/venv/bin"
+    printf '#!/bin/sh\nprintf "%%s\\n" "$1"\n' > "$repo/venv/bin/python"
+    chmod +x "$repo/venv/bin/python"
+    printf 'synthetic\n' > "$repo/Python/EyeWitness.py"
+    setup_git_repo "$repo"
+    run "$PIPX_BIN_DIR/eyewitness" --help
+    assert_success
+    assert_output "$repo/Python/EyeWitness.py"
+}
+
+@test "setup_git_repo installs mapped Python console packages through the builder" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/RsaCtfTool"
+    mkdir -p "$PIPX_BIN_DIR" "$repo"
+    touch "$repo/pyproject.toml"
+    _as_builder() {
+        printf '%s\n' "$1" > "$TEST_TMPDIR/builder-command"
+        mkdir -p "$TEST_TMPDIR/RsaCtfTool/venv/bin"
+        printf '#!/bin/sh\nprintf "console:%%s\\n" "$1"\n' > "$TEST_TMPDIR/RsaCtfTool/venv/bin/RsaCtfTool"
+        chmod +x "$TEST_TMPDIR/RsaCtfTool/venv/bin/RsaCtfTool"
+    }
+    setup_git_repo "$repo"
+    run cat "$TEST_TMPDIR/builder-command"
+    assert_output --partial 'venv/bin/python -m pip install .'
+    run "$PIPX_BIN_DIR/rsactftool" --help
+    assert_success
+    assert_output 'console:--help'
+}
+
+@test "setup_git_repo builds a mapped CLI and checks the expected artifact" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/kwprocessor"
+    mkdir -p "$PIPX_BIN_DIR" "$repo"
+    _as_builder() {
+        printf '%s\n' "$1" > "$TEST_TMPDIR/builder-command"
+        printf '#!/bin/sh\nprintf "built:%%s\\n" "$1"\n' > "$TEST_TMPDIR/kwprocessor/kwp"
+        chmod +x "$TEST_TMPDIR/kwprocessor/kwp"
+    }
+    setup_git_repo "$repo"
+    run cat "$TEST_TMPDIR/builder-command"
+    assert_output --partial "cd '$repo' && make"
+    run "$PIPX_BIN_DIR/kwprocessor" --help
+    assert_success
+    assert_output 'built:--help'
+}
+
+@test "setup_git_repo reports mapped build failures without advertising a launcher" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR" "$TEST_TMPDIR/kwprocessor"
+    _as_builder() { return 1; }
+    if setup_git_repo "$TEST_TMPDIR/kwprocessor"; then
+        false
+    fi
+    [[ "$_SETUP_GIT_DEP_WARN" == true ]]
+    [[ ! -e "$PIPX_BIN_DIR/kwprocessor" ]]
+}
+
+@test "setup_git_repo does not execute arbitrary project build backends" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR" "$TEST_TMPDIR/UnlistedProject"
+    touch "$TEST_TMPDIR/UnlistedProject/setup.py"
+    _as_builder() { touch "$TEST_TMPDIR/backend-executed"; return 0; }
+    setup_git_repo "$TEST_TMPDIR/UnlistedProject" || true
+    [[ ! -e "$TEST_TMPDIR/backend-executed" ]]
+}
+
+@test "setup_git_repo reports Python 2 requirements without installing Python 3 dependencies" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR" "$TEST_TMPDIR/NoSQLMap"
+    touch "$TEST_TMPDIR/NoSQLMap/requirements.txt" "$TEST_TMPDIR/NoSQLMap/nosqlmap.py"
+    command_exists() { [[ "$1" != python2 ]]; }
+    _as_builder() { touch "$TEST_TMPDIR/dependencies-installed"; return 0; }
+    run setup_git_repo "$TEST_TMPDIR/NoSQLMap"
+    assert_failure
+    assert_output --partial 'requires Python 2'
+    [[ ! -e "$TEST_TMPDIR/dependencies-installed" ]]
+    [[ ! -e "$PIPX_BIN_DIR/nosqlmap" ]]
+}
+
+@test "setup_git_repo refreshes a managed launcher when its venv becomes available" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/ExampleTool"
+    mkdir -p "$PIPX_BIN_DIR" "$repo"
+    printf 'print("synthetic")\n' > "$repo/ExampleTool.py"
+    setup_git_repo "$repo"
+    mkdir -p "$repo/venv/bin"
+    printf '#!/bin/sh\nprintf "venv\\n"\n' > "$repo/venv/bin/python"
+    chmod +x "$repo/venv/bin/python"
+    setup_git_repo "$repo"
+    run "$PIPX_BIN_DIR/exampletool"
+    assert_success
+    assert_output 'venv'
+}
+
+@test "setup_git_repo replaces managed symlinks without overwriting source scripts" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/ShellTool"
+    mkdir -p "$PIPX_BIN_DIR" "$repo"
+    printf '#!/bin/sh\nprintf "source intact\\n"\n' > "$repo/ShellTool.sh"
+    cp "$repo/ShellTool.sh" "$TEST_TMPDIR/original"
+    ln -s "$repo/ShellTool.sh" "$PIPX_BIN_DIR/shelltool"
+    setup_git_repo "$repo"
+    cmp "$repo/ShellTool.sh" "$TEST_TMPDIR/original"
+    [[ ! -L "$PIPX_BIN_DIR/shelltool" ]]
+    run "$PIPX_BIN_DIR/shelltool"
+    assert_success
+    assert_output 'source intact'
+}
+
+@test "setup_git_repo preserves an independent launcher" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR" "$TEST_TMPDIR/ExampleTool"
+    printf '#!/bin/sh\nprintf "independent\\n"\n' > "$PIPX_BIN_DIR/exampletool"
+    chmod +x "$PIPX_BIN_DIR/exampletool"
+    touch "$TEST_TMPDIR/ExampleTool/ExampleTool.py"
+    setup_git_repo "$TEST_TMPDIR/ExampleTool"
+    run "$PIPX_BIN_DIR/exampletool"
+    assert_success
+    assert_output 'independent'
+}
+
+@test "setup_git_repo extensionless Python entries use the prepared venv" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/PCredz"
+    mkdir -p "$PIPX_BIN_DIR" "$repo/venv/bin"
+    printf '#!/usr/bin/env python3\n' > "$repo/Pcredz"
+    printf '#!/bin/sh\nprintf "venv:%%s\\n" "$1"\n' > "$repo/venv/bin/python"
+    chmod +x "$repo/venv/bin/python"
+    setup_git_repo "$repo"
+    run "$PIPX_BIN_DIR/pcredz"
+    assert_success
+    assert_output "venv:$repo/Pcredz"
+}
+
+@test "setup_git_repo Node builds get an interpreter launcher without requiring executable assets" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/pp-finder"
+    mkdir -p "$PIPX_BIN_DIR" "$repo/dist" "$TEST_TMPDIR/stub"
+    _as_builder() { printf 'synthetic bundle\n' > "$TEST_TMPDIR/pp-finder/dist/cli.cjs"; }
+    printf '#!/bin/sh\nprintf "node:%%s\\n" "$1"\n' > "$TEST_TMPDIR/stub/node"
+    chmod +x "$TEST_TMPDIR/stub/node"
+    setup_git_repo "$repo"
+    run env PATH="$TEST_TMPDIR/stub:$PATH" "$PIPX_BIN_DIR/pp-finder" --help
+    assert_success
+    assert_output "node:$repo/dist/cli.cjs"
+}
+
+@test "setup_git_repo theHarvester runs its prepared environment without runtime uv sync" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/theHarvester"
+    mkdir -p "$PIPX_BIN_DIR" "$repo"
+    touch "$repo/pyproject.toml"
+    _builder_cmd() { printf 'uv\n'; }
+    command_exists() { return 0; }
+    _as_builder() {
+        printf '%s\n' "$1" > "$TEST_TMPDIR/uv-call"
+        mkdir -p "$TEST_TMPDIR/theHarvester/.venv/bin"
+        printf '#!/bin/sh\nprintf "prepared:%%s\\n" "$1"\n' > "$TEST_TMPDIR/theHarvester/.venv/bin/theHarvester"
+        chmod +x "$TEST_TMPDIR/theHarvester/.venv/bin/theHarvester"
+    }
+    setup_git_repo "$repo/"
+    run cat "$TEST_TMPDIR/uv-call"
+    assert_output --partial 'sync --locked'
+    run "$PIPX_BIN_DIR/theHarvester" --help
+    assert_success
+    assert_output 'prepared:--help'
+    ! grep -q 'uv run' "$PIPX_BIN_DIR/theHarvester"
+}
+
+@test "setup_git_repo Nipe launcher locates its relative Perl modules and configuration" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/nipe"
+    mkdir -p "$PIPX_BIN_DIR" "$repo/lib" "$repo/.configs" "$TEST_TMPDIR/stub" "$TEST_TMPDIR/caller"
+    printf '#!/usr/bin/env perl\n' > "$repo/nipe.pl"
+    printf '#!/bin/sh\nprintf "%%s:%%s:%%s\\n" "$PWD" "$1" "$2"\n' > "$TEST_TMPDIR/stub/perl"
+    chmod +x "$TEST_TMPDIR/stub/perl"
+    setup_git_repo "$repo"
+    run bash -c 'cd "$1" && PATH="$2:$PATH" "$3" status' _ \
+        "$TEST_TMPDIR/caller" "$TEST_TMPDIR/stub" "$PIPX_BIN_DIR/nipe"
+    assert_success
+    assert_output "$repo:$repo/nipe.pl:status"
+}
+
+@test "verify_github_checksum ignores another asset's bare-hash .sha256" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local url="https://example.com/other_arm64.tar.gz.sha256"
+    local key; key=$(echo "$url" | sed 's|[/:?&=]|_|g')
+    local bin="$TEST_TMPDIR/tool_amd64.tar.gz"
+    printf 'binary-contents\n' > "$bin"
+    printf '%064d\n' 1 > "$_GH_API_CACHE_DIR/checksum_${key}"
+    local rel='{"assets":[{"name":"other_arm64.tar.gz.sha256","browser_download_url":"'"$url"'"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool_amd64.tar.gz"
+    assert_failure
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+}
+
+@test "verify_github_checksum treats a non-sha256 entry as no entry" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local url="https://example.com/checksums_sha512.txt"
+    local key; key=$(echo "$url" | sed 's|[/:?&=]|_|g')
+    local bin="$TEST_TMPDIR/tool"
+    printf 'binary-contents\n' > "$bin"
+    printf '%0128d  tool\n' 1 > "$_GH_API_CACHE_DIR/checksum_${key}"
+    local rel='{"assets":[{"name":"checksums_sha512.txt","browser_download_url":"'"$url"'"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool"
+    assert_failure
+    [[ ! -f "$TEST_TMPDIR/.checksum_mismatch" ]]
+}
+
+@test "verify_github_checksum accepts CRLF checksum files" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    local url="https://example.com/checksums.txt"
+    local key; key=$(echo "$url" | sed 's|[/:?&=]|_|g')
+    local bin="$TEST_TMPDIR/tool"
+    printf 'binary-contents\n' > "$bin"
+    local hash; hash=$(sha256sum "$bin" | awk '{print $1}')
+    printf '%s  tool\r\n' "$hash" > "$_GH_API_CACHE_DIR/checksum_${key}"
+    local rel='{"assets":[{"name":"checksums.txt","browser_download_url":"'"$url"'"}]}'
+
+    run verify_github_checksum "$rel" "$bin" "tool"
+    assert_success
+}
+
+# Runs download_github_release against a fake release listing $1 (JSON assets).
+_fake_release_install() {
+    export VERSION_FILE="$TEST_TMPDIR/.versions" SYS_ARCH=amd64 PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$TEST_TMPDIR/src" "$PIPX_BIN_DIR"
+    printf '#!/bin/sh\n' > "$TEST_TMPDIR/src/zz-fake-tool"
+    tar -czf "$TEST_TMPDIR/fixture.tar.gz" -C "$TEST_TMPDIR/src" .
+    _FAKE_ASSETS="$1"
+    _gh_api_get() { printf '{"tag_name":"v1","assets":[%s]}' "$_FAKE_ASSETS"; }
+    curl() {
+        local out="" url=""
+        while [[ $# -gt 0 ]]; do
+            [[ "$1" == "-o" ]] && out="$2"
+            url="$1"; shift
+        done
+        printf '%s\n' "$url" >> "$TEST_TMPDIR/curl_urls"
+        cp "$TEST_TMPDIR/fixture.tar.gz" "$out"
+    }
+}
+
+@test "release JAR launcher preserves literal paths and caller arguments" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _fake_release_install '{"name":"zz-fake-tool.jar","browser_download_url":"https://example.invalid/tool.jar"}'
+    FAST_MODE=true
+    local destination="$TEST_TMPDIR/"'jars $(touch PWNED) `touch ALSO_PWNED`'
+    mkdir -p "$TEST_TMPDIR/stub" "$TEST_TMPDIR/cwd"
+    cat > "$TEST_TMPDIR/stub/java" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@"
+EOF
+    chmod +x "$TEST_TMPDIR/stub/java"
+
+    run download_github_release "example/zz-fake-tool" "zz-fake-tool" '\.jar$' "$destination"
+    assert_success
+    cd "$TEST_TMPDIR/cwd"
+    run env PATH="$TEST_TMPDIR/stub:$PATH" "$PIPX_BIN_DIR/zz-fake-tool" 'argument with spaces' '$(literal)'
+    assert_success
+    assert_line --index 0 '-jar'
+    assert_line --index 1 "$destination/zz-fake-tool.jar"
+    assert_line --index 2 'argument with spaces'
+    assert_line --index 3 '$(literal)'
+    [[ ! -e PWNED && ! -e ALSO_PWNED ]]
+}
+
+@test "release asset selection skips checksum and signature siblings listed first" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _fake_release_install '{"name":"zz-fake-tool_linux_amd64.tar.gz.sig","browser_download_url":"https://example.invalid/a.sig"},{"name":"zz-fake-tool_linux_amd64.tar.gz.sha256","browser_download_url":"https://example.invalid/a.sha256"},{"name":"zz-fake-tool_linux_amd64.tar.gz","browser_download_url":"https://example.invalid/a.tar.gz"}'
+    FAST_MODE=true
+    run download_github_release "example/zz-fake-tool" "zz-fake-tool" "linux_amd64\\.tar\\.gz" \
+        "$TEST_TMPDIR/opt/zz-fake-tool"
+    assert_success
+    grep -q 'a.tar.gz$' "$TEST_TMPDIR/curl_urls"
+    ! grep -q 'a.sig\|a.sha256' "$TEST_TMPDIR/curl_urls"
+}
+
+@test "release lookup fallback skips draft releases and warns" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _fake_release_install ''
+    FAST_MODE=true
+    _gh_api_get() {
+        case "$1" in
+            */releases/latest) return 1 ;;
+            */releases) printf '[{"tag_name":"draft","draft":true,"assets":[]},{"tag_name":"v2","draft":false,"prerelease":true,"assets":[{"name":"zz-fake-tool_linux_amd64.tar.gz","browser_download_url":"https://example.invalid/a.tar.gz"}]}]' ;;
+        esac
+    }
+    run download_github_release "example/zz-fake-tool" "zz-fake-tool" "linux_amd64\\.tar\\.gz" \
+        "$TEST_TMPDIR/opt/zz-fake-tool"
+    assert_success
+    assert_output --partial "newest published release"
+    grep -q "^zz-fake-tool|binary|v2|" "$VERSION_FILE"
+}
+
+@test "install_npm_batch returns failure when a package fails" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    TOTAL_TOOL_FAILURES=0
+    ensure_node() { return 0; }
+    npm() {
+        [[ "$1" == "ls" ]] && return 1
+        [[ "$*" == *zz-bad* ]] && return 1
+        return 0
+    }
+    run install_npm_batch "npm test" zz-good zz-bad
+    assert_failure
+    TOTAL_TOOL_FAILURES=0
+    run install_npm_batch "npm test" zz-good
+    assert_success
+}
+
+@test "track_version mkdir-lock fallback leaves a busy lock in place" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    command() { [[ "$1" == "-v" && "$2" == "flock" ]] && return 1; builtin command "$@"; }
+    sleep() { :; }
+    mkdir "$VERSION_FILE.lockdir"
+    track_version "zz-tool" "apt" "1.0"
+    [[ -d "$VERSION_FILE.lockdir" ]]
+    grep -q "^zz-tool|apt|1.0|" "$VERSION_FILE"
+}
+
+@test "fixup_package_names and batch installers leave the caller's pkg alone" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions"
+    pkg=sentinel
+    local -a arr=(curl git)
+    fixup_package_names arr
+    [[ "$pkg" == "sentinel" ]]
+    ensure_node() { return 0; }
+    npm() { return 0; }
+    install_npm_batch "npm test" zz-good
+    [[ "$pkg" == "sentinel" ]]
+}
+
+@test "_gh_api_get caches a 200 JSON response" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    _CURL_OPTS_DONE=true; _CURL_OPTS=(-sSL); _GH_TOKEN_SET=true
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        echo x >> "$TEST_TMPDIR/curl_calls"
+        printf '{"a":1}' > "$out"
+        printf 200
+    }
+    _gh_api_get "https://api.github.com/repos/x/y" > "$TEST_TMPDIR/o1"
+    _gh_api_get "https://api.github.com/repos/x/y" > "$TEST_TMPDIR/o2"
+    [[ "$(cat "$TEST_TMPDIR/o2")" == '{"a":1}' ]]
+    [[ "$(wc -l < "$TEST_TMPDIR/curl_calls" | tr -d ' ')" == "1" ]]
+}
+
+@test "_gh_api_get rejects a 200 HTML body without caching it" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    _CURL_OPTS_DONE=true; _CURL_OPTS=(-sSL); _GH_TOKEN_SET=true
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        printf '<html>' > "$out"
+        printf 200
+    }
+    run _gh_api_get "https://api.github.com/repos/x/y"
+    assert_failure
+    [[ -z "$(find "$_GH_API_CACHE_DIR" -type f)" ]]
+}
+
+@test "_gh_api_get does not retry or sleep on 404" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    _CURL_OPTS_DONE=true; _CURL_OPTS=(-sSL); _GH_TOKEN_SET=true
+    curl() { echo x >> "$TEST_TMPDIR/curl_calls"; printf 404; }
+    sleep() { echo "$1" >> "$TEST_TMPDIR/sleeps"; }
+    run _gh_api_get "https://api.github.com/repos/x/y"
+    assert_failure
+    [[ "$(wc -l < "$TEST_TMPDIR/curl_calls" | tr -d ' ')" == "1" ]]
+    [[ ! -e "$TEST_TMPDIR/sleeps" ]]
+}
+
+@test "_gh_api_get retries a 429 and then succeeds" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    _CURL_OPTS_DONE=true; _CURL_OPTS=(-sSL); _GH_TOKEN_SET=true
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        echo x >> "$TEST_TMPDIR/curl_calls"
+        if [[ "$(wc -l < "$TEST_TMPDIR/curl_calls" | tr -d ' ')" == "1" ]]; then printf 429; return 0; fi
+        printf '{"ok":true}' > "$out"
+        printf 200
+    }
+    sleep() { echo "$1" >> "$TEST_TMPDIR/sleeps"; }
+    run _gh_api_get "https://api.github.com/repos/x/y"
+    assert_success
+    assert_output --partial '{"ok":true}'
+    [[ "$(wc -l < "$TEST_TMPDIR/sleeps" | tr -d ' ')" == "1" ]]
+}
+
+@test "_gh_api_get does not sleep after the final failed attempt" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _gh_api_cache_init
+    _CURL_OPTS_DONE=true; _CURL_OPTS=(-sSL); _GH_TOKEN_SET=true
+    curl() { printf 403; }
+    sleep() { echo "$1" >> "$TEST_TMPDIR/sleeps"; }
+    run _gh_api_get "https://api.github.com/repos/x/y"
+    assert_failure
+    [[ "$(wc -l < "$TEST_TMPDIR/sleeps" | tr -d ' ')" == "2" ]]
+}
+
+@test "_setup_curl_opts pins HTTPS-only TLS 1.2 and timeouts" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export GITHUB_TOKEN=dummy-token
+    _CURL_OPTS_DONE=false
+    _setup_curl_opts
+    local opts=" ${_CURL_OPTS[*]} "
+    [[ "$opts" == *" --proto =https "* ]]
+    [[ "$opts" == *" --proto-redir =https "* ]]
+    [[ "$opts" == *" --tlsv1.2 "* ]]
+    [[ "$opts" == *" --connect-timeout 30 "* ]]
+    [[ "$opts" == *" --max-time 120 "* ]]
+}
+
+@test "release asset download keeps HTTPS-only flags" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _fake_release_install '{"name":"zz-fake-tool_linux_amd64.tar.gz","browser_download_url":"https://example.invalid/a.tar.gz"}'
+    FAST_MODE=true
+    curl() {
+        local out=""
+        echo "$*" >> "$TEST_TMPDIR/curl_args"
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        cp "$TEST_TMPDIR/fixture.tar.gz" "$out"
+    }
+    run download_github_release "example/zz-fake-tool" "zz-fake-tool" "linux_amd64\\.tar\\.gz" \
+        "$TEST_TMPDIR/opt/zz-fake-tool"
+    assert_success
+    grep -q -- "--proto =https" "$TEST_TMPDIR/curl_args"
+    grep -q -- "--proto-redir =https" "$TEST_TMPDIR/curl_args"
+    grep -q -- "--tlsv1.2" "$TEST_TMPDIR/curl_args"
+    grep -q -- " -fsSL\| -f" "$TEST_TMPDIR/curl_args" || grep -q -- "-fsSL" "$TEST_TMPDIR/curl_args"
+}
+
+@test "unverified .deb aborts under REQUIRE_CHECKSUMS before dpkg" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _fake_release_install '{"name":"zz-tool_amd64.deb","browser_download_url":"https://example.invalid/zz-tool_amd64.deb"}'
+    export REQUIRE_CHECKSUMS=true
+    maybe_sudo() { echo "$*" >> "$TEST_TMPDIR/sudo_calls"; }
+    run download_github_release "example/zz-tool" "zz-tool" "\\.deb" "$TEST_TMPDIR/opt/zz-tool"
+    assert_failure
+    assert_output --partial "no checksum file"
+    ! grep -q 'dpkg' "$TEST_TMPDIR/sudo_calls" 2>/dev/null
+}
+
+@test "unverified .deb warns and installs without REQUIRE_CHECKSUMS" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _fake_release_install '{"name":"zz-tool_amd64.deb","browser_download_url":"https://example.invalid/zz-tool_amd64.deb"}'
+    unset REQUIRE_CHECKSUMS
+    maybe_sudo() { echo "$*" >> "$TEST_TMPDIR/sudo_calls"; }
+    run download_github_release "example/zz-tool" "zz-tool" "\\.deb" "$TEST_TMPDIR/opt/zz-tool"
+    assert_output --partial "SECURITY: installing zz-tool (.deb) WITHOUT checksum verification"
+    grep -q "^dpkg -i" "$TEST_TMPDIR/sudo_calls"
+}
+
+@test "a .deb with a checksum mismatch aborts before dpkg" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    _fake_release_install '{"name":"zz-tool_amd64.deb","browser_download_url":"https://example.invalid/zz-tool_amd64.deb"},{"name":"zz-tool_amd64.deb.sha256","browser_download_url":"https://example.invalid/zz.sha256"}'
+    _gh_api_cache_init
+    local key; key=$(echo "https://example.invalid/zz.sha256" | sed 's|[/:?&=]|_|g')
+    printf '%064d\n' 7 > "$_GH_API_CACHE_DIR/checksum_${key}"
+    maybe_sudo() { echo "$*" >> "$TEST_TMPDIR/sudo_calls"; }
+    run download_github_release "example/zz-tool" "zz-tool" "\\.deb$" "$TEST_TMPDIR/opt/zz-tool"
+    assert_failure
+    assert_output --partial "checksum mismatch"
+    ! grep -q 'dpkg' "$TEST_TMPDIR/sudo_calls" 2>/dev/null
+}
+
+@test "release archive validator rejects hardlinks, FIFOs and absolute tar names" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    local kind
+    for kind in LNKTYPE FIFOTYPE ABSOLUTE; do
+        python3 -I - "$TEST_TMPDIR/$kind.tar" "$kind" <<'PY'
+import io
+import sys
+import tarfile
+
+path, kind = sys.argv[1:3]
+with tarfile.open(path, "w") as tar:
+    info = tarfile.TarInfo("tool")
+    data = b"x"
+    info.size = len(data)
+    tar.addfile(info, io.BytesIO(data))
+    extra = tarfile.TarInfo("/etc/x" if kind == "ABSOLUTE" else "other")
+    if kind != "ABSOLUTE":
+        extra.type = getattr(tarfile, kind)
+        extra.linkname = "tool"
+    tar.addfile(extra)
+PY
+        run _validate_release_archive "$TEST_TMPDIR/$kind.tar" tar
+        assert_failure
+    done
+    run _validate_release_archive "$TEST_TMPDIR/ABSOLUTE.tar" tar
+    assert_output --partial "unsafe archive member path"
+    run _validate_release_archive "$TEST_TMPDIR/FIFOTYPE.tar" tar
+    assert_output --partial "unsupported archive member type"
+}
+
+@test "release archive validator rejects zip drive-letter names" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    python3 -I - "$TEST_TMPDIR/d.zip" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    z.writestr("C:/x", "x")
+PY
+    run _validate_release_archive "$TEST_TMPDIR/d.zip" zip
+    assert_failure
+    assert_output --partial "unsafe archive member path"
+}
+
+@test "single-file .gz release assets are decompressed and installed 0755" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions" FAST_MODE=true SYS_ARCH=amd64
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR"
+    printf '#!/bin/sh\necho gz-fixture\n' > "$TEST_TMPDIR/payload"
+    gzip -c "$TEST_TMPDIR/payload" > "$TEST_TMPDIR/fixture.gz"
+    _gh_api_get() {
+        printf '{"tag_name":"v0.1","assets":['
+        printf '{"name":"zz-tool-v0.1-linux-amd64-musl.gz","browser_download_url":"https://example.invalid/musl.gz"},'
+        printf '{"name":"zz-tool-v0.1-linux-amd64-sumo-musl.gz","browser_download_url":"https://example.invalid/sumo.gz"},'
+        printf '{"name":"zz-tool-v0.1-linux-amd64.sig","browser_download_url":"https://example.invalid/plain.sig"},'
+        printf '{"name":"zz-tool-v0.1-linux-amd64.gz","browser_download_url":"https://example.invalid/plain.gz"}]}'
+    }
+    curl() {
+        local out="" url=""
+        while [[ $# -gt 0 ]]; do
+            [[ "$1" == "-o" ]] && out="$2"
+            url="$1"
+            shift
+        done
+        printf '%s\n' "$url" >> "$TEST_TMPDIR/urls"
+        cp "$TEST_TMPDIR/fixture.gz" "$out"
+    }
+
+    run download_github_release "example/zz-tool" "zz-tool" "-linux-amd64\\.gz$"
+    assert_success
+    grep -qx "https://example.invalid/plain.gz" "$TEST_TMPDIR/urls"
+    [[ "$(cat "$PIPX_BIN_DIR/zz-tool")" == "$(cat "$TEST_TMPDIR/payload")" ]]
+    [[ -x "$PIPX_BIN_DIR/zz-tool" ]]
+}
+
+@test "a corrupt .gz release asset fails the install" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export VERSION_FILE="$TEST_TMPDIR/.versions" FAST_MODE=true SYS_ARCH=amd64
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_BIN_DIR"
+    printf 'not gzip\n' > "$TEST_TMPDIR/fixture.gz"
+    _gh_api_get() {
+        printf '{"tag_name":"v0.1","assets":[{"name":"zz-tool-linux-amd64.gz","browser_download_url":"https://example.invalid/a.gz"}]}'
+    }
+    curl() {
+        local out=""
+        while [[ $# -gt 0 ]]; do [[ "$1" == "-o" ]] && out="$2"; shift; done
+        cp "$TEST_TMPDIR/fixture.gz" "$out"
+    }
+
+    run download_github_release "example/zz-tool" "zz-tool" "-linux-amd64\\.gz$"
+    assert_failure
+    [[ ! -e "$PIPX_BIN_DIR/zz-tool" ]]
+}
+
+@test "velociraptor and ambiguous release patterns select exactly one real asset name" {
+    source_libs --installers debian apt
+    export SYS_ARCH=amd64
+    local -A assets=(
+        [velociraptor]=$'velociraptor-v0.77.3-linux-amd64-musl.gz\nvelociraptor-v0.77.3-linux-amd64-sumo-musl.gz\nvelociraptor-v0.77.3-linux-amd64.gz\nvelociraptor-v0.77.3-linux-arm64.gz\nvelociraptor-v0.77.3-linux-amd64.sig'
+        [jd-gui]=$'jd-gui-1.6.6-min.jar\njd-gui-1.6.6.deb\njd-gui-1.6.6.jar\njd-gui-1.6.6.rpm'
+        [jadx]=$'jadx-1.5.7.zip\njadx-gui-1.5.7-win.zip\njadx-gui-1.5.7-with-jre-win.zip'
+        [rp-lin]=$'rp-lin-clang.zip\nrp-lin-gcc.zip\nrp-osx.zip\nrp-win.zip'
+        [cdk]=$'cdk_linux_amd64\ncdk_linux_amd64_thin\ncdk_linux_amd64_upx\ncdk_linux_amd64_thin_upx'
+        [loki]=$'loki-linux-aarch64-v2.13.1.tar.gz\nloki-linux-x86_64-v2.13.1.tar.gz\nloki-linux-x86_64-v2.13.1.tar.gz.sha256'
+    )
+    local binary entry pattern
+    for binary in "${!assets[@]}"; do
+        entry=$(_binary_release_entry "$binary")
+        IFS='|' read -r _ _ pattern _ <<< "$entry"
+        [[ -n "$pattern" ]] || { echo "no entry for $binary"; return 1; }
+        run python3 -c '
+import re, sys
+pattern = sys.argv[1]
+names = sys.stdin.read().split()
+hits = [n for n in names if re.search(pattern, n) and not n.endswith((".sig", ".sha256"))]
+print(len(hits), hits)
+sys.exit(0 if len(hits) == 1 else 1)
+' "$pattern" <<< "${assets[$binary]}"
+        [[ "$status" -eq 0 ]] || { echo "$binary ($pattern): $output"; return 1; }
+    done
 }

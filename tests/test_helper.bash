@@ -16,8 +16,9 @@ mock_os_release() {
     local version="${3:-}"
     local id_like="${4:-}"
 
+    [[ -n "${TEST_TMPDIR:-}" ]] || make_test_tmpdir
     export MOCK_OS_RELEASE
-    MOCK_OS_RELEASE="$(mktemp)"
+    MOCK_OS_RELEASE="$(mktemp "$TEST_TMPDIR/os-release.XXXXXX")"
     cat > "$MOCK_OS_RELEASE" <<EOF
 ID=$id
 PRETTY_NAME="$pretty"
@@ -27,7 +28,7 @@ EOF
 }
 
 # Source common.sh (and optionally installers.sh) with distro overrides.
-# Patches /etc/os-release by temporarily redefining detect_distro.
+# Stubs detect_pkg_manager so the host distro does not leak into tests.
 # Usage: source_libs [--installers] <distro_id> [pkg_manager]
 source_libs() {
     local with_installers=false

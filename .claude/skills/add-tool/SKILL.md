@@ -44,8 +44,9 @@ Add to the matching array in `modules/<module>.sh`:
 | pipx | `<PREFIX>_PIPX` | `"pypi-name"` |
 | Go | `<PREFIX>_GO` + `<PREFIX>_GO_BINS` | `"github.com/owner/repo/cmd@latest"` + `"binary-name"` |
 | Cargo | `<PREFIX>_CARGO` | `"crate-name"` |
+| npm | `<PREFIX>_NPM` | `"npm-package"` (see `BLOCKCHAIN_NPM`) |
 | Gem | `<PREFIX>_GEMS` | `"gem-name"` |
-| Git | `<PREFIX>_GIT` + `<PREFIX>_GIT_NAMES` | `"name=https://github.com/owner/repo"` + `"name"` |
+| Git | `<PREFIX>_GIT` + `<PREFIX>_GIT_NAMES` | `"name=https://github.com/owner/repo.git"` + `"name"` |
 | Binary release | `BINARY_RELEASES_<MODULE>` in `lib/installers.sh` | `"owner/repo\|binary\|pattern\|dest_dir"` |
 | Docker | `ALL_DOCKER_IMAGES` in `lib/installers.sh` | `"image\|label"` + add `docker_pull` call in module install function |
 | Build from source | `build_from_source` call in `install_module_*()` + `<PREFIX>_BUILD_NAMES` | inline |
@@ -83,7 +84,11 @@ If the tool was added to a data source mirrored in the MCP server:
 
 - New Docker image → also update `mcp_server/tools_db.py` `DOCKER_IMAGES`
 - New pipx tool whose binary name differs from PyPI name → also update `mcp_server/tools_db.py` `PIPX_BIN_NAMES` (mirror of `scripts/verify.sh` `_PIPX_BIN_NAMES`)
+- New npm tool whose binary differs from its package name → also update `mcp_server/tools_db.py` `NPM_BIN_NAMES` (mirror of `lib/installers.sh` `_NPM_BIN_NAMES`)
+- New cargo tool whose binary differs from its crate name → also update `CARGO_BIN_NAMES` (mirror of `_CARGO_BIN_NAMES`)
 - New module → also update `lib/common.sh` `MODULE_DESCRIPTIONS` AND `mcp_server/tools_db.py` `MODULE_DESCRIPTIONS`
+
+`scripts/validate_mcp_sync.py` also covers aliases, C2, CVE, toolchain and audit constants; read its output for the full list.
 
 Then validate sync:
 

@@ -6,8 +6,6 @@
 
 MISC_PACKAGES=()
 
-MISC_HEAVY_PACKAGES=()
-
 MISC_PIPX=(arsenal-cli sploitscan faraday-cli)
 
 MISC_GO=(
@@ -41,7 +39,7 @@ MISC_C2_GIT=(
     "CredMaster=https://github.com/knavesec/CredMaster.git"
     "Modlishka=https://github.com/drk1wi/Modlishka.git"
     # C2 / adversary emulation
-    "Caldera=https://github.com/mitre/caldera.git"
+    "Caldera=https://github.com/apache/caldera.git"
     "Loki-C2=https://github.com/boku7/Loki.git"
     # Gated post-exploitation tools
     "LaZagne=https://github.com/AlessandroZ/LaZagne.git"
@@ -70,13 +68,45 @@ MISC_C2_GIT_NAMES=(
 )
 MISC_GO_BINS=(gf anew qsreplace notify pdtm)
 
+# SecLists ships rockyou only as a tarball; unpack it so wordlist flags can use the .txt.
+extract_seclists_rockyou() {
+    local dir="${GITHUB_TOOL_DIR:-}/SecLists/Passwords/Leaked-Databases"
+    local archive="$dir/rockyou.txt.tar.gz"
+    [[ -f "$archive" && ! -e "$dir/rockyou.txt" && ! -L "$dir/rockyou.txt" ]] || return 0
+    if ! _validate_release_archive "$archive" tar >> "$LOG_FILE" 2>&1 \
+        || ! python3 - "$archive" "$dir" >> "$LOG_FILE" 2>&1 <<'PY'
+import os
+from pathlib import Path, PurePosixPath
+import shutil
+import sys
+import tarfile
+import tempfile
+
+temporary = None
+try:
+    with tarfile.open(sys.argv[1], "r:gz") as archive:
+        members = [member for member in archive.getmembers() if PurePosixPath(member.name) == PurePosixPath("rockyou.txt")]
+        if len(members) != 1 or not members[0].isfile():
+            raise ValueError("Expected exactly one regular rockyou.txt member")
+        with archive.extractfile(members[0]) as source:
+            with tempfile.NamedTemporaryFile(prefix=".rockyou.", dir=sys.argv[2], delete=False) as output:
+                temporary = output.name
+                shutil.copyfileobj(source, output)
+                os.fchmod(output.fileno(), 0o644)
+        os.link(temporary, Path(sys.argv[2], "rockyou.txt"))
+finally:
+    if temporary is not None:
+        os.unlink(temporary)
+PY
+    then
+        log_warn "Could not safely extract $archive"
+        TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
+        return 1
+    fi
+}
+
 install_module_misc() {
     [[ ${#MISC_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Misc - Packages" "${MISC_PACKAGES[@]}"
-
-    # Heavy packages (optional)
-    if [[ "${SKIP_HEAVY:-false}" != "true" ]] && [[ ${#MISC_HEAVY_PACKAGES[@]} -gt 0 ]]; then
-        install_apt_batch "Heavy tools" "${MISC_HEAVY_PACKAGES[@]}"
-    fi
 
     install_pipx_batch "Misc - Python" "${MISC_PIPX[@]}"
 
@@ -84,6 +114,7 @@ install_module_misc() {
 
     # Git repos (resources, post-exploitation, CTF)
     install_git_batch "Misc - Git" "${MISC_GIT[@]}"
+    extract_seclists_rockyou
 
     # Binary releases (skipped on Termux — Linux/glibc binaries)
     install_binary_releases "${BINARY_RELEASES_MISC[@]}"
@@ -99,7 +130,6 @@ install_module_misc() {
 
     # Docker: OSINT + C2 frameworks that need multi-service orchestration.
     if [[ "${ENABLE_DOCKER:-false}" == "true" ]]; then
-        docker_pull "spiderfoot/spiderfoot" "SpiderFoot" || true
         if [[ "${INCLUDE_C2:-false}" == "true" ]]; then
             log_info "Installing C2 frameworks via Docker..."
             docker_pull "bcsecurity/empire" "Empire" || true

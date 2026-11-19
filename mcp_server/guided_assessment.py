@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import re
 import shlex
 import shutil
@@ -13,7 +14,13 @@ from urllib.parse import urlparse
 from mcp_server.advisor_utils import TOOL_ALIASES
 from mcp_server.bounty_advisor import resolve_target_type, suggest_for_bounty
 from mcp_server.ctf_advisor import resolve_category, suggest_for_ctf
-from mcp_server.security import SYSTEM_UTILITIES, _address_is_safe, _network_target_host
+from mcp_server.security import (
+    _AMBIGUOUS_AUTHORITY_HOST,
+    SYSTEM_UTILITIES,
+    _address_is_safe,
+    _has_ambiguous_authority,
+    _network_target_host,
+)
 from mcp_server.tools_db import C2_TOOLS, ToolsDatabase
 
 MODES = {"companion", "autonomous"}
@@ -60,7 +67,7 @@ _FINDING_TYPE_RULES = [
     ("oauth_oidc", ("oauth", "oidc", "open redirect", "redirect_uri", "authorization code")),
     ("graphql", ("graphql", "introspection", "__schema", "resolver")),
     ("file_upload", ("file upload", "upload bypass", "polyglot", "content-type bypass")),
-    ("race_condition", ("race", "concurrent", "double spend", "time-of-check", "toc tou", "toctou")),
+    ("race_condition", ("race", "concurrent", "double spend", "time-of-check", "time of check", "toctou")),
     ("http_smuggling", ("http request smuggling", "request smuggling", "cl.te", "te.cl", "h2.cl")),
     ("cache_poisoning", ("cache poisoning", "web cache", "cache deception")),
     ("sqli", ("sqli", "sql injection", "union select", "blind sql")),
@@ -91,6 +98,32 @@ _FINDING_SKILL_ROUTES = {
     "path_traversal": ["web2-vuln-classes", "security-arsenal"],
     "rce": ["web2-vuln-classes", "triage-validation"],
     "secret_exposure": ["evidence-hygiene", "triage-validation"],
+}
+
+_CTF_DOMAIN_SKILLS = {
+    "crypto": ["ctf-crypto"],
+    "pwn": ["ctf-pwn"],
+    "reversing": ["ctf-rev"],
+    "forensics": ["ctf-forensics"],
+    "stego": ["ctf-stego"],
+    "web": ["ctf-web"],
+    "mobile": ["offensive-mobile"],
+    "blockchain": ["blockchain-security", "web3-audit"],
+    "osint": ["offensive-osint"],
+    "wireless": ["offensive-wifi"],
+    "llm": ["ai-llm-security-review", "offensive-ai-security"],
+    "cloud": ["offensive-cloud"],
+    "networking": ["conducting-network-penetration-test"],
+}
+
+_BOUNTY_DOMAIN_SKILLS = {
+    "api": ["bounty-api"],
+    "mobile_app": ["bounty-mobile"],
+    "web_app": ["bounty-web"],
+    "cloud": ["offensive-cloud"],
+    "iot": ["offensive-iot"],
+    "llm": ["ai-llm-security-review"],
+    "network": ["conducting-network-penetration-test"],
 }
 
 # Auto-detection: map a local file's extension to the most likely CTF category so the
@@ -216,6 +249,9 @@ def _target_kind(target: str, workflow: str, target_type: str | None) -> str:
 
 def _host_from_target(target: str, kind: str) -> str | None:
     if kind == "url":
+        # Parsers disagree on this authority, so no host in it can be trusted as local.
+        if _has_ambiguous_authority(target):
+            return _AMBIGUOUS_AUTHORITY_HOST
         return urlparse(target).hostname
     if kind == "host":
         # Same extraction as the execution policy, so [v6]:port and host:port agree with it.
@@ -245,6 +281,8 @@ def _normalize_target(target: str, workflow: str, target_type: str | None) -> di
         raise ValueError("target is required")
     if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in clean):
         raise ValueError("target contains control characters; pass a bare URL, host, IP, or file path")
+    if clean.startswith("-"):
+        raise ValueError("target must not start with '-' (it would be read as a tool option); use ./name for files")
 
     kind = _target_kind(clean, workflow, target_type)
     # URLs may contain '&'/';' in query strings; only genuine shell metacharacters
@@ -252,6 +290,9 @@ def _normalize_target(target: str, workflow: str, target_type: str | None) -> di
     meta_re = _URL_META_RE if kind == "url" else _SHELL_META_RE
     if meta_re.search(clean):
         raise ValueError("target contains shell metacharacters; pass a bare URL, host, IP, or file path")
+
+    if kind == "file" and clean.startswith("~"):
+        clean = os.path.expanduser(clean)
 
     host = _host_from_target(clean, kind)
     parsed = urlparse(clean)
@@ -293,26 +334,23 @@ def _resolve_workflow(workflow: str, target_type: str) -> tuple[str, str | None,
 
 
 def _tool_status(tool_name: str, tools_db: ToolsDatabase) -> dict:
-    # Shares the TOOL_ALIASES source with advisor_utils.check_tool_installed but
-    # intentionally does NOT reuse it: this returns a richer dict (registry_name,
-    # details, requires_include_c2) and, for in-registry tools, trusts
-    # tools_db.check_installed without the extra shutil.which(tool_name) fallback
-    # that check_tool_installed applies. Keep the two in lockstep on aliasing only.
     registry_name = TOOL_ALIASES.get(tool_name, tool_name)
-    in_registry = registry_name in tools_db.tools_by_name
-    if in_registry:
+    registry_tool = tools_db.get_tool(registry_name)
+    if registry_tool is not None:
         status = tools_db.check_installed(registry_name)
         return {
             "installed": bool(status["installed"]),
+            "ready": tools_db.execution_status(registry_name)["ready"],
             "in_registry": True,
-            "registry_name": registry_name,
+            "registry_name": registry_tool["name"],
             "details": status["details"],
-            "requires_include_c2": registry_name in C2_TOOLS,
+            "requires_include_c2": registry_tool["name"] in C2_TOOLS,
         }
     if tool_name in SYSTEM_UTILITIES:
         path = shutil.which(tool_name)
         return {
             "installed": path is not None,
+            "ready": path is not None,
             "in_registry": False,
             "registry_name": None,
             "details": f"found at {path}" if path else "not installed or not in PATH",
@@ -321,6 +359,7 @@ def _tool_status(tool_name: str, tools_db: ToolsDatabase) -> dict:
     path = shutil.which(tool_name)
     return {
         "installed": path is not None,
+        "ready": path is not None,
         "in_registry": False,
         "registry_name": None,
         "details": f"found at {path}" if path else "not installed or not in registry",
@@ -526,10 +565,14 @@ def _recommended_next_command(steps: list[dict]) -> dict | None:
     if not steps:
         return None
 
-    # Prefer installed, low-risk steps. Fall back to the first step so the user
+    # Prefer ready, low-risk steps. Fall back to the first step so the user
     # still sees what to install or run manually if nothing is available locally.
     chosen = next(
-        (step for step in steps if step.get("installed") and step.get("auto_safe") and step.get("risk") == "low"),
+        (
+            step
+            for step in steps
+            if step.get("ready", step.get("installed")) and step.get("auto_safe") and step.get("risk") == "low"
+        ),
         steps[0],
     )
     return {
@@ -537,6 +580,7 @@ def _recommended_next_command(steps: list[dict]) -> dict | None:
         "args": chosen["args"],
         "command": chosen["command"],
         "installed": chosen["installed"],
+        "ready": chosen.get("ready", chosen["installed"]),
         "risk": chosen["risk"],
         "rationale": chosen["rationale"],
         "run_tool_call": f"run_tool({json.dumps(chosen['tool'])}, {json.dumps(chosen['args'])})",
@@ -575,6 +619,11 @@ def _manual_script_fallback() -> dict:
     }
 
 
+def _term_in_text(term: str, text: str) -> bool:
+    """Match a term on word boundaries so 'rce' does not hit 'source' or 'race' 'trace'."""
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?:e?s)?(?![a-z0-9])", text) is not None
+
+
 def _finding_classification(finding: str, target_type: str) -> dict:
     """Classify a supplied finding summary without echoing sensitive text."""
     normalized = " ".join(finding.lower().split())
@@ -588,7 +637,7 @@ def _finding_classification(finding: str, target_type: str) -> dict:
         }
 
     for finding_type, terms in _FINDING_TYPE_RULES:
-        matched = [term for term in terms if term in normalized]
+        matched = [term for term in terms if _term_in_text(term, normalized)]
         if matched:
             return {
                 "provided": True,
@@ -652,12 +701,8 @@ def _recommended_skills(workflow: str, target_type: str, classification: dict, t
         if target_type in {"web_app", "api"}:
             add("web2-recon", "Map web/API attack surface before deeper testing.")
             add("web2-vuln-classes", "Route the target or finding to web bug-class-specific checks.")
-        if target_type == "api":
-            add("bounty-api", "Use API and GraphQL-specific testing methodology.")
-        elif target_type == "mobile_app":
-            add("bounty-mobile", "Use mobile app static/dynamic testing methodology.")
-        elif target_type == "web_app":
-            add("bounty-web", "Use web application testing methodology.")
+        for bounty_skill in _BOUNTY_DOMAIN_SKILLS.get(target_type, []):
+            add(bounty_skill, "Use the target-type-specific bounty testing methodology.")
 
         finding_type = classification["finding"]["type"]
         for routed_skill in _FINDING_SKILL_ROUTES.get(finding_type, []):
@@ -669,15 +714,7 @@ def _recommended_skills(workflow: str, target_type: str, classification: dict, t
         )
         add("report-writing", "Turn a validated, sanitized finding into a platform-ready bounty report.")
     elif workflow == "ctf":
-        ctf_skill = {
-            "crypto": "ctf-crypto",
-            "pwn": "ctf-pwn",
-            "reversing": "ctf-rev",
-            "forensics": "ctf-forensics",
-            "stego": "ctf-stego",
-            "web": "ctf-web",
-        }.get(target_type)
-        if ctf_skill:
+        for ctf_skill in _CTF_DOMAIN_SKILLS.get(target_type, []):
             add(ctf_skill, "Use the category-specific CTF decision tree.")
         add("evidence-hygiene", "Avoid leaking credentials or private challenge artifacts in shared writeups.")
     else:
@@ -842,6 +879,7 @@ def build_guided_plan(
         enriched = {
             **step,
             "installed": status["installed"],
+            "ready": status["ready"],
             "in_registry": status["in_registry"],
             "registry_name": status["registry_name"],
             "install_details": status["details"],
@@ -863,7 +901,7 @@ def build_guided_plan(
             break
         if not step["auto_safe"] or step["risk"] not in allowed_risk:
             continue
-        if not step["installed"]:
+        if not step["ready"]:
             continue
         if target_external_block and step["network"]:
             continue
@@ -927,6 +965,7 @@ def build_guided_plan(
         }
 
     autonomous: dict | None = None
+    has_candidates = bool(execution_candidates)
     blocked_reason = _execution_reason(mode_norm, authorization_confirmed, auth_required, target_external_block)
     if mode_norm == "autonomous" and blocked_reason != "ready":
         # The solver directive is withheld until the run may start, so the response
@@ -942,7 +981,14 @@ def build_guided_plan(
             "directive": (
                 "AUTONOMOUS SOLVER MODE — the caller stated that this scope is authorized. "
                 "guided_assessment is the entry point to the full "
-                "MCP toolchain. It auto-runs the selected bootstrap below, then the client "
+                "MCP toolchain. "
+                + (
+                    "It auto-runs the selected bootstrap below"
+                    if has_candidates
+                    else "No bootstrap step will run (none ready, or max_steps=0); "
+                    "run the plan.steps you choose via run_tool"
+                )
+                + ", then the client "
                 "agent should keep solving with MCP tools: inspect install status, choose tools from the "
                 "advisor output and registry, run commands with run_tool/run_pipeline, use run_script for "
                 "scoped custom logic (pwntools, z3, requests, crypto, parsers), and create persistent "
@@ -1017,7 +1063,9 @@ def build_guided_plan(
             "results": [],
             "reason": _execution_reason(mode_norm, authorization_confirmed, auth_required, target_external_block),
         },
-        "next_actions": _next_actions(mode_norm, authorization_confirmed, auth_required, target_external_block),
+        "next_actions": _next_actions(
+            mode_norm, authorization_confirmed, auth_required, target_external_block, has_candidates
+        ),
     }
 
 
@@ -1031,7 +1079,13 @@ def _execution_reason(mode: str, authorization_confirmed: bool, auth_required: b
     return "ready"
 
 
-def _next_actions(mode: str, authorization_confirmed: bool, auth_required: bool, external_blocked: bool) -> list[str]:
+def _next_actions(
+    mode: str,
+    authorization_confirmed: bool,
+    auth_required: bool,
+    external_blocked: bool,
+    has_candidates: bool = True,
+) -> list[str]:
     actions = []
     if auth_required and not authorization_confirmed:
         actions.append("Confirm written authorization/scope, then rerun with authorization_confirmed=true.")
@@ -1046,8 +1100,13 @@ def _next_actions(mode: str, authorization_confirmed: bool, auth_required: bool,
             "registry/modules/profiles until the task is solved or needs explicit escalation."
         )
     elif mode == "autonomous" and not (auth_required and not authorization_confirmed) and not external_blocked:
+        bootstrap_note = (
+            "the recon bootstrap above is already done"
+            if has_candidates
+            else "no bootstrap step was run (none installed or max_steps=0); run the plan.steps you choose via run_tool"
+        )
         actions.append(
-            "Continue the user-approved auto-solver loop (the recon bootstrap above is already done): "
+            f"Continue the user-approved auto-solver loop ({bootstrap_note}): "
             "for each lead, run tools via run_tool/run_pipeline and create+run scoped helper scripts via "
             f"run_script when needed; persist reusable agent-created helpers in {MANUAL_SCRIPTS_DIR}. "
             "Iterate on real output, pivot after 2-3 failures, stay strictly "

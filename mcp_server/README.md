@@ -13,7 +13,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `get_profile_tools` | List every tool a profile installs, grouped by module with install status |
 | `suggest_for_ctf` | Tool suggestions for 14 CTF challenge categories with descriptions |
 | `suggest_for_bounty` | Tool suggestions for 7 bug bounty target types with methodology and common vulns |
-| `guided_assessment` | Companion-first solve assistant — classifies the target/finding, returns triage gates, recommends skills, auto-detects tools from all modules/profiles, then guides step-by-step; opt-in `autonomous` uses governed tool calls and the separately gated `run_script` capability; network steps need the caller to pass `authorization_confirmed=true` |
+| `guided_assessment` | Companion-first solve assistant — classifies the target/finding, returns triage gates, recommends skills, auto-detects tools from all modules/profiles, then guides step-by-step; opt-in `autonomous` uses governed tool calls and the separately gated `run_script` capability; network steps need the caller to pass `authorization_confirmed=true`, which is only the caller's assertion and is never verified; `intensity` accepts `low` or `medium`; `execution.results` appears only when autonomous mode ran execution candidates, otherwise `execution.status` is `not_started` with a reason |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
 | `list_profiles` | List all 14 installation profiles with tool counts and details |
@@ -29,7 +29,7 @@ Every tool returns a JSON object, in one of two families:
 - **Advisory tools** (`list_tools`, `check_installed`, `get_tool_info`, `get_module_info`, `get_profile_tools`, `suggest_for_*`, `guided_assessment`, `get_cve_info`, `recommend_install`, `list_profiles`, `manage_remote_hosts`) return their data, or `{"error": "<message>"}` when the request cannot be served (unknown tool, module or profile).
 - **Executors** (`run_tool`, `run_pipeline`, `run_script`) always return `exit_code`, `stdout`, `stderr` and `truncated`. A request refused by policy, validation or the rate limiter has `exit_code: -1` and the reason in `stderr`; it never reaches a process.
 
-In `check_installed`, `method` is the registry install method (`apt`, `pipx`, …) and `detection` is how the tool was found (`path`, `versions_tracked`, …). `list_tools` accepts `limit`/`offset` and `get_profile_tools` accepts `counts_only` to keep large responses small. The MCP handshake reports the toolkit version, not FastMCP's.
+In `check_installed`, `method` is the registry install method (`apt`, `pipx`, …) and `detection` is how the tool was found (`path`, `versions_tracked`, …). `execution.ready` separately reports whether a supported executable is on PATH; a clone or version record alone does not prove that. `list_tools` accepts `query`, `executable_only` and `limit`/`offset` with `next_offset`; use pages of 50 entries to keep large responses small. `get_profile_tools` accepts `counts_only`. The MCP handshake reports the toolkit version, not FastMCP's.
 
 ## Setup
 
@@ -38,11 +38,15 @@ In `check_installed`, `method` is the registry install method (`apt`, `pipx`, �
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
-# Linux/macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Linux/macOS: download a pinned installer, review it, then run it
+curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/0.13.8/install.sh -o uv-install.sh
+# review uv-install.sh, then:
+sh uv-install.sh
 
-# Windows
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# Any platform
+pipx install uv
+
+# Windows: download https://astral.sh/uv/0.13.8/install.ps1, review it, then run it
 ```
 
 Clone the main repository first. The server reads `tools_config.json` from the repository checkout, so run it from the repo root or from `mcp_server/`.
@@ -165,7 +169,7 @@ When running from Windows, the MCP server runs inside WSL. A WSL-local copy is n
 
 ```bash
 # 1. Install uv in WSL
-wsl.exe bash -lc "curl -LsSf https://astral.sh/uv/install.sh | sh"
+wsl.exe bash -lc "pipx install uv"
 
 # 2. Clone or sync the repo into WSL
 ./scripts/sync-wsl.sh              # from Git Bash
@@ -267,6 +271,8 @@ uv run fastmcp run server.py --transport stdio --no-banner
 Once connected via an MCP client:
 
 - **List all tools**: `list_tools()` — returns 670+ tools with URLs
+- **Search the catalog**: `list_tools(query="commix", limit=50)` — names, executable aliases, modules and URLs
+- **Find CLI routes**: `list_tools(method="git", executable_only=true, limit=50)` — follow `next_offset` for the next page; inspect `execution.ready` with `get_tool_info` before running
 - **Filter by module**: `list_tools(module="web")` — 60 web app testing tools
 - **Filter by method**: `list_tools(method="pipx")` — Python tools installed via pipx
 - **Check installed only**: `list_tools(installed_only=true)` — with version info
@@ -300,6 +306,7 @@ mcp_server/
   bounty_advisor.py    # Bug bounty target-type → tool mapping with methodology and common vulns
   cve_advisor.py       # CVE → curated skills/tools/modules + live NVD/KEV/EPSS lookup commands
   profiles.py          # Profile recommendation engine — 14 profiles, keyword matching
+  local_sandbox.py     # Bubblewrap confinement for host mode (CYBERSEC_LOCAL_SANDBOX=1)
   security.py          # Execution validation, argument sanitization, network policy, rate limiting,
                        #   script execution with venv support, pipeline execution
   sanitize.py          # Output sanitization — strips LLM markers, XML injection, Unicode evasion,
@@ -329,37 +336,41 @@ whose permissions the policy cannot contain is a guest user in a disposable VM
 rather than the operator. With `--local` there is no such boundary — run the
 server as a least-privileged user. See [`../docs/SANDBOX.md`](../docs/SANDBOX.md).
 
-- **Registry check**: Only tools listed in `tools_config.json` (plus 127 system utilities) can be executed
+- **Registry check**: Only tools listed in `tools_config.json` (plus 127 system utilities and registered package executables) can be executed. Git CLIs have explicit launcher metadata, network classification and argument checks, shared by local, pipeline and remote execution. Resource repositories, services, plugins and GUIs remain discoverable with a reason and access guidance. Container images require their own service/client setup. The Snap `zaproxy` route supports bounded command-line scans. Packages that install several binaries are covered through `PACKAGE_EXTRA_BINARIES`, including the Sleuth Kit commands and source-build companions. See the [tool inventory and execution contract](../docs/TOOL_EXECUTION.md)
 - **Install check**: Tool must be installed and in PATH
 - **Argument sanitization**: Shell injection patterns (`|`, `` ` ``, `$(`, `${`) are blocked. `;`, `&`, `$`, `>`, `<` are allowed — no shell is used (`create_subprocess_exec`, never `shell=True`), so they are literals and tools need them (`;`/`&` in URL query strings, `$` for regex/awk, `>`/`<` for XML/comparisons)
 - **Destructive flag blocking**: `--delete`, `-rf`, `--exploit` and similar universal flags are rejected
-- **Tool-specific flag blocking**: Dangerous per-tool options are blocked, for example sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `--includefile`, sed `-i` (in-place modification)
+- **Tool-specific flag blocking**: Dangerous per-tool options are blocked, for example sqlmap `--os-shell`/`--os-cmd`/`--os-pwn`/`--priv-esc`/`--file-read`/`--file-write`/`--file-dest`, nmap `-iL`/`-iR`, masscan `-iL` and the `--includefile`/`--conf`/`--resume` spellings, shuffledns `-l`/`-list`, wafw00f `-i`/`--input-file` (and abbreviations), feroxbuster `--stdin`, sed `-i` (in-place modification)
+- **Host-file reads and uploads**: curl `-d @file`, `--data*`, `--json @file`, `-F name=@file`, `-T`, `-K` and `file://` URLs, wget `-i`/`--post-file`/`--body-file`, `sed -f` and similar options are refused because they turn a governed call into a host-file read primitive. Uploading a local report or sample (DefectDojo, Cuckoo, MobSF, Dependency-Track, any.run) needs the operator's own shell
+- **Write guard and operator-shell workflows**: `tee`, `cp`, `mv`, `mkdir`, `unzip -d`, `tar -C`, `ssh-keygen -f` and tool output options that write under `/etc`, `/usr`, `/var/lib`, `/srv`, `/opt`, `/run`, `/proc`, `/sys`, `/dev` or a home dotfile directory such as `~/.ssh` are refused. Writes under the toolkit root or the working directory are allowed even when it sits inside `/opt`. Host setup (unpacking into `/opt`, writing service configs), `openssl -config`/`-conf`, `binwalk -D`, `gdb -ex 'source ...'` (pwndbg/gef loading) and `ffuf -request` are blocked by design: run them in the operator's own shell
 - **Tool-aware parsing, not solver hardcoding**: The auto-solver chooses tools from the registry/advisors. The policy layer only knows enough CLI grammar to distinguish targets from headers, wordlists, output files, config files, and target-list flags, so legitimate commands stay usable without letting scope checks be bypassed
-- **Network policy**: Network tools and SSH remote hosts reject targets that do not resolve to private/loopback IPs by default (including single-label hostnames like `google`). This preflight check is not a network sandbox: DNS can change between validation and connection, and tools can follow redirects. Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
+- **Network policy**: Network tools and SSH remote hosts reject targets that do not resolve to private/loopback IPs by default (including single-label hostnames like `google`). This preflight check is not a network sandbox: DNS can change between validation and connection, and tools can follow redirects. A URL whose authority contains a backslash, whitespace or a control character (for example `http://evil.example\@127.0.0.1/`) is treated as external, and `guided_assessment` reports it as `appears_external`. Set `CYBERSEC_MCP_ALLOW_EXTERNAL=1` to allow external targets
 - **Script execution gate**: `run_script` is disabled by default. Enabling `CYBERSEC_MCP_ALLOW_SCRIPTS=1` grants scripts the MCP process user's filesystem and network permissions; `CYBERSEC_MCP_ALLOW_EXTERNAL` does not constrain arbitrary script code
 - **Venv isolation**: `run_script` supports a `venv` parameter to select a specific Python interpreter from `~/.ctf-venvs/` (configurable via `CYBERSEC_MCP_VENVS_DIR`). Invalid venv names return a structured error without executing. `./install.sh --module crypto` populates the `crypto` venv (pycryptodome, sympy, gmpy2, numpy, z3, fpylll+cysignals, cypari2) — Python libraries ship no console scripts, so pipx cannot install them
 - **Pipeline validation**: `run_pipeline` validates all steps (allowlist, args, policy) before executing any. Max 10 steps per pipeline; `step_results` and `had_failures` expose intermediate non-zero exits while preserving shell-like final exit semantics
 - **Rate limiting**: Max 10 concurrent executions and 60 per minute (sliding window)
 - **Output sanitization**: Strips LLM prompt markers (OpenAI, Llama), Anthropic tool protocol tags, XML injection tags, and known injection prefixes. Unicode NFKC normalization prevents full-width character evasion, and zero-width/bidi control characters are removed, so returned text is not byte-exact: inspect zero-width steganography or homoglyphs through `xxd` output instead. Lines that address an AI reader and issue it a directive — the shape a target uses to make a client self-identify or add a header — are prefixed `[SANITIZED]` rather than removed, so the operator sees what the target attempted
-- **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`. Under the Kata sandbox the in-VM log would die with the VM, so `CYBERSEC_MCP_AUDIT_STREAM=1` mirrors each record to stderr with an HMAC-SHA256 tag under a per-launch key the launcher hands the server alone (`CYBERSEC_MCP_AUDIT_KEY`, removed from the server's environment at startup), and the host launcher appends only records whose tag verifies to the host log ([`../docs/SANDBOX.md`](../docs/SANDBOX.md#authenticated-records))
+- **Audit logging**: All executions (tools, scripts, blocked attempts) are logged as JSON lines. Execution records (`execution`, `script_result`, `pipeline_result`) carry an `outcome` of `ok`, `timeout`, `cancelled` or `error`, and a tool, pipeline, script or remote run that is cancelled or whose client disconnects still leaves a record. Records are written under `~/.local/state/cybersec-tools-mcp/audit.log` by default (5 MB rotation, owner-only directory/file). Script bodies are not persisted — only an irreversible SHA256 + byte length are logged, with best-effort credential redaction. Set a custom path with `CYBERSEC_MCP_AUDIT_LOG`; unavailable file logging warns and falls back to stderr, or fails closed with `CYBERSEC_MCP_AUDIT_REQUIRED=1`. Under the Kata sandbox the in-VM log would die with the VM, so `CYBERSEC_MCP_AUDIT_STREAM=1` mirrors each record to stderr with an HMAC-SHA256 tag under a per-launch key the launcher hands the server alone (`CYBERSEC_MCP_AUDIT_KEY`, removed from the server's environment at startup), and the host launcher appends only records whose tag verifies to the host log ([`../docs/SANDBOX.md`](../docs/SANDBOX.md#authenticated-records))
 - **Remote host input validation**: Hostname and username fields are validated against safe character patterns to prevent SSH option injection
 - **No shell execution**: Uses `asyncio.create_subprocess_exec()` (no `shell=True`)
 - **Filtered environment**: Tools and scripts start without the server's credential-shaped variables (tokens, keys, passwords, URLs with embedded credentials) and without `SSH_AUTH_SOCK`; only the SSH transport to a configured remote host receives the agent socket. Proxy settings and a Kerberos ticket cache (`KRB5CCNAME`) are passed on. A program that runs as the server's user can still open a socket it finds by path, so this limits what tools use by default, not what a script can reach
 - **awk output redirection**: `print > "file"` is accepted only when the file name is one literal, which is then held to the same protected locations as other writes; a computed name (a variable, a concatenation, an escape) is refused, as are `-e`, `@include` and the other ways to load program text
 - **Async DNS**: Network target validation runs in a worker thread to avoid blocking the event loop
-- **Timeout**: Configurable 1-300s; the direct process is killed on timeout, but independently forked descendants may survive
+- **Timeout**: Configurable 1-300s. Each tool starts in its own process group and the whole group is killed on timeout, cancellation or after the call completes; a descendant that starts its own session can survive, and killing a local `ssh` client does not stop a process on the remote host. When the process exits but a forked helper keeps stdout/stderr open, the call returns after about 2 s with the output read so far (Python 3.11 and later)
 - **Output limits**: Truncated at 200KB to prevent memory issues
 
 ## Environment Variables
 
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
-| `CYBERSEC_MCP_ALLOW_SCRIPTS` | `""` (disabled) | Set to `1` to enable `run_script` |
-| `CYBERSEC_MCP_ALLOW_EXTERNAL` | `""` (disabled) | Set to `1` to allow network tools to target external IPs |
+| `CYBERSEC_MCP_ALLOW_SCRIPTS` | `""` (disabled) | Set to `1` to enable `run_script`; only the value `1` enables it |
+| `CYBERSEC_MCP_ALLOW_EXTERNAL` | `""` (disabled) | Set to `1` to allow network tools to target external IPs; only the value `1` enables it |
+| `CYBERSEC_MCP_ALLOW_USBKILL` | `""` (disabled) | Set to `1` for full usbkill functionality, including configured shutdown/wiping/commands; requires authorization and OS permissions |
+| `CYBERSEC_MCP_ALLOW_NIPE` | `""` (disabled) | Set to `1` for Nipe host-network operations; network operations also need `ALLOW_EXTERNAL=1`, while `stop` is local cleanup |
 | `CYBERSEC_MCP_VENVS_DIR` | `~/.ctf-venvs` | Directory containing named Python venvs for the `venv` parameter |
 | `CYBERSEC_MCP_AUDIT_LOG` | `~/.local/state/cybersec-tools-mcp/audit.log` | Override the rotating JSON-lines audit log path |
-| `CYBERSEC_MCP_AUDIT_REQUIRED` | `""` (disabled) | Set to `1` to fail startup when file audit logging cannot be initialized |
+| `CYBERSEC_MCP_AUDIT_REQUIRED` | `""` (disabled) | Set to `1` to fail startup when file audit logging cannot be initialized. Accepts `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`, case-insensitively; any other non-empty value enables it and prints one warning on stderr |
 | `CYBERSEC_MCP_AUDIT_FORWARD` | `""` (disabled) | Set to `syslog` to also send every audit record to the system log (tag `cybersec-mcp-audit`), which the account running the session cannot rewrite. Any other value stops startup |
-| `CYBERSEC_MCP_REDACT_OUTPUT` | `""` (disabled) | Set to `1` to redact credential-shaped strings from tool output before it is returned to the client |
-| `CYBERSEC_LOCAL_SANDBOX` | `""` (disabled) | Host mode only. Set to `1` to start every tool and script inside bubblewrap, without access to credential stores, the agent client's configuration, the audit log, the session bus, other programs' control sockets or other processes. Startup fails if bubblewrap cannot run. See `docs/SANDBOX.md` |
+| `CYBERSEC_MCP_REDACT_OUTPUT` | `""` (disabled) | Set to `1` to redact credential-shaped strings from tool output before it is returned to the client. Parsed like `CYBERSEC_MCP_AUDIT_REQUIRED` |
+| `CYBERSEC_LOCAL_SANDBOX` | `""` (disabled) | Host mode only. Parsed like `CYBERSEC_MCP_AUDIT_REQUIRED`. Set to `1` to start every tool and script inside bubblewrap, without access to credential stores, the agent client's configuration, the audit log, the session bus, other programs' control sockets or other processes. Startup fails if bubblewrap cannot run. See `docs/SANDBOX.md` |
 | `CYBERSEC_LOCAL_SANDBOX_EXPOSE` | unset | Colon-separated absolute paths that stay visible inside that sandbox |

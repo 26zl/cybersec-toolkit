@@ -413,6 +413,8 @@ TARGET_ALIASES: dict[str, str] = {
     "jailbreak": "llm",
     "gpt": "llm",
     "chatbot": "llm",
+    "host": "network",
+    "ip": "network",
 }
 
 

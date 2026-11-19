@@ -124,6 +124,58 @@ class TestMatchIndividualTools:
         names = {t["name"] for t in _match_individual_tools("install crunch for wordlists", db)}
         assert "crunch" in names
 
+    def test_prose_with_and_use_does_not_match_ambiguous_tools(self, tmp_path: Path) -> None:
+        db = self._db(tmp_path)
+        db.tools_by_name["set"] = {"name": "SET", "method": "git", "module": "misc", "url": ""}
+        db.tools_by_name["tor"] = {"name": "tor", "method": "apt", "module": "misc", "url": ""}
+        assert _match_individual_tools("set the table and use the tor browser", db) == []
+
+    def test_install_list_matches_ambiguous_tools(self, tmp_path: Path) -> None:
+        db = self._db(tmp_path)
+        db.tools_by_name["tor"] = {"name": "tor", "method": "apt", "module": "misc", "url": ""}
+        names = {t["name"] for t in _match_individual_tools("install tor and amass", db)}
+        assert names == {"tor", "amass"}
+        names = {t["name"] for t in _match_individual_tools("I need crunch, tor, and amass", db)}
+        assert names == {"crunch", "tor", "amass"}
+
+
+class TestIndividualInstallCommands:
+    def test_single_tool_methods_get_only_tool_command(self, tools_db: ToolsDatabase) -> None:
+        with patch("shutil.which", return_value=None):
+            result = recommend_install("I need lynis and grype", tools_db)
+        assert result["recommendation"] == "individual_tools"
+        assert len(result["install_commands"]) == 1
+        assert "--tool lynis" in result["install_commands"][0]
+        assert "--module" not in result["install_commands"][0]
+        assert "alternative_module_install" not in result
+
+    def test_docker_tool_gets_module_command_not_tool(self, tmp_path: Path) -> None:
+        tools = [
+            {"name": "lynis", "method": "apt", "module": "blueteam", "url": ""},
+            {"name": "bloodhound-ce", "method": "docker", "module": "enterprise", "url": ""},
+        ]
+        (tmp_path / "tools_config.json").write_text(json.dumps(tools), encoding="utf-8")
+        with patch("shutil.which", return_value=None):
+            db = ToolsDatabase(project_root=tmp_path)
+            result = recommend_install("I need lynis and bloodhound-ce", db)
+        assert result["recommendation"] == "individual_tools"
+        assert len(result["install_commands"]) == 1
+        assert "--tool lynis" in result["install_commands"][0]
+        assert "bloodhound-ce" not in result["install_commands"][0]
+        alt = result["alternative_module_install"]
+        assert alt["tools"] == ["bloodhound-ce"]
+        assert "--module enterprise" in alt["commands"][0]
+
+    def test_docker_only_request_uses_module_command(self, tmp_path: Path) -> None:
+        tools = [{"name": "bloodhound-ce", "method": "docker", "module": "enterprise", "url": ""}]
+        (tmp_path / "tools_config.json").write_text(json.dumps(tools), encoding="utf-8")
+        with patch("shutil.which", return_value=None):
+            db = ToolsDatabase(project_root=tmp_path)
+            result = recommend_install("install bloodhound-ce", db)
+        assert len(result["install_commands"]) == 1
+        assert "--module enterprise" in result["install_commands"][0]
+        assert "--tool" not in result["install_commands"][0]
+
 
 class TestListProfiles:
     def test_returns_all_profiles(self, tools_db: ToolsDatabase) -> None:
@@ -183,3 +235,14 @@ class TestC2ToolCounting:
         # The single C2 tool is excluded from ctf but present in full's misc count.
         assert ctf_count == 1
         assert full_count == 2
+
+
+def test_common_word_tool_matches_use_and_run_cues() -> None:
+    from mcp_server.profiles import _has_install_cue
+
+    assert _has_install_cue("use amass for subdomain enumeration", "amass")
+    assert _has_install_cue("run amass enum", "amass")
+    assert _has_install_cue("i want to use amass", "amass")
+    assert _has_install_cue("please install amass", "amass")
+    assert not _has_install_cue("amass a lot of data", "amass")
+    assert not _has_install_cue("we crunch the numbers", "crunch")

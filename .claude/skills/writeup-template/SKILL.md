@@ -24,7 +24,7 @@ Examples:
 - `writeups/pentest/internal-lab-ad-assessment.md`
 - `writeups/guided-assessment/example-web-recon.md`
 
-If the directory doesn't exist, create it.
+If the directory doesn't exist, create it. When none of the six shipped folders (`ctf`, `bug-bounty`, `cve`, `pentest`, `dfir`, `guided-assessment`) fits, create a new category folder.
 
 ## Required structure
 
@@ -77,6 +77,17 @@ If the directory doesn't exist, create it.
 - Document failures too — they prevent repeat dead ends.
 - If multi-session: add a rough timeline.
 
+## Findings record
+
+Record findings and flag candidates beside the writeup as `findings.json` in the format of `docs/FINDINGS.md`. Each carries its evidence and a status (claimed, observed or confirmed). A flag-format string stays a candidate until its derivation is repeated from the original data.
+
+```bash
+python3 scripts/validate_findings.py writeups/<category>/<case>/findings.json
+python3 scripts/validate_findings.py writeups/<category>/<case>/findings.json --markdown
+```
+
+Paste the `--markdown` table into "Finding / Result".
+
 ## Markdownlint compliance
 
 Default project config at `.markdownlint.jsonc`. Common issues to avoid:
@@ -96,7 +107,8 @@ npx markdownlint-cli2 "writeups/**/*.md"
 
 ## Sensitive data
 
-- Flag credentials/keys clearly but do NOT spread across multiple sections
+- Run `evidence-hygiene` on commands and output before saving
+- Replace credentials/keys with `[REDACTED_*]` placeholders and note their type and location only
 - Bug bounty: report existence + access method, NOT the actual credentials
 - Strip session tokens, real IPs of unrelated systems, PII
 - Trim output blocks aggressively — full nmap output is noise, the open ports are the signal

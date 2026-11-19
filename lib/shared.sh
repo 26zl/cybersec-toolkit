@@ -81,6 +81,11 @@ _version_ge() {
     if [[ "$cur" == *"."* ]]; then cur_minor=${cur#*.}; cur_minor=${cur_minor%%.*}; else cur_minor=0; fi
     min_major=${min%%.*}
     if [[ "$min" == *"."* ]]; then min_minor=${min#*.}; min_minor=${min_minor%%.*}; else min_minor=0; fi
+    # Only the leading numeric component contributes; suffix digits belong to the prerelease.
+    cur_major=${cur_major%%[^0-9]*}; cur_minor=${cur_minor%%[^0-9]*}
+    min_major=${min_major%%[^0-9]*}; min_minor=${min_minor%%[^0-9]*}
+    cur_major=$((10#${cur_major:-0})); cur_minor=$((10#${cur_minor:-0}))
+    min_major=$((10#${min_major:-0})); min_minor=$((10#${min_minor:-0}))
     [[ "$cur_major" -gt "$min_major" ]] && return 0
     [[ "$cur_major" -eq "$min_major" && "$cur_minor" -ge "$min_minor" ]]
 }
@@ -123,6 +128,7 @@ _validate_curl_pipe() {
 # Many security tools (projectdiscovery, etc.) require Go >= 1.21.
 # Ubuntu 22.04 ships Go 1.18, Debian 12 ships Go 1.19 — both too old.
 GO_MIN_VERSION="${GO_MIN_VERSION:-1.21}"
+[[ "$GO_MIN_VERSION" =~ ^[0-9]+(\.[0-9]+)?$ ]] || GO_MIN_VERSION=1.21
 
 ensure_go() {
     # Gated on SKIP_GO, not SKIP_SOURCE: the SDK is a checksum-verified tarball, not a curl-pipe install.
@@ -477,6 +483,8 @@ ensure_uv() {
 # (some pipx tools need 3.11+); exports PIPX_DEFAULT_PYTHON.
 PYTHON_MIN_VERSION="${PYTHON_MIN_VERSION:-3.11}"
 PYTHON_TRY_MAX="${PYTHON_TRY_MAX:-3.13}"
+[[ "$PYTHON_MIN_VERSION" =~ ^3\.[0-9]+$ ]] || PYTHON_MIN_VERSION=3.11
+[[ "$PYTHON_TRY_MAX" =~ ^3\.[0-9]+$ ]] || PYTHON_TRY_MAX=3.13
 
 ensure_python_modern() {
     # Parse current python3 version (major.minor)
@@ -509,8 +517,16 @@ ensure_python_modern() {
     # Install a newer Python per distro — try each version (newest first)
     case "$PKG_MANAGER" in
         apt)
-            log_info "Adding deadsnakes PPA for newer Python..."
-            if command_exists add-apt-repository; then
+            # The deadsnakes PPA is a third-party signing key and repo added system-wide as
+            # root: Ubuntu only, never in strict mode, and skipped with CYBERSEC_ALLOW_PPA=0.
+            if [[ "${REQUIRE_CHECKSUMS:-false}" == "true" ]]; then
+                log_warn "Strict mode: not adding the third-party deadsnakes PPA — pipx will use system Python"
+            elif [[ "${DISTRO_ID:-}" != "ubuntu" && "${DISTRO_ID_LIKE:-}" != *ubuntu* ]]; then
+                log_warn "The deadsnakes PPA is Ubuntu-only — pipx will use system Python"
+            elif [[ "${CYBERSEC_ALLOW_PPA:-1}" == "0" ]]; then
+                log_warn "CYBERSEC_ALLOW_PPA=0: not adding the deadsnakes PPA — pipx will use system Python $cur_version"
+            elif command_exists add-apt-repository; then
+                log_info "Adding the third-party deadsnakes PPA for newer Python (CYBERSEC_ALLOW_PPA=0 skips it)..."
                 add-apt-repository -y ppa:deadsnakes/ppa >> "$LOG_FILE" 2>&1 || true
                 pkg_update >> "$LOG_FILE" 2>&1 || true
             fi
@@ -570,6 +586,7 @@ ensure_python_modern() {
 # Required for npm-based tools (e.g., promptfoo needs native modules). Node.js 18
 # reached end of life in April 2025, so default to 22 LTS.
 NODE_MIN_VERSION="${NODE_MIN_VERSION:-22}"
+[[ "$NODE_MIN_VERSION" =~ ^[0-9]+$ ]] || NODE_MIN_VERSION=22
 
 ensure_node() {
     if command_exists node && command_exists npm; then

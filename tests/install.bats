@@ -346,10 +346,10 @@ EOF
         ensure_cargo() { return 0; }
         _as_builder() { return 0; }
         _builder_home() { echo /tmp; }
-        install_single_tool aderyn
+        install_single_tool ropr
     '
     assert_success
-    assert_output --partial "Installing aderyn via cargo"
+    assert_output --partial "Installing ropr via cargo"
 }
 
 @test "install_single_tool finds binary release tools" {
@@ -520,4 +520,305 @@ EOF
     '
     assert_success
     assert_line "DOCKER=false"
+}
+
+# Environment flags, exit codes and --tool preflight
+
+@test "REQUIRE_CHECKSUMS=1 in the environment enables strict checksums" {
+    run env REQUIRE_CHECKSUMS=1 bash "$INSTALL_SH" --dry-run
+    assert_success
+    assert_output --partial "Checksums req.: true"
+}
+
+@test "a malformed environment boolean does not block --help or --version" {
+    run env PRODUCTION_MODE=banana bash "$INSTALL_SH" --help
+    assert_success
+    assert_output --partial "Usage"
+    run env PRODUCTION_MODE=banana bash "$INSTALL_SH" --version
+    assert_success
+    run env PRODUCTION_MODE=banana bash "$INSTALL_SH" --dry-run
+    [[ "$status" -eq 2 ]]
+}
+
+@test "PRODUCTION_MODE=yes in the environment implies required checksums" {
+    run env PRODUCTION_MODE=yes bash "$INSTALL_SH" --dry-run
+    assert_success
+    assert_output --partial "Checksums req.: true"
+}
+
+@test "an unrecognised boolean environment value exits 2" {
+    run env PRODUCTION_MODE=banana bash "$INSTALL_SH" --dry-run
+    assert_failure 2
+    assert_output --partial "Invalid value for PRODUCTION_MODE"
+}
+
+@test "install.sh -j 08 reads the number as decimal" {
+    run bash "$INSTALL_SH" -j 08 --dry-run
+    assert_success
+    assert_output --partial "Parallel jobs:  8"
+    refute_output --partial "too great"
+}
+
+@test "install.sh --version prints the VERSION file" {
+    run bash "$INSTALL_SH" --version
+    assert_success
+    assert_output "cybersec-toolkit $(tr -d '[:space:]' < "$PROJECT_ROOT/VERSION")"
+}
+
+@test "install.sh --rollback rejects path components with exit 2" {
+    run bash "$INSTALL_SH" --rollback ../x --yes
+    assert_failure 2
+    assert_output --partial "Invalid rollback target"
+    run bash "$INSTALL_SH" --rollback a/b --yes
+    assert_failure 2
+}
+
+@test "install.sh --tool stops on an unsupported OS before touching anything" {
+    local copy="$BATS_TEST_TMPDIR/toolkit" fake="$BATS_TEST_TMPDIR/fakebin"
+    mkdir -p "$copy" "$fake"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    printf '#!/bin/sh\necho Darwin\n' > "$fake/uname"
+    chmod +x "$fake/uname"
+    run env -u PKG_MANAGER PATH="$fake:$PATH" bash "$copy/install.sh" --tool nmap
+    assert_failure 1
+    assert_output --partial "macOS is not supported"
+    [ ! -e "$copy/cybersec_install.log" ]
+    [ ! -e "$copy/cybersec_tool.log" ]
+}
+
+@test "install.sh --tool leaves the full-install log intact" {
+    local copy="$BATS_TEST_TMPDIR/toolkit"
+    mkdir -p "$copy" "$BATS_TEST_TMPDIR/prefix/bin"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    printf 'previous run record\n' > "$copy/cybersec_install.log"
+    run env PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=Termux \
+        PREFIX="$BATS_TEST_TMPDIR/prefix" \
+        bash "$copy/install.sh" --tool __no_such_tool_xyz__ < /dev/null
+    assert_failure 1
+    [ "$(cat "$copy/cybersec_install.log")" = "previous run record" ]
+    [ -f "$copy/cybersec_tool.log" ]
+}
+
+@test "non-interactive rollback without --yes refuses and keeps the manifest" {
+    local copy="$BATS_TEST_TMPDIR/toolkit"
+    mkdir -p "$copy/.install_sessions" "$BATS_TEST_TMPDIR/prefix/bin"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    printf '# Session: s1\n# Schema: 2\nalpha|pkg|installed|2026-01-01 00:00:00\n' \
+        > "$copy/.install_sessions/s1.manifest"
+    run env PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=Termux \
+        PREFIX="$BATS_TEST_TMPDIR/prefix" \
+        bash "$copy/install.sh" --rollback s1 < /dev/null
+    assert_failure 1
+    assert_output --partial "Refusing to run destructive rollback"
+    [ -f "$copy/.install_sessions/s1.manifest" ]
+}
+
+@test "--skip-heavy help names the SDR packages it actually skips" {
+    run bash "$INSTALL_SH" --help
+    assert_success
+    assert_output --partial "WIRELESS_HEAVY_PACKAGES: gnuradio, gqrx-sdr"
+    source "$PROJECT_ROOT/modules/wireless.sh"
+    [[ "${WIRELESS_HEAVY_PACKAGES[*]}" == "gnuradio gqrx-sdr" ]]
+}
+
+_stale_install_fixture() {
+    STALE_COPY="$BATS_TEST_TMPDIR/toolkit"
+    mkdir -p "$STALE_COPY/scripts" "$BATS_TEST_TMPDIR/bin" "$BATS_TEST_TMPDIR/pipx/venvs/commix/bin" \
+        "$BATS_TEST_TMPDIR/tools"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$STALE_COPY/"
+    cp "$PROJECT_ROOT/scripts/stale_artefacts.sh" "$STALE_COPY/scripts/"
+    : > "$BATS_TEST_TMPDIR/pipx/venvs/commix/bin/commix"
+    ln -s "$BATS_TEST_TMPDIR/pipx/venvs/commix/bin/commix" "$BATS_TEST_TMPDIR/bin/commix"
+}
+
+_run_stale_cleanup() {
+    run bash -c '
+        set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "'"$STALE_COPY"'/install.sh"
+        PIPX_HOME="'"$BATS_TEST_TMPDIR"'/pipx"; PIPX_BIN_DIR="'"$BATS_TEST_TMPDIR"'/bin"
+        GITHUB_TOOL_DIR="'"$BATS_TEST_TMPDIR"'/tools"; LOG_FILE=/dev/null
+        VERSION_FILE="'"$STALE_COPY"'/.versions"
+        _cleanup_stale_method_artefacts
+    '
+}
+
+@test "install removes the old pipx commix venv and link while its row still exists" {
+    _stale_install_fixture
+    printf '%s\n' 'commix|pipx|latest|2026-01-01 00:00:00' 'nikto|git|HEAD|2026-01-01 00:00:00' \
+        > "$STALE_COPY/.versions"
+    _run_stale_cleanup
+    assert_success
+    [ ! -e "$BATS_TEST_TMPDIR/pipx/venvs/commix" ]
+    [ ! -L "$BATS_TEST_TMPDIR/bin/commix" ]
+    ! grep -q '^commix|' "$STALE_COPY/.versions"
+    grep -q '^nikto|git|' "$STALE_COPY/.versions"
+}
+
+@test "individual commix install migrates its old pipx launcher before recording Git ownership" {
+    _stale_install_fixture
+    printf '%s\n' 'commix|pipx|latest|2026-01-01 00:00:00' 'apktool|git|HEAD|2026-01-01 00:00:00' \
+        > "$STALE_COPY/.versions"
+    mkdir -p "$BATS_TEST_TMPDIR/tools/apktool" "$BATS_TEST_TMPDIR/home" "$BATS_TEST_TMPDIR/stubs"
+    mkdir -p "$BATS_TEST_TMPDIR/home/.local"
+    mv "$BATS_TEST_TMPDIR/pipx" "$BATS_TEST_TMPDIR/home/.local/pipx"
+    ln -sf "$BATS_TEST_TMPDIR/home/.local/pipx/venvs/commix/bin/commix" "$BATS_TEST_TMPDIR/bin/commix"
+    cat >> "$STALE_COPY/lib/installers.sh" <<'EOF'
+git_clone_or_pull() {
+    mkdir -p "$2/.git"
+    printf 'print("synthetic commix")\n' > "$2/commix.py"
+}
+EOF
+    printf '#!/bin/sh\nexit 1\n' > "$BATS_TEST_TMPDIR/stubs/pipx"
+    chmod +x "$BATS_TEST_TMPDIR/stubs/pipx"
+
+    run env -i HOME="$BATS_TEST_TMPDIR/home" PREFIX="$BATS_TEST_TMPDIR" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=Termux TERM=dumb \
+        GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/tools" \
+        PATH="$BATS_TEST_TMPDIR/stubs:$PATH" \
+        bash "$STALE_COPY/install.sh" --tool commix
+
+    assert_success
+    [[ ! -e "$BATS_TEST_TMPDIR/home/.local/pipx/venvs/commix" ]]
+    [[ -f "$BATS_TEST_TMPDIR/bin/commix" && ! -L "$BATS_TEST_TMPDIR/bin/commix" ]]
+    grep -q '^commix|git|HEAD|' "$STALE_COPY/.versions"
+    [[ -d "$BATS_TEST_TMPDIR/tools/apktool" ]]
+    grep -q '^apktool|git|HEAD|' "$STALE_COPY/.versions"
+}
+
+@test "individual Git install reports CLI setup failure and retains clone provenance" {
+    _stale_install_fixture
+    mkdir -p "$BATS_TEST_TMPDIR/home"
+    cat >> "$STALE_COPY/lib/installers.sh" <<'EOF'
+git_clone_or_pull() { mkdir -p "$2/.git"; }
+setup_git_repo() { return 1; }
+EOF
+
+    run env -i HOME="$BATS_TEST_TMPDIR/home" PREFIX="$BATS_TEST_TMPDIR" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=Termux TERM=dumb \
+        GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/tools" PATH="$PATH" \
+        bash "$STALE_COPY/install.sh" --tool commix
+
+    assert_failure
+    assert_output --partial 'CLI setup failed for commix'
+    [[ -d "$BATS_TEST_TMPDIR/tools/commix/.git" ]]
+    grep -q '^commix|git|HEAD|' "$STALE_COPY/.versions"
+}
+
+@test "selected man-spider migration recognizes its legacy package name and leaves commix alone" {
+    _stale_install_fixture
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/scripts/stale_artefacts.sh"
+    PIPX_HOME="$BATS_TEST_TMPDIR/pipx"
+    PIPX_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+    mkdir -p "$PIPX_HOME/venvs/manspider"
+    printf '%s\n' 'commix|pipx|latest|2026-01-01 00:00:00' 'manspider|pipx|latest|2026-01-01 00:00:00' \
+        > "$STALE_COPY/.versions"
+    pipx() { return 1; }
+
+    run _cleanup_stale_artefacts "$STALE_COPY/.versions" man-spider
+
+    assert_success
+    [[ ! -e "$PIPX_HOME/venvs/manspider" && -d "$PIPX_HOME/venvs/commix" ]]
+    ! grep -q '^manspider|' "$STALE_COPY/.versions"
+    grep -q '^commix|pipx|' "$STALE_COPY/.versions"
+}
+
+@test "install leaves a venv alone when its tool is not recorded as pipx-installed" {
+    _stale_install_fixture
+    printf 'commix|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+    _run_stale_cleanup
+    assert_success
+    [ -d "$BATS_TEST_TMPDIR/pipx/venvs/commix" ]
+    grep -q '^commix|git|' "$STALE_COPY/.versions"
+}
+
+@test "main runs the stale-artefact cleanup before the install stages" {
+    run awk '/^main\(\) \{/,/^}/' "$PROJECT_ROOT/install.sh"
+    assert_output --partial "_cleanup_stale_method_artefacts"
+}
+
+@test "install keeps a stale clone with local changes and its row" {
+    _stale_install_fixture
+    git init -q "$BATS_TEST_TMPDIR/tools/apktool"
+    printf 'mine\n' > "$BATS_TEST_TMPDIR/tools/apktool/notes.txt"
+    printf 'apktool|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+    _run_stale_cleanup
+    assert_success
+    assert_output --partial "uncommitted changes"
+    [ -f "$BATS_TEST_TMPDIR/tools/apktool/notes.txt" ]
+    grep -q '^apktool|git|' "$STALE_COPY/.versions"
+}
+
+@test "stale cleanup keeps a clone and its record when Git status fails" {
+    _stale_install_fixture
+    git init -q "$BATS_TEST_TMPDIR/tools/apktool"
+    printf 'synthetic local data\n' > "$BATS_TEST_TMPDIR/tools/apktool/notes.txt"
+    printf 'apktool|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    run bash -c '
+        stale_copy_path="$1"; stale_test_path="$2"; set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "$stale_copy_path/install.sh"
+        source "$stale_copy_path/scripts/stale_artefacts.sh"
+        PIPX_HOME="$stale_test_path/pipx"; PIPX_BIN_DIR="$stale_test_path/bin"
+        GITHUB_TOOL_DIR="$stale_test_path/tools"; LOG_FILE=/dev/null
+        git() { return 128; }
+        _cleanup_stale_artefacts "$stale_copy_path/.versions"
+    ' _ "$STALE_COPY" "$BATS_TEST_TMPDIR"
+
+    assert_failure
+    assert_output --partial 'cannot inspect its Git working tree'
+    [ -f "$BATS_TEST_TMPDIR/tools/apktool/notes.txt" ]
+    grep -q '^apktool|git|' "$STALE_COPY/.versions"
+}
+
+@test "stale cleanup keeps a linked worktree with local changes and its record" {
+    _stale_install_fixture
+    local source_repo="$BATS_TEST_TMPDIR/worktree-source"
+    local worktree="$BATS_TEST_TMPDIR/tools/apktool"
+    local -a git_fixture=(git -c core.hooksPath=/dev/null -c commit.gpgsign=false)
+    "${git_fixture[@]}" init -q "$source_repo"
+    printf 'synthetic tracked file\n' > "$source_repo/tracked.txt"
+    "${git_fixture[@]}" -C "$source_repo" add tracked.txt
+    "${git_fixture[@]}" -C "$source_repo" -c user.email=fixture@example.invalid \
+        -c user.name=fixture commit -qm fixture
+    "${git_fixture[@]}" -C "$source_repo" worktree add -q -b fixture-linked "$worktree"
+    [ -f "$worktree/.git" ]
+    printf 'synthetic local edit\n' >> "$worktree/tracked.txt"
+    printf 'apktool|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    _run_stale_cleanup
+
+    assert_success
+    assert_output --partial 'uncommitted changes'
+    grep -q 'synthetic local edit' "$worktree/tracked.txt"
+    grep -q '^apktool|git|' "$STALE_COPY/.versions"
+}
+
+@test "stale cleanup reports an install-record write failure without claiming success" {
+    _stale_install_fixture
+    printf 'commix|pipx|latest|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    run bash -c '
+        stale_copy_path="$1"; stale_test_path="$2"; set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "$stale_copy_path/install.sh"
+        source "$stale_copy_path/scripts/stale_artefacts.sh"
+        PIPX_HOME="$stale_test_path/pipx"; PIPX_BIN_DIR="$stale_test_path/bin"
+        GITHUB_TOOL_DIR="$stale_test_path/tools"; LOG_FILE=/dev/null
+        command_exists() { [[ "$1" != pipx ]]; }
+        mktemp() { return 1; }
+        _cleanup_stale_artefacts "$stale_copy_path/.versions"
+    ' _ "$STALE_COPY" "$BATS_TEST_TMPDIR"
+
+    assert_failure
+    assert_output --partial 'could not update its install record'
+    refute_output --partial 'and dropped its install record'
+    [ ! -e "$BATS_TEST_TMPDIR/pipx/venvs/commix" ]
+    grep -q '^commix|pipx|' "$STALE_COPY/.versions"
 }

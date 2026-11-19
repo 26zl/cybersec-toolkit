@@ -554,7 +554,7 @@ add the resulting OpenAPI endpoint to Open WebUI as a tool.
 
 ### `uv` not found
 
-Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+Install uv with `pipx install uv`, a distro package, or the version-pinned installer described in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ### Wrong working directory
 

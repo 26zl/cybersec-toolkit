@@ -103,6 +103,12 @@ class TestGetCveInfo:
         assert result["live_lookup"]["external_enabled"] is True
         assert "enabled" in result["live_lookup"]["note"].lower()
 
+    def test_live_lookup_does_not_fetch_whole_kev_catalog(self, tools_db: ToolsDatabase) -> None:
+        lookup = get_cve_info("zerologon", tools_db)["live_lookup"]
+        assert "cisa_kev_catalog" not in lookup
+        assert "known_exploited_vulnerabilities.json" not in str(lookup)
+        assert "cisaExploitAdd" in lookup["kev_via_nvd"]
+
 
 # Data integrity — referenced skills/modules must exist in the repo
 class TestCuratedDataIntegrity:

@@ -9,6 +9,7 @@ Use this skill when reviewing IBM z/OS or similar mainframe environments, identi
 
 ## Guardrails
 
+- Run `authorization-gate` first: written authorization and exact scope must be confirmed before any active testing.
 - Treat production mainframes as safety-critical business systems. Avoid invasive testing unless explicitly approved.
 - Prefer configuration review, evidence collection, and read-only queries.
 - Coordinate with platform owners before touching RACF/ACF2/Top Secret policy, APF libraries, JES, CICS, or DB2 privileges.

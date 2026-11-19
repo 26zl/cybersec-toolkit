@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from mcp_server.advisor_utils import TOOL_ALIASES
 from mcp_server.ctf_advisor import (
     CATEGORY_ALIASES,
     CTF_CATEGORY_MAP,
@@ -194,3 +195,78 @@ class TestMethodology:
             result = suggest_for_ctf("web", tools_db)
         assert "quick_wins" in result
         assert len(result["quick_wins"]) > 0
+
+
+class TestNaturalPhrasings:
+    @pytest.mark.parametrize(
+        "phrase,expected",
+        [
+            ("web3", "blockchain"),
+            ("smart contract", "blockchain"),
+            ("reverse engineering", "reversing"),
+            ("steg", "stego"),
+            ("rsa", "crypto"),
+            ("sql injection", "web"),
+            ("xss", "web"),
+        ],
+    )
+    def test_phrasing_resolves(self, phrase: str, expected: str) -> None:
+        assert resolve_category(phrase) == expected
+
+    def test_reverse_shell_phrase_still_routes_to_pwn(self) -> None:
+        assert resolve_category("reverse shell pwn") == "pwn"
+
+
+class TestCuratedDataIntegrity:
+    def test_tools_resolve_to_registry_or_system_utility(self) -> None:
+        from mcp_server.security import SYSTEM_UTILITIES
+
+        registry = set(ToolsDatabase().tools_by_name)
+        missing = [
+            (cat, name)
+            for cat, info in CTF_CATEGORY_MAP.items()
+            for name, _desc in info["tools"]
+            if TOOL_ALIASES.get(name, name) not in registry and name not in SYSTEM_UTILITIES
+        ]
+        assert missing == []
+
+    def test_modules_exist(self) -> None:
+        from mcp_server.tools_db import MODULE_DESCRIPTIONS
+
+        missing = [
+            (cat, m) for cat, info in CTF_CATEGORY_MAP.items() for m in info["modules"] if m not in MODULE_DESCRIPTIONS
+        ]
+        assert missing == []
+
+    def test_alias_targets_are_canonical(self) -> None:
+        assert [a for a, t in CATEGORY_ALIASES.items() if t not in CTF_CATEGORY_MAP] == []
+
+
+class TestAdvisorExecutionCapabilities:
+    @pytest.mark.parametrize("extra_present", [False, True])
+    def test_extra_cli_advice_uses_its_own_launcher(self, extra_present):
+        from mcp_server.advisor_utils import build_tool_status_list
+
+        db = ToolsDatabase()
+        available = "icat" if extra_present else "fls"
+        with patch("shutil.which", side_effect=lambda name: f"/synthetic/{name}" if name == available else None):
+            entries, _ = build_tool_status_list([("icat", "Extract a file from a forensic image")], db)
+        entry = entries[0]
+        assert entry["in_registry"] is True
+        assert entry["registry_name"] == "sleuthkit"
+        assert entry["installed"] is extra_present
+        assert entry["execution"]["ready"] is extra_present
+
+    def test_cloned_resource_and_cli_have_distinct_capability(self):
+        from mcp_server.advisor_utils import build_tool_status_list
+
+        db = ToolsDatabase()
+        with patch("shutil.which", return_value=None):
+            entries, _ = build_tool_status_list(
+                [("SecLists", "Wordlist data"), ("commix", "Command injection testing")], db
+            )
+        resource, cli = entries
+        assert resource["execution"]["kind"] == "resource"
+        assert resource["execution"]["executable"] is False
+        assert cli["execution"]["executable"] is True
+        assert cli["execution"]["ready"] is False

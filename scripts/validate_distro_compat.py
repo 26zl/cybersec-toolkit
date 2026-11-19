@@ -17,12 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TSV_PATH = ROOT / "lib" / "distro_compat.tsv"
 
-PACKAGE_TOKEN_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyz"
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "0123456789"
-    "._@-"
-)
+PACKAGE_TOKEN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._@-")
 
 COLUMNS = ("debian", "dnf", "pacman", "zypper", "pkg")
 
@@ -54,9 +49,7 @@ def validate():
     entries = {}  # debian_name -> {dnf, pacman, zypper, pkg}
     line_count = 0
 
-    for lineno, raw_line in enumerate(
-        TSV_PATH.read_text(encoding="utf-8").splitlines(), 1
-    ):
+    for lineno, raw_line in enumerate(TSV_PATH.read_text(encoding="utf-8").splitlines(), 1):
         line = raw_line.rstrip("\r")
         if not line or line.startswith("#"):
             continue
@@ -64,10 +57,7 @@ def validate():
 
         fields = line.split("\t")
         if len(fields) != 5:
-            print(
-                f"ERROR: line {lineno}: expected 5 tab-separated fields, "
-                f"got {len(fields)}: {line!r}"
-            )
+            print(f"ERROR: line {lineno}: expected 5 tab-separated fields, got {len(fields)}: {line!r}")
             errors += 1
             continue
 
@@ -82,10 +72,7 @@ def validate():
             if not value:
                 continue  # empty = passthrough
             if not _is_valid_cell(value):
-                print(
-                    f"ERROR: line {lineno}: invalid value in column "
-                    f"'{COLUMNS[col_idx]}': {value!r}"
-                )
+                print(f"ERROR: line {lineno}: invalid value in column '{COLUMNS[col_idx]}': {value!r}")
                 errors += 1
 
         entries[debian] = {

@@ -9,6 +9,7 @@ Use this skill for device security reviews, firmware analysis, hardware interfac
 
 ## Guardrails
 
+- Run `authorization-gate` first: written authorization and exact scope must be confirmed before any active testing.
 - Confirm authorization and lab safety before hardware probing, radio testing, or destructive firmware operations.
 - Preserve original firmware and device state before modification.
 - Avoid live radio or carrier testing outside approved spectrum and lab conditions.

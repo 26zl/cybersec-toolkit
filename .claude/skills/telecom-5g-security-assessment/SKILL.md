@@ -9,6 +9,7 @@ Use this skill for carrier, private 5G, mobile core, roaming, signaling, RAN, IM
 
 ## Guardrails
 
+- Run `authorization-gate` first: written authorization and exact scope must be confirmed before any active testing.
 - Do not run signaling, radio, roaming, or carrier tests without explicit authorization and lab constraints.
 - Treat lawful intercept, emergency services, and billing systems as high-impact environments.
 - Prefer architecture review and controlled validation over live-network probing.

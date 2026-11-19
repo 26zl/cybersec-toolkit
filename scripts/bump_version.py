@@ -12,36 +12,42 @@ VERSION, mcp_server/pyproject.toml, .claude-plugin/plugin.json,
 tag in README.md's install command.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
-ANY = r"\d+\.\d+\.\d+"
+# BUMP_VERSION_ROOT points the bump (and scripts/validate_version.sh) at another tree, for tests.
+ROOT = Path(os.environ.get("BUMP_VERSION_ROOT") or Path(__file__).resolve().parent.parent)
+SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
+ANY = r"[0-9]+\.[0-9]+\.[0-9]+"
 
 
-def sub(rel: str, pattern: str, repl: str, count: int = 0) -> None:
-    path = ROOT / rel
-    text = path.read_text(encoding="utf-8")
-    new, n = re.subn(pattern, repl, text, count=count)
+def sub(pending: dict[str, str], rel: str, pattern: str, repl: str, count: int = 0) -> None:
+    """Apply a substitution to the pending text of *rel*; nothing is written here."""
+    if rel not in pending:
+        pending[rel] = (ROOT / rel).read_text(encoding="utf-8")
+    new, n = re.subn(pattern, repl, pending[rel], count=count)
     if n == 0:
         raise SystemExit(f"error: no version string matched in {rel}")
-    path.write_text(new, encoding="utf-8")
+    pending[rel] = new
 
 
 def main() -> None:
-    if len(sys.argv) != 2 or not SEMVER.match(sys.argv[1]):
+    if len(sys.argv) != 2 or not SEMVER.fullmatch(sys.argv[1]):
         raise SystemExit("usage: python3 scripts/bump_version.py X.Y.Z")
     v = sys.argv[1]
-    (ROOT / "VERSION").write_text(v + "\n", encoding="utf-8")
-    sub("mcp_server/pyproject.toml", r'(?m)^(version\s*=\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
-    sub(".claude-plugin/plugin.json", r'("version":\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
-    sub(".claude-plugin/marketplace.json", r'("version":\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
-    sub("CITATION.cff", r'(?m)^(version:\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
-    sub("server.json", r'("version":\s*)"' + ANY + '"', r'\g<1>"' + v + '"')
-    sub("server.json", r"(cybersec-toolkit:)" + ANY, r"\g<1>" + v)
-    sub("README.md", r"(--branch v)" + ANY, r"\g<1>" + v)
+    pending: dict[str, str] = {}
+    sub(pending, "mcp_server/pyproject.toml", r'(?m)^(version\s*=\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
+    sub(pending, ".claude-plugin/plugin.json", r'("version":\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
+    sub(pending, ".claude-plugin/marketplace.json", r'("version":\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
+    sub(pending, "CITATION.cff", r'(?m)^(version:\s*)"' + ANY + '"', r'\g<1>"' + v + '"', count=1)
+    sub(pending, "server.json", r'("version":\s*)"' + ANY + '"', r'\g<1>"' + v + '"')
+    sub(pending, "server.json", r"(cybersec-toolkit:)" + ANY, r"\g<1>" + v)
+    sub(pending, "README.md", r"(--branch v)" + ANY, r"\g<1>" + v)
+    pending["VERSION"] = v + "\n"
+    for rel, text in pending.items():
+        (ROOT / rel).write_text(text, encoding="utf-8")
     print(f"bumped all release surfaces to {v}")
 
 

@@ -45,6 +45,9 @@ declare -gA CRACKING_BUILD_URLS=(
 declare -gA CRACKING_BUILD_CMDS=(
     [duplicut]="make"
 )
+declare -gA CRACKING_BUILD_BINS=(
+    [duplicut]="duplicut|duplicut"
+)
 
 install_module_cracking() {
     install_apt_batch "Cracking - Packages" "${CRACKING_PACKAGES[@]}"

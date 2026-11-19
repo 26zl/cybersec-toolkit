@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -126,12 +127,16 @@ def scan_batch(batch: list[Path], workdir: Path, index: int) -> dict:
     return json.loads(report.read_text(encoding="utf-8"))
 
 
-def collect(report: dict) -> tuple[list[dict], list[str]]:
-    findings, incomplete = [], []
+def collect(report: dict) -> tuple[list[dict], list[str], list[str]]:
+    """Return the findings, the skills with incomplete analysis, and every skill name the report lists."""
+    findings, incomplete, reported = [], [], []
     for skill in report.get("skills", []) if report.get("multi_skill") else [report]:
         name = skill.get("name")
         if not name:
+            incomplete.append("(unnamed report entry)")
+            reported.append("")
             continue
+        reported.append(name)
         if not (skill.get("analysis_completeness") or {}).get("is_complete", True):
             incomplete.append(name)
         for issue in skill.get("issues", []):
@@ -149,24 +154,36 @@ def collect(report: dict) -> tuple[list[dict], list[str]]:
                     "excerpt": " ".join(str(evidence).replace("`", "'").split())[:160],
                 }
             )
-    return findings, incomplete
+    return findings, incomplete, reported
 
 
 def run_scan(skills: list[Path], jobs: int) -> dict:
     batches = [skills[i : i + BATCH_SIZE] for i in range(0, len(skills), BATCH_SIZE)]
     findings: list[dict] = []
     incomplete: list[str] = []
+    scanned = 0
     with tempfile.TemporaryDirectory() as scratch:
         workdir = Path(scratch)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
             futures = [pool.submit(scan_batch, batch, workdir, i) for i, batch in enumerate(batches)]
-            for future in futures:
-                batch_findings, batch_incomplete = collect(future.result())
+            for batch, future in zip(batches, futures):
+                batch_findings, batch_incomplete, reported = collect(future.result())
+                expected = Counter(skill.name for skill in batch)
+                actual = Counter(reported)
+                if actual != expected:
+                    absent = list((expected - actual).elements())
+                    extra = list((actual - expected).elements())
+                    raise RuntimeError(
+                        f"scanner reported {len(reported)} of {len(batch)} skills in a batch; "
+                        f"not found by directory name: {' '.join(absent[:20]) or '(none)'}; "
+                        f"unexpected or repeated: {' '.join(extra[:20]) or '(none)'}"
+                    )
                 findings.extend(batch_findings)
                 incomplete.extend(batch_incomplete)
+                scanned += len(reported)
     return {
         "scanner": f"SkillSpector {SKILLSPECTOR_REF}",
-        "skills": len(skills),
+        "skills": scanned,
         "incomplete": sorted(incomplete),
         "findings": sorted(findings, key=lambda f: (f["skill"], f["rule"], f["file"], f["digest"])),
     }
@@ -189,6 +206,9 @@ def compare(old: dict, new: dict) -> int:
     added.sort(key=lambda f: (SEVERITY_ORDER.get(f["severity"], 9), f["skill"], f["rule"]))
     print(f"{new['scanner']}: {new['skills']} skills scanned, {severity_counts(new['findings'])}")
     print(f"New since the earlier scan: {severity_counts(added)}")
+    newly_incomplete = sorted(set(new.get("incomplete", [])) - set(old.get("incomplete", [])))
+    if newly_incomplete:
+        print(f"Incomplete analysis only in the newer scan: {' '.join(newly_incomplete[:20])}")
     for finding in added[:MAX_LISTED]:
         where = f"{finding['skill']}/{finding['file']}" + (f":{finding['line']}" if finding["line"] else "")
         print(f"- {finding['severity']} {finding['rule']} ({finding['category']}) {where}: {finding['excerpt']}")

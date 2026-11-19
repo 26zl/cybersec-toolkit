@@ -31,9 +31,26 @@ SKILLS="$REPO_ROOT/.claude/skills"
 SKILLS_MD="$SKILLS/SKILLS.md"
 TPN="$REPO_ROOT/THIRD_PARTY_NOTICES.md"
 
-# Cooldown before an upstream commit is eligible, matching the deps 5-day policy.
+# Cooldown before an upstream commit is eligible, matching the deps 5-day policy. It uses
+# the committer date, which the pusher controls, so it does not stop a backdated push;
+# the scanner and human review of the update PR remain the control.
 MIN_AGE_DAYS="${MIN_AGE_DAYS:-5}"
 MAX_STALE_DAYS="${MAX_STALE_DAYS:-180}"
+# A non-numeric value would evaluate to 0 in arithmetic and silently disable the cooldown.
+if [[ ! "$MIN_AGE_DAYS" =~ ^[0-9]+$ || ! "$MAX_STALE_DAYS" =~ ^[0-9]+$ ]]; then
+  echo "error: MIN_AGE_DAYS and MAX_STALE_DAYS must be non-negative integers" >&2
+  exit 2
+fi
+for day_limit_name in MIN_AGE_DAYS MAX_STALE_DAYS; do
+  day_limit="${!day_limit_name}"
+  day_limit="${day_limit#"${day_limit%%[!0]*}"}"
+  day_limit="${day_limit:-0}"
+  if [[ ${#day_limit} -gt 15 || ( ${#day_limit} -eq 15 && "$day_limit" -gt 106751991167300 ) ]]; then
+    echo "error: $day_limit_name exceeds the supported seconds range" >&2
+    exit 2
+  fi
+  printf -v "$day_limit_name" '%s' "$day_limit"
+done
 
 # name|git-url|pinned-commit — canonical pin list (--check-pins validates docs + frontmatter against it).
 SOURCES=(
@@ -51,7 +68,7 @@ RETAINED=(
 )
 
 usage() {
-  sed -n '6,23p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
+  awk '/^# Usage:/{p=1} /^set -uo/{exit} p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
 }
 
 MODE=report

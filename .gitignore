@@ -44,6 +44,14 @@ htmlcov/
 .env
 .env.*
 *.pem
+!.env.example
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.pfx
+*.kdbx
+*.ovpn
+.netrc
 *.p12
 credentials.json
 secrets.json

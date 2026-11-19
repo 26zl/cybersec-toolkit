@@ -5,6 +5,8 @@ description: Use when solving a CTF cryptography challenge — RSA, AES, classic
 
 # CTF crypto methodology
 
+> **Pre-flight.** Confirm the event rules allow AI assistance (`authorization-gate`). Start with `suggest_for_ctf` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command, tell the operator; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
+
 Tool-first: use `suggest_for_ctf("crypto")` first, then this checklist for depth.
 
 ## 0. Where the libraries live
@@ -31,10 +33,10 @@ Coppersmith with `small_roots`, Groebner bases, generic curve arithmetic.
 
 ## 1. Identify what you have
 
-```bash
-file <input>
-xxd <input> | head -50
-strings <input> | head -50
+```text
+run_tool("file", "<input>")
+run_pipeline([{"tool": "xxd", "args": "<input>"}, {"tool": "head", "args": "-50"}])
+run_pipeline([{"tool": "strings", "args": "<input>"}, {"tool": "head", "args": "-50"}])
 ```
 
 - `.pem`, `.pub` → public key crypto (RSA/ECC)
@@ -78,12 +80,7 @@ Default first move: throw `n` at FactorDB (`run_tool("curl", "http://factordb.co
 
 ## 4. Classical / encoding
 
-```bash
-# Auto-detect
-echo "ciphertext" | python3 -c "import sys; from cryptanalysis import all_decoders; ..."
-```
-
-Tools in registry: `cipey`, `ciphey` (auto-decode), `quipqiup` (substitution), `dcode.fr` (web), `cryptii.com` (web). For classical/Caesar/Vigenère: try `ciphey` first.
+Candidate tools (not in the registry; recommend an install with approval): `ciphey` (auto-decode), `quipqiup` (substitution), `dcode.fr` (web), `cryptii.com` (web). For classical/Caesar/Vigenère: try `ciphey` first.
 
 ## 5. Hash crypto
 

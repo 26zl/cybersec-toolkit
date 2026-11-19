@@ -216,6 +216,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A release tag is immutable: a re-run must not overwrite the published image, so a
+      # partially failed release needs a new tag. Only a definitive "not found" passes.
+      - name: Refuse to overwrite a published version tag
+        if: github.ref_type == 'tag'
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME#v}"
+          for attempt in 1 2 3; do
+            if out=$(docker manifest inspect "$image" 2>&1); then
+              echo "::error::$image is already published; cut a new release"
+              exit 1
+            fi
+            if grep -qiE 'manifest unknown|not found|no such manifest|name unknown' <<<"$out"; then
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not tell whether $image exists: $out"
+          exit 1
+
       # Rebuild from the buildx cache and push (near-instant; layers are cached from
       # the scanned build). Emits the manifest digest the attestations bind to.
       - name: Push to GHCR
@@ -279,12 +298,21 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY}:$(tr -d '[:space:]' < VERSION)"
           echo "image=$image" >> "$GITHUB_OUTPUT"
           # VERSION is bumped on main before the tag that builds its image is pushed.
-          if docker manifest inspect "$image" > /dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::$image is not published yet; nothing to scan."
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          # A missing or private package is an expected state before the first release; other failures fail the run.
+          for attempt in 1 2 3; do
+            if out=$(docker manifest inspect "$image" 2>&1); then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if grep -qiE 'manifest unknown|not found|no such manifest|name unknown|unauthorized|denied' <<<"$out"; then
+              echo "::notice::$image is not published yet or not readable anonymously; nothing to scan."
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not inspect $image: $out"
+          exit 1
 
       - name: Scan for fixable HIGH/CRITICAL CVEs
         if: steps.release.outputs.exists == 'true'

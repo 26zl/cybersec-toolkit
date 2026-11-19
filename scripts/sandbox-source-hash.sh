@@ -4,21 +4,26 @@
 # the label back and compares, so a sandbox image built before a server/policy
 # change is reported stale instead of silently running old code.
 #
-# Content only (no names/mtimes beyond sha256sum's own output), stable ordering.
+# Covers file names and contents (no mtimes), in a stable order.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # The files COPYed into sandbox/Dockerfile that determine the server's behaviour.
 mapfile -t files < <(
-    printf '%s\n' \
-        mcp_server/*.py \
-        mcp_server/pyproject.toml \
-        mcp_server/uv.lock \
-        tools_config.json \
-        sandbox/Dockerfile \
-        sandbox/guest-mcp.json \
-        | LC_ALL=C sort -u
+    {
+        printf '%s\n' \
+            mcp_server/*.py \
+            mcp_server/pyproject.toml \
+            mcp_server/uv.lock \
+            mcp_server/README.md \
+            tools_config.json \
+            install.sh \
+            sandbox/Dockerfile \
+            sandbox/guest-mcp.json
+        find lib modules profiles scripts -type f ! -path '*/__pycache__/*' ! -name '._*' ! -name '*.pyc' \
+            ! -name '.DS_Store' ! -name '*.swp' ! -name '*.swo' ! -name '*~' ! -name '*.orig' ! -name '*.rej' ! -name '*.bak'
+    } | LC_ALL=C sort -u
 )
 
 LC_ALL=C sha256sum "${files[@]}" | sha256sum | cut -c1-64

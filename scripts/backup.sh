@@ -383,9 +383,13 @@ backup_configs() {
     for _entry in "${_backup_map[@]}"; do
         local category="${_entry%%|*}"
         local src="${_entry#*|}"
+        if [[ -L "$src" ]]; then
+            log_warn "Skipping symlinked config path: $src"
+            continue
+        fi
         if [[ -e "$src" ]]; then
             if ! ensure_dir "$dest/$category" \
-                || ! cp -rH -- "$src" "$dest/$category/" 2>/dev/null; then
+                || ! cp -r -- "$src" "$dest/$category/" 2>/dev/null; then
                 log_warn "Failed to back up: $src"
                 failed=$((failed + 1))
             fi
@@ -415,7 +419,13 @@ _restore_tree() {
     local base="${source##*/}"
     local target="$parent/$base"
 
+    local parent_missing=false
+    [[ -e "$parent" || -L "$parent" ]] || parent_missing=true
     ensure_dir "$parent" || return 1
+    if [[ "$parent_missing" == true && -n "${SUDO_USER:-}" && "${SUDO_USER:-}" != "root" ]]; then
+        chown -- "$SUDO_USER" "$parent" 2>/dev/null || true
+        chmod 755 -- "$parent" 2>/dev/null || true
+    fi
     if [[ -L "$parent" || -L "$target" ]]; then
         log_warn "Refusing to restore through a symlinked destination: $target"
         return 1
@@ -667,7 +677,11 @@ cmd_restore() {
     fi
 
     log_info "Extracting backup..."
-    if ! tar -xzf "$tar_file" -C "$extract_dir"; then
+    local -a _tar_safe=(-xzf)
+    if tar --version 2>/dev/null | grep -q 'GNU tar'; then
+        _tar_safe=(--no-same-owner --no-same-permissions -xzf)
+    fi
+    if ! tar "${_tar_safe[@]}" "$tar_file" -C "$extract_dir"; then
         log_error "Failed to extract backup archive"
         exit 1
     fi
@@ -677,6 +691,7 @@ cmd_restore() {
         log_error "Archive root is not a directory: $backup_name"
         exit 1
     fi
+    chmod -R u+rwX,go-w,a-s -- "$restore_root" 2>/dev/null || true
 
     # Legacy format: individually encrypted files inside a plain .tar.gz. Search the
     # whole backup root — old backups did not always keep them under encrypted/.

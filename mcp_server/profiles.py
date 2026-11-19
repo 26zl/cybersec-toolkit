@@ -13,6 +13,7 @@ _parent = str(Path(__file__).resolve().parent.parent)
 if _parent not in sys.path:
     sys.path.insert(0, _parent)
 
+from mcp_server.advisor_utils import SINGLE_TOOL_METHODS  # noqa: E402
 from mcp_server.tools_db import C2_TOOLS, MODULE_DESCRIPTIONS, ToolsDatabase  # noqa: E402
 
 # Termux runs without sudo; Linux requires it.
@@ -345,25 +346,34 @@ def _match_modules(task: str) -> list[tuple[str, float]]:
 # Registry tool names that are also ordinary English words. A bare word-boundary
 # match on these false-positives on prose ("crunch the numbers" -> crunch, "amass
 # a lot" -> amass), so they only count as a tool mention when the task also carries
-# an install/tool-listing cue (e.g. "install crunch", "I need crunch and amass").
+# an install cue directly before the name or before a comma/"and" list that ends in it
+# (e.g. "install crunch", "I need crunch and amass").
 _COMMON_WORD_TOOLS: frozenset[str] = frozenset(
     {"crunch", "amass", "set", "tiger", "loki", "notify", "freeze", "ivy", "robin", "meg", "chaos", "tor", "anew"}
 )
-_TOOL_INTENT_RE = re.compile(r"\b(install|tool|tools|need|use|using|run|with|and)\b")
+_TOOL_CUE = (
+    r"\b(?:(?:install|installing|need|needs|want|wants)\s+(?:the\s+)?"
+    r"|(?:(?:want|wants|need|needs)\s+to\s+)?(?:use|using|run|running|get|deploy|setup|set up)\s+)"
+)
+_TOOL_LIST_SEP = r"(?:\s*,\s*(?:and\s+)?|\s+and\s+)"
+
+
+def _has_install_cue(task_lower: str, name: str) -> bool:
+    pattern = rf"{_TOOL_CUE}(?:[\w.+-]+{_TOOL_LIST_SEP})*{re.escape(name)}(?![\w+-]|\.[\w+-])"
+    return re.search(pattern, task_lower) is not None
 
 
 def _match_individual_tools(task: str, tools_db: ToolsDatabase) -> list[dict]:
     """Find specific tools mentioned by name in the task description."""
     task_lower = task.lower()
-    has_intent = _TOOL_INTENT_RE.search(task_lower) is not None
     matched = []
     for tool in tools_db.tools_by_name.values():
         name = tool["name"].lower()
         # Match exact tool names, including short names, without substring collisions.
-        # Ambiguous English words also require a tool-listing or install cue.
-        if not re.search(rf"\b{re.escape(name)}\b", task_lower):
+        # Ambiguous English words also require an install cue next to the name or its list.
+        if not re.search(rf"(?<![\w.+-]){re.escape(name)}(?![\w+-]|\.[\w+-])", task_lower):
             continue
-        if name in _COMMON_WORD_TOOLS and not has_intent:
+        if name in _COMMON_WORD_TOOLS and not _has_install_cue(task_lower, name):
             continue
         matched.append(tool)
     return matched
@@ -438,9 +448,7 @@ def recommend_install(task: str, tools_db: ToolsDatabase) -> dict:
                 for t in mentioned_tools
             ],
             "modules_needed": modules_needed,
-            "install_commands": _build_install_commands(
-                modules=modules_needed, tools=[t["name"] for t in mentioned_tools]
-            ),
+            **_individual_install_commands(mentioned_tools),
         }
 
     # Case B: Strong profile match
@@ -584,9 +592,40 @@ def list_profiles(tools_db: ToolsDatabase) -> dict:
     }
 
 
+def _individual_install_commands(mentioned_tools: list[dict]) -> dict:
+    """Commands for named tools; install.sh runs one of --tool/--module per invocation.
+
+    --tool covers only the methods in SINGLE_TOOL_METHODS. The rest need their module,
+    offered as an alternative rather than as a step to run after the --tool command.
+    """
+    single = [t["name"] for t in mentioned_tools if t["method"] in SINGLE_TOOL_METHODS]
+    module_tools = [t for t in mentioned_tools if t["method"] not in SINGLE_TOOL_METHODS]
+    module_only = sorted({t["module"] for t in module_tools})
+    module_commands = _build_install_commands(
+        modules=module_only,
+        include_c2=any(t["name"] in C2_TOOLS for t in module_tools),
+        enable_docker=any(t["method"] == "docker" for t in module_tools),
+    )
+    if not single:
+        return {"install_commands": module_commands}
+    result: dict = {
+        "install_commands": _build_install_commands(tools=single, include_c2=any(name in C2_TOOLS for name in single))
+    }
+    if module_only:
+        result["alternative_module_install"] = {
+            "reason": "These tools cannot be installed with --tool; run this as a separate command.",
+            "tools": [t["name"] for t in mentioned_tools if t["method"] not in SINGLE_TOOL_METHODS],
+            "commands": module_commands,
+        }
+    return result
+
+
 def _build_install_commands(
     modules: Optional[list[str]] = None,
     tools: Optional[list[str]] = None,
+    *,
+    include_c2: bool = False,
+    enable_docker: bool = False,
 ) -> list[str]:
     """Build the install.sh commands for given modules/tools."""
     commands = []
@@ -596,4 +635,5 @@ def _build_install_commands(
     if tools:
         tool_args = " ".join(f"--tool {shlex.quote(t)}" for t in tools)
         commands.append(f"{_SUDO}./install.sh {tool_args}")
-    return commands
+    switches = (" --include-c2" if include_c2 else "") + (" --enable-docker" if enable_docker else "")
+    return [command + switches for command in commands]

@@ -17,7 +17,7 @@
 
 import { lookup } from 'node:dns/promises';
 import { readFileSync } from 'node:fs';
-import { isIPv4, isIPv6 } from 'node:net';
+import { BlockList, isIPv4, isIPv6 } from 'node:net';
 import { isAbsolute } from 'node:path';
 
 export const SCOPE_TABLE = 'cybersec_scope';
@@ -28,6 +28,20 @@ const EMBEDDED_RESOLVER = '127.0.0.11';
 const PROBE_CANDIDATES = ['192.0.2.1', '198.51.100.1', '203.0.113.1'];
 const MAX_ENTRIES = 256;
 const MAX_PORTS = 64;
+const MAX_ADDRESSES_PER_NAME = 16;
+
+// Addresses a host name must not lead to unless the scope lists them literally: DNS for a name is not under the operator's control.
+const UNSAFE_V4 = new BlockList();
+for (const [net, bits] of [['0.0.0.0', 8], ['127.0.0.0', 8], ['169.254.0.0', 16], ['224.0.0.0', 4], ['255.255.255.255', 32]]) {
+  UNSAFE_V4.addSubnet(net, bits, 'ipv4');
+}
+// Kept apart from the IPv4 list: a mapped-address rule would otherwise match every IPv4 address.
+const UNSAFE_V6 = new BlockList();
+for (const [net, bits] of [['::', 128], ['::1', 128], ['fe80::', 10], ['ff00::', 8], ['::ffff:0:0', 96]]) {
+  UNSAFE_V6.addSubnet(net, bits, 'ipv6');
+}
+const unsafeForNames = (address, family) =>
+  family === 4 ? UNSAFE_V4.check(address, 'ipv4') : UNSAFE_V6.check(address, 'ipv6');
 
 const HOSTNAME =
   /^(?=.{1,253}$)(?=.*[A-Za-z])[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
@@ -153,6 +167,21 @@ export const resolveScope = async (scope, resolver = lookup) => {
       ({ address, family }) => (family === 4 && isIPv4(address)) || (family === 6 && isIPv6(address) && !address.includes('%')),
     );
     if (usable.length === 0) throw new Error(`Scope '${scope.name}': host '${entry.name}' has no usable address.`);
+    const literal = new Set(scope.allow.filter((item) => item.kind === 'ip').map((item) => item.address));
+    for (const { address, family } of usable) {
+      if (unsafeForNames(address, family) && !literal.has(address.toLowerCase())) {
+        throw new Error(
+          `Scope '${scope.name}': host '${entry.name}' resolves to ${address}, a loopback, link-local, unspecified, ` +
+            'multicast or mapped address; list it as an address in the scope file if that is intended.',
+        );
+      }
+    }
+    if (usable.length > MAX_ADDRESSES_PER_NAME) {
+      throw new Error(
+        `Scope '${scope.name}': host '${entry.name}' resolves to ${usable.length} addresses (at most ${MAX_ADDRESSES_PER_NAME}); list the ones in scope.`,
+      );
+    }
+    usable.sort((a, b) => a.family - b.family || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0));
     for (const { address, family } of usable) {
       targets.push({ family, address: address.toLowerCase(), ports, proto, origin: entry.name });
       pins.push([address.toLowerCase(), entry.name]);
@@ -263,7 +292,12 @@ const PROBE_SOURCE = [
  * Throws when any step fails; the caller tears the sandbox down, so a session
  * never starts with a scope that is only partly in force.
  */
-export const applyScope = async ({ run, container, scope }) => {
+export const applyScope = async ({
+  run,
+  container,
+  scope,
+  warn = (message) => process.stderr.write(`${message}\n`),
+}) => {
   const asRoot = ['exec', '--interactive', '--user', '0:0', container];
 
   let nameservers = [];
@@ -284,10 +318,13 @@ export const applyScope = async ({ run, container, scope }) => {
   const probe = pickProbeAddress(scope);
   if (probe) {
     try {
-      await run(['exec', container, 'python3', '-c', PROBE_SOURCE, probe]);
+      // -I and a neutral workdir: a socket.py in the mounted workspace must not stand in for the real module.
+      await run(['exec', '--workdir', '/', container, 'python3', '-I', '-c', PROBE_SOURCE, probe]);
     } catch (error) {
       throw new Error(`a connection outside the scope (${probe}) was not rejected (${error.message})`);
     }
+  } else {
+    warn('WARNING: the scope covers every probe address, so the rules were loaded but not tested with a connection.');
   }
   let flushed = false;
   try {

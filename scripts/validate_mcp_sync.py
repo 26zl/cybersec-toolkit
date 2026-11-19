@@ -30,7 +30,10 @@ def parse_bash_assoc_array(text: str, var_name: str) -> dict[str, str]:
     if block is None:
         return {}
     entries = re.findall(r'\[([^\]]+)\]="([^"]*)"', block)
-    return dict(entries)
+    result = dict(entries)
+    for key, value in re.findall(r"\[([^\]]+)\]=\$'([^']*)'", block):
+        result[key] = value.replace(r"\n", "\n")
+    return result
 
 
 def parse_bash_indexed_array(text: str, var_name: str) -> list[str]:
@@ -50,11 +53,7 @@ def parse_bash_indexed_array(text: str, var_name: str) -> list[str]:
 
     # Cross-check: when the array is one quoted cell per line, the parsed entry
     # count must equal the number of such lines. A mismatch signals truncation.
-    quoted_lines = sum(
-        1
-        for line in block.splitlines()
-        if re.fullmatch(r'\s*"[^"]+"\s*,?\s*', line)
-    )
+    quoted_lines = sum(1 for line in block.splitlines() if re.fullmatch(r'\s*"[^"]+"\s*,?\s*', line))
     if quoted_lines and len(entries) != quoted_lines:
         errors.append(
             f"{var_name}: parsed {len(entries)} entries but found {quoted_lines} "
@@ -65,12 +64,12 @@ def parse_bash_indexed_array(text: str, var_name: str) -> list[str]:
 
 def parse_bash_unquoted_array(text: str, var_name: str) -> list[str]:
     """Parse a bash indexed array of bare (unquoted) tokens: VAR=( a b-c d )."""
-    pattern = rf'(?<![\w-]){var_name}=\((.*?)\)'
-    m = re.search(pattern, text, re.DOTALL)
-    if not m:
+    m = re.search(rf"(?<![\w-]){re.escape(var_name)}=\(", text)
+    body = balanced_array_body(text, m.end() - 1) if m else None
+    if body is None:
         return []
     tokens: list[str] = []
-    for line in m.group(1).splitlines():
+    for line in body.splitlines():
         line = line.split("#", 1)[0]  # strip trailing comments
         tokens.extend(line.split())
     return tokens
@@ -92,9 +91,7 @@ def check_module_descriptions() -> None:
         if key not in py_descs:
             errors.append(f"MODULE_DESCRIPTIONS: '{key}' in bash but missing in Python")
         elif py_descs[key] != val:
-            errors.append(
-                f"MODULE_DESCRIPTIONS['{key}']: bash={val!r} != python={py_descs[key]!r}"
-            )
+            errors.append(f"MODULE_DESCRIPTIONS['{key}']: bash={val!r} != python={py_descs[key]!r}")
 
     for key in py_descs:
         if key not in bash_descs:
@@ -125,9 +122,7 @@ def check_docker_images() -> None:
         if label not in py_images:
             errors.append(f"DOCKER_IMAGES: '{label}' in bash but missing in Python")
         elif py_images[label] != image:
-            errors.append(
-                f"DOCKER_IMAGES['{label}']: bash={image!r} != python={py_images[label]!r}"
-            )
+            errors.append(f"DOCKER_IMAGES['{label}']: bash={image!r} != python={py_images[label]!r}")
 
     for label in py_images:
         if label not in bash_map:
@@ -151,9 +146,7 @@ def check_pipx_bin_names() -> None:
         if key not in py_names:
             errors.append(f"PIPX_BIN_NAMES: '{key}' in bash but missing in Python")
         elif py_names[key] != val:
-            errors.append(
-                f"PIPX_BIN_NAMES['{key}']: bash={val!r} != python={py_names[key]!r}"
-            )
+            errors.append(f"PIPX_BIN_NAMES['{key}']: bash={val!r} != python={py_names[key]!r}")
 
     for key in py_names:
         if key not in bash_names:
@@ -210,7 +203,7 @@ def _parse_bash_bool(text: str, var: str):
       - _UNPARSEABLE for a present-but-unrecognized value (an explicit error,
         so a typo'd flag can't silently pass unverified).
     """
-    m = re.search(rf'^{var}=(.*)$', text, re.MULTILINE)
+    m = re.search(rf"^{var}=(.*)$", text, re.MULTILINE)
     if not m:
         return None
     raw = m.group(1).strip()
@@ -248,9 +241,7 @@ def check_profiles() -> None:
         m = re.search(r'MODULES="([^"]+)"', text)
         if m:
             bash_profiles[name] = m.group(1).split()
-        bash_flags[name] = {
-            py_key: _parse_bash_bool(text, conf_var) for conf_var, py_key in _PROFILE_FLAGS.items()
-        }
+        bash_flags[name] = {py_key: _parse_bash_bool(text, conf_var) for conf_var, py_key in _PROFILE_FLAGS.items()}
 
     if not bash_profiles:
         errors.append("PROFILES: no profiles/*.conf files found")
@@ -262,9 +253,7 @@ def check_profiles() -> None:
             continue
         py_modules = py_profiles[name]["modules"]
         if modules != py_modules:
-            errors.append(
-                f"PROFILES['{name}'].modules: bash={modules} != python={py_modules}"
-            )
+            errors.append(f"PROFILES['{name}'].modules: bash={modules} != python={py_modules}")
         # Boolean flags (skip_heavy / enable_docker / include_c2).
         # None = flag absent from .conf (Python default applies, skip).
         # _UNPARSEABLE = flag present with an unrecognized value → explicit error
@@ -278,9 +267,7 @@ def check_profiles() -> None:
                     f"unparseable boolean value (expected true/false/1/0)"
                 )
             elif bash_val is not None and bash_val != py_val:
-                errors.append(
-                    f"PROFILES['{name}'].{py_key}: bash={bash_val} != python={py_val}"
-                )
+                errors.append(f"PROFILES['{name}'].{py_key}: bash={bash_val} != python={py_val}")
 
     for name in py_profiles:
         if name not in bash_profiles:
@@ -310,21 +297,17 @@ def check_profile_descriptions() -> None:
             continue
 
         text = conf.read_text(encoding="utf-8")
-        m = re.search(r'^#\s*Profile:\s*(.+)$', text, re.MULTILINE)
+        m = re.search(r"^#\s*Profile:\s*(.+)$", text, re.MULTILINE)
         if not m:
             errors.append(f"PROFILE_DESC: profiles/{name}.conf missing '# Profile:' header")
             continue
         conf_desc = m.group(1).strip()
         if not conf_desc:
-            errors.append(
-                f"PROFILE_DESC: profiles/{name}.conf '# Profile:' header has no description"
-            )
+            errors.append(f"PROFILE_DESC: profiles/{name}.conf '# Profile:' header has no description")
             continue
         checked += 1
         if " ".join(conf_desc.split()) != " ".join(py_desc.split()):
-            errors.append(
-                f"PROFILE_DESC['{name}']: conf={conf_desc!r} != python={py_desc!r}"
-            )
+            errors.append(f"PROFILE_DESC['{name}']: conf={conf_desc!r} != python={py_desc!r}")
 
     print(f"PROFILE_DESC: {checked} profile descriptions checked")
 
@@ -340,9 +323,7 @@ def check_tool_aliases() -> None:
 
     for alias, target in TOOL_ALIASES.items():
         if target not in names:
-            errors.append(
-                f"TOOL_ALIASES['{alias}']: target '{target}' not found in tools_config.json"
-            )
+            errors.append(f"TOOL_ALIASES['{alias}']: target '{target}' not found in tools_config.json")
 
     print(f"TOOL_ALIASES: {len(TOOL_ALIASES)} aliases checked against {len(names)} registry tools")
 
@@ -468,20 +449,13 @@ def check_mcp_toolchain() -> None:
     toolchain_set = set(MCP_TOOLCHAIN)
 
     for name in registered_set - toolchain_set:
-        errors.append(
-            f"MCP_TOOLCHAIN: '{name}' is an @mcp.tool in server.py but missing from MCP_TOOLCHAIN"
-        )
+        errors.append(f"MCP_TOOLCHAIN: '{name}' is an @mcp.tool in server.py but missing from MCP_TOOLCHAIN")
     for name in toolchain_set - registered_set:
-        errors.append(
-            f"MCP_TOOLCHAIN: '{name}' in MCP_TOOLCHAIN but not an @mcp.tool in server.py"
-        )
+        errors.append(f"MCP_TOOLCHAIN: '{name}' in MCP_TOOLCHAIN but not an @mcp.tool in server.py")
     if len(registered) != len(registered_set):
         errors.append("MCP_TOOLCHAIN: server.py has duplicate @mcp.tool function names")
 
-    print(
-        f"MCP_TOOLCHAIN: {len(registered_set)} server.py tools, "
-        f"{len(toolchain_set)} guided_assessment entries"
-    )
+    print(f"MCP_TOOLCHAIN: {len(registered_set)} server.py tools, {len(toolchain_set)} guided_assessment entries")
 
 
 def check_cve_advisor() -> None:
@@ -509,22 +483,16 @@ def check_cve_advisor() -> None:
             resolved = TOOL_ALIASES.get(tool_name, tool_name)
             if resolved not in names:
                 errors.append(
-                    f"KNOWN_CVES['{cve_id}'].tools: '{tool_name}' (resolves to "
-                    f"'{resolved}') not in tools_config.json"
+                    f"KNOWN_CVES['{cve_id}'].tools: '{tool_name}' (resolves to '{resolved}') not in tools_config.json"
                 )
         for skill in entry.get("skills", []):
             skill_refs += 1
             if not (skills_dir / skill / "SKILL.md").is_file():
-                errors.append(
-                    f"KNOWN_CVES['{cve_id}'].skills: '{skill}' has no "
-                    f".claude/skills/{skill}/SKILL.md"
-                )
+                errors.append(f"KNOWN_CVES['{cve_id}'].skills: '{skill}' has no .claude/skills/{skill}/SKILL.md")
         for module in entry.get("modules", []):
             module_refs += 1
             if module not in MODULE_DESCRIPTIONS:
-                errors.append(
-                    f"KNOWN_CVES['{cve_id}'].modules: '{module}' not in MODULE_DESCRIPTIONS"
-                )
+                errors.append(f"KNOWN_CVES['{cve_id}'].modules: '{module}' not in MODULE_DESCRIPTIONS")
 
     print(
         f"KNOWN_CVES: {len(KNOWN_CVES)} CVEs, {tool_refs} tool refs, "
@@ -541,7 +509,15 @@ def check_bin_name_maps() -> None:
     """
     import json
 
-    from mcp_server.tools_db import APT_BIN_NAMES, CARGO_BIN_NAMES, NPM_BIN_NAMES, SPECIAL_BIN_NAMES
+    from mcp_server.tools_db import (
+        APT_BIN_NAMES,
+        BINARY_BIN_NAMES,
+        CARGO_BIN_NAMES,
+        NPM_BIN_NAMES,
+        PACKAGE_EXTRA_BINARIES,
+        SOURCE_BIN_NAMES,
+        SPECIAL_BIN_NAMES,
+    )
 
     tools = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
     names = {t["name"] for t in tools}
@@ -551,6 +527,9 @@ def check_bin_name_maps() -> None:
         ("SPECIAL_BIN_NAMES", SPECIAL_BIN_NAMES),
         ("NPM_BIN_NAMES", NPM_BIN_NAMES),
         ("CARGO_BIN_NAMES", CARGO_BIN_NAMES),
+        ("BINARY_BIN_NAMES", BINARY_BIN_NAMES),
+        ("SOURCE_BIN_NAMES", SOURCE_BIN_NAMES),
+        ("PACKAGE_EXTRA_BINARIES", PACKAGE_EXTRA_BINARIES),
     )
     for map_name, mapping in maps:
         for key in mapping:
@@ -559,6 +538,68 @@ def check_bin_name_maps() -> None:
 
     checked = " + ".join(f"{len(mapping)} {map_name}" for map_name, mapping in maps)
     print(f"BIN_NAMES: {checked} keys checked against {len(names)} registry tools")
+
+
+def check_git_execution_metadata() -> None:
+    """Every Git row needs a disposition consistent with its installer's launcher."""
+    import json
+
+    from mcp_server.tools_db import GIT_BIN_NAMES, GIT_NON_EXECUTABLE
+
+    registry = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
+    git_names = {tool["name"] for tool in registry if tool["method"] == "git"}
+    classified = GIT_BIN_NAMES.keys() | GIT_NON_EXECUTABLE.keys()
+    for name in sorted(git_names - classified):
+        errors.append(f"GIT_EXECUTION: '{name}' lacks CLI/resource/runtime metadata")
+    for name in sorted(classified - git_names):
+        errors.append(f"GIT_EXECUTION: '{name}' is classified but not a Git registry tool")
+    for name in sorted(GIT_BIN_NAMES.keys() & GIT_NON_EXECUTABLE.keys()):
+        errors.append(f"GIT_EXECUTION: '{name}' has conflicting executable and non-executable classifications")
+
+    custom_launchers = {"exploitdb": "searchsploit", "theHarvester": "theHarvester"}
+    for name, binary in GIT_BIN_NAMES.items():
+        expected = custom_launchers.get(name, name.lower())
+        if binary != expected:
+            errors.append(f"GIT_EXECUTION: '{name}' resolves to '{binary}', but its installer creates '{expected}'")
+
+    installer = (ROOT / "lib" / "installers.sh").read_text(encoding="utf-8")
+    mappings = {
+        key: parse_bash_assoc_array(installer, key)
+        for key in ("_GIT_ENTRY_POINTS", "_GIT_PYTHON_ENTRY_POINTS", "_GIT_BUILD_COMMANDS", "_GIT_BUILT_PATHS")
+    }
+    for key, mapping in mappings.items():
+        if not mapping:
+            errors.append(f"GIT_EXECUTION: cannot parse installer {key}")
+        for name in sorted(mapping.keys() - GIT_BIN_NAMES.keys()):
+            errors.append(f"GIT_EXECUTION: {key}['{name}'] has no supported MCP CLI route")
+    if mappings["_GIT_BUILD_COMMANDS"].keys() != mappings["_GIT_BUILT_PATHS"].keys():
+        errors.append("GIT_EXECUTION: build commands and expected artifacts have different tool keys")
+    print(f"GIT_EXECUTION: {len(git_names)} classified, {len(GIT_BIN_NAMES)} CLI launchers checked")
+
+
+def check_source_execution_metadata() -> None:
+    """Source builds must publish the primary CLI that MCP resolves."""
+    import json
+
+    from mcp_server.tools_db import PACKAGE_EXTRA_BINARIES, SOURCE_BIN_NAMES
+
+    registry = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
+    source_names = {tool["name"] for tool in registry if tool["method"] == "source"}
+    for name in sorted(source_names ^ SOURCE_BIN_NAMES.keys()):
+        errors.append(f"SOURCE_EXECUTION: '{name}' is not represented consistently in registry/CLI metadata")
+    declarations: dict[str, str] = {}
+    for module in (ROOT / "modules").glob("*.sh"):
+        text = module.read_text(encoding="utf-8")
+        for match in re.finditer(r"declare\s+-g?A\s+(\w+_BUILD_BINS)=\(", text):
+            declarations.update(parse_bash_assoc_array(text, match.group(1)))
+    for name, binary in SOURCE_BIN_NAMES.items():
+        outputs = {line.split("|", 1)[-1] for line in declarations.get(name, "").splitlines() if "|" in line}
+        if binary not in outputs:
+            errors.append(f"SOURCE_EXECUTION: '{name}' builds no declared PATH launcher '{binary}'")
+        for companion in PACKAGE_EXTRA_BINARIES.get(name, ()):
+            if companion not in outputs:
+                errors.append(f"SOURCE_EXECUTION: '{name}' does not publish companion '{companion}'")
+    print(f"SOURCE_EXECUTION: {len(source_names)} primary launchers checked against module BUILD_BINS")
 
 
 def check_audit_stream_prefix() -> None:
@@ -661,6 +702,8 @@ def main() -> int:
     check_mcp_toolchain()
     check_cve_advisor()
     check_bin_name_maps()
+    check_git_execution_metadata()
+    check_source_execution_metadata()
     check_audit_stream_prefix()
     check_audit_key_env()
     check_audit_forward_names()

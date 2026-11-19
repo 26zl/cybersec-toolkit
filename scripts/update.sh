@@ -83,7 +83,7 @@ done
 # Never read from the environment: an inherited FAST_MODE would silently disable
 # checksum verification (root shells, containers, sudo -E).
 FAST_MODE=false
-export VERBOSE REQUIRE_CHECKSUMS PRODUCTION_MODE
+export VERBOSE REQUIRE_CHECKSUMS PRODUCTION_MODE FAST_MODE
 
 check_root
 _acquire_run_lock
@@ -313,10 +313,12 @@ if [[ "$SKIP_GIT" == "false" ]]; then
             GIT_TOTAL=$((GIT_TOTAL + 1))
 
             pull_output=""
+            _git_tree_ready=false
             _dir_escaped="$(_escape_single_quoted "$dir")"
             # LC_ALL=C: the "Already up to date" check below must not depend on the
             # user's locale (git translates it, which would mark every repo updated).
             if pull_output=$(_as_builder "LC_ALL=C git $_GIT_STALL_OPTS -C '$_dir_escaped' pull" 2>>"$LOG_FILE"); then
+                _git_tree_ready=true
                 if echo "$pull_output" | grep -q "Already up to date"; then
                     log_debug "Already latest: $name"
                     GIT_SKIPPED=$((GIT_SKIPPED + 1))
@@ -325,17 +327,6 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                     GIT_UPDATED=$((GIT_UPDATED + 1))
                     _track_update "$name" "git" "HEAD"
 
-                    # Reinstall Python deps into an existing venv only, as the builder
-                    # that owns it — setup_git_repo keeps dependency builds off root too.
-                    if [[ -f "$dir/requirements.txt" ]]; then
-                        if [[ -d "$dir/venv" ]]; then
-                            _as_builder "'${_dir_escaped}venv/bin/pip' install -q -r '${_dir_escaped}requirements.txt'" >> "$LOG_FILE" 2>&1 || true
-                        elif [[ -d "$dir/.venv" ]]; then
-                            _as_builder "'${_dir_escaped}.venv/bin/pip' install -q -r '${_dir_escaped}requirements.txt'" >> "$LOG_FILE" 2>&1 || true
-                        else
-                            log_warn "$name has requirements.txt but no venv — skipping pip install (create venv to enable)"
-                        fi
-                    fi
                 fi
             else
                 # Retry: stash local changes, fetch + reset to remote HEAD, pop
@@ -344,6 +335,7 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                 # lib/common.sh.
                 log_debug "git pull failed for $name — stashing local changes and resetting to remote HEAD..."
                 if _git_safe_reset_to_remote "$dir" "$LOG_FILE"; then
+                    _git_tree_ready=true
                     log_success "Updated: $name (reset to origin HEAD)"
                     GIT_UPDATED=$((GIT_UPDATED + 1))
                     _track_update "$name" "git" "HEAD"
@@ -351,6 +343,10 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                     log_warn "Failed: $name"
                     GIT_FAILED=$((GIT_FAILED + 1))
                 fi
+            fi
+            if [[ "$_git_tree_ready" == true ]] && ! setup_git_repo "$dir" >> "$LOG_FILE" 2>&1; then
+                log_warn "CLI setup failed after updating $name; see the log for its build/runtime requirements"
+                GIT_FAILED=$((GIT_FAILED + 1))
             fi
         done
         log_success "Git repos: $GIT_UPDATED updated, $GIT_SKIPPED already latest, $GIT_FAILED failed ($GIT_TOTAL total)"
@@ -748,93 +744,94 @@ BUILD_UPDATED=0
 BUILD_SKIPPED=0
 BUILD_NOT_INSTALLED=0
 BUILD_FAILED=0
-for _bmod in "${ALL_MODULES[@]}"; do
-    _bpfx=$(_module_prefix "$_bmod")
-    _bnames_var="${_bpfx}_BUILD_NAMES"
-    declare -p "$_bnames_var" &>/dev/null || continue
-    declare -n _bnames="$_bnames_var"
-    # Tool-specific build commands (single source of truth shared with install).
-    if declare -p "${_bpfx}_BUILD_CMDS" &>/dev/null; then
-        declare -n _bcmds="${_bpfx}_BUILD_CMDS"
-    else
-        declare -gA _UPDATE_NO_BCMDS=()
-        declare -n _bcmds=_UPDATE_NO_BCMDS
-    fi
-    for _bname in "${_bnames[@]}"; do
-        _bdir="$GITHUB_TOOL_DIR/$_bname"
-        [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1)); continue; }
-        # A tree that predates the toolkit, or that it never recorded, is the user's:
-        # the reset below discards uncommitted edits.
-        if ! _version_known "$_bname" || _is_preexisting "$_bname"; then
-            log_debug "Skipping build $_bname (not installed by the toolkit)"
-            BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1))
-            continue
-        fi
-        _bdir_escaped="$(_escape_single_quoted "$_bdir")"
-        # Build trees are patched in place (yafu/honggfuzz/pemcrack sed the Makefile),
-        # so a plain pull fails on the dirty tree; reset to upstream and let the rebuild
-        # reapply the idempotent patch before giving up.
-        _pull_out=""
-        _src_state="failed"
-        if _pull_out=$(_as_builder "LC_ALL=C git $_GIT_STALL_OPTS -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
-            if echo "$_pull_out" | grep -q "Already up to date"; then _src_state="skip"; else _src_state="changed"; fi
-        elif _as_builder "git $_GIT_STALL_OPTS -C '$_bdir_escaped' fetch origin" >> "$LOG_FILE" 2>&1 \
-            && _as_builder "git -C '$_bdir_escaped' reset --hard '@{u}'" >> "$LOG_FILE" 2>&1; then
-            log_debug "Reset $_bname to upstream (build patch reapplied by rebuild)"
-            _src_state="changed"
-        fi
-
-        if [[ "$_src_state" == "skip" ]]; then
-            if setup_source_build_bins "$_bname" >> "$LOG_FILE" 2>&1; then
-                log_debug "Already latest: $_bname"
-                BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
-            else
-                log_warn "Failed to expose built executable: $_bname"
-                BUILD_FAILED=$((BUILD_FAILED + 1))
-            fi
-        elif [[ "$_src_state" == "failed" ]]; then
-            log_warn "Failed to update: $_bname"
-            BUILD_FAILED=$((BUILD_FAILED + 1))
+if [[ "$SKIP_GIT" == "true" ]]; then
+    log_warn "Skipping build-from-source update (--skip-git)"
+else
+    for _bmod in "${ALL_MODULES[@]}"; do
+        _bpfx=$(_module_prefix "$_bmod")
+        _bnames_var="${_bpfx}_BUILD_NAMES"
+        declare -p "$_bnames_var" &>/dev/null || continue
+        declare -n _bnames="$_bnames_var"
+        # Tool-specific build commands (single source of truth shared with install).
+        if declare -p "${_bpfx}_BUILD_CMDS" &>/dev/null; then
+            declare -n _bcmds="${_bpfx}_BUILD_CMDS"
         else
-                log_success "Updated source: $_bname — attempting rebuild..."
-                # Only a successful rebuild counts as updated; a failed or missing
-                # rebuild is a failure, since the binary is now stale.
-                _rebuilt=0
-                _attempted=0
-                _bcmd="${_bcmds[$_bname]:-}"
-                if [[ -n "$_bcmd" ]]; then
-                    # The install-time command, passed verbatim: escaping would corrupt
-                    # the quotes in its idempotent sed patches (yafu, pemcrack).
-                    _attempted=1
-                    if (cd "$_bdir" && _as_builder "$_bcmd") >> "$LOG_FILE" 2>&1; then
-                        _rebuilt=1
-                    fi
-                elif [[ -f "$_bdir/Makefile" ]]; then
-                    _attempted=1
-                    if _as_builder "make -C '$_bdir_escaped' -j$(nproc 2>/dev/null || echo 2)" >> "$LOG_FILE" 2>&1; then
-                        _rebuilt=1
-                    fi
-                elif [[ -f "$_bdir/Cargo.toml" ]]; then
-                    _attempted=1
-                    if _as_builder "cd '$_bdir_escaped' && $(_builder_cmd cargo) build --release" >> "$LOG_FILE" 2>&1; then
-                        _rebuilt=1
-                    fi
-                fi
-                if [[ "$_rebuilt" == 1 ]] && setup_source_build_bins "$_bname" >> "$LOG_FILE" 2>&1; then
-                    log_success "Rebuilt: $_bname"
-                    BUILD_UPDATED=$((BUILD_UPDATED + 1))
-                    _track_update "$_bname" "source" "HEAD"
+            declare -gA _UPDATE_NO_BCMDS=()
+            declare -n _bcmds=_UPDATE_NO_BCMDS
+        fi
+        for _bname in "${_bnames[@]}"; do
+            _bdir="$GITHUB_TOOL_DIR/$_bname"
+            [[ -d "$_bdir/.git" ]] || { log_debug "Skipping build $_bname (not cloned)"; BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1)); continue; }
+            # A tree that predates the toolkit, or that it never recorded, is the user's.
+            if ! _version_known "$_bname" || _is_preexisting "$_bname"; then
+                log_debug "Skipping build $_bname (not installed by the toolkit)"
+                BUILD_NOT_INSTALLED=$((BUILD_NOT_INSTALLED + 1))
+                continue
+            fi
+            _bdir_escaped="$(_escape_single_quoted "$_bdir")"
+            # Build patches can make pull fail; preserve them and any user edits with
+            # the same stash/reset fallback used for ordinary Git installs.
+            _pull_out=""
+            _src_state="failed"
+            if _pull_out=$(_as_builder "LC_ALL=C git $_GIT_STALL_OPTS -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
+                if echo "$_pull_out" | grep -q "Already up to date"; then _src_state="skip"; else _src_state="changed"; fi
+            elif _git_safe_reset_to_remote "$_bdir" "$LOG_FILE"; then
+                log_debug "Updated $_bname to upstream with local edits preserved"
+                _src_state="changed"
+            fi
+
+            if [[ "$_src_state" == "skip" ]]; then
+                if setup_source_build_bins "$_bname" >> "$LOG_FILE" 2>&1; then
+                    log_debug "Already latest: $_bname"
+                    BUILD_SKIPPED=$((BUILD_SKIPPED + 1))
                 else
-                    if [[ "$_attempted" == 1 ]]; then
-                        log_warn "Rebuild failed for $_bname — source updated but binary may be stale"
-                    else
-                        log_warn "No rebuild recipe matched for $_bname (no Makefile/Cargo.toml) — binary not rebuilt"
-                    fi
+                    log_warn "Failed to expose built executable: $_bname"
                     BUILD_FAILED=$((BUILD_FAILED + 1))
                 fi
-        fi
+            elif [[ "$_src_state" == "failed" ]]; then
+                log_warn "Failed to update: $_bname"
+                BUILD_FAILED=$((BUILD_FAILED + 1))
+            else
+                    log_success "Updated source: $_bname — attempting rebuild..."
+                    # Only a successful rebuild counts as updated; a failed or missing
+                    # rebuild is a failure, since the binary is now stale.
+                    _rebuilt=0
+                    _attempted=0
+                    _bcmd="${_bcmds[$_bname]:-}"
+                    if [[ -n "$_bcmd" ]]; then
+                        # The install-time command, passed verbatim: escaping would corrupt
+                        # the quotes in its idempotent sed patches (yafu, pemcrack).
+                        _attempted=1
+                        if (cd "$_bdir" && _as_builder "$_bcmd") >> "$LOG_FILE" 2>&1; then
+                            _rebuilt=1
+                        fi
+                    elif [[ -f "$_bdir/Makefile" ]]; then
+                        _attempted=1
+                        if _as_builder "make -C '$_bdir_escaped' -j$(nproc 2>/dev/null || echo 2)" >> "$LOG_FILE" 2>&1; then
+                            _rebuilt=1
+                        fi
+                    elif [[ -f "$_bdir/Cargo.toml" ]]; then
+                        _attempted=1
+                        if _as_builder "cd '$_bdir_escaped' && $(_builder_cmd cargo) build --release" >> "$LOG_FILE" 2>&1; then
+                            _rebuilt=1
+                        fi
+                    fi
+                    if [[ "$_rebuilt" == 1 ]] && setup_source_build_bins "$_bname" >> "$LOG_FILE" 2>&1; then
+                        log_success "Rebuilt: $_bname"
+                        BUILD_UPDATED=$((BUILD_UPDATED + 1))
+                        _track_update "$_bname" "source" "HEAD"
+                    else
+                        if [[ "$_attempted" == 1 ]]; then
+                            log_warn "Rebuild failed for $_bname — source updated but binary may be stale"
+                        else
+                            log_warn "No rebuild recipe matched for $_bname (no Makefile/Cargo.toml) — binary not rebuilt"
+                        fi
+                        BUILD_FAILED=$((BUILD_FAILED + 1))
+                    fi
+            fi
+        done
     done
-done
+fi
 if [[ "$BUILD_UPDATED" -gt 0 || "$BUILD_FAILED" -gt 0 || "$BUILD_SKIPPED" -gt 0 ]]; then
     log_success "Build-from-source: $BUILD_UPDATED updated, $BUILD_SKIPPED already latest, $BUILD_NOT_INSTALLED skipped (not installed), $BUILD_FAILED failed"
     UPDATE_FAILURES=$((UPDATE_FAILURES + BUILD_FAILED))

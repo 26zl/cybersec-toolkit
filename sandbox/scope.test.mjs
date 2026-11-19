@@ -165,7 +165,7 @@ test('applyScope loads the rules as root and proves them from the tool user', as
   // /etc/hosts is read-only in the sandbox; the names were pinned when it was created.
   assert.equal(commands.some((command) => command.includes('/etc/hosts')), false);
   // The probe and the flush attempt run as the tool user: no --user flag.
-  assert.match(commands[3], /^exec sbx python3 -c /);
+  assert.match(commands[3], /^exec --workdir \/ sbx python3 -I -c /);
   assert.equal(calls[3].args.at(-1), '192.0.2.1');
   assert.equal(commands[4], 'exec sbx nft flush ruleset');
 });
@@ -182,10 +182,41 @@ test('applyScope fails when a step does not hold, so the launch stops', async ()
   );
   await assert.rejects(failing('nft list', () => 'chain output { policy accept; }'), /does not default to drop/);
   await assert.rejects(
-    failing('python3 -c', () => {
+    failing('python3 -I', () => {
       throw new Error('connected');
     }),
     /outside the scope \(192\.0\.2\.1\) was not rejected/,
   );
   await assert.rejects(failing('nft flush', () => ''), /tool user was able to flush/);
+});
+
+test('resolveScope refuses names that resolve to loopback, link-local or mapped addresses', async () => {
+  const to = (...addresses) => async () => addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 }));
+  const scope = scopeOf([{ host: 'web.example' }]);
+  for (const bad of ['127.0.0.1', '169.254.169.254', '0.0.0.0', '224.0.0.1', '::1', 'fe80::1', '::ffff:10.0.0.1']) {
+    await assert.rejects(resolveScope(scope, to(bad)), /resolves to/, bad);
+  }
+  // The same address listed literally in the scope is the operator's own decision.
+  const listed = scopeOf([{ host: 'web.example' }, { host: '127.0.0.1' }]);
+  const resolved = await resolveScope(listed, to('127.0.0.1'));
+  assert.equal(resolved.pins[0][0], '127.0.0.1');
+  // Private ranges are legitimate targets.
+  await resolveScope(scope, to('10.10.11.5'));
+});
+
+test('resolveScope caps the answers per name and orders them deterministically', async () => {
+  const many = async () => Array.from({ length: 200 }, (_, i) => ({ address: `198.51.${i}.7`, family: 4 }));
+  await assert.rejects(resolveScope(scopeOf([{ host: 'web.example' }]), many), /at most 16/);
+  const two = async () => [{ address: '198.51.100.9', family: 4 }, { address: '198.51.100.7', family: 4 }];
+  const resolved = await resolveScope(scopeOf([{ host: 'web.example' }]), two);
+  assert.deepEqual(resolved.targets.map((t) => t.address), ['198.51.100.7', '198.51.100.9']);
+});
+
+test('applyScope warns when no probe address lies outside the scope', async () => {
+  const scope = await resolveScope(scopeOf([{ host: '0.0.0.0/1' }, { host: '128.0.0.0/1' }]), labResolver);
+  const warnings = [];
+  const { run, calls } = fakeSandbox();
+  await applyScope({ run, container: 'sbx', scope, warn: (m) => warnings.push(m) });
+  assert.equal(calls.some(({ args }) => args.includes('python3')), false);
+  assert.match(warnings[0], /not tested/);
 });

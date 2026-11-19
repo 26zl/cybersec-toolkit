@@ -14,7 +14,11 @@ The MCP server hardcodes data that's also defined in bash. Drift breaks AI tool 
 | `tools_db.py` → `PIPX_BIN_NAMES` | `scripts/verify.sh` → `_PIPX_BIN_NAMES` |
 | `tools_db.py` → `MODULE_DESCRIPTIONS` | `lib/common.sh` → `MODULE_DESCRIPTIONS` |
 | `tools_db.py` → `DOCKER_IMAGES` | `lib/installers.sh` → `ALL_DOCKER_IMAGES` |
+| `tools_db.py` → `NPM_BIN_NAMES` | `lib/installers.sh` → `_NPM_BIN_NAMES` |
+| `tools_db.py` → `CARGO_BIN_NAMES` | `lib/installers.sh` → `_CARGO_BIN_NAMES` |
 | `profiles.py` → `PROFILES` | `profiles/*.conf` files |
+
+The validator also checks `TOOL_ALIASES`, C2 tools, the CVE advisor, the MCP toolchain and audit constants. Read its output for the full list.
 
 ## Run the validator
 
@@ -38,6 +42,11 @@ Output:
 
 `scripts/verify.sh` → `_PIPX_BIN_NAMES["pypi-name"]="bin-name"` →
 `mcp_server/tools_db.py` → add to `PIPX_BIN_NAMES` dict.
+
+### Added an npm or cargo tool with mismatched binary name
+
+`lib/installers.sh` → `_NPM_BIN_NAMES` / `_CARGO_BIN_NAMES` →
+`mcp_server/tools_db.py` → add to `NPM_BIN_NAMES` / `CARGO_BIN_NAMES`.
 
 ### Added a new module
 

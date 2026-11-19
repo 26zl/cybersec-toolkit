@@ -167,20 +167,23 @@ to `kata()`.
 | `CYBERSEC_SANDBOX_ALLOW_UNSAFE_RUNTIME` | `0` | `1` accepts a non-Kata runtime. Startup refuses one otherwise, and warns loudly when accepted: there is no VM boundary. |
 | `CYBERSEC_SANDBOX_NETWORK` | Docker default bridge | `none` for an offline VM, or a named Docker network. |
 | `CYBERSEC_SANDBOX_SCOPE` | unset | Absolute path of a scope file. Its destinations become the only ones the VM can connect to; startup stops if that cannot be put in force. See [Network scope](#network-scope). |
-| `CYBERSEC_SANDBOX_WORKSPACE` | unset | Absolute host directory to mount at `/workspace`. The only host path the VM can see. The host root, system trees, your home directory itself and any directory inside this checkout are refused. |
-| `CYBERSEC_SANDBOX_WORKSPACE_RO` | `0` | `1` mounts the workspace read-only. |
-| `CYBERSEC_SANDBOX_MEMORY` | `2g` | Guest memory. |
+| `CYBERSEC_SANDBOX_WORKSPACE` | unset | Absolute host directory to mount at `/workspace`. The only host path the VM can see. The host root, system trees, your home directory itself and any directory inside this checkout are refused, as is one that is or contains the host audit log directory or the directory of `CYBERSEC_SANDBOX_SCOPE` (a sibling subdirectory is accepted), or that overlaps `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`, `~/.docker`, `~/.config/gcloud`, `~/.claude`, `~/.codex` or `~/.local/state/cybersec-tools-mcp`. It is mounted by its resolved path with `--mount`. |
+| `CYBERSEC_SANDBOX_WORKSPACE_RO` | `0` | `1`/`true`/`yes`/`on` mounts the workspace read-only; `0`/`false`/`no`/`off` disables it (case-insensitive). Unknown non-empty values enable it with a warning. |
+| `CYBERSEC_SANDBOX_MEMORY` | `2g` | Guest memory: a number with an optional `k`/`m`/`g`/`t` unit and optional `i`/`b` suffix (decimals allowed). |
 | `CYBERSEC_SANDBOX_CPUS` | `2` | Guest vCPUs. |
 | `CYBERSEC_SANDBOX_PIDS_LIMIT` | `512` | Process limit inside the guest. |
-| `CYBERSEC_SANDBOX_SCRATCH_SIZE` | `1g` | Size cap of each writable tmpfs (`/tmp`, `/var/tmp`, `$HOME`, the audit log dir, and `/workspace` when none is mounted). |
-| `CYBERSEC_SANDBOX_USER` | `10001:10001` | Guest uid:gid; must match the image. |
+| `CYBERSEC_SANDBOX_SCRATCH_SIZE` | `1g` | Size cap (same format as the memory setting) of each writable tmpfs (`/tmp`, `/var/tmp`, `$HOME`, the audit log dir, and `/workspace` when none is mounted). |
+| `CYBERSEC_SANDBOX_USER` | `10001:10001` | Guest user name or uid, optionally `:group`; must exist in the image. `root` and uid 0 are refused. |
 | `CYBERSEC_SANDBOX_CAP_ADD` | none | Comma-separated capabilities added to the container. The guest user is unprivileged and `no-new-privileges` is set, so they stay in the bounding set and do not enable raw sockets for it. |
 
-`CYBERSEC_MCP_ALLOW_EXTERNAL`, `CYBERSEC_MCP_ALLOW_SCRIPTS` and
+`docker info` and image inspection time out after 30 seconds, which stops the launch with an error. `CYBERSEC_MCP_ALLOW_EXTERNAL`, `CYBERSEC_MCP_ALLOW_SCRIPTS`,
+`CYBERSEC_MCP_ALLOW_USBKILL`, `CYBERSEC_MCP_ALLOW_NIPE` and
 `CYBERSEC_MCP_REDACT_OUTPUT` are forwarded into the VM. Host-specific paths such as `CYBERSEC_MCP_AUDIT_LOG` and
 `CYBERSEC_MCP_VENVS_DIR` are not: they are baked into the image and must keep
 pointing at guest paths. `CYBERSEC_MCP_AUDIT_LOG` still applies on the host, where
 it names the file the mirrored records are appended to.
+
+The usbkill/Nipe switches enable their server policy routes and are disabled by default. They do not expose host USB devices, grant root/network privileges, select host mode or bypass the VM scope firewall. Host-control operations affect the execution environment: guest/remote operations act there, and host operations require an explicitly selected host session with the necessary OS permissions. See [host-control functionality](TOOL_EXECUTION.md#host-control-functionality).
 
 ## Working with files
 
@@ -256,6 +259,7 @@ How it is enforced:
   the scope says `"dns": true`; that opens port 53 to the resolvers the guest is
   configured with. A resolver is a channel to anywhere, so leave it closed when
   the pinned names are enough.
+- A host name in the scope that resolves to a loopback, link-local, unspecified, multicast or IPv4-mapped address is refused unless that address is listed literally, and a name may resolve to at most 16 addresses.
 - Startup fails closed. A scope file that does not parse, a name that does not
   resolve, rules that do not load, or a probe showing that an address outside
   the scope still answers stops the launch and removes the VM.
@@ -276,6 +280,8 @@ What it does not cover:
 A public target in scope still needs `CYBERSEC_MCP_ALLOW_EXTERNAL=1`: the policy
 check and the firewall answer different questions. `node sandbox/scope-smoke.mjs`
 proves the enforcement against a throwaway target on this host.
+`CYBERSEC_SMOKE_TIMEOUT_MS` (default `120000`) sets the time limit of the
+sandbox smoke test, `sandbox/smoke.mjs`.
 
 The Docker network is the outer layer, and works without a scope file too:
 

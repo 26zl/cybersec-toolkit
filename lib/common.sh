@@ -22,13 +22,13 @@ fi
 
 COLOR_ENABLED=false
 if [[ -t 1 && "${TERM:-dumb}" != "dumb" && -z "${NO_COLOR+x}" ]]; then
-    RED='\033[38;5;88m'
-    GREEN='\033[38;5;71m'
-    YELLOW='\033[38;5;136m'
-    BLUE='\033[38;5;67m'
-    CYAN='\033[38;5;73m'
-    BOLD='\033[1m'
-    NC='\033[0m'
+    RED=$'\033[38;5;88m'
+    GREEN=$'\033[38;5;71m'
+    YELLOW=$'\033[38;5;136m'
+    BLUE=$'\033[38;5;67m'
+    CYAN=$'\033[38;5;73m'
+    BOLD=$'\033[1m'
+    NC=$'\033[0m'
     COLOR_ENABLED=true
 else
     RED=""
@@ -52,6 +52,9 @@ if [[ -f "${SCRIPT_DIR:-.}/VERSION" ]]; then
     read -r INSTALLER_VERSION < "${SCRIPT_DIR:-.}/VERSION" || true
 fi
 # Validate PARALLEL_JOBS: must be a positive integer, clamped to 1-16
+if [[ "$PARALLEL_JOBS" =~ ^[0-9]+$ ]]; then
+    PARALLEL_JOBS=$((10#$PARALLEL_JOBS))
+fi
 if [[ ! "$PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [[ "$PARALLEL_JOBS" -lt 1 ]]; then
     PARALLEL_JOBS=4
 elif [[ "$PARALLEL_JOBS" -gt 16 ]]; then
@@ -117,10 +120,16 @@ _signal_job() {
 # is inherited by its jobs), so the lock lasts until the run and its children end.
 # Best effort where flock (util-linux) is unavailable.
 _acquire_run_lock() {
-    command -v flock &>/dev/null || return 0
+    if ! command -v flock &>/dev/null; then
+        log_warn "No run lock (flock unavailable) — do not run installers concurrently"
+        return 0
+    fi
     local _lock="${SCRIPT_DIR}/.versions.run.lock"
     _unlink_if_symlink "$_lock"
-    { exec {_RUN_LOCK_FD}>>"$_lock"; } 2>/dev/null || return 0
+    if ! { exec {_RUN_LOCK_FD}>>"$_lock"; } 2>/dev/null; then
+        log_warn "No run lock (lock file not writable) — do not run installers concurrently"
+        return 0
+    fi
     if ! flock -n "$_RUN_LOCK_FD"; then
         log_error "Another install, update or remove run is active (lock: $_lock) — wait for it to finish"
         exit 1
@@ -242,11 +251,23 @@ _list_sessions() {
     echo ""
 }
 
+# _normalize_bool NAME — canonicalise a boolean variable to true/false.
+# Accepts true/1/yes/on and false/0/no/off/empty (case-insensitive); anything else is
+# a usage error, so a mistyped security flag cannot silently stay off.
+_normalize_bool() {
+    local _name="$1" _val="${!1:-}"
+    case "${_val,,}" in
+        true|1|yes|on)       printf -v "$_name" '%s' true ;;
+        false|0|no|off|"")   printf -v "$_name" '%s' false ;;
+        *) log_error "Invalid value for $_name: '$_val' (use true or false)"; exit 2 ;;
+    esac
+}
+
 # Logging
 log_message() {
-    echo -e "$1"
+    printf '%s\n' "$1"
     if [[ -n "$LOG_FILE" && "$LOG_FILE" != "/dev/null" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - $(echo -e "$1" | sed 's/\x1b\[[0-9;]*m//g')" >> "$LOG_FILE"
+        printf '%(%Y-%m-%d %H:%M:%S)T - %s\n' -1 "$(printf '%s' "$1" | sed 's/\x1b\[[0-9;]*m//g')" >> "$LOG_FILE"
     fi
 }
 
@@ -278,9 +299,6 @@ disable_debug_trace() {
     fi
 }
 
-# _init_log_file — safely initialize a log file with disk-full fallback.
-# Sets LOG_FILE to /dev/null if the file cannot be created.
-# Usage: _init_log_file "/path/to/logfile.log"
 # _unlink_if_symlink — the checkout is user-owned: a link planted at a fixed path root
 # writes to (log, lock files) would redirect that write onto any file.
 _unlink_if_symlink() {
@@ -288,6 +306,9 @@ _unlink_if_symlink() {
     return 0
 }
 
+# _init_log_file — safely initialize a log file with disk-full fallback.
+# Sets LOG_FILE to /dev/null if the file cannot be created.
+# Usage: _init_log_file "/path/to/logfile.log"
 _init_log_file() {
     local path="$1"
     _unlink_if_symlink "$path"
@@ -569,11 +590,15 @@ _collect_parallel_results() {
             ok)            track_version "$_rname" "$method" "$_rver" ;;
             ok:depwarn)    track_version "$_rname" "$method" "$_rver"
                            _par_dep_warns=$((_par_dep_warns + 1)) ;;
+            ok:setupfail)  track_version "$_rname" "$method" "$_rver"
+                           _par_failed=$((_par_failed + 1)) ;;
             skip)          _par_skipped=$((_par_skipped + 1))
                            _track_already_present "$_rname" "$method" ;;
             skip:depwarn)  _par_skipped=$((_par_skipped + 1))
                            _par_dep_warns=$((_par_dep_warns + 1))
                            _track_already_present "$_rname" "$method" ;;
+            skip:setupfail) _track_already_present "$_rname" "$method"
+                            _par_failed=$((_par_failed + 1)) ;;
             fail)          _par_failed=$((_par_failed + 1)) ;;
         esac
     done
@@ -582,12 +607,27 @@ _collect_parallel_results() {
 
 # Distro detection
 detect_distro() {
-    if [[ -f /etc/os-release ]]; then
-        . /etc/os-release
-        DISTRO_ID="${ID,,}"
-        DISTRO_ID_LIKE="${ID_LIKE:-}"
-        DISTRO_ID_LIKE="${DISTRO_ID_LIKE,,}"
-        DISTRO_NAME="${PRETTY_NAME:-$ID}"
+    local _osr="${CYBERSEC_OS_RELEASE:-/etc/os-release}"
+    if [[ -f "$_osr" ]]; then
+        # The file is read as data and never evaluated: the path may come from the environment.
+        local _id="" _like="" _name="" _pretty="" _k _v
+        while IFS='=' read -r _k _v || [[ -n "$_k" ]]; do
+            _v="${_v%$'\r'}"
+            if [[ "$_v" == \"*\" || "$_v" == \'*\' ]] && [[ ${#_v} -ge 2 ]]; then
+                _v="${_v:1:${#_v}-2}"
+            fi
+            case "$_k" in
+                ID) _id="$_v" ;;
+                ID_LIKE) _like="$_v" ;;
+                NAME) _name="$_v" ;;
+                PRETTY_NAME) _pretty="$_v" ;;
+            esac
+        done < "$_osr"
+        _name="${_pretty:-${_name:-Linux}}"
+        DISTRO_ID="${_id:-linux}"
+        DISTRO_ID="${DISTRO_ID,,}"
+        DISTRO_ID_LIKE="${_like,,}"
+        DISTRO_NAME="${_name:-Linux}"
     elif command -v lsb_release &>/dev/null; then
         DISTRO_ID="$(lsb_release -si | tr '[:upper:]' '[:lower:]')"
         DISTRO_NAME="$(lsb_release -sd)"
@@ -985,12 +1025,6 @@ check_root() {
     fi
 }
 
-# _as_builder — run a command as $SUDO_USER instead of root (privilege dropping).
-# Build/download steps run as the original user; install/symlink steps stay as root.
-# Falls back to running as root when:
-#   - SUDO_USER is not set (direct root login / Docker)
-#   - Running on Termux (no root)
-# Usage: _as_builder "go install github.com/foo/bar@latest"
 # _strict_refuses_root_bootstrap — in strict mode (--production/--require-checksums), an
 # unsigned curl-pipe bootstrap must not run when _as_builder would run it as root.
 _strict_refuses_root_bootstrap() {
@@ -1001,6 +1035,12 @@ _strict_refuses_root_bootstrap() {
     return 0
 }
 
+# _as_builder — run a command as $SUDO_USER instead of root (privilege dropping).
+# Build/download steps run as the original user; install/symlink steps stay as root.
+# Falls back to running as root when:
+#   - SUDO_USER is not set (direct root login / Docker)
+#   - Running on Termux (no root)
+# Usage: _as_builder "go install github.com/foo/bar@latest"
 _as_builder() {
     if [[ "$PKG_MANAGER" == "pkg" ]] || [[ -z "${SUDO_USER:-}" ]] || [[ "${SUDO_USER:-}" == "root" ]]; then
         bash -c "$1"; return $?
@@ -1241,11 +1281,14 @@ _git_safe_reset_to_remote() {
 
     # Stash any local edits (including untracked) so reset --hard doesn't
     # discard real user work. A clean tree makes this a no-op.
-    local _stashed=0 _stash_top=""
-    if _as_builder "git -C '$_repo_escaped' stash push -u -m 'cybersec-toolkit: auto-stash before update' --quiet" >> "$log_file" 2>&1; then
-        _stash_top=$(_as_builder "git -C '$_repo_escaped' stash list -n 1 --format='%s'") || true
-        [[ "$_stash_top" == *"cybersec-toolkit: auto-stash before update"* ]] && _stashed=1
+    local _stashed=0 _stash_before="" _stash_after=""
+    _stash_before=$(_as_builder "git -C '$_repo_escaped' rev-parse -q --verify refs/stash" 2>/dev/null) || true
+    if ! _as_builder "git -C '$_repo_escaped' stash push -u -m 'cybersec-toolkit: auto-stash before update' --quiet" >> "$log_file" 2>&1; then
+        log_warn "Could not stash local changes for $(basename "$repo_path") — leaving the repository as is"
+        return 1
     fi
+    _stash_after=$(_as_builder "git -C '$_repo_escaped' rev-parse -q --verify refs/stash" 2>/dev/null) || true
+    [[ -n "$_stash_after" && "$_stash_after" != "$_stash_before" ]] && _stashed=1
 
     if ! _as_builder "git $_GIT_STALL_OPTS -C '$_repo_escaped' fetch origin" >> "$log_file" 2>&1 \
         || ! _as_builder "git -C '$_repo_escaped' reset --hard '$_branch_escaped'" >> "$log_file" 2>&1; then
@@ -1256,6 +1299,7 @@ _git_safe_reset_to_remote() {
     if [[ "$_stashed" == "1" ]]; then
         if ! _as_builder "git -C '$_repo_escaped' stash pop --quiet" >> "$log_file" 2>&1; then
             log_warn "Stashed local changes remain for $(basename "$repo_path") — resolve with 'git -C $repo_path stash pop'"
+            return 1
         fi
     fi
     return 0
@@ -1797,5 +1841,5 @@ else
     # The builder's dir goes last: it is user-writable, and root must not resolve
     # tar/sha256sum/etc. from it.
     _BUILDER_CARGO="$(_builder_home)/.cargo/bin"
-    export PATH="/usr/local/bin:$HOME/.cargo/bin:$PATH:${_BUILDER_CARGO}"
+    export PATH="/usr/local/bin:$PATH:$HOME/.cargo/bin:${_BUILDER_CARGO}"
 fi

@@ -61,7 +61,7 @@ def _check_evidence(where: str, item: object) -> list[str]:
     if not isinstance(item, dict):
         return [f"{where}: must be an object"]
     problems = [f"{where}: unknown key '{key}'" for key in sorted(set(item) - EVIDENCE_KEYS)]
-    if item.get("source") not in SOURCES:
+    if not isinstance(item.get("source"), str) or item["source"] not in SOURCES:
         problems.append(f"{where}: 'source' must be one of {', '.join(sorted(SOURCES))}")
     if not _timestamp(item.get("captured_at")):
         problems.append(f"{where}: 'captured_at' must be an ISO 8601 time with a zone")
@@ -71,7 +71,7 @@ def _check_evidence(where: str, item: object) -> list[str]:
         problems.append(f"{where}: needs an 'excerpt', the 'sha256' of the raw data, or both")
     if "sha256" in item and not (isinstance(item["sha256"], str) and SHA256.fullmatch(item["sha256"])):
         problems.append(f"{where}: 'sha256' must be 64 lower-case hex digits")
-    if item.get("source") in {"run_tool", "run_pipeline", "run_script"} and not _text(item.get("command")):
+    if item.get("source") in ("run_tool", "run_pipeline", "run_script") and not _text(item.get("command")):
         problems.append(f"{where}: evidence from a tool needs the 'command' that produced it")
     return problems
 
@@ -89,12 +89,16 @@ def check_finding(index: int, finding: object) -> list[str]:
         if not _text(finding.get(key)):
             problems.append(f"{where}: '{key}' is required")
     kind, status = finding.get("kind"), finding.get("status")
-    if kind not in KINDS:
+    if not isinstance(kind, str) or kind not in KINDS:
         problems.append(f"{where}: 'kind' must be one of {', '.join(sorted(KINDS))}")
-    if status not in STATUSES:
+    if not isinstance(status, str) or status not in STATUSES:
         problems.append(f"{where}: 'status' must be one of {', '.join(sorted(STATUSES))}")
-    if "severity" in finding and finding["severity"] not in SEVERITIES:
+    severity = finding.get("severity")
+    if "severity" in finding and (not isinstance(severity, str) or severity not in SEVERITIES):
         problems.append(f"{where}: 'severity' must be one of {', '.join(sorted(SEVERITIES))}")
+
+    kind = kind if isinstance(kind, str) else ""
+    status = status if isinstance(status, str) else ""
 
     evidence = finding.get("evidence")
     if not isinstance(evidence, list) or not evidence:
@@ -102,7 +106,7 @@ def check_finding(index: int, finding: object) -> list[str]:
         evidence = []
     for number, item in enumerate(evidence, 1):
         problems.extend(_check_evidence(f"{where} evidence {number}", item))
-    sources = {item.get("source") for item in evidence if isinstance(item, dict)}
+    sources = {item["source"] for item in evidence if isinstance(item, dict) and isinstance(item.get("source"), str)}
 
     # What the target says about itself is a lead. It becomes an observation when a test shows it.
     if sources and sources <= {"target_claim"} and status in {"observed", "confirmed"}:
@@ -145,6 +149,8 @@ def check_file(path: Path) -> tuple[list[object], list[str]]:
         findings = load(path)
     except (OSError, json.JSONDecodeError) as exc:
         return [], [f"{path}: cannot be read as JSON or JSON Lines ({exc})"]
+    if not findings:
+        return [], [f"{path}: holds no findings"]
     problems: list[str] = []
     seen: set[str] = set()
     for index, finding in enumerate(findings):

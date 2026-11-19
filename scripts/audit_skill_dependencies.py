@@ -9,7 +9,6 @@ import importlib.util
 import json
 import re
 import sys
-import sysconfig
 from collections import defaultdict
 from pathlib import Path
 
@@ -17,13 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / ".claude" / "skills"
 DEFAULT_REQUIREMENTS = SKILLS_DIR / "requirements.txt"
 
-STDLIB = set(getattr(sys, "stdlib_module_names", ()))
-# Fallback for Python < 3.10 (no sys.stdlib_module_names): match a module's file
-# origin against the interpreter's stdlib directories so pure-Python stdlib
-# modules (json/re/...) are not misclassified as third-party.
-_STDLIB_DIRS = tuple(
-    p for p in {sysconfig.get_paths().get("stdlib"), sysconfig.get_paths().get("platstdlib")} if p
-)
+STDLIB = set(sys.stdlib_module_names)
 LOCAL_IMPORTS = {"mcp_server"}
 
 NON_PIP_IMPORTS = {
@@ -210,12 +203,7 @@ def is_stdlib(module: str) -> bool:
         return False
     if spec is None:
         return False
-    if spec.origin in {"built-in", "frozen"}:
-        return True
-    # Pure-Python stdlib module with a file origin (covers Python < 3.10 where
-    # STDLIB is empty). Anything under site-packages is third-party, not stdlib.
-    origin = spec.origin or ""
-    return bool(_STDLIB_DIRS) and origin.startswith(_STDLIB_DIRS) and "site-packages" not in origin
+    return spec.origin in {"built-in", "frozen"}
 
 
 def is_installed(module: str) -> bool:
@@ -234,11 +222,7 @@ def external_runtime_for_import(module: str) -> str:
 
 
 def expected_requirements(modules: list[dict]) -> list[str]:
-    packages = {
-        package
-        for item in modules
-        for package in item["packages"]
-    }
+    packages = {package for item in modules for package in item["packages"]}
     return sorted(packages, key=lambda value: normalize_package_name(value))
 
 
@@ -281,14 +265,8 @@ def write_requirements(path: Path, packages: list[str]) -> None:
 def diff_requirements(expected: list[str], declared: list[str]) -> tuple[list[str], list[str]]:
     expected_by_name = {normalize_package_name(package): package for package in expected}
     declared_by_name = {normalize_package_name(package): package for package in declared}
-    missing = [
-        expected_by_name[name]
-        for name in sorted(set(expected_by_name) - set(declared_by_name))
-    ]
-    extra = [
-        declared_by_name[name]
-        for name in sorted(set(declared_by_name) - set(expected_by_name))
-    ]
+    missing = [expected_by_name[name] for name in sorted(set(expected_by_name) - set(declared_by_name))]
+    extra = [declared_by_name[name] for name in sorted(set(declared_by_name) - set(expected_by_name))]
     return missing, extra
 
 
@@ -313,11 +291,13 @@ def audit(requirements_file: Path = DEFAULT_REQUIREMENTS) -> dict:
         try:
             imports = top_level_imports(script)
         except SyntaxError as exc:
-            syntax_errors.append({
-                "file": str(script.relative_to(ROOT)),
-                "line": exc.lineno or 0,
-                "message": exc.msg,
-            })
+            syntax_errors.append(
+                {
+                    "file": str(script.relative_to(ROOT)),
+                    "line": exc.lineno or 0,
+                    "message": exc.msg,
+                }
+            )
             continue
 
         for module in sorted(imports):
@@ -330,14 +310,16 @@ def audit(requirements_file: Path = DEFAULT_REQUIREMENTS) -> dict:
         installed = is_installed(module)
         packages = list(packages_for_import(module))
         external_runtime = external_runtime_for_import(module)
-        modules.append({
-            "module": module,
-            "packages": packages,
-            "external_runtime": external_runtime,
-            "installed": installed,
-            "script_count": len(files),
-            "examples": files[:5],
-        })
+        modules.append(
+            {
+                "module": module,
+                "packages": packages,
+                "external_runtime": external_runtime,
+                "installed": installed,
+                "script_count": len(files),
+                "examples": files[:5],
+            }
+        )
 
     expected = expected_requirements(modules)
     declared = parse_requirements(requirements_file)

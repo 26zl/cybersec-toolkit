@@ -1,0 +1,11 @@
+# Trust-critical paths named in SECURITY.md route review to the maintainer.
+/mcp_server/security.py @26zl
+/mcp_server/audit.py @26zl
+/mcp_server/sanitize.py @26zl
+/sandbox/ @26zl
+/scripts/agent-guard.sh @26zl
+/scripts/mcp-launch.sh @26zl
+/lib/installers.sh @26zl
+/install.sh @26zl
+/.github/ @26zl
+/SECURITY.md @26zl

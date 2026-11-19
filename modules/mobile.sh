@@ -3,16 +3,15 @@
 # Module: Mobile Security
 # Android/iOS application testing, APK analysis, device interaction
 
-MOBILE_PACKAGES=(adb smali scrcpy apksigner zipalign)
+MOBILE_PACKAGES=(adb apktool smali scrcpy apksigner zipalign)
 
 MOBILE_PIPX=(androguard apkleaks objection drozer qark apkid)
 
 MOBILE_GIT=(
-    "apktool=https://github.com/iBotPeaches/Apktool.git"
     "medusa-frida=https://github.com/Ch0pin/medusa.git"
 )
 
-MOBILE_GIT_NAMES=(apktool medusa-frida)
+MOBILE_GIT_NAMES=(medusa-frida)
 
 MOBILE_NPM=(apk-mitm rms-runtime-mobile-security)
 

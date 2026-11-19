@@ -39,3 +39,19 @@ manual_scripts/
 .DS_Store
 **/node_modules/
 .sandcastle/
+# Further credential and local-environment artefacts
+**/.venv/
+**/venv/
+**/*.key
+**/*.pfx
+**/*.kdbx
+**/.npmrc
+**/.netrc
+**/.pypirc
+**/id_rsa*
+**/id_ed25519*
+**/.aws/
+**/.ssh/
+**/.docker/
+**/.gnupg/
+docker-compose.override.yml

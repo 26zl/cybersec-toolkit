@@ -15,17 +15,27 @@ Use this skill when a vendored `.claude/skills/*/scripts/*.py` helper fails to i
 python3 scripts/audit_skill_dependencies.py
 ```
 
-1. For JSON output:
+2. For JSON output:
 
 ```bash
 python3 scripts/audit_skill_dependencies.py --json
 ```
 
-1. For CI-like behavior:
+3. For CI-like behavior:
 
 ```bash
 python3 scripts/audit_skill_dependencies.py --fail-on-missing
 ```
+
+## Keeping requirements current
+
+```bash
+python3 scripts/audit_skill_dependencies.py --check-declared       # CI gate (also in make validate)
+python3 scripts/audit_skill_dependencies.py --write-requirements   # regenerate .claude/skills/requirements.txt
+make curate                                                        # curation index + requirements together
+```
+
+Run `make curate` after adding a vendored helper script or a skill.
 
 ## Policy
 

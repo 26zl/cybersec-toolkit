@@ -8,8 +8,11 @@ and reports links that are confirmed dead — DNS failure, connection refused, o
 as "unverified" and do NOT fail the run, because external hosts routinely block
 bots or rate-limit rather than being gone.
 
+--internal checks relative file links and #anchors instead, offline and fast.
+
 Usage:
     python3 scripts/check_doc_links.py [--timeout N] [--path DIR]...
+    python3 scripts/check_doc_links.py --internal    # relative links + anchors; offline
     python3 scripts/check_doc_links.py --self-test   # offline; no network
 """
 
@@ -17,9 +20,13 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import http.client
 import re
+import socket
+import ssl
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -85,6 +92,99 @@ def classify(status: int | None, *, network_error: bool = False) -> str:
     return "unverified"
 
 
+_FENCE_RE = re.compile(r"(?ms)^[ ]{0,3}(`{3,}|~{3,}).*?^[ ]{0,3}\1[`~]*[ \t]*$|^[ ]{0,3}(`{3,}|~{3,}).*\Z")
+_INLINE_CODE_RE = re.compile(r"(`+)(?:(?!\1).)+?\1", re.DOTALL)
+_LINK_RE = re.compile(
+    r"!?\[(?:[^\[\]]|\[[^\]]*\])*\]\(\s*(<[^>\n]*>|[^)\s]*(?:\([^)\s]*\)[^)\s]*)*)(?:\s+[\"'][^\n]*?[\"'])?\s*\)"
+)
+_HEADING_RE = re.compile(r"(?m)^ {0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$")
+_HTML_ANCHOR_RE = re.compile(r"""<a\s[^>]*\b(?:name|id)=["']([^"']+)["']""", re.IGNORECASE)
+_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
+
+
+def strip_code(text: str) -> str:
+    """Blank out fenced and inline code so example links inside it are not checked."""
+    text = _FENCE_RE.sub("", text)
+    return _INLINE_CODE_RE.sub("", text)
+
+
+def slugify(heading: str) -> str:
+    """GitHub's heading-to-anchor rule: strip markup, lowercase, drop punctuation, spaces to hyphens."""
+    heading = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", heading)
+    heading = re.sub(r"[`*_~]|<[^>]+>", "", heading).strip().lower()
+    heading = re.sub(r"[^\w\- ]", "", heading)
+    return heading.replace(" ", "-")
+
+
+def anchors_of(text: str) -> set[str]:
+    """Anchors a Markdown file exposes: heading slugs (with GitHub's -N duplicate suffix) and HTML ids."""
+    seen: dict[str, int] = {}
+    out: set[str] = set(_HTML_ANCHOR_RE.findall(text))
+    for heading in _HEADING_RE.findall(strip_fences(text)):
+        slug = slugify(heading)
+        n = seen.get(slug, 0)
+        out.add(slug if n == 0 else f"{slug}-{n}")
+        seen[slug] = n + 1
+    return out
+
+
+def strip_fences(text: str) -> str:
+    return _FENCE_RE.sub("", text)
+
+
+def internal_problems(rel: str, text: str, root: Path, anchor_cache: dict[Path, set[str]]) -> list[str]:
+    """Broken relative file links and #anchors in one Markdown file."""
+    problems: list[str] = []
+    base = (root / rel).parent
+    for raw in _LINK_RE.findall(strip_code(text)):
+        target = raw.strip("<>")
+        if not target or _SCHEME_RE.match(target) or target.startswith(("//", "{", "$")):
+            continue
+        path_part, _, anchor = target.partition("#")
+        path_part = path_part.partition("?")[0]
+        dest = (
+            (root / rel)
+            if not path_part
+            else (root / path_part.lstrip("/") if path_part.startswith("/") else base / path_part)
+        )
+        dest = Path(*dest.parts) if dest.is_absolute() else dest
+        try:
+            dest = dest.resolve()
+            dest.relative_to(root.resolve())
+        except (OSError, ValueError):
+            problems.append(f"{rel}: link leaves the repository: {target}")
+            continue
+        if not dest.exists():
+            problems.append(f"{rel}: missing file: {target}")
+            continue
+        if anchor and dest.suffix == ".md" and dest.is_file():
+            if dest not in anchor_cache:
+                anchor_cache[dest] = anchors_of(dest.read_text(encoding="utf-8", errors="replace"))
+            if anchor.lower() not in anchor_cache[dest]:
+                problems.append(f"{rel}: missing anchor: {target}")
+    return problems
+
+
+def check_internal(paths: list[str]) -> int:
+    cache: dict[Path, set[str]] = {}
+    problems: list[str] = []
+    files = _tracked_markdown(paths)
+    for f in files:
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        problems += internal_problems(str(f.relative_to(ROOT)), text, ROOT, cache)
+    for problem in problems:
+        print(f"  ✗ {problem}")
+    print(
+        f"{len(problems)} broken internal link(s) in {len(files)} Markdown files"
+        if problems
+        else f"OK: internal links in {len(files)} Markdown files"
+    )
+    return 1 if problems else 0
+
+
 def _tracked_markdown(paths: list[str]) -> list[Path]:
     try:
         listing = subprocess.run(
@@ -118,13 +218,20 @@ def _probe(url: str, timeout: float) -> tuple[str, str]:
             return classify(resp.status), str(resp.status)
     except urllib.error.HTTPError as e:
         return classify(e.code), str(e.code)
-    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
-        reason = getattr(e, "reason", e)
-        # A DNS failure / refused connection is real rot; a timeout is ambiguous.
-        text = str(reason).lower()
-        if "timed out" in text or "timeout" in text:
-            return "unverified", f"timeout: {reason}"
-        return "dead", f"{type(e).__name__}: {reason}"
+    except Exception as e:  # noqa: BLE001 - one odd server response must not abort the run
+        return _classify_error(e)
+
+
+def _classify_error(exc: BaseException) -> tuple[str, str]:
+    """Only a name that does not resolve or a refused connection is proof of rot."""
+    reason = getattr(exc, "reason", exc)
+    detail = f"{type(exc).__name__}: {reason}"
+    if isinstance(reason, socket.gaierror):
+        # EAI_AGAIN and friends mean the resolver was unreachable, not that the name is gone.
+        return ("dead", detail) if reason.errno == socket.EAI_NONAME else ("unverified", detail)
+    if isinstance(reason, ConnectionRefusedError):
+        return "dead", detail
+    return "unverified", detail
 
 
 def run_self_test() -> int:
@@ -140,8 +247,7 @@ def run_self_test() -> int:
             fails += 1
 
     urls = extract_urls(
-        "See [x](https://a.example/path). Also https://b.test/y), and "
-        "`https://c.test/z`. Bare: https://d.test/w."
+        "See [x](https://a.example/path). Also https://b.test/y), and `https://c.test/z`. Bare: https://d.test/w."
     )
     check("extract trims markdown paren", "https://a.example/path" in urls, True)
     check("extract trims trailing dot", "https://d.test/w" in urls, True)
@@ -159,6 +265,32 @@ def run_self_test() -> int:
     check("403 -> unverified", classify(403), "unverified")
     check("dns error -> dead", classify(None, network_error=True), "dead")
 
+    unresolved = urllib.error.URLError(socket.gaierror(socket.EAI_NONAME, "Name or service not known"))
+    check("unresolvable name -> dead", _classify_error(unresolved)[0], "dead")
+    check("refused -> dead", _classify_error(urllib.error.URLError(ConnectionRefusedError(61, "refused")))[0], "dead")
+    resolver_down = urllib.error.URLError(socket.gaierror(-3, "again"))
+    check("resolver down -> unverified", _classify_error(resolver_down)[0], "unverified")
+    check("reset -> unverified", _classify_error(ConnectionResetError(104, "reset"))[0], "unverified")
+    check("remote disconnect -> unverified", _classify_error(http.client.RemoteDisconnected("closed"))[0], "unverified")
+    check("bad status line -> unverified", _classify_error(http.client.BadStatusLine("x"))[0], "unverified")
+    check("tls error -> unverified", _classify_error(ssl.SSLError("handshake"))[0], "unverified")
+    check("timeout -> unverified", _classify_error(TimeoutError("timed out"))[0], "unverified")
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        (root / "a.md").write_text('# Top\n\n## Sub Heading!\n\n## Sub Heading!\n<a id="hand"></a>\n', encoding="utf-8")
+        (root / "d").mkdir()
+        body = (
+            "[ok](a.md) [anchor](a.md#sub-heading) [dup](a.md#sub-heading-1) [html](a.md#hand) [self](#here)\n"
+            "[dir](d) [ext](https://x.test/y) [mail](mailto:a@b.c)\n"
+            "```\n[fenced](nope.md)\n```\n`[inline](nope.md)`\n## Here\n"
+        )
+        (root / "b.md").write_text(body, encoding="utf-8")
+        cache: dict[Path, set[str]] = {}
+        check("valid internal links pass", internal_problems("b.md", body, root, cache), [])
+        bad = internal_problems("b.md", "[m](nope.md) [a](a.md#nope) [s](#nowhere) [o](../../etc/passwd)", root, cache)
+        check("broken internal links are all reported", len(bad), 4)
+
     print()
     print("self-test: OK" if fails == 0 else f"self-test: {fails} FAILED")
     return fails
@@ -170,7 +302,11 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--path", action="append", default=[], help="Limit to repo-relative path prefixes")
     ap.add_argument("--self-test", action="store_true", help="Run offline logic checks and exit")
+    ap.add_argument("--internal", action="store_true", help="Check relative file links and #anchors (offline)")
     args = ap.parse_args()
+
+    if args.internal:
+        return check_internal(args.path)
 
     if args.self_test:
         return 1 if run_self_test() else 0

@@ -8,7 +8,8 @@
 #
 # Usage:
 #   scripts/sync-skills.sh            mirror .claude/skills/ -> .agents/skills/
-#   scripts/sync-skills.sh --check    report whether the mirror is out of date (exit 1 if so)
+#   scripts/sync-skills.sh --check    report whether the mirror is out of date (exit 1 if so,
+#                                     2 when it cannot compare, e.g. without diff)
 #
 set -uo pipefail
 
@@ -38,12 +39,18 @@ if [[ "$CHECK" -eq 1 ]]; then
         echo "out of date: $DST does not exist (run: scripts/sync-skills.sh)" >&2
         exit 1
     fi
-    if ! diff -r -q "$SRC" "$DST" >/dev/null 2>&1; then
-        echo "out of date: .agents/skills/ differs from .claude/skills/ (run: scripts/sync-skills.sh)" >&2
-        exit 1
+    # A missing or failing diff must not be reported as drift.
+    if ! command -v diff >/dev/null 2>&1; then
+        echo "error: --check needs diff (install diffutils)" >&2
+        exit 2
     fi
-    echo "up to date: .agents/skills/ matches .claude/skills/"
-    exit 0
+    diff -r -q "$SRC" "$DST" >/dev/null 2>&1
+    case $? in
+        0) echo "up to date: .agents/skills/ matches .claude/skills/"; exit 0 ;;
+        1) echo "out of date: .agents/skills/ differs from .claude/skills/ (run: scripts/sync-skills.sh)" >&2
+           exit 1 ;;
+        *) echo "error: could not compare $SRC with $DST" >&2; exit 2 ;;
+    esac
 fi
 
 mkdir -p "$DST"

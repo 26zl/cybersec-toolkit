@@ -17,20 +17,26 @@ def _editable_project_root() -> Path | None:
     stale copied module after local edits.
     """
     package_file = Path(__file__).resolve()
-    for parent in package_file.parents:
-        for direct_url in parent.glob("cybersec_tools_mcp-*.dist-info/direct_url.json"):
-            try:
-                data = json.loads(direct_url.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if not data.get("dir_info", {}).get("editable"):
-                continue
-            parsed = urlparse(data.get("url", ""))
-            if parsed.scheme != "file":
-                continue
-            candidate = Path(unquote(parsed.path))
-            if (candidate / "pyproject.toml").is_file() and (candidate / "server.py").is_file():
-                return candidate
+    # Only the directory that holds the installed distribution is trusted; a dist-info
+    # planted in any other ancestor must not redirect the package path.
+    site_dir = next(
+        (parent for parent in package_file.parents if parent.name in ("site-packages", "dist-packages")), None
+    )
+    if site_dir is None:
+        return None
+    for direct_url in site_dir.glob("cybersec_tools_mcp-*.dist-info/direct_url.json"):
+        try:
+            data = json.loads(direct_url.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not data.get("dir_info", {}).get("editable"):
+            continue
+        parsed = urlparse(data.get("url", ""))
+        if parsed.scheme != "file":
+            continue
+        candidate = Path(unquote(parsed.path))
+        if (candidate / "pyproject.toml").is_file() and (candidate / "server.py").is_file():
+            return candidate
     return None
 
 

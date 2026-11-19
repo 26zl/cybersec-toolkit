@@ -19,6 +19,8 @@
 #   CYBERSEC_SANDBOX_MODE        (default: kata) — kata | local
 #   CYBERSEC_MCP_ALLOW_EXTERNAL  (default: 0)    — allow external network targets
 #   CYBERSEC_MCP_ALLOW_SCRIPTS   (default: 0)    — enable run_script (outside the policy layer)
+#   CYBERSEC_MCP_ALLOW_USBKILL   (default: 0)    — enable usbkill host-control operations
+#   CYBERSEC_MCP_ALLOW_NIPE      (default: 0)    — enable Nipe host-network operations
 #   CYBERSEC_INSTALLER_ROOT      (optional)      — override repo root for tools_config.json (--local only)
 #
 # See docs/SANDBOX.md for host prerequisites and sandbox configuration.
@@ -29,6 +31,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 export CYBERSEC_MCP_ALLOW_EXTERNAL="${CYBERSEC_MCP_ALLOW_EXTERNAL:-0}"
 export CYBERSEC_MCP_ALLOW_SCRIPTS="${CYBERSEC_MCP_ALLOW_SCRIPTS:-0}"
+export CYBERSEC_MCP_ALLOW_USBKILL="${CYBERSEC_MCP_ALLOW_USBKILL:-0}"
+export CYBERSEC_MCP_ALLOW_NIPE="${CYBERSEC_MCP_ALLOW_NIPE:-0}"
 
 usage_error() {
     echo "Usage: mcp-launch.sh [--kata|--local]" >&2
@@ -36,6 +40,10 @@ usage_error() {
 }
 
 launch_local() {
+    command -v uv >/dev/null 2>&1 || {
+        echo "MCP local mode requires uv; install it from https://docs.astral.sh/uv/ (see mcp_server/README.md)." >&2
+        exit 1
+    }
     echo "MCP local mode: tools execute with this host user's permissions." >&2
     # Recorded in the audit log's server_start record so the trail shows no VM boundary.
     export CYBERSEC_SANDBOX_MODE=local
@@ -72,7 +80,12 @@ MODE="${CYBERSEC_SANDBOX_MODE:-kata}"
 case "${1:-}" in
     --local) MODE="local"; shift ;;
     --kata)  MODE="kata";  shift ;;
-    -h|--help) echo "Usage: mcp-launch.sh [--kata|--local]"; exit 0 ;;
+    -h|--help)
+        echo "Usage: mcp-launch.sh [--kata|--local]"
+        echo "  --kata   run the server inside a Kata VM (default; Linux with KVM)"
+        echo "  --local  run the server as the host user (needs uv)"
+        echo "Default mode comes from CYBERSEC_SANDBOX_MODE (kata | local)."
+        exit 0 ;;
     "")      ;;
     *)       usage_error ;;
 esac

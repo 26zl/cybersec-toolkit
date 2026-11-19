@@ -68,6 +68,16 @@ declare -gA PWN_BUILD_CMDS=(
     [QueenSono]="go build -o QueenSono ./cmd/client"
     [Ivy]="go build Ivy.go"
 )
+declare -gA PWN_BUILD_BINS=(
+    [AFLplusplus]="afl-fuzz|afl-fuzz"
+    [honggfuzz]="honggfuzz|honggfuzz"
+    [radamsa]="bin/radamsa|radamsa"
+    [Donut]="donut|donut"
+    [ScareCrow]="ScareCrow|ScareCrow"
+    [Freeze]="Freeze|Freeze"
+    [QueenSono]="QueenSono|QueenSono"
+    [Ivy]="Ivy|Ivy"
+)
 
 install_module_pwn() {
     install_apt_batch "Pwn - Packages" "${PWN_PACKAGES[@]}"

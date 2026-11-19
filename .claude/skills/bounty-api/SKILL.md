@@ -5,23 +5,25 @@ description: Use when bug-bountying an API target — REST, GraphQL, gRPC, WebSo
 
 # Bug bounty API testing
 
+> **Pre-flight.** Run `authorization-gate` and read the program policy first: confirm that automated scanning, brute force and rate-limit testing are allowed, and stay inside scope. Start with `suggest_for_bounty` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command (for example `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), ask the operator to fix the configuration and restart; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
+
 ## 1. Discover the API
 
-```bash
+```text
 # Mobile app reverse → APK / IPA → look for endpoints
 # JS bundle inspection
-katana -u https://target.com -jc -silent | grep -E "/api/|/v1/|/graphql"
-LinkFinder -i https://target.com/app.js -o cli
+run_pipeline([{"tool": "katana", "args": "-u https://target.com -jc -silent"}, {"tool": "grep", "args": "-E -e /api/ -e /v1/ -e /graphql"}])
+run_tool("LinkFinder", "-i https://target.com/app.js -o cli")
 
 # Common paths
-ffuf -w api-paths.txt -u https://target.com/FUZZ -mc 200,401,403
+run_tool("ffuf", "-w /opt/SecLists/Discovery/Web-Content/api/api-endpoints.txt -u https://target.com/FUZZ -mc 200,401,403")
 # /api, /api/v1, /v1, /graphql, /rest, /rpc, /swagger.json, /openapi.json,
 # /api-docs, /redoc, /docs, /.well-known/
 
 # Schema endpoints (huge if found)
-curl https://target.com/swagger.json
-curl https://target.com/openapi.json
-curl -X POST https://target.com/graphql -d '{"query":"{__schema{types{name}}}"}'
+run_tool("curl", "https://target.com/swagger.json")
+run_tool("curl", "https://target.com/openapi.json")
+run_tool("curl", "-X POST https://target.com/graphql -d '{\"query\":\"{__schema{types{name}}}\"}'")
 ```
 
 If you find a swagger/openapi/graphql introspection — that IS the attack surface map. Use `kiterunner` to brute API routes if not.
@@ -32,9 +34,9 @@ If you find a swagger/openapi/graphql introspection — that IS the attack surfa
 
 For every endpoint with an ID:
 
-```bash
-# Login as user A. Get user B's resource.
-curl -H "Authorization: Bearer $A_TOKEN" https://api/users/$B_ID
+```text
+# Login as user A. Get user B's resource (substitute the real token and ID; run_tool does not expand $VARS).
+run_tool("curl", "-H 'Authorization: Bearer <A_TOKEN>' https://api/users/<B_ID>")
 ```
 
 Try: numeric→numeric swap, UUID enumeration via Wayback/JS, encoded ID decoding.
@@ -90,16 +92,15 @@ When the target API consumes a third-party API and trusts its response — SSRF 
 
 ## 3. GraphQL specifics
 
-```bash
-# Introspection (if not disabled)
-graphql-cop -t https://target/graphql
-graphw00f https://target/graphql
-clairvoyance https://target/graphql -w wordlist.txt    # if introspection is off
+```text
+# Introspection (if not disabled); graphw00f has a registered CLI route, while graphql-cop requires approval to add.
+run_tool("curl", "-X POST https://target/graphql -d '{\"query\":\"{__schema{types{name}}}\"}'")
+run_tool("clairvoyance", "https://target/graphql -w wordlist.txt")    # if introspection is off
 
 # Common issues
 # 1. Introspection enabled in prod
-# 2. No query depth limit → DoS
-# 3. Batched queries bypassing rate limit
+# 2. No query depth limit → DoS (report from introspection only; do not send depth bombs)
+# 3. Batched queries bypassing rate limit (only if the program allows rate-limit testing)
 # 4. Fields exposed without auth
 # 5. Mutations callable from queries (some impls)
 # 6. Field-level authz missing — anonymous user fetches private fields
@@ -109,12 +110,13 @@ Useful tools: `inql` (Burp ext), `gqlmap`, `BatchQL`.
 
 ## 4. JWT
 
-```bash
-jwt_tool $TOKEN                      # decode + checks
-jwt_tool $TOKEN -X a                 # alg=none
-jwt_tool $TOKEN -X i                 # weak HMAC, brute
-jwt_tool $TOKEN -X k -pk pubkey.pem  # key confusion (RS256→HS256)
-jwt_tool $TOKEN -X kid               # kid injection
+```text
+# Substitute the actual token; run_tool does not expand environment variables.
+run_tool("jwt_tool", "<TOKEN>")                       # decode + checks
+run_tool("jwt_tool", "<TOKEN> -X a")                  # alg=none
+run_tool("jwt_tool", "<TOKEN> -X i")                  # weak HMAC, only if credential testing is allowed
+run_tool("jwt_tool", "<TOKEN> -X k -pk pubkey.pem")   # key confusion (RS256→HS256)
+run_tool("jwt_tool", "<TOKEN> -X kid")                # kid injection
 ```
 
 Also test: kid path traversal (`kid: "../../../../dev/null"` → empty key), JKU/X5U server-controlled injection.

@@ -28,12 +28,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import json
 import os
 import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -42,13 +44,40 @@ QUESTION = "Which install profiles does this toolkit offer? Use the list_profile
 EXPECTED_TOOL = "list_profiles"
 
 
+def validate_base_url(url: str) -> str | None:
+    """Return a problem with the endpoint URL, or None: https, or http only to a loopback host."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        host = parsed.hostname
+    except ValueError:
+        return "the base URL is not valid"
+    if parsed.scheme == "https" and host:
+        return None
+    if parsed.scheme == "http" and host:
+        if host == "localhost":
+            return None
+        try:
+            if ipaddress.ip_address(host).is_loopback:
+                return None
+        except ValueError:
+            pass
+        return "plain http is only allowed to a loopback host; use https so the API key is not sent in cleartext"
+    return "the base URL must be an https URL (or http to localhost)"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        return None
+
+
 def chat(base_url: str, api_key: str | None, payload: dict, timeout: float) -> dict:
     request = urllib.request.Request(
         base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {api_key}"} if api_key else {})},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    opener = urllib.request.build_opener(_NoRedirect) if api_key else urllib.request.build_opener()
+    with opener.open(request, timeout=timeout) as response:
         return json.loads(response.read())
 
 
@@ -148,7 +177,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", required=True, help="model name as the endpoint knows it")
     parser.add_argument("--api-key-env", metavar="VAR", help="environment variable that holds the API key")
     parser.add_argument("--timeout", type=float, default=600, help="seconds to wait for each reply")
-    return asyncio.run(run(parser.parse_args(argv)))
+    args = parser.parse_args(argv)
+    problem = validate_base_url(args.base_url)
+    if problem:
+        print(f"error: {problem}", file=sys.stderr)
+        return 2
+    return asyncio.run(run(args))
 
 
 if __name__ == "__main__":

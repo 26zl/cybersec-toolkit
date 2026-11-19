@@ -28,6 +28,31 @@ os.environ["CYBERSEC_INSTALLER_ROOT"] = _TEST_ROOT
 from mcp_server.remote import RemoteHostConfig  # noqa: E402
 from mcp_server.tools_db import ToolsDatabase  # noqa: E402
 
+_TEST_AUDIT_LOG = os.environ["CYBERSEC_MCP_AUDIT_LOG"]
+
+
+def _drop_audit_handlers() -> None:
+    import logging
+
+    import mcp_server.audit as audit
+
+    for handler in list(logging.getLogger("cybersec_mcp.audit").handlers):
+        handler.close()
+        logging.getLogger("cybersec_mcp.audit").removeHandler(handler)
+    audit._logger = None
+
+
+@pytest.fixture(autouse=True)
+def _isolated_audit_logger(monkeypatch):
+    """Start every test on the session audit log with no logger left over from another test."""
+    import mcp_server.audit as audit
+
+    monkeypatch.setenv("CYBERSEC_MCP_AUDIT_LOG", _TEST_AUDIT_LOG)
+    monkeypatch.setattr(audit, "_AUDIT_LOG_PATH", Path(_TEST_AUDIT_LOG))
+    _drop_audit_handlers()
+    yield
+    _drop_audit_handlers()
+
 
 @pytest.fixture(autouse=True)
 def _bounded_communicate_mock_bridge(monkeypatch):

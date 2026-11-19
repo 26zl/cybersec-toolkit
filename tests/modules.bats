@@ -26,36 +26,12 @@ setup() {
 
 # Array naming convention
 
-# Map module names to their array prefixes
-_get_prefix() {
-    case "$1" in
-        misc)       echo "MISC" ;;
-        networking) echo "NET" ;;
-        recon)      echo "RECON" ;;
-        web)        echo "WEB" ;;
-        crypto)     echo "CRYPTO" ;;
-        pwn)        echo "PWN" ;;
-        reversing)  echo "RE" ;;
-        forensics)  echo "FORENSICS" ;;
-        enterprise) echo "ENTERPRISE" ;;
-        wireless)   echo "WIRELESS" ;;
-        cracking)   echo "CRACKING" ;;
-        stego)      echo "STEGO" ;;
-        cloud)      echo "CLOUD" ;;
-        containers) echo "CONTAINER" ;;
-        blueteam)   echo "BLUETEAM" ;;
-        mobile)     echo "MOBILE" ;;
-        blockchain) echo "BLOCKCHAIN" ;;
-        llm)        echo "LLM" ;;
-    esac
-}
-
 @test "modules define arrays with correct prefixes" {
     # Check that at least the primary array types exist for each module
     # Not all modules have all array types, but each should have at least one
     for mod in "${ALL_MODULES[@]}"; do
         local prefix
-        prefix=$(_get_prefix "$mod")
+        prefix=$(_module_prefix "$mod")
         [[ -n "$prefix" ]] || { echo "No prefix mapping for: $mod"; return 1; }
 
         # At least one of these arrays should be declared
@@ -107,46 +83,6 @@ _get_prefix() {
     done
 }
 
-@test "Go binary arrays have entries for modules with Go tools" {
-    local -A go_to_bins=(
-        [RECON_GO]=RECON_GO_BINS
-        [WEB_GO]=WEB_GO_BINS
-        [NET_GO]=NET_GO_BINS
-        [ENTERPRISE_GO]=ENTERPRISE_GO_BINS
-    )
-
-    for go_arr in "${!go_to_bins[@]}"; do
-        declare -p "$go_arr" &>/dev/null || continue
-        local -n goref="$go_arr"
-        [[ ${#goref[@]} -eq 0 ]] && continue
-
-        local bins_arr="${go_to_bins[$go_arr]}"
-        declare -p "$bins_arr" &>/dev/null || { echo "Missing $bins_arr for $go_arr"; return 1; }
-        local -n binsref="$bins_arr"
-        [[ ${#binsref[@]} -gt 0 ]] || { echo "$bins_arr is empty but $go_arr has entries"; return 1; }
-    done
-}
-
-@test "Git name arrays have entries for modules with git repos" {
-    local -A git_to_names=(
-        [RECON_GIT]=RECON_GIT_NAMES
-        [WEB_GIT]=WEB_GIT_NAMES
-        [NET_GIT]=NET_GIT_NAMES
-        [ENTERPRISE_GIT]=ENTERPRISE_GIT_NAMES
-    )
-
-    for git_arr in "${!git_to_names[@]}"; do
-        declare -p "$git_arr" &>/dev/null || continue
-        local -n gitref="$git_arr"
-        [[ ${#gitref[@]} -eq 0 ]] && continue
-
-        local names_arr="${git_to_names[$git_arr]}"
-        declare -p "$names_arr" &>/dev/null || { echo "Missing $names_arr for $git_arr"; return 1; }
-        local -n namesref="$names_arr"
-        [[ ${#namesref[@]} -gt 0 ]] || { echo "$names_arr is empty but $git_arr has entries"; return 1; }
-    done
-}
-
 @test "no duplicate entries in pipx arrays" {
     local pipx_arrays=() mod
     for mod in "${ALL_MODULES[@]}"; do pipx_arrays+=("$(_module_prefix "$mod")_PIPX"); done
@@ -190,6 +126,250 @@ _get_prefix() {
                 || { echo "$names does not match $src"; return 1; }
         done
     done
+}
+
+@test "pipx arrays hold no names that resolve to unrelated PyPI projects" {
+    local mod arr_name entry
+    for mod in "${ALL_MODULES[@]}"; do
+        arr_name="$(_module_prefix "$mod")_PIPX"
+        declare -p "$arr_name" &>/dev/null || continue
+        local -n arr="$arr_name"
+        for entry in ${arr[@]+"${arr[@]}"}; do
+            [[ "$entry" != manspider && "$entry" != commix ]] || { echo "$arr_name: $entry is not the upstream tool"; return 1; }
+        done
+    done
+    [[ " ${ENTERPRISE_PIPX[*]} " == *" man-spider "* ]]
+}
+
+@test "commix installs from upstream git and apktool from apt" {
+    [[ " ${WEB_GIT_NAMES[*]} " == *" commix "* ]]
+    [[ "$(printf '%s\n' "${WEB_GIT[@]}" | grep '^commix=')" == "commix=https://github.com/commixproject/commix.git" ]]
+    [[ " ${MOBILE_PACKAGES[*]} " == *" apktool "* ]]
+    [[ " ${MOBILE_GIT_NAMES[*]} " != *" apktool "* ]]
+}
+
+@test "SpiderFoot is a git tool and no module pulls the nonexistent Docker image" {
+    [[ " ${RECON_GIT_NAMES[*]} " == *" spiderfoot "* ]]
+    [[ " ${MISC_GIT_NAMES[*]} " != *" spiderfoot "* ]]
+    run grep -n 'spiderfoot/spiderfoot' "$PROJECT_ROOT"/modules/*.sh
+    assert_failure
+}
+
+@test "every docker_pull image in modules is listed in ALL_DOCKER_IMAGES" {
+    local image
+    while read -r image; do
+        printf '%s\n' "${ALL_DOCKER_IMAGES[@]}" | grep -q "^${image}|" || { echo "not in ALL_DOCKER_IMAGES: $image"; return 1; }
+    done < <(grep -h -o 'docker_pull "[^"$]*"' "$PROJECT_ROOT"/modules/*.sh | sed 's/docker_pull "//; s/"$//')
+}
+
+@test "registry URLs do not use renamed GitHub owners" {
+    run grep -n -E 'BloodHoundAD/AzureHound|FortyNorthSecurity/EyeWitness|p1ngul1n0/blackbird|soxrok2212/PSKracker|spipm/Depix[.". ]|mitre/caldera|SecuraBV/CVE-2020-1472|WithSecureLabs/chainsaw' \
+        "$PROJECT_ROOT"/modules/*.sh "$PROJECT_ROOT/lib/installers.sh" "$PROJECT_ROOT/tools_config.json"
+    assert_failure
+}
+
+@test "every *_HEAVY_PACKAGES array is non-empty" {
+    local mod arr_name
+    for mod in "${ALL_MODULES[@]}"; do
+        arr_name="$(_module_prefix "$mod")_HEAVY_PACKAGES"
+        declare -p "$arr_name" &>/dev/null || continue
+        local -n arr="$arr_name"
+        [[ ${#arr[@]} -gt 0 ]] || { echo "$arr_name is empty"; return 1; }
+    done
+}
+
+# Module-level gating of C2 frameworks and heavy packages
+
+_gating_fixture() {
+    make_test_tmpdir
+    ENABLE_DOCKER=false
+    INCLUDE_C2=false
+    SKIP_HEAVY=false
+    SKIP_SOURCE=true
+    PKG_MANAGER=apt
+    CALLS="$TEST_TMPDIR/calls"
+    : > "$CALLS"
+    local fn
+    for fn in install_apt_batch install_pipx_batch install_go_batch install_cargo_batch \
+        install_gem_batch install_git_batch install_npm_batch; do
+        eval "$fn() { { printf '%s' '$fn'; printf ' %s' \"\$@\"; printf '\\n'; } >> \"\$CALLS\"; }"
+    done
+    install_binary_releases() { { printf 'install_binary_releases'; printf ' %s' "$@"; printf '\n'; } >> "$CALLS"; }
+    docker_pull() { printf 'docker_pull %s\n' "$1" >> "$CALLS"; }
+    build_module_from_source() { :; }
+    install_metasploit() { :; }
+    install_searchsploit_symlink() { :; }
+    install_zap() { :; }
+}
+
+_never_called() {
+    ! grep -q "$1" "$CALLS" || { echo "unexpected call matching: $1"; return 1; }
+}
+
+@test "misc module passes C2 git and binary entries only with INCLUDE_C2" {
+    _gating_fixture
+    install_module_misc
+    _never_called 'Zphisher\|Mythic' || return 1
+    _never_called '^docker_pull bcsecurity/empire' || return 1
+    _never_called '^docker_pull' || return 1
+    INCLUDE_C2=true
+    ENABLE_DOCKER=true
+    : > "$CALLS"
+    install_module_misc
+    grep -q 'Zphisher' "$CALLS"
+    grep -q 'Mythic' "$CALLS"
+    grep -qx 'docker_pull bcsecurity/empire' "$CALLS"
+}
+
+@test "extract_seclists_rockyou unpacks the tarball once and leaves existing files alone" {
+    source "$PROJECT_ROOT/modules/misc.sh"
+    GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/tools"
+    local dir="$GITHUB_TOOL_DIR/SecLists/Passwords/Leaked-Databases"
+    mkdir -p "$dir" "$BATS_TEST_TMPDIR/src"
+    printf 'password\n' > "$BATS_TEST_TMPDIR/src/rockyou.txt"
+    tar -czf "$dir/rockyou.txt.tar.gz" -C "$BATS_TEST_TMPDIR/src" rockyou.txt
+    extract_seclists_rockyou
+    [[ "$(cat "$dir/rockyou.txt")" == "password" ]]
+    printf 'edited\n' > "$dir/rockyou.txt"
+    extract_seclists_rockyou
+    [[ "$(cat "$dir/rockyou.txt")" == "edited" ]]
+}
+
+@test "extract_seclists_rockyou is a no-op without the archive" {
+    source "$PROJECT_ROOT/modules/misc.sh"
+    GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/none"
+    run extract_seclists_rockyou
+    assert_success
+}
+
+@test "extract_seclists_rockyou rejects linked archive members" {
+    GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/tools"
+    local dir="$GITHUB_TOOL_DIR/SecLists/Passwords/Leaked-Databases"
+    mkdir -p "$dir" "$BATS_TEST_TMPDIR/src"
+    printf 'outside\n' > "$BATS_TEST_TMPDIR/outside"
+    ln -s "$BATS_TEST_TMPDIR/outside" "$BATS_TEST_TMPDIR/src/rockyou.txt"
+    tar -czf "$dir/rockyou.txt.tar.gz" -C "$BATS_TEST_TMPDIR/src" rockyou.txt
+
+    run extract_seclists_rockyou
+
+    assert_failure
+    [[ ! -e "$dir/rockyou.txt" && ! -L "$dir/rockyou.txt" ]]
+    [[ "$(cat "$BATS_TEST_TMPDIR/outside")" == outside ]]
+}
+
+@test "extract_seclists_rockyou ignores other members and never follows existing clone links" {
+    GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/tools"
+    local dir="$GITHUB_TOOL_DIR/SecLists/Passwords/Leaked-Databases"
+    mkdir -p "$dir" "$BATS_TEST_TMPDIR/src/linked" "$BATS_TEST_TMPDIR/outside"
+    printf 'outside\n' > "$BATS_TEST_TMPDIR/outside/notes"
+    printf 'replacement\n' > "$BATS_TEST_TMPDIR/src/linked/notes"
+    printf 'wordlist\n' > "$BATS_TEST_TMPDIR/src/rockyou.txt"
+    ln -s "$BATS_TEST_TMPDIR/outside" "$dir/linked"
+    tar -czf "$dir/rockyou.txt.tar.gz" -C "$BATS_TEST_TMPDIR/src" rockyou.txt linked/notes
+
+    run extract_seclists_rockyou
+
+    assert_success
+    [[ "$(cat "$dir/rockyou.txt")" == wordlist ]]
+    [[ "$(cat "$BATS_TEST_TMPDIR/outside/notes")" == outside ]]
+}
+
+@test "extract_seclists_rockyou preserves an existing dangling output link" {
+    GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/tools"
+    local dir="$GITHUB_TOOL_DIR/SecLists/Passwords/Leaked-Databases"
+    mkdir -p "$dir" "$BATS_TEST_TMPDIR/src"
+    printf 'wordlist\n' > "$BATS_TEST_TMPDIR/src/rockyou.txt"
+    tar -czf "$dir/rockyou.txt.tar.gz" -C "$BATS_TEST_TMPDIR/src" rockyou.txt
+    ln -s "$BATS_TEST_TMPDIR/missing" "$dir/rockyou.txt"
+
+    run extract_seclists_rockyou
+
+    assert_success
+    [[ -L "$dir/rockyou.txt" && ! -e "$BATS_TEST_TMPDIR/missing" ]]
+}
+
+@test "misc module with Docker but without INCLUDE_C2 skips Empire" {
+    _gating_fixture
+    ENABLE_DOCKER=true
+    install_module_misc
+    _never_called 'bcsecurity/empire' || return 1
+}
+
+@test "pwn module passes C2 git entries only with INCLUDE_C2" {
+    _gating_fixture
+    source "$PROJECT_ROOT/modules/pwn.sh"
+    local first="${PWN_C2_GIT[0]%%=*}"
+    install_module_pwn
+    _never_called "$first=" || return 1
+    INCLUDE_C2=true
+    : > "$CALLS"
+    install_module_pwn
+    grep -q "$first=" "$CALLS"
+}
+
+@test "wireless module gates phishing frameworks on INCLUDE_C2 and heavy packages on SKIP_HEAVY" {
+    _gating_fixture
+    source "$PROJECT_ROOT/modules/wireless.sh"
+    local c2="${WIRELESS_C2_GIT[0]%%=*}"
+    SKIP_HEAVY=true
+    install_module_wireless
+    _never_called "$c2=" || return 1
+    _never_called 'gnuradio' || return 1
+    SKIP_HEAVY=false
+    INCLUDE_C2=true
+    : > "$CALLS"
+    install_module_wireless
+    grep -q "$c2=" "$CALLS"
+    grep -q 'gnuradio' "$CALLS"
+}
+
+@test "web module exposes commix through a python3 wrapper, not a link to the python-shebang script" {
+    _gating_fixture
+    GITHUB_TOOL_DIR="$TEST_TMPDIR/tools"
+    PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    LOG_FILE="$TEST_TMPDIR/log"
+    mkdir -p "$GITHUB_TOOL_DIR/commix" "$PIPX_BIN_DIR" "$TEST_TMPDIR/stubs"
+    printf '#!/usr/bin/env python\nprint("commix")\n' > "$GITHUB_TOOL_DIR/commix/commix.py"
+    printf '#!/bin/bash\necho "python3 ran: $*"\n' > "$TEST_TMPDIR/stubs/python3"
+    chmod +x "$TEST_TMPDIR/stubs/python3"
+    setup_git_repo "$GITHUB_TOOL_DIR/commix"
+    install_module_web
+    [[ ! -L "$PIPX_BIN_DIR/commix" && -x "$PIPX_BIN_DIR/commix" ]]
+    run env PATH="$TEST_TMPDIR/stubs:/usr/bin:/bin" "$PIPX_BIN_DIR/commix" --version
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "python3 ran: "*"commix.py --version" ]]
+}
+
+@test "recon module exposes spiderfoot through a wrapper around sf.py" {
+    _gating_fixture
+    GITHUB_TOOL_DIR="$TEST_TMPDIR/tools"
+    PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$GITHUB_TOOL_DIR/spiderfoot" "$PIPX_BIN_DIR" "$TEST_TMPDIR/stubs"
+    printf 'print("sf")\n' > "$GITHUB_TOOL_DIR/spiderfoot/sf.py"
+    printf '#!/bin/bash\necho "python3 ran: $*"\n' > "$TEST_TMPDIR/stubs/python3"
+    chmod +x "$TEST_TMPDIR/stubs/python3"
+    install_module_recon
+    [[ -x "$PIPX_BIN_DIR/spiderfoot" ]]
+    run env PATH="$TEST_TMPDIR/stubs:/usr/bin:/bin" "$PIPX_BIN_DIR/spiderfoot" -l 127.0.0.1:5001
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "python3 ran: "*"sf.py -l 127.0.0.1:5001" ]]
+}
+
+@test "spiderfoot wrapper prefers the clone venv python and keeps an existing command" {
+    _gating_fixture
+    GITHUB_TOOL_DIR="$TEST_TMPDIR/tools"
+    PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    mkdir -p "$GITHUB_TOOL_DIR/spiderfoot/venv/bin" "$PIPX_BIN_DIR"
+    : > "$GITHUB_TOOL_DIR/spiderfoot/sf.py"
+    printf '#!/bin/bash\necho "venv ran: $*"\n' > "$GITHUB_TOOL_DIR/spiderfoot/venv/bin/python"
+    chmod +x "$GITHUB_TOOL_DIR/spiderfoot/venv/bin/python"
+    install_module_recon
+    run "$PIPX_BIN_DIR/spiderfoot" -x
+    [[ "$output" == "venv ran: "*"sf.py -x" ]]
+    printf '#!/bin/bash\necho mine\n' > "$PIPX_BIN_DIR/spiderfoot"
+    install_module_recon
+    run "$PIPX_BIN_DIR/spiderfoot"
+    [[ "$output" == "mine" ]]
 }
 
 @test "every build-from-source name has a URL and a build command" {
@@ -336,6 +516,46 @@ _module_install_fixture() {
     done
 }
 
+@test "every source build publishes its declared executables to PATH" {
+    _module_install_fixture
+    local module prefix tool relative binary outputs count=0
+    for module in "${ALL_MODULES[@]}"; do
+        prefix=$(_module_prefix "$module")
+        declare -p "${prefix}_BUILD_NAMES" &>/dev/null || continue
+        local -n names="${prefix}_BUILD_NAMES"
+        for tool in "${names[@]}"; do
+            outputs=$(_source_build_bins "$tool")
+            [[ -n "$outputs" ]] || { printf '%s: no executable outputs\n' "$tool"; return 1; }
+            while IFS='|' read -r relative binary; do
+                mkdir -p "$(dirname "$GITHUB_TOOL_DIR/$tool/$relative")"
+                printf '#!/bin/sh\nprintf "source fixture\\n"\n' > "$GITHUB_TOOL_DIR/$tool/$relative"
+                chmod +x "$GITHUB_TOOL_DIR/$tool/$relative"
+            done <<< "$outputs"
+
+            setup_source_build_bins "$tool"
+
+            while IFS='|' read -r relative binary; do
+                [[ "$(readlink "$PIPX_BIN_DIR/$binary")" == "$GITHUB_TOOL_DIR/$tool/$relative" ]]
+                run "$PIPX_BIN_DIR/$binary"
+                assert_success
+                assert_output 'source fixture'
+            done <<< "$outputs"
+            count=$((count + 1))
+        done
+    done
+    [[ "$count" -eq 25 ]]
+}
+
+@test "source setup rejects a massdns clone without its built executable" {
+    _module_install_fixture
+    mkdir -p "$GITHUB_TOOL_DIR/massdns"
+
+    run setup_source_build_bins massdns
+
+    assert_failure
+    [[ ! -e "$PIPX_BIN_DIR/massdns" ]]
+}
+
 @test "binary metadata keys match the module release entries" {
     local module prefix suffix entry tool release_array
     for module in "${ALL_MODULES[@]}"; do
@@ -378,4 +598,21 @@ _module_install_fixture() {
             done
         done
     done
+}
+
+@test "every BINARY_RELEASES asset pattern is anchored with a trailing \$" {
+    local arr entry pattern
+    for arr in $(compgen -v BINARY_RELEASES_); do
+        local -n entries="$arr"
+        for entry in "${entries[@]}"; do
+            IFS='|' read -r _ _ pattern _ <<< "$entry"
+            [[ "$pattern" == *'$' ]] || { echo "$arr: unanchored pattern in '$entry'"; return 1; }
+        done
+    done
+}
+
+@test "retired Aderyn is not installed from crates.io" {
+    [[ " ${BLOCKCHAIN_CARGO[*]:-} " != *" aderyn "* ]]
+    run grep -c '"name": "aderyn"' "$PROJECT_ROOT/tools_config.json"
+    assert_output "0"
 }

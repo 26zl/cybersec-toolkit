@@ -28,7 +28,49 @@ GOVERNED=(
     stegseek zsteg steghide stegsolve
     radare2 rizin ropper ROPgadget pwninit one_gadget
     tshark bloodhound-python impacket-secretsdump impacket-psexec
+    setoolkit
 )
+
+# Read only registry metadata; importing the server would initialize operator state.
+_registry_commands() {
+    local root
+    root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd) || return 1
+    python3 -B - "$root" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root))
+from mcp_server.tools_db import GIT_BIN_NAMES, PACKAGE_EXTRA_BINARIES, binary_candidates
+
+# These remain ordinary repository-development commands, including the shell builtin set.
+development = {
+    "ar", "as", "awk", "base64", "bash", "binutils", "bun", "cargo", "cat", "cc",
+    "clang", "clang++", "cmake", "cp", "curl", "cut", "date", "dd", "diff", "du", "env",
+    "file", "find", "gcc", "g++", "gdb", "git", "go", "grep", "gzip", "head", "jq",
+    "ld", "ltrace", "ls", "make", "nasm", "nm", "node", "npm", "objcopy", "objdump",
+    "openssl", "perl", "php", "pip", "pip3", "pipx", "pnpm", "python", "python2", "python3",
+    "readelf", "rg", "ruby", "sed", "set", "sh", "sort", "stat", "strace", "strings",
+    "strip", "tail", "tar", "tee", "test", "touch", "tr", "uniq", "unzip", "uv", "valgrind",
+    "wc", "wget", "xxd", "yarn", "zip", "zsh",
+}
+names = set()
+for tool in json.loads((root / "tools_config.json").read_text(encoding="utf-8")):
+    name, method = tool["name"], tool["method"]
+    if method == "docker" or name == "ctf-crypto-venv":
+        continue
+    if method == "git" and name not in GIT_BIN_NAMES:
+        continue
+    names.add(name)
+    names.update(binary_candidates(method, name))
+    names.update(PACKAGE_EXTRA_BINARIES.get(name, ()))
+for name in sorted(names):
+    if name.casefold() not in development and re.fullmatch(r"[A-Za-z0-9_.+-]{1,128}", name):
+        print(name)
+PY
+}
 
 emit() { printf '%s\n' "$1"; }
 
@@ -60,7 +102,8 @@ _first_words() {
                 continue
             fi
             case "$tok" in
-                sudo|env|command|exec|time|nohup|maybe_sudo) continue ;;
+                sudo|env|command|exec|time|nohup|maybe_sudo|*/sudo|*/env) continue ;;
+                if|then|else|elif|do|while|until|\!|\{|doas|watch|strace|ltrace|eval|builtin|coproc) continue ;;
                 *=[\"\']*)
                     # VAR="value with spaces" — if the quote does not close within
                     # this token, the value continues in following words. Skip them
@@ -84,7 +127,14 @@ import re
 import shlex
 import sys
 
-SKIP = {"sudo", "env", "exec", "time", "nohup", "maybe_sudo", "nice", "ionice", "stdbuf", "xargs", "timeout", "setsid"}
+SKIP = {
+    "sudo", "env", "exec", "time", "nohup", "maybe_sudo", "nice", "ionice", "stdbuf", "xargs", "timeout",
+    "setsid", "doas", "watch", "strace", "ltrace", "builtin", "eval",
+}
+# Shell keywords that precede a command: the command after them is the one to inspect.
+KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "!", "{", "coproc"}
+INTERPRETERS = re.compile(r"python[0-9.]*|perl|ruby|node|php")
+SHELL_C = re.compile(r"-[A-Za-z]*c")
 TAKES_ARG = {
     "sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"},
     "env": {"-u", "-C"},
@@ -92,6 +142,9 @@ TAKES_ARG = {
     "ionice": {"-c", "-n", "-p"},
     "stdbuf": {"-i", "-o", "-e"},
     "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "doas": {"-u", "-C"},
+    "watch": {"-n", "-d"},
+    "strace": {"-o", "-e", "-p", "-s", "-u"},
     "xargs": {"-n", "-I", "-P", "-d", "-a", "-L", "-s", "-E"},
 }
 SHELLS = {"bash", "sh", "dash", "zsh"}
@@ -128,24 +181,40 @@ def command_words(text):
     lex.whitespace = " \t\r"
     lex.whitespace_split = True
     lex.commenters = ""
-    words, expect, wrapper, skip_next, shell_c = [], True, None, False, None
+    words, expect, wrapper, skip_next, shell_c, interp = [], True, None, False, None, None
     for tok in lex:
         if tok and set(tok) <= OPS:
-            expect, wrapper, skip_next, shell_c = True, None, False, None
+            expect, wrapper, skip_next, shell_c, interp = True, None, False, None, None
             continue
         # `bash -c '<script>'`: the script is a command line of its own.
         if shell_c == "arg":
             words.extend(command_words(tok))
             shell_c = None
             continue
-        if shell_c == "shell" and tok == "-c":
-            shell_c = "arg"
-            continue
+        if shell_c == "shell":
+            if SHELL_C.fullmatch(tok):
+                shell_c = "arg"
+                continue
+            if tok.startswith("-"):
+                continue
         shell_c = None
         # Command substitution runs even inside double quotes.
         for m in SUBST.finditer(tok):
             words.extend(command_words(m.group(1) if m.group(1) is not None else m.group(2)))
         if not expect:
+            # `python3 /opt/tool/tool.py`, `python3 -m tool`: the script is the command.
+            if interp and tok:
+                if tok == "-m" and interp == "script":
+                    interp = "module"
+                elif not tok.startswith("-"):
+                    if interp == "script":
+                        name = tok.rsplit("/", 1)[-1]
+                        words.append(name)
+                        name = re.sub(r"\.(py|pl|rb|js|php)$", "", name)
+                    else:
+                        name = tok
+                    words.append(name)
+                    interp = None
             continue
         if skip_next:
             skip_next = False
@@ -156,8 +225,15 @@ def command_words(text):
         if wrapper == "command" and tok in ("-v", "-V"):
             expect = False
             continue
-        if tok in SKIP or tok == "command":
-            wrapper = tok
+        base = tok.rsplit("/", 1)[-1]
+        if base in KEYWORDS and wrapper is None:
+            continue
+        if base in SKIP or base == "command":
+            wrapper = base
+            continue
+        if wrapper == "eval" and not tok.startswith("-"):
+            words.extend(command_words(tok))
+            expect = False
             continue
         if tok.startswith("-"):
             skip_next = tok in TAKES_ARG.get(wrapper, ())
@@ -166,11 +242,13 @@ def command_words(text):
             continue
         if wrapper == "timeout" and DURATION.fullmatch(tok):
             continue
-        word = tok.rsplit("/", 1)[-1]
+        word = base
         words.append(word)
         expect = False
         if word in SHELLS:
             shell_c = "shell"
+        elif INTERPRETERS.fullmatch(word):
+            interp = "script"
     return words
 
 
@@ -199,7 +277,9 @@ _clearance_floor() {
 }
 
 _advised_since() {
-    local since="$1"
+    local since="$1" logs=("$AUDIT_LOG")
+    # audit.py rotates at 5 MB; a clearance may already sit in the newest backup.
+    [[ -f "$AUDIT_LOG.1" ]] && logs+=("$AUDIT_LOG.1")
     if command -v jq >/dev/null 2>&1; then
         # -R + fromjson?: a torn line from a killed server is skipped, as in the
         # python3 fallback, instead of failing the whole scan.
@@ -213,31 +293,32 @@ _advised_since() {
                 )
                 and ((.ts // "") > $since)
             )
-        ' "$AUDIT_LOG" >/dev/null 2>&1
+        ' "${logs[@]}" >/dev/null 2>&1
         return
     fi
 
-    python3 - "$AUDIT_LOG" "$since" <<'PY' >/dev/null 2>&1
+    python3 - "$since" "${logs[@]}" <<'PY' >/dev/null 2>&1
 import json
 import sys
 
 allowed = {"guided_assessment", "suggest_for_ctf", "suggest_for_bounty"}
-path, since = sys.argv[1:]
-try:
-    with open(path, encoding="utf-8") as audit:
-        for line in audit:
-            try:
-                event = json.loads(line)
-            except (json.JSONDecodeError, TypeError):
-                continue
-            if (
-                event.get("event") == "tool_call"
-                and event.get("tool") in allowed
-                and event.get("ts", "") > since
-            ):
-                raise SystemExit(0)
-except OSError:
-    pass
+since, *paths = sys.argv[1:]
+for path in paths:
+    try:
+        with open(path, encoding="utf-8") as audit:
+            for line in audit:
+                try:
+                    event = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if (
+                    event.get("event") == "tool_call"
+                    and event.get("tool") in allowed
+                    and event.get("ts", "") > since
+                ):
+                    raise SystemExit(0)
+    except OSError:
+        continue
 raise SystemExit(1)
 PY
 }
@@ -301,10 +382,19 @@ pre-bash)
     cmd=$(_hook_field "$input" .tool_input.command)
     [[ -n "$cmd" ]] || allow
 
+    # Retain the static baseline if Python or the repository metadata is unavailable.
+    if command -v python3 >/dev/null 2>&1; then
+        while IFS= read -r name; do
+            [[ -n "$name" ]] && GOVERNED+=("$name")
+        done < <(_registry_commands 2>/dev/null)
+    fi
+
     # Fast path: no governed name anywhere in the command.
     hit=""
+    # A de-quoted copy catches names split by quotes or escapes (nm""ap).
+    plain=${cmd//[\"\'\\]/}
     for g in "${GOVERNED[@]}"; do
-        [[ "$cmd" == *"$g"* ]] && { hit="$g"; break; }
+        [[ "$cmd" == *"$g"* || "$plain" == *"$g"* ]] && { hit="$g"; break; }
     done
     [[ -n "$hit" ]] || allow
 

@@ -262,22 +262,183 @@ CLAUDE_RED_DOMAIN_OVERRIDES = {
 }
 
 DOMAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
-    ("agent_workflow", ("agent", "coding-agent", "llm coding", "refactoring", "surgical", "overcomplication", "success criteria")),
-    ("grc_privacy", ("grc", "governance", "compliance", "privacy", "legal", "audit", "policy", "soc2", "iso", "nist", "pci", "nerc", "gdpr", "risk")),
+    (
+        "agent_workflow",
+        ("agent", "coding-agent", "llm coding", "refactoring", "surgical", "overcomplication", "success criteria"),
+    ),
+    (
+        "grc_privacy",
+        (
+            "grc",
+            "governance",
+            "compliance",
+            "privacy",
+            "legal",
+            "audit",
+            "policy",
+            "soc2",
+            "iso",
+            "nist",
+            "pci",
+            "nerc",
+            "gdpr",
+            "risk",
+        ),
+    ),
     ("ai_llm_security", ("ai", "llm", "prompt", "model", "deepfake", "rag", "guardrail")),
-    ("supply_chain_prodsec", ("supply-chain", "sbom", "slsa", "provenance", "sigstore", "cosign", "ci-cd", "devsecops", "sast", "dast", "dependency", "typosquatting", "container-registry", "prodsec")),
-    ("telecom_mainframe_sap", ("telecom", "5g", "mainframe", "z/os", "racf", "acf2", "cics", "sap", "erp", "s/4hana", "abap", "hana", "diameter", "gtp")),
-    ("iot_embedded_hardware", ("iot", "embedded", "hardware", "firmware", "uart", "jtag", "swd", "ota", "ble", "bluetooth")),
-    ("cloud_security", ("aws", "azure", "gcp", "cloud", "guardduty", "lambda", "s3", "iam", "office365", "kubernetes", "container", "docker")),
-    ("identity_access", ("identity", "active-directory", "kerberos", "oauth", "saml", "okta", "entra", "pam", "mfa", "passwordless", "privileged", "ldap", "bloodhound")),
-    ("appsec_web_api", ("api", "web", "xss", "sqli", "sql-injection", "injection", "graphql", "jwt", "websocket", "cors", "ssrf", "xxe", "deserialization", "template")),
-    ("dfir_malware", ("forensic", "forensics", "malware", "ransomware", "memory", "disk", "registry", "volatility", "yara", "incident", "timeline", "artifact")),
-    ("detection_soc_hunting", ("detecting", "detection", "hunting", "splunk", "sigma", "siem", "soc", "alert", "zeek", "suricata", "ueba")),
+    (
+        "supply_chain_prodsec",
+        (
+            "supply-chain",
+            "sbom",
+            "slsa",
+            "provenance",
+            "sigstore",
+            "cosign",
+            "ci-cd",
+            "devsecops",
+            "sast",
+            "dast",
+            "dependency",
+            "typosquatting",
+            "container-registry",
+            "prodsec",
+        ),
+    ),
+    (
+        "telecom_mainframe_sap",
+        (
+            "telecom",
+            "5g",
+            "mainframe",
+            "z/os",
+            "racf",
+            "acf2",
+            "cics",
+            "sap",
+            "erp",
+            "s/4hana",
+            "abap",
+            "hana",
+            "diameter",
+            "gtp",
+        ),
+    ),
+    (
+        "iot_embedded_hardware",
+        ("iot", "embedded", "hardware", "firmware", "uart", "jtag", "swd", "ota", "ble", "bluetooth"),
+    ),
+    (
+        "cloud_security",
+        (
+            "aws",
+            "azure",
+            "gcp",
+            "cloud",
+            "guardduty",
+            "lambda",
+            "s3",
+            "iam",
+            "office365",
+            "kubernetes",
+            "container",
+            "docker",
+        ),
+    ),
+    (
+        "identity_access",
+        (
+            "identity",
+            "active-directory",
+            "kerberos",
+            "oauth",
+            "saml",
+            "okta",
+            "entra",
+            "pam",
+            "mfa",
+            "passwordless",
+            "privileged",
+            "ldap",
+            "bloodhound",
+        ),
+    ),
+    (
+        "appsec_web_api",
+        (
+            "api",
+            "web",
+            "xss",
+            "sqli",
+            "sql-injection",
+            "injection",
+            "graphql",
+            "jwt",
+            "websocket",
+            "cors",
+            "ssrf",
+            "xxe",
+            "deserialization",
+            "template",
+        ),
+    ),
+    (
+        "dfir_malware",
+        (
+            "forensic",
+            "forensics",
+            "malware",
+            "ransomware",
+            "memory",
+            "disk",
+            "registry",
+            "volatility",
+            "yara",
+            "incident",
+            "timeline",
+            "artifact",
+        ),
+    ),
+    (
+        "detection_soc_hunting",
+        ("detecting", "detection", "hunting", "splunk", "sigma", "siem", "soc", "alert", "zeek", "suricata", "ueba"),
+    ),
     ("ot_ics_security", ("ot", "ics", "scada", "modbus", "dnp3", "plc", "s7comm", "purdue", "historian", "nerc-cip")),
-    ("redteam_pentest", ("red-team", "pentest", "penetration", "exploiting", "exploit", "attack", "c2", "phishing-simulation", "evilginx", "metasploit")),
-    ("network_wireless", ("network", "wireless", "wifi", "dns", "tls", "firewall", "packet", "nmap", "pcap", "bluetooth")),
+    (
+        "redteam_pentest",
+        (
+            "red-team",
+            "pentest",
+            "penetration",
+            "exploiting",
+            "exploit",
+            "attack",
+            "c2",
+            "phishing-simulation",
+            "evilginx",
+            "metasploit",
+        ),
+    ),
+    (
+        "network_wireless",
+        ("network", "wireless", "wifi", "dns", "tls", "firewall", "packet", "nmap", "pcap", "bluetooth"),
+    ),
     ("mobile_security", ("mobile", "android", "ios", "apk", "ipa", "frida", "objection")),
-    ("crypto_blockchain", ("crypto", "cryptography", "rsa", "aes", "tls", "certificate", "blockchain", "ethereum", "smart-contract", "defi")),
+    (
+        "crypto_blockchain",
+        (
+            "crypto",
+            "cryptography",
+            "rsa",
+            "aes",
+            "tls",
+            "certificate",
+            "blockchain",
+            "ethereum",
+            "smart-contract",
+            "defi",
+        ),
+    ),
     ("ctf_bounty", ("ctf", "bounty", "bug-bounty")),
 ]
 
@@ -600,54 +761,64 @@ def render_md(skills: list[Skill]) -> str:
     for tier, count in sorted(tier_counts.items()):
         lines.append(table_row([tier, count]))
 
-    lines.extend([
-        "",
-        "## Domain Counts",
-        "",
-        table_row(["Domain", "Skills"]),
-        table_row(["---", "---:"]),
-    ])
+    lines.extend(
+        [
+            "",
+            "## Domain Counts",
+            "",
+            table_row(["Domain", "Skills"]),
+            table_row(["---", "---:"]),
+        ]
+    )
     for domain, count in sorted(domain_counts.items()):
         lines.append(table_row([domain, count]))
 
-    lines.extend([
-        "",
-        "## Highest Priority Skills",
-        "",
-        table_row(["Priority", "Skill", "Domain", "Tier"]),
-        table_row(["---:", "---", "---", "---"]),
-    ])
+    lines.extend(
+        [
+            "",
+            "## Highest Priority Skills",
+            "",
+            table_row(["Priority", "Skill", "Domain", "Tier"]),
+            table_row(["---:", "---", "---", "---"]),
+        ]
+    )
     for skill in skills[:30]:
         lines.append(table_row([skill.priority, f"`{skill.name}`", skill.domain, skill.tier]))
 
-    lines.extend([
-        "",
-        "## Domain Anchors",
-        "",
-        "Top skills per domain. Use these as the first candidates before searching the long tail.",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Domain Anchors",
+            "",
+            "Top skills per domain. Use these as the first candidates before searching the long tail.",
+            "",
+        ]
+    )
 
     for domain in sorted(by_domain):
-        lines.extend([
-            f"### {domain}",
-            "",
-            table_row(["Priority", "Skill", "Tier", "Sensitivity"]),
-            table_row(["---:", "---", "---", "---"]),
-        ])
+        lines.extend(
+            [
+                f"### {domain}",
+                "",
+                table_row(["Priority", "Skill", "Tier", "Sensitivity"]),
+                table_row(["---:", "---", "---", "---"]),
+            ]
+        )
         for skill in sorted(by_domain[domain], key=lambda item: (-item.priority, item.name))[:10]:
             lines.append(table_row([skill.priority, f"`{skill.name}`", skill.tier, skill.sensitivity]))
         lines.append("")
 
-    lines.extend([
-        "## Query helper",
-        "",
-        "Use the script when the prompt is broad or many skills look similar:",
-        "",
-        "```bash",
-        "python3 scripts/curate_claude_skills.py --query \"cloud incident response\" --top 10",
-        "```",
-    ])
+    lines.extend(
+        [
+            "## Query helper",
+            "",
+            "Use the script when the prompt is broad or many skills look similar:",
+            "",
+            "```bash",
+            'python3 scripts/curate_claude_skills.py --query "cloud incident response" --top 10',
+            "```",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp_server.local_sandbox import enabled as _local_sandbox_enabled
+from mcp_server.local_sandbox import protective_flag as _protective_flag
 
 try:
     import fcntl
@@ -39,7 +40,7 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # URL userinfo can contain credentials and is not covered by flag/header rules.
     (
         re.compile(
-            r"(\b[a-z][a-z0-9+.-]*://)(?!\[REDACTED\]@)[^/\s@]+@",
+            r"((?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)(?!\[REDACTED\]@)[^/\s@]+@",
             re.IGNORECASE,
         ),
         r"\1" + _REDACTED + "@",
@@ -95,7 +96,7 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # "@", "/" and ":" itself, so it runs to the last "@" of the token; one that starts
     # with "/" is left alone, which keeps URLs and remote paths readable.
     (
-        re.compile(r"(?<![\w:/@])((?:[\w.\-]+[/\\])?[\w.\-$]+):(?!\[REDACTED\])(?!/)\S+@(?=[\w\[][^\s@]*(?:\s|$))"),
+        re.compile(r"(?<![\w.\-:/@$])((?:[\w.\-]+[/\\])?[\w.\-$]+):(?!\[REDACTED\])(?!/)\S+@(?=[\w\[][^\s@]*(?:\s|$))"),
         r"\1:" + _REDACTED + "@",
     ),
     # Pass-the-hash material and Kerberos keys.
@@ -116,6 +117,14 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
             re.IGNORECASE,
         ),
         r"\1=" + _REDACTED,
+    ),
+    # Cookie flags and proxy credentials; "--cookie-jar" is a file path and stays readable.
+    (
+        re.compile(
+            r"(--(?:cookie|proxy-user)[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)",
+            re.IGNORECASE,
+        ),
+        r"\1" + _REDACTED,
     ),
     # HTTP cookie headers
     (
@@ -138,6 +147,14 @@ _SEPARATED_HASH_FLAG = re.compile(r"(\B-H[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[
 
 # redis-cli uses ``-a`` for authentication.
 _REDIS_TOOL = re.compile(r"\bredis-cli\b", re.IGNORECASE)
+# curl takes cookies with ``-b``; for other tools ``-b`` is something else (sqlmap --banner, ldap base DN).
+_CURL_TOOL = re.compile(r"\bcurl\b", re.IGNORECASE)
+_CURL_COOKIE_FLAG = re.compile(r"(\B-b[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
+
+# ldap* tools take the bind password with ``-w``.
+_LDAP_TOOL = re.compile(r"\bldap(?:search|modify|add|delete|modrdn|compare|passwd|whoami)\b", re.IGNORECASE)
+_LDAP_PASSWORD_FLAG = re.compile(r"(\B-w[\s=]+)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
+
 _REDIS_AUTH_FLAG = re.compile(r"(\B-a[\s=]?)(?!\[REDACTED\])(?:\"[^\"]*\"|'[^']*'|\S+)")
 
 
@@ -151,6 +168,10 @@ def _redact_sensitive(value: str) -> str:
         value = _SEPARATED_HASH_FLAG.sub(r"\1" + _REDACTED, value)
     if _REDIS_TOOL.search(value):
         value = _REDIS_AUTH_FLAG.sub(r"\1" + _REDACTED, value)
+    if _CURL_TOOL.search(value):
+        value = _CURL_COOKIE_FLAG.sub(r"\1" + _REDACTED, value)
+    if _LDAP_TOOL.search(value):
+        value = _LDAP_PASSWORD_FLAG.sub(r"\1" + _REDACTED, value)
     return value
 
 
@@ -179,7 +200,7 @@ _SCRIPT_SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
                 "[^"\r\n]*"                                 # double-quoted
                 |'[^'\r\n]*'                                # single-quoted
                 |`[^`\r\n]*`                                # backtick-quoted
-                |[^\s,;)\}\]]+                              # bare token
+                |[^\s,;)\}\]]*[^\s,;)\}\]"'`]                # bare token, minus a closing quote
             )
             """,
             re.IGNORECASE | re.VERBOSE,
@@ -289,7 +310,7 @@ _logger: logging.Logger | None = None
 
 def _stream_audit_enabled() -> bool:
     """Whether audit records are mirrored to stderr in addition to the file sink."""
-    return os.environ.get("CYBERSEC_MCP_AUDIT_STREAM", "").strip().lower() in ("1", "true", "yes")
+    return _protective_flag("CYBERSEC_MCP_AUDIT_STREAM")
 
 
 def audit_record_tag(key: bytes, line: str) -> str:
@@ -311,12 +332,15 @@ class _TaggedMirrorFormatter(logging.Formatter):
 
 def _audit_required() -> bool:
     """Whether a missing or failing audit write must fail closed."""
-    return os.environ.get("CYBERSEC_MCP_AUDIT_REQUIRED", "").strip().lower() in ("1", "true", "yes")
+    return _protective_flag("CYBERSEC_MCP_AUDIT_REQUIRED")
 
 
 def _open_append_nofollow(path: str) -> int:
     """Open ``path`` for appending; a symlink planted at the path must not redirect audit records."""
     return os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+
+
+_file_sink_warned = False
 
 
 class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -363,7 +387,12 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
                     if rotated:
                         self.stream.close()
                         self.stream = None
-                        self.stream = self._open()
+                        try:
+                            self.stream = self._open()
+                        except OSError:
+                            # Later handlers (mirror, syslog) must still see the record.
+                            self.handleError(record)
+                            return
                 super().emit(record)
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
@@ -374,6 +403,10 @@ class _SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
         # only at startup; otherwise keep the best-effort default.
         if _audit_required():
             raise
+        global _file_sink_warned
+        if not _file_sink_warned:
+            _file_sink_warned = True
+            warnings.warn(f"Audit file write failed: {sys.exc_info()[1]}", RuntimeWarning, stacklevel=2)
         super().handleError(record)
 
 
@@ -581,6 +614,8 @@ def log_server_start() -> None:
             "event": "server_start",
             "allow_scripts": os.environ.get("CYBERSEC_MCP_ALLOW_SCRIPTS", "0").strip(),
             "allow_external": os.environ.get("CYBERSEC_MCP_ALLOW_EXTERNAL", "0").strip(),
+            "allow_usbkill": os.environ.get("CYBERSEC_MCP_ALLOW_USBKILL", "0").strip(),
+            "allow_nipe": os.environ.get("CYBERSEC_MCP_ALLOW_NIPE", "0").strip(),
             # Which isolation the launcher reported: 'kata' (VM), 'local' (host),
             # or 'unknown' when started without scripts/mcp-launch.sh.
             "sandbox": os.environ.get("CYBERSEC_SANDBOX_MODE", "").strip() or "unknown",
@@ -729,6 +764,13 @@ def log_blocked(
     )
 
 
+OUTCOMES = frozenset({"ok", "timeout", "cancelled", "error"})
+
+
+def _outcome(value: str) -> str:
+    return value if value in OUTCOMES else "error"
+
+
 def log_execution(
     tool_name: str,
     args: str,
@@ -740,8 +782,13 @@ def log_execution(
     stdout_len: int = 0,
     stderr_len: int = 0,
     truncated: bool = False,
+    outcome: str = "ok",
 ) -> None:
-    """Write a single JSON audit line for a tool execution."""
+    """Write a single JSON audit line for a tool execution.
+
+    ``outcome`` is ok (the process ran to completion, whatever its exit code), timeout,
+    cancelled (the client went away) or error (it could not be started or reached).
+    """
     _log(
         logging.INFO,
         {
@@ -753,6 +800,7 @@ def log_execution(
             "remote": remote,
             "command": _redact_script_code(command),
             "exit_code": exit_code,
+            "outcome": _outcome(outcome),
             "duration_ms": round(duration_ms, 1),
             "stdout_bytes": stdout_len,
             "stderr_bytes": stderr_len,
@@ -784,7 +832,7 @@ def log_script_execution(
             "event": "script",
             "language": language,
             "code": "[OMITTED]",
-            "code_sha256": hashlib.sha256(code.encode("utf-8", errors="replace")).hexdigest(),
+            "code_sha256": hashlib.sha256(code.encode("utf-8")).hexdigest(),
             "code_len": len(code),
             "script_file": script_file,
             "working_dir": working_dir,
@@ -801,8 +849,9 @@ def log_script_result(
     stdout_len: int = 0,
     stderr_len: int = 0,
     truncated: bool = False,
+    outcome: str = "ok",
 ) -> None:
-    """Log script execution result (AFTER running)."""
+    """Log script execution result (AFTER running); ``outcome`` as for log_execution."""
     _log(
         logging.INFO,
         {
@@ -810,6 +859,7 @@ def log_script_result(
             "event": "script_result",
             "language": language,
             "exit_code": exit_code,
+            "outcome": _outcome(outcome),
             "duration_ms": round(duration_ms, 1),
             "script_file": script_file,
             "stdout_bytes": stdout_len,
@@ -873,8 +923,9 @@ def log_pipeline_result(
     duration_ms: float,
     step_count: int,
     truncated: bool = False,
+    outcome: str = "ok",
 ) -> None:
-    """Log pipeline final result."""
+    """Log pipeline final result; ``outcome`` as for log_execution."""
     _log(
         logging.INFO,
         {
@@ -882,6 +933,7 @@ def log_pipeline_result(
             "event": "pipeline_result",
             "pipeline_id": pipeline_id,
             "exit_code": exit_code,
+            "outcome": _outcome(outcome),
             "duration_ms": round(duration_ms, 1),
             "step_count": step_count,
             "truncated": truncated,

@@ -58,98 +58,160 @@ setup() {
     assert_failure
 }
 
-# Distro detection
+# Distro detection (real detect_distro / detect_pkg_manager against fixture os-release files)
 
-@test "detect_pkg_manager sets apt for debian" {
-    # Re-source with real detect_pkg_manager
-    unset -f detect_pkg_manager
-    source "$PROJECT_ROOT/lib/common.sh"
+# _detect <os-release file> [VAR=value ...] — prints "<DISTRO_ID> <PKG_MANAGER>" from a fresh
+# shell that sees a Linux uname regardless of the host.
+_detect() {
+    local osr="$1"; shift
+    local fakebin="$TEST_TMPDIR/fakebin"
+    mkdir -p "$fakebin"
+    printf '#!/bin/sh\necho Linux\n' > "$fakebin/uname"
+    chmod +x "$fakebin/uname"
+    run env -u PKG_MANAGER -u DISTRO_ID -u TERMUX_VERSION PATH="$fakebin:$PATH" \
+        CYBERSEC_OS_RELEASE="$osr" SCRIPT_DIR="$PROJECT_ROOT" LOG_FILE=/dev/null "$@" \
+        bash -c 'source "$SCRIPT_DIR/lib/common.sh"; echo "$DISTRO_ID $PKG_MANAGER"'
+}
 
-    # Override DISTRO_ID after source
-    DISTRO_ID="debian"
-    DISTRO_ID_LIKE=""
-
-    # Call the real function with our override
-    unset -f detect_pkg_manager
-    detect_pkg_manager() {
-        # Skip detect_distro, just use the case
-        case "$DISTRO_ID" in
-            debian|ubuntu|kali|parrot|linuxmint|pop|elementary|zorin|mx)
-                PKG_MANAGER="apt" ;;
-            fedora|rhel|centos|rocky|alma|nobara)
-                PKG_MANAGER="dnf" ;;
-            arch|manjaro|endeavouros|garuda|artix)
-                PKG_MANAGER="pacman" ;;
-            opensuse*|sles)
-                PKG_MANAGER="zypper" ;;
-            *) PKG_MANAGER="unknown" ;;
-        esac
-        export PKG_MANAGER
-    }
-
-    for distro in debian ubuntu kali parrot; do
-        DISTRO_ID="$distro"
-        detect_pkg_manager
-        [[ "$PKG_MANAGER" == "apt" ]]
+@test "detect_pkg_manager maps each distro family to its package manager" {
+    make_test_tmpdir
+    local row id mgr
+    for row in debian:apt ubuntu:apt kali:apt parrot:apt linuxmint:apt \
+               fedora:dnf rhel:dnf centos:dnf rocky:dnf almalinux:dnf nobara:dnf \
+               arch:pacman manjaro:pacman endeavouros:pacman \
+               opensuse-tumbleweed:zypper sles:zypper alpine:unknown; do
+        id="${row%%:*}"; mgr="${row##*:}"
+        mock_os_release "$id"
+        _detect "$MOCK_OS_RELEASE"
+        assert_success
+        assert_output "$id $mgr"
     done
 }
 
-@test "detect_pkg_manager sets dnf for fedora family" {
-    detect_pkg_manager() {
-        case "$DISTRO_ID" in
-            fedora|rhel|centos|rocky|alma|nobara) PKG_MANAGER="dnf" ;;
-            *) PKG_MANAGER="unknown" ;;
-        esac
-        export PKG_MANAGER
-    }
-
-    for distro in fedora rhel centos rocky alma nobara; do
-        DISTRO_ID="$distro"
-        detect_pkg_manager
-        [[ "$PKG_MANAGER" == "dnf" ]]
-    done
+@test "detect_distro reads the os-release override as data and never executes it" {
+    make_test_tmpdir
+    local osr="$TEST_TMPDIR/os-release"
+    {
+        printf 'touch "%s/pwned"\n' "$TEST_TMPDIR"
+        printf 'ID="fedora"\n'
+        printf 'ID_LIKE='"'"'rhel centos'"'"'\n'
+        printf 'PRETTY_NAME="Fedora $(touch %s/pwned2)"\n' "$TEST_TMPDIR"
+    } > "$osr"
+    _detect "$osr"
+    assert_success
+    assert_output "fedora dnf"
+    [[ ! -e "$TEST_TMPDIR/pwned" && ! -e "$TEST_TMPDIR/pwned2" ]]
 }
 
-@test "detect_pkg_manager sets pacman for arch family" {
-    detect_pkg_manager() {
-        case "$DISTRO_ID" in
-            arch|manjaro|endeavouros|garuda|artix) PKG_MANAGER="pacman" ;;
-            *) PKG_MANAGER="unknown" ;;
-        esac
-        export PKG_MANAGER
-    }
-
-    for distro in arch manjaro endeavouros garuda artix; do
-        DISTRO_ID="$distro"
-        detect_pkg_manager
-        [[ "$PKG_MANAGER" == "pacman" ]]
-    done
+@test "detect_pkg_manager follows ID_LIKE for derivatives" {
+    make_test_tmpdir
+    mock_os_release neon "KDE neon" 24 "ubuntu debian"
+    _detect "$MOCK_OS_RELEASE"
+    assert_output "neon apt"
+    mock_os_release amzn "Amazon Linux" 2023 "fedora"
+    _detect "$MOCK_OS_RELEASE"
+    assert_output "amzn dnf"
+    mock_os_release cachyos "CachyOS" "" "arch"
+    _detect "$MOCK_OS_RELEASE"
+    assert_output "cachyos pacman"
 }
 
-@test "detect_pkg_manager sets zypper for opensuse" {
-    detect_pkg_manager() {
-        case "$DISTRO_ID" in
-            opensuse*|sles) PKG_MANAGER="zypper" ;;
-            *) PKG_MANAGER="unknown" ;;
-        esac
-        export PKG_MANAGER
-    }
+@test "detect_distro survives an os-release without ID" {
+    make_test_tmpdir
+    printf 'NAME=Foo\nVERSION=1\n' > "$TEST_TMPDIR/osr"
+    _detect "$TEST_TMPDIR/osr"
+    assert_success
+    assert_output "linux unknown"
+    refute_output --partial "unbound variable"
+}
 
-    DISTRO_ID="opensuse-tumbleweed"
-    detect_pkg_manager
-    [[ "$PKG_MANAGER" == "zypper" ]]
-
-    DISTRO_ID="sles"
-    detect_pkg_manager
-    [[ "$PKG_MANAGER" == "zypper" ]]
+@test "detect_distro does not leak os-release variables into the shell" {
+    make_test_tmpdir
+    mock_os_release debian "Debian GNU/Linux 12" 12
+    local fakebin="$TEST_TMPDIR/fakebin"; mkdir -p "$fakebin"
+    printf '#!/bin/sh\necho Linux\n' > "$fakebin/uname"; chmod +x "$fakebin/uname"
+    run env -u PKG_MANAGER PATH="$fakebin:$PATH" CYBERSEC_OS_RELEASE="$MOCK_OS_RELEASE" \
+        SCRIPT_DIR="$PROJECT_ROOT" LOG_FILE=/dev/null \
+        bash -c 'source "$SCRIPT_DIR/lib/common.sh"; echo "[${VERSION_ID:-unset}]"'
+    assert_output "[unset]"
 }
 
 @test "detect_pkg_manager sets pkg for Termux" {
-    # The real detect_pkg_manager checks TERMUX_VERSION env var
-    # Simulate by calling source with android/pkg
-    source_libs android pkg
-    [[ "$PKG_MANAGER" == "pkg" ]]
-    [[ "$DISTRO_ID" == "android" ]]
+    make_test_tmpdir
+    mock_os_release debian
+    _detect "$MOCK_OS_RELEASE" TERMUX_VERSION=0.118 PREFIX="$TEST_TMPDIR/prefix"
+    assert_output "android pkg"
+}
+
+@test "_normalize_bool canonicalises truthy and falsy spellings" {
+    source_libs debian apt
+    local v
+    for v in true 1 yes on TRUE Yes; do
+        FLAG="$v"; _normalize_bool FLAG; [[ "$FLAG" == "true" ]]
+    done
+    for v in false 0 no off FALSE ""; do
+        FLAG="$v"; _normalize_bool FLAG; [[ "$FLAG" == "false" ]]
+    done
+}
+
+@test "_normalize_bool rejects anything else with exit 2" {
+    source_libs debian apt
+    FLAG=banana
+    run _normalize_bool FLAG
+    assert_failure 2
+    assert_output --partial "Invalid value for FLAG"
+}
+
+@test "PARALLEL_JOBS with leading zeros is read as decimal" {
+    run env PARALLEL_JOBS=0016 SCRIPT_DIR="$PROJECT_ROOT" LOG_FILE=/dev/null PKG_MANAGER=apt DISTRO_ID=debian \
+        bash -c 'source "$SCRIPT_DIR/lib/common.sh"; echo "$PARALLEL_JOBS"'
+    assert_output "16"
+    run env PARALLEL_JOBS=08 SCRIPT_DIR="$PROJECT_ROOT" LOG_FILE=/dev/null PKG_MANAGER=apt DISTRO_ID=debian \
+        bash -c 'source "$SCRIPT_DIR/lib/common.sh"; echo "$PARALLEL_JOBS"'
+    assert_output "8"
+}
+
+@test "log_message prints backslash sequences verbatim on one line" {
+    source_libs debian apt
+    make_test_tmpdir
+    LOG_FILE="$TEST_TMPDIR/out.log"
+    : > "$LOG_FILE"
+    run log_info 'path C:\new\table and \c cut'
+    assert_success
+    assert_output --partial 'path C:\new\table and \c cut'
+    [[ "${#lines[@]}" -eq 1 ]]
+    log_info 'path C:\new\table and \c cut'
+    log_info 'next'
+    [[ "$(wc -l < "$LOG_FILE" | tr -d ' ')" == "3" ]]
+    grep -qF 'path C:\new\table and \c cut' "$LOG_FILE"
+    ! grep -q $'\033' "$LOG_FILE"
+}
+
+@test "log_message strips ANSI colour codes from the log file" {
+    source_libs debian apt
+    make_test_tmpdir
+    LOG_FILE="$TEST_TMPDIR/out.log"
+    : > "$LOG_FILE"
+    log_message $'\033[31mred\033[0m text'
+    grep -q ' - red text$' "$LOG_FILE"
+}
+
+@test "_acquire_run_lock warns when flock is unavailable" {
+    source_libs debian apt
+    local saved_path="$PATH"
+    PATH=/nonexistent
+    run _acquire_run_lock
+    PATH="$saved_path"
+    assert_success
+    assert_output --partial "No run lock"
+}
+
+@test "root PATH keeps \$HOME/.cargo/bin after the system directories" {
+    run env -u PKG_MANAGER HOME="$BATS_TEST_TMPDIR/h" SCRIPT_DIR="$PROJECT_ROOT" LOG_FILE=/dev/null \
+        PKG_MANAGER=apt DISTRO_ID=debian \
+        bash -c 'source "$SCRIPT_DIR/lib/common.sh"
+                 case ":$PATH:" in *":/usr/bin:"*"$HOME/.cargo/bin:"*) echo ordered ;; *) echo "bad: $PATH" ;; esac'
+    assert_output "ordered"
 }
 
 # Package manager abstraction
@@ -607,11 +669,59 @@ _bc_setup() {
     [[ "$(git -C "$TEST_TMPDIR/theirs" log -1 --format=%s)" == "replaced" ]]
 }
 
+@test "_git_safe_reset_to_remote stops before resetting when local edits cannot be stashed" {
+    make_test_tmpdir
+    local repository="$TEST_TMPDIR/repo"
+    git init -q -b main "$repository"
+    printf 'original\n' > "$repository/notes"
+    git -C "$repository" add notes
+    git -C "$repository" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm original
+    git -C "$repository" update-ref refs/remotes/origin/main HEAD
+    git -C "$repository" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+    printf 'local changes\n' > "$repository/notes"
+    _as_builder() {
+        printf '%s\n' "$1" >> "$TEST_TMPDIR/git-commands"
+        [[ "$1" != *' stash push '* ]] || return 1
+        [[ "$1" != *' fetch origin'* ]] || return 0
+        bash -c "$1"
+    }
+
+    run _git_safe_reset_to_remote "$repository" "$TEST_TMPDIR/git.log"
+
+    assert_failure
+    [[ "$(cat "$repository/notes")" == 'local changes' ]]
+    ! grep -q 'reset --hard' "$TEST_TMPDIR/git-commands"
+}
+
+@test "_git_safe_reset_to_remote leaves an older automatic stash untouched" {
+    make_test_tmpdir
+    local upstream="$TEST_TMPDIR/upstream" repository="$TEST_TMPDIR/repo"
+    git init -q -b main "$upstream"
+    printf 'original\n' > "$upstream/notes"
+    git -C "$upstream" add notes
+    git -C "$upstream" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm original
+    git clone -q "$upstream" "$repository"
+    printf 'older changes\n' > "$repository/notes"
+    git -C "$repository" stash push -qm 'cybersec-toolkit: auto-stash before update'
+    local previous_stash
+    previous_stash=$(git -C "$repository" rev-parse refs/stash)
+
+    run _git_safe_reset_to_remote "$repository" "$TEST_TMPDIR/git.log"
+
+    assert_success
+    [[ "$(cat "$repository/notes")" == original ]]
+    [[ "$(git -C "$repository" rev-parse refs/stash)" == "$previous_stash" ]]
+}
+
 @test "_path_append appends each directory once and never reorders PATH" {
     # A builder-owned dir ahead of /usr/bin would let it shadow sha256sum/tar for root.
+    # PATH is restored before asserting: bats' own cleanup needs rm, which is /bin/rm on macOS.
+    local saved_path="$PATH" result
     PATH="/usr/bin:/home/u/.local/bin"
     _path_append /home/u/.cargo/bin /home/u/.local/bin /home/u/.cargo/bin
-    [[ "$PATH" == "/usr/bin:/home/u/.local/bin:/home/u/.cargo/bin" ]]
+    result="$PATH"
+    PATH="$saved_path"
+    [[ "$result" == "/usr/bin:/home/u/.local/bin:/home/u/.cargo/bin" ]]
 }
 
 @test "run lock preserves the caller's stderr" {
@@ -909,4 +1019,81 @@ _apt_removal_stub() {
     run pkg_remove a b
     assert_failure
     [[ ! -e "$TEST_TMPDIR/calls" ]]
+}
+
+# lib/shared.sh hardening
+
+@test "_version_ge handles pre-release, non-numeric and zero-padded versions" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/lib/shared.sh"
+    run _version_ge 1.26rc1 1.21
+    assert_success
+    refute_output --partial "too great"
+    run _version_ge devel 1.21
+    assert_failure 1
+    refute_output --partial "unbound"
+    run _version_ge 1.9 1.21
+    assert_failure 1
+    run _version_ge 1.21 1.21
+    assert_success
+    run _version_ge 1.08 1.8
+    assert_success
+
+    run _version_ge 1.26rc1 1.27
+    assert_failure
+    run _version_ge 3.11rc2 3.12
+    assert_failure
+}
+
+@test "version-bound env vars with command substitutions fall back to defaults" {
+    make_test_tmpdir
+    run env NODE_MIN_VERSION='a[$(touch '"$TEST_TMPDIR"'/pwned)]' GO_MIN_VERSION='1.x' \
+        PYTHON_MIN_VERSION='3.$(id)' PYTHON_TRY_MAX='x' \
+        SCRIPT_DIR="$PROJECT_ROOT" LOG_FILE=/dev/null PKG_MANAGER=apt DISTRO_ID=debian \
+        bash -c 'source "$SCRIPT_DIR/lib/common.sh"; source "$SCRIPT_DIR/lib/installers.sh"
+                 source "$SCRIPT_DIR/lib/shared.sh"
+                 echo "$NODE_MIN_VERSION $GO_MIN_VERSION $PYTHON_MIN_VERSION $PYTHON_TRY_MAX"'
+    assert_output "22 1.21 3.11 3.13"
+    [ ! -e "$TEST_TMPDIR/pwned" ]
+}
+
+# _ppa_probe DISTRO [VAR=value ...] — run ensure_python_modern on a stubbed apt host
+# with Python 3.10; add-apt-repository leaves a marker file instead of touching apt.
+_ppa_probe() {
+    local _distro="$1"; shift
+    make_test_tmpdir
+    rm -f "$TEST_TMPDIR/ppa_added"
+    run env "$@" SCRIPT_DIR="$PROJECT_ROOT" LOG_FILE=/dev/null PKG_MANAGER=apt \
+        PPA_MARKER="$TEST_TMPDIR/ppa_added" PROBE_DISTRO="$_distro" \
+        bash -c 'source "$SCRIPT_DIR/lib/common.sh"; source "$SCRIPT_DIR/lib/installers.sh"
+                 source "$SCRIPT_DIR/lib/shared.sh"
+                 DISTRO_ID="$PROBE_DISTRO"; DISTRO_ID_LIKE=debian
+                 python3() { echo "Python 3.10.12"; }
+                 command_exists() { [[ "$1" == python3 || "$1" == add-apt-repository ]]; }
+                 add-apt-repository() { : > "$PPA_MARKER"; }
+                 pkg_update() { :; }
+                 pkg_install() { return 1; }
+                 ensure_python_modern'
+}
+
+@test "ensure_python_modern never adds the deadsnakes PPA in strict mode" {
+    _ppa_probe ubuntu REQUIRE_CHECKSUMS=true
+    [ ! -e "$TEST_TMPDIR/ppa_added" ]
+    assert_output --partial "Strict mode"
+}
+
+@test "ensure_python_modern adds the deadsnakes PPA on Ubuntu unless CYBERSEC_ALLOW_PPA=0" {
+    _ppa_probe ubuntu REQUIRE_CHECKSUMS=false
+    [ -e "$TEST_TMPDIR/ppa_added" ]
+    assert_output --partial "CYBERSEC_ALLOW_PPA=0 skips it"
+    _ppa_probe ubuntu REQUIRE_CHECKSUMS=false CYBERSEC_ALLOW_PPA=0
+    [ ! -e "$TEST_TMPDIR/ppa_added" ]
+}
+
+@test "ensure_python_modern never adds the Ubuntu-only deadsnakes PPA on Debian or Kali" {
+    _ppa_probe debian REQUIRE_CHECKSUMS=false
+    [ ! -e "$TEST_TMPDIR/ppa_added" ]
+    assert_output --partial "Ubuntu-only"
+    _ppa_probe kali REQUIRE_CHECKSUMS=false
+    [ ! -e "$TEST_TMPDIR/ppa_added" ]
 }

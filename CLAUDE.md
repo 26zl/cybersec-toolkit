@@ -42,11 +42,17 @@ write that log, and the MCP policy layer is what enforces execution rules. A san
 server mirrors its records out to that same host log (`docs/SANDBOX.md`), so the gate
 behaves identically in both launch modes. Repository work is never gated.
 Denials land in `~/.local/state/cybersec-tools-mcp/guard-denials.log`.
-Disable with `CYBERSEC_AGENT_GUARD=0`. Other clients can call the same two modes from
+Disable with `CYBERSEC_AGENT_GUARD=0`.
+`CYBERSEC_AGENT_GUARD_NOW` is a test-only clock override.
+Other clients can call the same two modes from
 whatever pre-execution hook they provide — the logic is not Claude Code-specific.
 
 ### Claude Code verification
 
-1. Run `/mcp` and confirm `cybersec-tools` is connected.
+1. Run `/mcp` and confirm `cybersec-tools` is connected. On hosts without KVM
+   (macOS, Windows) the default Kata launcher fails closed; start
+   Claude Code as `CYBERSEC_SANDBOX_MODE=local claude` for repository work
+   only and leave `.mcp.json` unchanged. Local mode removes the VM boundary for
+   target work too, so do not export it in a shell profile (`docs/SANDBOX.md`).
 2. Confirm a relevant skill can be discovered from `.claude/skills/`.
 3. Run `make check` after the final repository edits.

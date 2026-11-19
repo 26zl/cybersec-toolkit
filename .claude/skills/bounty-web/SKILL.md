@@ -5,13 +5,15 @@ description: Use during the testing phase of a web application bug bounty. Provi
 
 # Bug bounty web testing methodology
 
+> **Pre-flight.** Run `authorization-gate` and read the program policy first: confirm that automated scanning, brute force and rate-limit testing are allowed, and stay inside scope. Start with `suggest_for_bounty` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command (for example `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), ask the operator to fix the configuration and restart; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
+
 Build on top of `bounty-recon` results. Tool-first: use SecLists wordlists (already cloned in this installer) before writing custom payloads.
 
 ## 1. Authentication & session
 
 | Test | How |
 | --- | --- |
-| Default creds | `hydra`, manual common pairs (admin:admin, root:root) |
+| Default creds | Only if the program allows credential testing: one documented vendor-default pair per account, no lists |
 | User enum (different errors) | manual login form probing |
 | Account takeover via password reset | inspect token entropy, host header injection on reset email |
 | Session fixation | check if session ID is set before login |
@@ -35,10 +37,10 @@ Methodology: enumerate all endpoints with low-privilege user, then re-request ea
 
 ### XSS
 
-```bash
+```text
 # DOM/reflected discovery
-dalfox url https://target.com/?q=test
-xsstrike -u "https://target.com/?q=FUZZ"
+run_tool("dalfox", "url https://target.com/?q=test")
+run_tool("XSStrike", "-u https://target.com/?q=test")
 
 # Stored — manual; create accounts and probe every input field
 ```
@@ -47,11 +49,12 @@ CSP analysis: parse `Content-Security-Policy` header — look for `unsafe-inline
 
 ### SQLi
 
-```bash
-sqlmap -u "https://target.com/page?id=1" --batch --level=5 --risk=2 --random-agent
+```text
+run_tool("sqlmap", "-u https://target.com/page?id=1 --batch --level=3 --risk=1 --random-agent")
 
 # When WAF blocks
-sqlmap ... --tamper=between,space2comment,charencode
+# run_tool blocks --tamper. Raise --level/--risk within program rules, adjust encoding by hand,
+# or ask the operator for an approved script via run_script (needs CYBERSEC_MCP_ALLOW_SCRIPTS=1)
 ```
 
 ### SSRF
@@ -114,7 +117,7 @@ Detect: serialized blobs in cookies/parameters (`O:8:"User":...` PHP, `rO0AB...`
 | Ruby | manual + `marshal` |
 | Node | `node-serialize` IIFE payload |
 
-## 7. Tool stack from this installer
+## 7. Candidate tools (check `list_tools`; unregistered ones need an approved install)
 
 Recon: `subfinder`, `httpx`, `katana`, `gau`, `waybackurls`
 Discovery: `ffuf`, `gobuster`, `feroxbuster`, `dirsearch`

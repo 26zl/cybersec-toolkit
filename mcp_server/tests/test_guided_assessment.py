@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from mcp_server import server
+from mcp_server.advisor_utils import TOOL_ALIASES
+from mcp_server.bounty_advisor import BOUNTY_TARGET_MAP
+from mcp_server.ctf_advisor import CTF_CATEGORY_MAP
 from mcp_server.guided_assessment import (
+    _FINDING_SKILL_ROUTES,
+    _finding_classification,
     _normalize_target,
     _recommended_next_command,
+    _recommended_skills,
     _target_is_external,
     build_guided_plan,
 )
-from mcp_server.security import _address_is_safe
+from mcp_server.security import SYSTEM_UTILITIES, _address_is_safe
 
 
 def test_companion_web_includes_advisor_commands_and_recommendation() -> None:
@@ -374,6 +382,12 @@ async def test_autonomous_ready_with_no_candidates_does_not_claim_completed() ->
     execute_tool.assert_not_called()
     assert result["execution"]["status"] == "not_started"
     assert "no installed execution candidates" in result["execution"]["reason"]
+    directive = result["autonomous"]["directive"]
+    assert "auto-runs" not in directive
+    assert "No bootstrap step will run" in directive
+    joined = " ".join(result["next_actions"])
+    assert "already done" not in joined
+    assert "no bootstrap step was run" in joined
 
 
 @pytest.mark.asyncio
@@ -643,3 +657,173 @@ def test_bare_ipv6_and_host_port_targets_are_hosts(target: str, host: str, exter
 def test_target_with_control_characters_is_rejected() -> None:
     with pytest.raises(ValueError, match="control characters"):
         _normalize_target("10.0.0.1\nrm", "auto", None)
+
+
+@pytest.mark.parametrize("target", ["-oN", "-oNhits", "--script=x", "-iL/etc/hosts", "--proxy=http://a"])
+def test_target_starting_with_dash_is_rejected(target: str) -> None:
+    with pytest.raises(ValueError, match="must not start with '-'"):
+        _normalize_target(target, "auto", None)
+    result = build_guided_plan(
+        target=target,
+        target_type="auto",
+        workflow="auto",
+        mode="companion",
+        intensity="low",
+        authorization_confirmed=False,
+        max_steps=3,
+        external_enabled=False,
+        tools_db=server._db,
+    )
+    assert "error" in result
+    assert "plan" not in result
+
+
+def test_dash_prefixed_file_is_accepted_with_dot_slash() -> None:
+    info = _normalize_target("./-x", "auto", None)
+    assert info["kind"] == "file"
+    assert info["raw"] == "./-x"
+
+
+def test_tilde_file_target_is_expanded() -> None:
+    info = _normalize_target("~/x.bin", "auto", None)
+    assert info["kind"] == "file"
+    assert info["raw"] == os.path.expanduser("~/x.bin")
+    assert os.path.isabs(info["raw"])
+    with patch("mcp_server.guided_assessment.shutil.which", return_value="/usr/bin/tool"):
+        result = build_guided_plan(
+            target="~/x.bin",
+            target_type="auto",
+            workflow="auto",
+            mode="companion",
+            intensity="low",
+            authorization_confirmed=False,
+            max_steps=3,
+            external_enabled=False,
+            tools_db=server._db,
+        )
+    commands = [step["command"] for step in result["plan"]["steps"]]
+    assert commands
+    assert not any("'~" in command or " ~" in command for command in commands)
+
+
+@pytest.mark.parametrize(
+    ("finding", "expected"),
+    [
+        ("information disclosure of source code", "unknown"),
+        ("resource leak", "unknown"),
+        ("brute force login", "unknown"),
+        ("stack trace disclosed in response", "unknown"),
+        ("we embrace change", "unknown"),
+        ("walked down the corridor", "unknown"),
+        ("RCE via upload", "rce"),
+        ("race condition on coupon", "race_condition"),
+        ("path traversal ../../etc/passwd", "path_traversal"),
+        ("time of check to time of use", "race_condition"),
+        ("CL.TE desync", "http_smuggling"),
+        ("stored XSS in profile", "xss"),
+        ("SQL injections in login", "sqli"),
+        ("IDORs on orders", "idor_bola"),
+        ("open redirects on login", "oauth_oidc"),
+        ("sourced", "unknown"),
+    ],
+)
+def test_finding_classifier_uses_word_boundaries(finding: str, expected: str) -> None:
+    assert _finding_classification(finding, "generic")["type"] == expected
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _skill_exists(name: str) -> bool:
+    return (_REPO_ROOT / ".claude" / "skills" / name / "SKILL.md").is_file()
+
+
+def test_finding_skill_routes_point_to_existing_skills() -> None:
+    missing = {skill for skills in _FINDING_SKILL_ROUTES.values() for skill in skills if not _skill_exists(skill)}
+    assert missing == set()
+
+
+def test_recommended_skills_exist_for_every_workflow_and_type() -> None:
+    combos = (
+        [("ctf", c) for c in CTF_CATEGORY_MAP] + [("bounty", t) for t in BOUNTY_TARGET_MAP] + [("generic", "generic")]
+    )
+    missing: set[str] = set()
+    for workflow, target_type in combos:
+        for network in (True, False):
+            skills = _recommended_skills(
+                workflow,
+                target_type,
+                {"finding": {"type": "unknown"}},
+                {"network": network},
+            )
+            missing |= {entry["name"] for entry in skills if not _skill_exists(entry["name"])}
+    assert missing == set()
+
+
+@pytest.mark.parametrize("category", sorted(CTF_CATEGORY_MAP))
+def test_every_ctf_category_gets_a_domain_skill(category: str) -> None:
+    if category == "misc":
+        pytest.skip("misc has no single domain skill")
+    names = {
+        s["name"] for s in _recommended_skills("ctf", category, {"finding": {"type": "unknown"}}, {"network": False})
+    }
+    assert names - {"evidence-hygiene", "writeup-template"}
+
+
+@pytest.mark.parametrize("target_type", sorted(BOUNTY_TARGET_MAP))
+def test_every_bounty_type_gets_a_domain_skill(target_type: str) -> None:
+    names = {
+        s["name"]
+        for s in _recommended_skills("bounty", target_type, {"finding": {"type": "unknown"}}, {"network": False})
+    }
+    generic = {
+        "bb-methodology",
+        "bug-bounty",
+        "triage-validation",
+        "evidence-hygiene",
+        "report-writing",
+        "writeup-template",
+    }
+    assert names - generic
+
+
+def test_plan_step_tools_are_registry_tools_or_system_utilities() -> None:
+    db = server._db
+    registry = set(db.tools_by_name)
+    targets = [("http://10.0.0.1", "bounty", "web_app"), ("10.0.0.1", "generic", "generic"), ("./a.bin", "ctf", "pwn")]
+    unknown: set[str] = set()
+    for target, workflow, target_type in targets:
+        plan = build_guided_plan(
+            target=target,
+            target_type=target_type,
+            workflow=workflow,
+            mode="companion",
+            intensity="medium",
+            authorization_confirmed=False,
+            max_steps=10,
+            external_enabled=False,
+            tools_db=db,
+        )
+        for step in plan["plan"]["steps"]:
+            tool = TOOL_ALIASES.get(step["tool"], step["tool"])
+            if tool not in registry and step["tool"] not in SYSTEM_UTILITIES:
+                unknown.add(step["tool"])
+    assert unknown == set()
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "http://evil.example\\@127.0.0.1/",
+        "http://127.0.0.1\\@evil.example/",
+        "http://127.0.0.1 @evil.example/",
+    ],
+)
+def test_ambiguous_url_authority_counts_as_external(target: str) -> None:
+    info = _normalize_target(target, "auto", None)
+    assert info["kind"] == "url"
+    assert info["appears_external"] is True
+
+
+def test_plain_loopback_url_stays_local() -> None:
+    assert _normalize_target("http://user@127.0.0.1:8080/a", "auto", None)["appears_external"] is False

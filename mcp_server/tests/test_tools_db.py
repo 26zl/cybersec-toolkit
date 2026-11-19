@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,6 +33,13 @@ class TestLoadTools:
     def test_missing_config_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             ToolsDatabase(project_root=tmp_path)
+
+    @pytest.mark.parametrize("content", ["{bad", '[{"nome": "x"}]', '{"a": 1}', '["x"]'])
+    def test_malformed_registry_raises_value_error_with_path(self, tmp_path: Path, content: str) -> None:
+        (tmp_path / "tools_config.json").write_text(content, encoding="utf-8")
+        with pytest.raises(ValueError, match="invalid registry") as excinfo:
+            ToolsDatabase(project_root=tmp_path)
+        assert "tools_config.json" in str(excinfo.value)
 
     def test_tool_fields(self, tools_db: ToolsDatabase) -> None:
         tool = tools_db.tools_by_name["nmap"]
@@ -91,6 +99,15 @@ class TestFindDockerImage:
     def test_no_match(self, tools_db: ToolsDatabase) -> None:
         assert tools_db._find_docker_image("nonexistent") is None
 
+    def test_every_registry_docker_tool_resolves_to_an_image(self) -> None:
+        db = ToolsDatabase()
+        unresolved = [t["name"] for t in db._tools if t["method"] == "docker" and not db._find_docker_image(t["name"])]
+        assert unresolved == []
+
+    def test_label_mapped_tools(self, tools_db: ToolsDatabase) -> None:
+        assert tools_db._find_docker_image("bloodhound-ce") == "specterops/bloodhound"
+        assert tools_db._find_docker_image("pentagi-docker") == "vxcontrol/pentagi:latest"
+
 
 class TestDockerImageExists:
     _LISTING = "beefproject/beef:latest\nsagemath/sagemath:10.4\nlocalhost:5000/mirror:dev\n"
@@ -147,6 +164,20 @@ class TestCheckInstalled:
         assert result["installed"] is True
         assert result["method"] == "versions_tracked"
 
+    def test_docker_tool_tracked_under_label(self, tmp_path: Path) -> None:
+        registry = [{"name": "bloodhound-ce", "method": "docker", "module": "enterprise", "url": "x"}]
+        (tmp_path / "tools_config.json").write_text(json.dumps(registry), encoding="utf-8")
+        (tmp_path / ".versions").write_text("BloodHound CE|docker|latest|2024-01-01T00:00:00\n", encoding="utf-8")
+        result = ToolsDatabase(project_root=tmp_path).check_installed("bloodhound-ce")
+        assert result["installed"] is True
+        assert result["method"] == "versions_tracked"
+
+    def test_path_check_scans_once(self, tools_db: ToolsDatabase) -> None:
+        with patch("shutil.which", return_value="/usr/bin/nmap") as which:
+            result = tools_db.check_installed("nmap")
+        assert which.call_count == 1
+        assert "/usr/bin/nmap" in result["details"]
+
     def test_found_in_path(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", side_effect=lambda x: "/usr/bin/nmap" if x == "nmap" else None):
             result = tools_db.check_installed("nmap")
@@ -186,6 +217,7 @@ class TestCheckInstalled:
 
         config = tmp_tools_config / "tools_config.json"
         tools = json.loads(config.read_text(encoding="utf-8"))
+        tools = [t for t in tools if t["name"] != "metasploit"]
         tools.append({"name": "metasploit", "method": "special", "module": "pwn", "url": ""})
         config.write_text(json.dumps(tools), encoding="utf-8")
         db = ToolsDatabase(project_root=tmp_tools_config)
@@ -309,3 +341,200 @@ class TestResolveBinaryName:
         assert resolve_binary_name("npm", "apk-mitm") == "apk-mitm"
         assert resolve_binary_name("cargo", "ripgrep") == "ripgrep"
         assert resolve_binary_name("go", "nuclei") == "nuclei"
+
+
+class TestExecutionMetadata:
+    def test_git_cli_has_resolved_binary_and_network_classification(self):
+        from mcp_server.tools_db import execution_metadata
+
+        result = execution_metadata({"name": "XSStrike", "method": "git"})
+        assert result["executable"] is True
+        assert result["binary"] == "xsstrike"
+        assert result["network"] is True
+
+    def test_git_resource_is_discoverable_without_claiming_cli_support(self):
+        from mcp_server.tools_db import execution_metadata
+
+        result = execution_metadata({"name": "SecLists", "method": "git"})
+        assert result["executable"] is False
+        assert result["kind"] == "resource"
+        assert "run_tool" in result["access"]
+
+    def test_unknown_git_project_fails_closed(self):
+        from mcp_server.tools_db import execution_metadata
+
+        result = execution_metadata({"name": "unreviewed-example", "method": "git"})
+        assert result["executable"] is False
+        assert "review" in result["reason"].lower()
+
+    def test_every_registry_git_tool_has_explicit_classification(self):
+        from mcp_server.tools_db import GIT_BIN_NAMES, GIT_NON_EXECUTABLE
+
+        names = {tool["name"] for tool in ToolsDatabase()._tools if tool["method"] == "git"}
+        assert names == set(GIT_BIN_NAMES) | set(GIT_NON_EXECUTABLE)
+        assert not (set(GIT_BIN_NAMES) & set(GIT_NON_EXECUTABLE))
+
+    def test_git_alias_uses_owning_registry_tool(self):
+        from mcp_server.tools_db import package_for_extra_binary
+
+        assert resolve_binary_name("git", "XSStrike") == "xsstrike"
+        assert package_for_extra_binary("xsstrike") == "XSStrike"
+        assert package_for_extra_binary("msfconsole") == "metasploit"
+
+    def test_duplicate_registry_names_fail_instead_of_shadowing(self, tmp_path):
+        entries = [{"name": "example", "method": "git", "module": "web"}] * 2
+        (tmp_path / "tools_config.json").write_text(json.dumps(entries))
+        with pytest.raises(ValueError, match="duplicate"):
+            ToolsDatabase(project_root=tmp_path)
+
+    def test_search_matches_registry_and_binary_names(self):
+        db = ToolsDatabase()
+        assert [t["name"] for t in db.list_tools(query="XSSTRIKE")] == ["XSStrike"]
+        assert "metasploit" in {t["name"] for t in db.list_tools(query="msfconsole")}
+
+    def test_execution_filter_keeps_resources_available_by_default(self):
+        db = ToolsDatabase()
+        assert "SecLists" in {t["name"] for t in db.list_tools()}
+        assert "SecLists" not in {t["name"] for t in db.list_tools(executable_only=True)}
+        assert "commix" in {t["name"] for t in db.list_tools(executable_only=True)}
+
+    def test_native_binary_installation_and_readiness_agree(self):
+        db = ToolsDatabase()
+        with patch("shutil.which", side_effect=lambda name: "/usr/bin/qltool" if name == "qltool" else None):
+            assert db.check_installed("Qiling")["installed"] is True
+            status = db.execution_status("Qiling")
+        assert status["ready"] is True
+        assert status["binary"] == "qltool"
+
+    def test_known_native_alias_is_searchable(self):
+        result = ToolsDatabase().list_tools(query="rsacrack")
+        assert [t["name"] for t in result] == ["RsaCtfTool"]
+
+    def test_suites_with_verified_primary_cli_remain_executable(self):
+        from mcp_server.tools_db import execution_metadata
+
+        for name in (
+            "dnscat2",
+            "firmware-mod-kit",
+            "pkinittools",
+            "libnfc-crypto1-crack",
+            "USB-HID-decoders",
+            "libc-database",
+        ):
+            assert execution_metadata({"name": name, "method": "git"})["executable"] is True
+
+    def test_libc_database_does_not_take_over_system_find(self):
+        from mcp_server.tools_db import package_for_extra_binary
+
+        assert resolve_binary_name("git", "libc-database") == "libc-database"
+        assert package_for_extra_binary("find") is None
+
+
+class TestPackageLaunchers:
+    @pytest.mark.parametrize(
+        ("method", "name", "binary"),
+        [
+            ("source", "AFLplusplus", "afl-fuzz"),
+            ("source", "ELFkickers", "sstrip"),
+            ("source", "PkCrack", "pkcrack"),
+            ("source", "Donut", "donut"),
+            ("binary", "dex2jar", "d2j-dex2jar"),
+            ("binary", "osquery", "osqueryi"),
+            ("binary", "heimdall-rs", "heimdall"),
+            ("pipx", "netexec", "nxc"),
+            ("apt", "snmp", "snmpwalk"),
+            ("apt", "poppler-utils", "pdftotext"),
+            ("apt", "zbar-tools", "zbarimg"),
+            ("apt", "ewf-tools", "ewfinfo"),
+            ("apt", "binutils", "readelf"),
+        ],
+    )
+    def test_package_aliases_select_the_real_cli(self, method, name, binary):
+        from mcp_server.tools_db import package_for_extra_binary
+
+        assert resolve_binary_name(method, name) == binary
+        assert package_for_extra_binary(binary) == name
+
+    def test_every_source_row_has_explicit_binary_metadata(self):
+        from mcp_server.tools_db import SOURCE_BIN_NAMES
+
+        names = {tool["name"] for tool in ToolsDatabase()._tools if tool["method"] == "source"}
+        assert names == set(SOURCE_BIN_NAMES)
+
+    @pytest.mark.parametrize("name", ["forensics-extra", "libnfc-dev"])
+    def test_non_cli_packages_remain_visible_with_correct_capability(self, name):
+        from mcp_server.tools_db import execution_metadata
+
+        tool = ToolsDatabase().get_tool(name)
+        assert tool is not None
+        assert execution_metadata(tool)["executable"] is False
+
+    def test_binary_label_tracking_matches_registry_package(self, tmp_path):
+        config = [{"name": "osquery", "method": "binary", "module": "blueteam"}]
+        (tmp_path / "tools_config.json").write_text(json.dumps(config))
+        (tmp_path / ".versions").write_text("osqueryi|binary|1.2.3|2000-01-01\n")
+        with patch("shutil.which", return_value=None):
+            db = ToolsDatabase(project_root=tmp_path)
+            assert db.check_installed("osquery")["installed"] is True
+            assert db.execution_status("osquery")["ready"] is False
+
+    def test_suite_extra_binary_resolves_to_registry_owner(self):
+        from mcp_server.tools_db import package_for_extra_binary
+
+        assert package_for_extra_binary("elfls") == "ELFkickers"
+        assert package_for_extra_binary("pycdas") == "pycdc"
+
+
+@pytest.mark.parametrize(("extra", "primary"), [("icat", "fls"), ("pycdas", "pycdc"), ("elfls", "sstrip")])
+@pytest.mark.parametrize("extra_present", [False, True])
+def test_extra_binary_readiness_checks_requested_executable(extra, primary, extra_present):
+    db = ToolsDatabase()
+    available = extra if extra_present else primary
+    with patch("shutil.which", side_effect=lambda binary: f"/usr/bin/{binary}" if binary == available else None):
+        status = db.execution_status(extra)
+        installed = db.check_installed(extra)
+    assert status["binary"] == extra
+    assert status["ready"] is extra_present
+    assert installed["installed"] is extra_present
+
+
+@pytest.mark.parametrize(
+    ("owner", "native"),
+    [
+        ("SET", "setoolkit"),
+        ("wifite2", "wifite"),
+        ("RegRipper", "rip"),
+        ("RegRipper", "rip.pl"),
+        ("nikto", "nikto.pl"),
+        ("PCredz", "Pcredz"),
+    ],
+)
+def test_verified_native_git_launchers_resolve_without_toolkit_wrapper(owner, native):
+    db = ToolsDatabase()
+    with patch("shutil.which", side_effect=lambda binary: f"/usr/bin/{binary}" if binary == native else None):
+        status = db.execution_status(owner)
+        assert db.check_installed(owner)["installed"] is True
+    assert status["ready"] is True
+    assert status["binary"] == native
+    assert db.get_tool(native)["name"] == owner
+
+
+@pytest.mark.parametrize("name", ["usbkill", "nipe"])
+@pytest.mark.parametrize("value", [None, "0", "true", "yes", "1"])
+def test_host_control_discovery_reports_the_specific_activation(name, value, monkeypatch):
+    from mcp_server.tools_db import HOST_CONTROL_OPT_INS, execution_metadata, execution_summary
+
+    variable = HOST_CONTROL_OPT_INS[name]
+    if value is None:
+        monkeypatch.delenv(variable, raising=False)
+    else:
+        monkeypatch.setenv(variable, value)
+    tool = ToolsDatabase().get_tool(name)
+    metadata = execution_metadata(tool)
+    activation = metadata["activation"]
+    assert activation["environment_variable"] == variable
+    assert activation["enabled"] is (value == "1")
+    assert execution_summary(tool)["activation"] == activation
+    assert ("stop" in activation["requires_external_for"]) is False
+    if name == "nipe":
+        assert set(activation["requires_external_for"]) == {"install", "start", "restart", "status"}

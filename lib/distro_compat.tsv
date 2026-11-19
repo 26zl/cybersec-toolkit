@@ -115,6 +115,7 @@ apparmor-utils	-	-	-	-
 smali	-	-	-	-
 apksigner	-	-	-	-
 zipalign	-	-	-	-
+apktool	-	-	-	apktool
 mfcuk	-	-	-	-
 mfoc	-	-	-	-
 libnfc-dev	-	-	-	-

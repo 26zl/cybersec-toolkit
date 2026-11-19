@@ -60,7 +60,7 @@ _load_distro_compat() {
 # Usage: fixup_package_names <array_nameref>
 fixup_package_names() {
     local -n __arr=$1
-    local new_arr=()
+    local new_arr=() pkg
     local -a _parts
 
     _load_distro_compat
@@ -73,10 +73,10 @@ fixup_package_names() {
             esac
         fi
 
-        # ARM: skip x86-only packages
+        # ARM: skip x86-only packages (edb-debugger is built for amd64/i386 only)
         if [[ "$IS_ARM" == "true" ]]; then
             case "$pkg" in
-                qemu-system-x86) continue ;;
+                qemu-system-x86|edb-debugger) continue ;;
             esac
         fi
 
@@ -138,6 +138,7 @@ install_apt_batch() {
     [[ "${_SKIP_BATCH_REINSTALL:-false}" == "true" ]] && return 0
     local label="$1"; shift
     local -a packages=("$@")
+    local pkg
 
     fixup_package_names packages
 
@@ -777,37 +778,267 @@ install_gem_batch() {
     return 0
 }
 
+# Entry points whose names or locations differ from the cloned project name.
+declare -gA _GIT_ENTRY_POINTS=(
+    [linux-smart-enumeration]="lse.sh"
+    [SUDO_KILLER]="SUDO_KILLERv3.sh"
+    [LaZagne]="Linux/laZagne.py"
+    [SET]="setoolkit"
+    [SquarePhish]="squish.py"
+    [spiderfoot]="sf.py"
+    [Sn1per]="sniper"
+    [EyeWitness]="Python/EyeWitness.py"
+    [nikto]="program/nikto.pl"
+    [RouterSploit]="rsf.py"
+    [RegRipper]="rip.pl"
+    [PCredz]="Pcredz"
+    [zerologon]="zerologon_tester.py"
+    [ntlmv1-multi]="ntlmv1.py"
+    [PassTheCert]="Python/passthecert.py"
+    [sccmsecrets]="SCCMSecrets.py"
+    [ExtractBitlockerKeys]="python/ExtractBitlockerKeys.py"
+    [lnkup]="generate.py"
+    [bqm]="bin/bqm"
+    [ldaprelayscan]="LdapRelayScan.py"
+    [wifite2]="Wifite.py"
+    [wifiphisher]="bin/wifiphisher"
+    [ctf-usb-keyboard-parser]="usbkeyboard.py"
+    [graphw00f]="main.py"
+    [featherduster]="featherduster/featherduster.py"
+    [medusa-frida]="medusa.py"
+    [Qiling]="qltool"
+    [dvcs-ripper]="rip-git.pl"
+    [PurplePanda]="main.py"
+    [cloudmapper]="cloudmapper.py"
+    [DefaultCreds-cheat-sheet]="creds"
+    [dnscat2]="server/dnscat2.rb"
+    [firmware-mod-kit]="extract-firmware.sh"
+    [pkinittools]="gettgtpkinit.py"
+    [libnfc-crypto1-crack]="miLazyCracker.sh"
+    [USB-HID-decoders]="keyboard_decode.py"
+    [libc-database]="find"
+    [usbkill]="usbkill/usbkill.py"
+)
+
+declare -gA _GIT_PYTHON_ENTRY_POINTS=(
+    [paramspider]="paramspider"
+    [ghauri]="ghauri"
+    [RsaCtfTool]="RsaCtfTool"
+    [Oralyzer]="oralyzer"
+    [FuzzyAI]="fuzzyai"
+    [asrepcatcher]="ASRepCatcher"
+    [conpass]="conpass"
+    [goldencopy]="goldencopy"
+    [Telepathy]="telepathy"
+    [stringcheese]="stringcheese"
+    [roastinthemiddle]="roastinthemiddle"
+    [wifipumpkin3]="wifipumpkin3"
+)
+
+declare -gA _GIT_BUILD_COMMANDS=(
+    [bettercap]="make build"
+    [pwnat]="make"
+    [osmedeus]="go build -o osmedeus ./cmd/osmedeus"
+    [CloudBrute]="go build -o CloudBrute main.go"
+    [peirates]="go build -o peirates ./cmd/peirates"
+    [PSKracker]="make"
+    [kwprocessor]="make"
+    [proxmark3]="make client"
+    [Krakatau]="cargo build --release"
+    [openstego]="./gradlew jar"
+    [Modlishka]="make build"
+    [ruler]="make build"
+    [hostapd-mana]="{ test -f hostapd/.config || cp hostapd/defconfig hostapd/.config; } && make -C hostapd"
+    [yersinia]="./autogen.sh --disable-gtk && make"
+    [pp-finder]="yarn install --immutable && yarn run build"
+    [ropium]="make && python3 -m venv venv && venv/bin/python -m pip install prompt_toolkit==3.0.52 ROPgadget==7.7"
+)
+declare -gA _GIT_BUILT_PATHS=(
+    [bettercap]="bettercap"
+    [pwnat]="pwnat"
+    [osmedeus]="osmedeus"
+    [CloudBrute]="CloudBrute"
+    [peirates]="peirates"
+    [PSKracker]="pskracker"
+    [kwprocessor]="kwp"
+    [proxmark3]="client/proxmark3"
+    [Krakatau]="target/release/krak2"
+    [openstego]="build/libs/openstego.jar"
+    [Modlishka]="dist/proxy"
+    [ruler]="ruler"
+    [hostapd-mana]="hostapd/hostapd"
+    [yersinia]="src/yersinia"
+    [pp-finder]="dist/cli.cjs"
+    [ropium]="bin/ropium.so"
+)
+
+_write_git_launcher() {
+    local dest="$1" launcher="$2"
+    shift 2
+    local staged
+    staged=$(mktemp "$PIPX_BIN_DIR/.${launcher}.XXXXXX") || return 1
+    if ! {
+        printf '#!/bin/bash\n'
+        if [[ "$launcher" == nipe ]]; then
+            printf 'cd -- %q || exit 1\n' "$dest"
+        fi
+        printf 'exec '
+        printf '%q ' "$@"
+        printf '"$@"\n'
+    } > "$staged" || ! chmod 755 "$staged" || ! mv -f "$staged" "$PIPX_BIN_DIR/$launcher"; then
+        rm -f "$staged"
+        return 1
+    fi
+}
+
+_git_launcher_is_managed() {
+    local launcher="$1" dest="$2" escaped
+    if [[ -L "$launcher" ]]; then
+        [[ "$(readlink "$launcher")" == "$dest/"* ]]
+    elif [[ -f "$launcher" && "$(head -c 2 "$launcher" 2>/dev/null)" == '#!' ]]; then
+        printf -v escaped '%q' "$dest"
+        grep -qF -e "$dest/" -e "$escaped/" -e "\"$dest\"" "$launcher"
+    else
+        return 1
+    fi
+}
+
+_write_git_script_launcher() {
+    local dest="$1" launcher="$2" script="$3" python="$4" first_line=""
+    case "$script" in
+        *.py) _write_git_launcher "$dest" "$launcher" "$python" "$script" ;;
+        *.pl) _write_git_launcher "$dest" "$launcher" perl "$script" ;;
+        *.rb) _write_git_launcher "$dest" "$launcher" ruby "$script" ;;
+        *)
+            IFS= read -r first_line < "$script" || true
+            if [[ "$first_line" == '#!'*python* ]]; then
+                _write_git_launcher "$dest" "$launcher" "$python" "$script"
+            else
+                chmod +x "$script" || return 1
+                _write_git_launcher "$dest" "$launcher" "$script"
+            fi
+            ;;
+    esac
+}
+
+_setup_git_managed_cli() {
+    local dest="$1" name="$2" launcher="${2,,}"
+    local entry="${_GIT_PYTHON_ENTRY_POINTS[$name]:-}"
+    local dest_escaped; dest_escaped="$(_escape_single_quoted "$dest")"
+    if [[ "$name" == theHarvester && -f "$dest/pyproject.toml" ]]; then
+        command_exists uv || return 2
+        local uv_cmd; uv_cmd="$(_builder_cmd uv)" || return 1
+        if ! _as_builder "cd '$dest_escaped' && '$(_escape_single_quoted "$uv_cmd")' sync --locked" >> "$LOG_FILE" 2>&1; then
+            log_warn "theHarvester uv setup failed; its CLI is not ready"
+            return 1
+        fi
+        if [[ -x "$dest/.venv/bin/theHarvester" ]]; then
+            _write_git_launcher "$dest" theHarvester "$dest/.venv/bin/theHarvester"
+        elif [[ -x "$dest/.venv/bin/python" && -f "$dest/bin/theHarvester" ]]; then
+            _write_git_launcher "$dest" theHarvester "$dest/.venv/bin/python" "$dest/bin/theHarvester"
+        else
+            log_warn "theHarvester did not produce its expected uv entry point"
+            return 1
+        fi
+        return $?
+    fi
+    if [[ -n "$entry" ]]; then
+        [[ -f "$dest/pyproject.toml" || -f "$dest/setup.py" ]] || return 2
+        if ! _as_builder "cd '$dest_escaped' && python3 -m venv venv && venv/bin/python -m pip install ." >> "$LOG_FILE" 2>&1; then
+            log_warn "Package setup failed for $name; its CLI is not ready"
+            return 1
+        fi
+        if [[ ! -x "$dest/venv/bin/$entry" ]]; then
+            log_warn "$name did not install the expected CLI: $entry"
+            return 1
+        fi
+        _write_git_launcher "$dest" "$launcher" "$dest/venv/bin/$entry"
+        return $?
+    fi
+    local build_cmd="${_GIT_BUILD_COMMANDS[$name]:-}"
+    [[ -n "$build_cmd" ]] || return 2
+    if ! _as_builder "export PATH=\"/usr/local/go/bin:\$PATH\"; cd '$dest_escaped' && $build_cmd" >> "$LOG_FILE" 2>&1; then
+        log_warn "Build failed for $name; install its upstream build prerequisites and retry"
+        return 1
+    fi
+    local binary="$dest/${_GIT_BUILT_PATHS[$name]}"
+    if [[ "$name" == ropium && -f "$binary" && -f "$dest/cli-tool/ropium" && -x "$dest/venv/bin/python" ]]; then
+        _write_git_launcher "$dest" "$launcher" env "PYTHONPATH=$dest/bin" "$dest/venv/bin/python" "$dest/cli-tool/ropium"
+    elif [[ "$binary" == *.cjs && -f "$binary" ]]; then
+        _write_git_launcher "$dest" "$launcher" node "$binary"
+    elif [[ "$binary" == *.jar && -f "$binary" ]]; then
+        _write_git_launcher "$dest" "$launcher" java -jar "$binary"
+    elif [[ -x "$binary" ]]; then
+        _write_git_launcher "$dest" "$launcher" "$binary"
+    else
+        log_warn "$name did not produce its expected executable: $binary"
+        return 1
+    fi
+}
+
 # Post-clone setup for git repos
 # Creates isolated venvs for Python repos with requirements.txt.
-# Never runs the repo's own setup.py/pyproject.toml; requirements.txt installs into the venv
-# as $SUDO_USER, where dependency sdists can still build.
+# Only explicitly mapped CLI packages run their own build backend through _as_builder;
+# all other Python projects install requirements without installing the project itself.
 #
 # Wrapper creation cascade (first match wins):
 #   1. Python + requirements.txt → venv + symlink entry points
 #   2. Java JAR → java -jar wrapper
-#   3. Python script → python3 wrapper (case-insensitive, underscore/hyphen variants)
-#   4. Shell script → symlink (case-insensitive)
+#   3. Python script → venv/system Python wrapper (case-insensitive, underscore/hyphen variants)
+#   4. Shell script → wrapper (case-insensitive)
 #   5. Perl script → perl wrapper
 #   6. Ruby script → ruby wrapper
-#   7. Executable matching name → symlink (fallback for compiled tools)
+#   7. Executable matching name → wrapper (fallback for compiled tools)
 setup_git_repo() {
-    local dest="$1"
+    local dest="${1%/}"
     local name
     name=$(basename "$dest")
     local name_lower="${name,,}"
     local name_under="${name_lower//-/_}"
     _SETUP_GIT_DEP_WARN=false
 
-    # Early exit: don't clobber existing wrappers
-    [[ -f "$PIPX_BIN_DIR/$name_lower" ]] && return 0
+    # Refresh only launchers that point into this clone; preserve independent installs.
+    local launcher_name="$name_lower"
+    [[ "$name" == theHarvester ]] && launcher_name=theHarvester
+    if [[ -e "$PIPX_BIN_DIR/$launcher_name" || -L "$PIPX_BIN_DIR/$launcher_name" ]]; then
+        _git_launcher_is_managed "$PIPX_BIN_DIR/$launcher_name" "$dest" || return 0
+    fi
+
+    local py_interpreter="python3" legacy_python=false
+    case "$name" in
+        NoSQLMap|Gopherus|DNSExfiltrator|featherduster)
+            if ! command_exists python2; then
+                log_warn "$name requires Python 2; its source cannot run with Python 3"
+                _SETUP_GIT_DEP_WARN=true
+                return 1
+            fi
+            py_interpreter="python2"
+            legacy_python=true
+            log_warn "$name uses Python 2; its legacy dependencies require a separately prepared environment"
+            _SETUP_GIT_DEP_WARN=true
+            ;;
+    esac
+
+    local setup_status
+    if _setup_git_managed_cli "$dest" "$name"; then
+        return 0
+    else
+        setup_status=$?
+        if [[ "$setup_status" != 2 ]]; then
+            _SETUP_GIT_DEP_WARN=true
+            return "$setup_status"
+        fi
+    fi
 
     # 1. Python project with requirements.txt
-    # pip runs as the builder so sdist build backends never execute as root; the venv stays
-    # builder-owned for later pulls. Only the link into $PIPX_BIN_DIR is made as root.
-    if [[ -f "$dest/requirements.txt" ]]; then
+    # Dependency builds use the same builder and venv ownership as later pulls.
+    if [[ "$legacy_python" != true && -f "$dest/requirements.txt" ]]; then
         local _dest_esc; _dest_esc="$(_escape_single_quoted "$dest")"
         if [[ ! -d "$dest/venv" ]]; then
-            _as_builder "python3 -m venv '$_dest_esc/venv'" 2>>"$LOG_FILE" || return 0
+            if ! _as_builder "python3 -m venv '$_dest_esc/venv'" 2>>"$LOG_FILE"; then
+                _SETUP_GIT_DEP_WARN=true
+                return 1
+            fi
         fi
         _as_builder "'$_dest_esc/venv/bin/pip' install -q --upgrade pip" >> "$LOG_FILE" 2>&1 || true
         # Replace abandoned pycrypto with drop-in pycryptodome (Python 3.12+ compat).
@@ -868,6 +1099,17 @@ setup_git_repo() {
         fi
     fi
 
+    if [[ "$legacy_python" != true && -x "$dest/venv/bin/python" ]]; then
+        py_interpreter="$dest/venv/bin/python"
+    elif [[ "$legacy_python" != true && -x "$dest/.venv/bin/python" ]]; then
+        py_interpreter="$dest/.venv/bin/python"
+    fi
+    local entry_point="${_GIT_ENTRY_POINTS[$name]:-}"
+    if [[ -n "$entry_point" && -f "$dest/$entry_point" ]]; then
+        _write_git_script_launcher "$dest" "$name_lower" "$dest/$entry_point" "$py_interpreter"
+        return $?
+    fi
+
     # 2. Java JAR → java -jar wrapper
     local jar_file=""
     for jar_candidate in "$dest/$name.jar" "$dest/$name_lower.jar" \
@@ -884,40 +1126,30 @@ setup_git_repo() {
         jar_file=$(find "$dest" -maxdepth 2 -iname "*.jar" -type f 2>/dev/null | head -1)
     fi
     if [[ -n "$jar_file" ]]; then
-        cat > "$PIPX_BIN_DIR/$name_lower" 2>/dev/null << JARWRAP || true
-#!/bin/bash
-exec java -jar "$jar_file" "\$@"
-JARWRAP
-        chmod +x "$PIPX_BIN_DIR/$name_lower" 2>/dev/null || true
-        return 0
+        _write_git_launcher "$dest" "$name_lower" java -jar "$jar_file"
+        return $?
     fi
 
-    # 3. Python script → python3 wrapper (case-insensitive, variants)
-    if [[ ! -d "$dest/venv" ]]; then
-        local py_file=""
-        for py_candidate in "$dest/$name.py" "$dest/$name_lower.py" \
-                            "$dest/${name_under}.py" "$dest/__main__.py"; do
-            if [[ -f "$py_candidate" ]]; then
-                py_file="$py_candidate"
-                break
-            fi
-        done
-        # Case-insensitive fallback: find <name>.py anywhere in top-level
-        if [[ -z "$py_file" ]]; then
-            py_file=$(find "$dest" -maxdepth 1 -iname "${name}.py" -type f 2>/dev/null | head -1)
+    # 3. Python script → venv/system Python wrapper (case-insensitive, variants)
+    local py_file=""
+    for py_candidate in "$dest/$name.py" "$dest/$name_lower.py" \
+                        "$dest/${name_under}.py" "$dest/__main__.py"; do
+        if [[ -f "$py_candidate" ]]; then
+            py_file="$py_candidate"
+            break
         fi
-        if [[ -n "$py_file" ]]; then
-            chmod +x "$py_file" 2>/dev/null || true
-            cat > "$PIPX_BIN_DIR/$name_lower" 2>/dev/null << PYWRAP || true
-#!/bin/bash
-exec python3 "$py_file" "\$@"
-PYWRAP
-            chmod +x "$PIPX_BIN_DIR/$name_lower" 2>/dev/null || true
-            return 0
-        fi
+    done
+    # Case-insensitive fallback: find <name>.py anywhere in top-level
+    if [[ -z "$py_file" ]]; then
+        py_file=$(find "$dest" -maxdepth 1 -iname "${name}.py" -type f 2>/dev/null | head -1)
+    fi
+    if [[ -n "$py_file" ]]; then
+        chmod +x "$py_file" 2>/dev/null || true
+        _write_git_launcher "$dest" "$name_lower" "$py_interpreter" "$py_file"
+        return $?
     fi
 
-    # 4. Shell script → symlink (case-insensitive, variants)
+    # 4. Shell script → wrapper (case-insensitive, variants)
     local sh_file=""
     for sh_candidate in "$dest/$name.sh" "$dest/$name_lower.sh" \
                         "$dest/${name_under}.sh"; do
@@ -931,8 +1163,8 @@ PYWRAP
     fi
     if [[ -n "$sh_file" ]]; then
         chmod +x "$sh_file" 2>/dev/null || true
-        ln -sf "$sh_file" "$PIPX_BIN_DIR/$name_lower" 2>/dev/null || true
-        return 0
+        _write_git_launcher "$dest" "$name_lower" "$sh_file"
+        return $?
     fi
 
     # 5. Perl script → perl wrapper
@@ -949,12 +1181,8 @@ PYWRAP
     fi
     if [[ -n "$pl_file" ]]; then
         chmod +x "$pl_file" 2>/dev/null || true
-        cat > "$PIPX_BIN_DIR/$name_lower" 2>/dev/null << PLWRAP || true
-#!/bin/bash
-exec perl "$pl_file" "\$@"
-PLWRAP
-        chmod +x "$PIPX_BIN_DIR/$name_lower" 2>/dev/null || true
-        return 0
+        _write_git_launcher "$dest" "$name_lower" perl "$pl_file"
+        return $?
     fi
 
     # 6. Ruby script → ruby wrapper
@@ -971,15 +1199,11 @@ PLWRAP
     fi
     if [[ -n "$rb_file" ]]; then
         chmod +x "$rb_file" 2>/dev/null || true
-        cat > "$PIPX_BIN_DIR/$name_lower" 2>/dev/null << RBWRAP || true
-#!/bin/bash
-exec ruby "$rb_file" "\$@"
-RBWRAP
-        chmod +x "$PIPX_BIN_DIR/$name_lower" 2>/dev/null || true
-        return 0
+        _write_git_launcher "$dest" "$name_lower" ruby "$rb_file"
+        return $?
     fi
 
-    # 7. Executable matching name → symlink (fallback for compiled tools)
+    # 7. Executable matching name → wrapper (fallback for compiled tools)
     local exec_file=""
     for exec_candidate in "$dest/$name" "$dest/$name_lower" "$dest/$name_under" \
                           "$dest/bin/$name" "$dest/bin/$name_lower" "$dest/bin/$name_under"; do
@@ -989,8 +1213,8 @@ RBWRAP
         fi
     done
     if [[ -n "$exec_file" ]]; then
-        ln -sf "$exec_file" "$PIPX_BIN_DIR/$name_lower" 2>/dev/null || true
-        return 0
+        _write_git_script_launcher "$dest" "$name_lower" "$exec_file" "$py_interpreter"
+        return $?
     fi
 }
 
@@ -1036,12 +1260,19 @@ install_git_batch() {
                 local _ver; _ver=$(_tree_provenance "$name" "$dest/.git")
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                     _SETUP_GIT_DEP_WARN=false
-                    setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || log_warn "setup_git_repo failed for $(basename "$dest")"
-                    local _status="ok"
+                    local _status="ok" _setup_failed=false
+                    if ! setup_git_repo "$dest" >> "$LOG_FILE" 2>&1; then
+                        log_error "CLI setup failed for $name; clone retained at $dest"
+                        _setup_failed=true
+                    fi
                     [[ "$is_existing" == "true" ]] && _status="skip"
-                    [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && _status="${_status}:depwarn"
+                    if [[ "$_setup_failed" == true ]]; then
+                        _status="${_status}:setupfail"
+                    elif [[ "$_SETUP_GIT_DEP_WARN" == "true" ]]; then
+                        _status="${_status}:depwarn"
+                    fi
                     printf '%s\n%s\n' "$_status" "$_ver" > "$_results_dir/$name"
-                    _report_tool_done "Git" "$name" "ok"
+                    _report_tool_done "Git" "$name" "$(if [[ "$_setup_failed" == true ]]; then echo fail; else echo ok; fi)"
                 else
                     log_error "Failed git: $name"
                     printf 'fail\n\n' > "$_results_dir/$name"
@@ -1074,15 +1305,20 @@ install_git_batch() {
             else
                 # Auto-setup: venv, requirements, symlinks
                 _SETUP_GIT_DEP_WARN=false
-                setup_git_repo "$dest" >> "$LOG_FILE" 2>&1 || true
+                local _setup_failed=false
+                if ! setup_git_repo "$dest" >> "$LOG_FILE" 2>&1; then
+                    log_error "CLI setup failed for $name; clone retained at $dest"
+                    _setup_failed=true
+                    failed=$((failed + 1))
+                fi
                 [[ "$_SETUP_GIT_DEP_WARN" == "true" ]] && dep_warns=$((dep_warns + 1))
-                [[ "$is_existing" == "true" ]] && skipped=$((skipped + 1))
+                [[ "$is_existing" == "true" && "$_setup_failed" != true ]] && skipped=$((skipped + 1))
                 if [[ "$is_existing" == "true" ]]; then
                     _track_already_present "$name" "git"
                 else
                     track_version "$name" "git" "$_ver"
                 fi
-                _report_tool_done "Git" "$name" "ok"
+                _report_tool_done "Git" "$name" "$(if [[ "$_setup_failed" == true ]]; then echo fail; else echo ok; fi)"
             fi
         done
     fi
@@ -1231,6 +1467,8 @@ _gh_api_get() {
                 local _wait=$((30 * _attempt))
             fi
 
+            [[ "$_attempt" -ge 3 ]] && break
+
             if [[ "$_attempt" -eq 1 ]]; then
                 log_warn "GitHub API rate limit hit — waiting ${_wait}s before retry (attempt $_attempt/3)..."
                 [[ "$_GH_TOKEN_SET" != "true" ]] && \
@@ -1316,8 +1554,8 @@ verify_github_checksum() {
     # Look for a checksum asset in the release. Prefer a per-file "<file>.sha256",
     # then a shared checksums file; skip signatures (.sig/.asc/.pem/.pub/.cert),
     # which contain no hash and would be treated as "no entry" → unverified.
-    local checksum_url
-    checksum_url=$(echo "$release_json" | FILE_NAME="$file_name" python3 -c "
+    local checksum_url checksum_kind checksum_sel
+    checksum_sel=$(echo "$release_json" | FILE_NAME="$file_name" python3 -c "
 import json, os, sys
 data = json.load(sys.stdin)
 target = os.environ['FILE_NAME'].lower()
@@ -1333,8 +1571,11 @@ for asset in data.get('assets', []):
         break
     if shared is None and any(k in name for k in KEYS):
         shared = asset['browser_download_url']
+print('perfile' if per_file else 'shared')
 print(per_file or shared or '')
 " 2>>"$LOG_FILE")
+    checksum_kind=$(printf '%s\n' "$checksum_sel" | sed -n 1p)
+    checksum_url=$(printf '%s\n' "$checksum_sel" | sed -n 2p)
 
     if [[ -z "$checksum_url" ]]; then
         if _verify_release_metadata_checksum "$release_json" "$file_path" "$file_name" "$repo"; then
@@ -1377,16 +1618,20 @@ print(per_file or shared or '')
     fi
 
     local expected_hash
-    expected_hash=$(echo "$checksums" | awk -v f="$file_name" '$2 == f || $2 == ("*" f) {print $1; exit}')
+    expected_hash=$(echo "$checksums" | tr -d '\r' | awk -v f="$file_name" '$2 == f || $2 == ("*" f) {print $1; exit}')
     # A per-file "<file>.sha256" may hold just the bare hash with no filename.
     # Accept it only when the whole file is a single lone-hash line, so a shared
     # checksums file listing other files never falls back to an unrelated hash.
-    if [[ -z "$expected_hash" ]]; then
-        expected_hash=$(echo "$checksums" | awk '
+    # Only the file's own "<file>.sha256" may supply a bare hash; another asset's does not.
+    if [[ -z "$expected_hash" && "$checksum_kind" == "perfile" ]]; then
+        expected_hash=$(echo "$checksums" | tr -d '\r' | awk '
             /^[[:space:]]*$/ {next}
             {lines++; if (NF==1 && $1 ~ /^[0-9A-Fa-f]{64}$/) {h=$1; hits++}}
             END {if (lines==1 && hits==1) print h}')
     fi
+    expected_hash="${expected_hash%$'\r'}"
+    # A hash of another length (sha512 list) is no usable entry.
+    [[ "$expected_hash" =~ ^[0-9A-Fa-f]{64}$ ]] || expected_hash=""
     if [[ -z "$expected_hash" ]]; then
         if _verify_release_metadata_checksum "$release_json" "$file_path" "$file_name" "$repo"; then
             return 0
@@ -1622,7 +1867,8 @@ _download_github_release_impl() {
         # /releases/latest 404s on prerelease-only repos (nightly builds, e.g.
         # fuzzland/ityfuzz) — fall back to the newest release of any kind.
         release_json=$(_gh_api_get "https://api.github.com/repos/$repo/releases" \
-            | python3 -c 'import json,sys; r=json.load(sys.stdin); print(json.dumps(r[0]) if isinstance(r, list) and r else "")' 2>/dev/null || true)
+            | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin) if not x.get("draft")]; print(json.dumps(r[0]) if r else "")' 2>/dev/null || true)
+        [[ -n "$release_json" ]] && log_warn "Latest-release lookup for $repo failed; using its newest published release (may be a prerelease)"
     fi
     if [[ -z "$release_json" ]]; then
         log_error "Could not fetch release info for $binary (no published release, API rate limit, or network error)$(_disk_hint)"
@@ -1645,8 +1891,11 @@ _download_github_release_impl() {
 import json, sys, re
 pattern = sys.argv[1]
 data = json.load(sys.stdin)
+SIDECAR = ('.sig', '.asc', '.pem', '.sbom', '.sbom.json', '.sha256', '.sha256sum',
+           '.sha512', '.minisig', '.sigstore', '.intoto.jsonl', '.bundle')
 for asset in data.get('assets', []):
-    if re.search(pattern, asset.get('name', '')):
+    name = asset.get('name', '')
+    if re.search(pattern, name) and (not name.lower().endswith(SIDECAR) or pattern.endswith(SIDECAR)):
         print(asset['browser_download_url'])
         break
 " "$pattern" 2>>"$LOG_FILE")
@@ -1718,6 +1967,21 @@ for asset in data.get('assets', []):
                 return 1
             fi
             ;;
+        *.gz)
+            # Single-file gzip (no tar): decompress into the staged binary, size-capped.
+            local _gz_staged="$tmp_dir/$archive_binary"
+            if ! gzip -dc "$tmp_dir/$asset_name" 2>>"$LOG_FILE" | head -c 1073741824 > "$_gz_staged" \
+                    || [[ ! -s "$_gz_staged" ]]; then
+                log_error "Failed to decompress gzip asset: $asset_name"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            if ! chmod 755 "$_gz_staged"; then
+                log_error "Downloaded asset for $binary is not a regular executable file"
+                rm -rf "$tmp_dir"
+                return 1
+            fi
+            ;;
         *.zip)
             is_archive=true
             content_root="$tmp_dir/extracted"
@@ -1764,9 +2028,11 @@ for asset in data.get('assets', []):
                 rm -rf "$tmp_dir"
                 return 1
             fi
+            local _jar_path_quoted
+            printf -v _jar_path_quoted '%q' "$dest_dir/$binary.jar"
             if ! cat > "$PIPX_BIN_DIR/$binary" << WRAPPER
 #!/bin/bash
-exec java -jar "$dest_dir/$binary.jar" "\$@"
+exec java -jar $_jar_path_quoted "\$@"
 WRAPPER
             then
                 log_error "Failed to create launcher for $binary"
@@ -2018,7 +2284,7 @@ track_version() {
         ) 200>"${version_file}.lock"
     else
         # mkdir is atomic on all POSIX systems — use as spinlock fallback
-        local _lockdir="${version_file}.lockdir" _tries=0
+        local _lockdir="${version_file}.lockdir" _tries=0 _locked=false
         # Clean up stale locks older than 30 seconds.
         # `stat -c %Y` is GNU; `stat -f %m` is BSD/macOS. A failed stat keeps the
         # lock fresh.
@@ -2038,8 +2304,10 @@ track_version() {
             [[ "$_tries" -ge 50 ]] && break  # give up after ~5s
             sleep 0.1
         done
+        if [[ "$_tries" -lt 50 ]]; then _locked=true; fi
+        [[ "$_locked" == "true" ]] || log_warn "track_version: lock busy, writing $tool unlocked"
         _tv_write
-        rmdir "$_lockdir" 2>/dev/null || true
+        if [[ "$_locked" == "true" ]]; then rmdir "$_lockdir" 2>/dev/null || true; fi
     fi
 }
 
@@ -2186,64 +2454,64 @@ _BINARY_RELEASE_ARCH_X64="x64"
 
 BINARY_RELEASES_MISC=(
     "DominicBreuker/pspy|pspy|pspy64$"
-    "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz"
-    "gitleaks/gitleaks|gitleaks|linux_x64\\.tar\\.gz"
+    "trufflesecurity/trufflehog|trufflehog|linux_amd64\\.tar\\.gz$"
+    "gitleaks/gitleaks|gitleaks|linux_x64\\.tar\\.gz$"
 )
 # C2 + phishing binary releases — installed only when INCLUDE_C2=true (see modules/misc.sh).
 BINARY_RELEASES_MISC_C2=(
-    "gophish/gophish|gophish|linux-64bit"
+    "gophish/gophish|gophish|linux-64bit\\.zip$"
     "BishopFox/sliver|sliver-server|sliver-server_linux-amd64$"
     "BishopFox/sliver|sliver-client|sliver-client_linux-amd64$"
-    "kgretzky/evilginx2|evilginx|linux-64bit\\.zip"
+    "kgretzky/evilginx2|evilginx|linux-64bit\\.zip$"
 )
 BINARY_RELEASES_NETWORKING=(
     "nicocha30/ligolo-ng|ligolo-proxy|_proxy_.*_linux_amd64\\.tar\\.gz$||proxy"
     "nicocha30/ligolo-ng|ligolo-agent|_agent_.*_linux_amd64\\.tar\\.gz$||agent"
-    "fatedier/frp|frpc|linux_amd64\\.tar\\.gz"
-    "fatedier/frp|frps|linux_amd64\\.tar\\.gz"
+    "fatedier/frp|frpc|linux_amd64\\.tar\\.gz$"
+    "fatedier/frp|frps|linux_amd64\\.tar\\.gz$"
     "ginuerzh/gost|gost|linux_amd64\\.tar\\.gz$"
     "erebe/wstunnel|wstunnel|linux_amd64\\.tar\\.gz$"
 )
 BINARY_RELEASES_RECON=(
     "Findomain/Findomain|findomain|findomain-linux\\.zip$"
-    "sundowndev/phoneinfoga|phoneinfoga|Linux_x86_64\\.tar\\.gz"
+    "sundowndev/phoneinfoga|phoneinfoga|Linux_x86_64\\.tar\\.gz$"
 )
 BINARY_RELEASES_WEB=(
-    "frohoff/ysoserial|ysoserial|ysoserial-all.jar|${GITHUB_TOOL_DIR}/cybersec-jars"
-    "assetnote/kiterunner|kr|linux_amd64"
+    "frohoff/ysoserial|ysoserial|ysoserial-all\\.jar$|${GITHUB_TOOL_DIR}/cybersec-jars"
+    "assetnote/kiterunner|kr|linux_amd64\\.tar\\.gz$"
 )
 BINARY_RELEASES_REVERSING=(
-    "0vercl0k/rp|rp-lin|rp-lin"
-    "java-decompiler/jd-gui|jd-gui|jd-gui.*\\.jar|${GITHUB_TOOL_DIR}/cybersec-jars"
+    "0vercl0k/rp|rp-lin|rp-lin-gcc\\.zip$"
+    "java-decompiler/jd-gui|jd-gui|jd-gui-[0-9.]+\\.jar$|${GITHUB_TOOL_DIR}/cybersec-jars"
     "rizinorg/cutter|cutter|Linux-x86_64\\.AppImage$"
     "horsicq/DIE-engine|detect-it-easy|Detect_It_Easy-.*-x86_64\\.AppImage$"
 )
 BINARY_RELEASES_FORENSICS=(
-    "WithSecureLabs/chainsaw|chainsaw|x86_64.*linux"
+    "WithSecureOpenSource/chainsaw|chainsaw|x86_64-unknown-linux-gnu\\.tar\\.gz$"
     "ufrisk/MemProcFS|memprocfs|linux_${_BINARY_RELEASE_ARCH_X64}-.*\\.tar\\.gz$|${GITHUB_TOOL_DIR}/MemProcFS|memprocfs"
     "WerWolv/ImHex|imhex|imhex-.*-x86_64\\.AppImage$"
     "nikaiw/VMkatz|vmkatz|vmkatz-.*-linux-${SYS_ARCH_ALT/armv7l/armv7}\\.tar\\.gz$"
 )
 BINARY_RELEASES_ENTERPRISE=(
-    "ropnop/kerbrute|kerbrute|linux_amd64"
+    "ropnop/kerbrute|kerbrute|linux_amd64$"
     "Flangvik/TeamFiltration|TeamFiltration|TeamFiltration-.*-linux-${SYS_ARCH/amd64/x86_64}\\.zip$|${GITHUB_TOOL_DIR}/TeamFiltration"
 )
 BINARY_RELEASES_BLUETEAM=(
-    "Velocidex/velociraptor|velociraptor|linux-amd64$"
-    "threathunters-io/laurel|laurel|x86_64-glibc"
-    "mandiant/flare-floss|floss|linux\\.zip"
-    "mandiant/capa|capa|linux\\.zip"
-    "Neo23x0/Loki-RS|loki|loki-linux-x86_64.*\\.tar\\.gz"
+    "Velocidex/velociraptor|velociraptor|-linux-amd64\\.gz$"
+    "threathunters-io/laurel|laurel|x86_64-glibc\\.tar\\.gz$"
+    "mandiant/flare-floss|floss|linux\\.zip$"
+    "mandiant/capa|capa|linux\\.zip$"
+    "Neo23x0/Loki-RS|loki|loki-linux-x86_64-.*\\.tar\\.gz$"
     "Yamato-Security/hayabusa|hayabusa|lin-${_BINARY_RELEASE_ARCH_X64}-gnu\\.zip$|${GITHUB_TOOL_DIR}/hayabusa|hayabusa-*-lin-${_BINARY_RELEASE_ARCH_X64}-gnu"
     "osquery/osquery|osqueryi|linux_x86_64\\.tar\\.gz$"
     "Yamato-Security/takajo|takajo|takajo-.*-lin-x64-gnu\\.zip$|${GITHUB_TOOL_DIR}/takajo|takajo-*-lin-x64-gnu"
 )
 BINARY_RELEASES_CONTAINERS=(
-    "anchore/grype|grype|linux_amd64\\.tar\\.gz"
-    "anchore/syft|syft|linux_amd64\\.tar\\.gz"
-    "Shopify/kubeaudit|kubeaudit|linux_amd64\\.tar\\.gz"
-    "kubescape/kubescape|kubescape|linux_amd64\\.tar\\.gz"
-    "cdk-team/CDK|cdk|cdk_linux_amd64"
+    "anchore/grype|grype|linux_amd64\\.tar\\.gz$"
+    "anchore/syft|syft|linux_amd64\\.tar\\.gz$"
+    "Shopify/kubeaudit|kubeaudit|linux_amd64\\.tar\\.gz$"
+    "kubescape/kubescape|kubescape|linux_amd64\\.tar\\.gz$"
+    "cdk-team/CDK|cdk|cdk_linux_amd64$"
     "aquasecurity/trivy|trivy|Linux-64bit\\.tar\\.gz$"
     "wagoodman/dive|dive|linux_amd64\\.tar\\.gz$"
     "goodwithtech/dockle|dockle|Linux-64bit\\.tar\\.gz$"
@@ -2253,11 +2521,11 @@ BINARY_RELEASES_CONTAINERS=(
     "tenable/terrascan|terrascan|Linux_x86_64\\.tar\\.gz$"
 )
 BINARY_RELEASES_MOBILE=(
-    "skylot/jadx|jadx|jadx.*\\.zip|${GITHUB_TOOL_DIR}/jadx"
-    "pxb1988/dex2jar|d2j-dex2jar|dex-tools.*\\.zip|${GITHUB_TOOL_DIR}/dex2jar"
+    "skylot/jadx|jadx|^jadx-[0-9.]+\\.zip$|${GITHUB_TOOL_DIR}/jadx"
+    "pxb1988/dex2jar|d2j-dex2jar|dex-tools.*\\.zip$|${GITHUB_TOOL_DIR}/dex2jar"
 )
 BINARY_RELEASES_STEGO=(
-    "RickdeJager/stegseek|stegseek|\\.deb"
+    "RickdeJager/stegseek|stegseek|\\.deb$"
 )
 BINARY_RELEASES_WIRELESS=(
     "Ragnt/AngryOxide|angryoxide|linux-x86_64\\.tar\\.gz$"
@@ -2275,7 +2543,6 @@ ALL_DOCKER_IMAGES=(
     "beefproject/beef|BeEF"
     "bcsecurity/empire|Empire"
     "opensecurity/mobile-security-framework-mobsf|MobSF"
-    "spiderfoot/spiderfoot|SpiderFoot"
     "specterops/bloodhound|BloodHound CE"
     "strangebee/thehive:latest|TheHive"
     "thehiveproject/cortex:latest|Cortex"
@@ -2316,7 +2583,7 @@ install_npm_batch() {
 
     log_info "Installing ${label} ($total npm tools)..."
     _report_method_total "npm" "$total"
-    local current=0
+    local current=0 failed=0 pkg
     for pkg in "${pkgs[@]}"; do
         current=$((current + 1))
         show_progress "$current" "$total" "$pkg"
@@ -2333,10 +2600,12 @@ install_npm_batch() {
             _report_tool_done "npm" "$pkg" "ok"
         else
             log_error "Failed npm: $pkg"
+            failed=$((failed + 1))
             TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1))
             _report_tool_done "npm" "$pkg" "fail"
         fi
     done
+    [[ "$failed" -eq 0 ]] || return 1
 }
 
 # remove_npm_packages — uninstall global npm packages, skipping absent ones.

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from mcp_server import server
+from mcp_server.remote import RemoteHostConfig
 
 
 def test_main_disables_banner_and_update_check() -> None:
@@ -177,7 +179,10 @@ EXPECTED_TOOL_SCHEMA = {
         ],
     },
     "list_profiles": {"required": [], "params": []},
-    "list_tools": {"required": [], "params": ["installed_only", "limit", "method", "module", "offset"]},
+    "list_tools": {
+        "required": [],
+        "params": ["executable_only", "installed_only", "limit", "method", "module", "offset", "query"],
+    },
     "manage_remote_hosts": {
         "required": ["action"],
         "params": [
@@ -268,3 +273,127 @@ class TestRepeatNotice:
         for index in range(server._REPEAT_TRACKED + 50):
             self._run(["curl", f"http://10.0.0.5/{index}", None])
         assert len(server._repeat_seen) == server._REPEAT_TRACKED
+
+
+@pytest.mark.asyncio
+async def test_manage_remote_hosts_remove_survives_a_corrupt_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A config that turns corrupt after startup returns an error without its path and is audited."""
+    config = tmp_path / "private-dir" / "rh.json"
+    remote = RemoteHostConfig(config_path=config)
+    remote.add_host("a", "10.0.0.5")
+    config.write_text("{broken", encoding="utf-8")
+    monkeypatch.setattr(server, "_remote", remote)
+
+    with patch("mcp_server.server.log_tool_result") as log_tool_result:
+        result = await server.manage_remote_hosts("remove", name="a")
+
+    assert "error" in result
+    assert "private-dir" not in result["error"]
+    assert log_tool_result.call_args.args[2] is False
+
+
+def test_registry_pagination_reaches_every_tool_once():
+    names = []
+    offset = 0
+    while True:
+        result = server.list_tools(limit=37, offset=offset)
+        names.extend(tool["name"] for tool in result["tools"])
+        if not result["has_more"]:
+            break
+        assert result["next_offset"] > offset
+        offset = result["next_offset"]
+    assert len(names) == len(set(names)) == server._db.total_tools
+    assert set(names) == set(server._db.tools_by_name)
+
+
+def test_registry_search_and_execution_capability():
+    result = server.list_tools(query="xsstrike")
+    assert len(result["tools"]) == 1
+    tool = result["tools"][0]
+    assert tool["name"] == "XSStrike"
+    assert tool["execution"]["binary"] == "xsstrike"
+    assert tool["execution"]["executable"] is True
+    resource = server.list_tools(query="SecLists")["tools"][0]
+    assert resource["execution"]["kind"] == "resource"
+    assert resource["execution"]["executable"] is False
+
+
+def test_get_tool_info_resolves_cli_alias_and_reports_readiness():
+    with patch("shutil.which", return_value=None):
+        result = server.get_tool_info("xsstrike")
+    assert result["name"] == "XSStrike"
+    assert result["execution"]["executable"] is True
+    assert result["execution"]["ready"] is False
+    assert result["execution"]["location_candidates"]
+
+
+def test_registry_rejects_zero_length_page_that_cannot_advance():
+    assert "error" in server.list_tools(limit=0)
+
+
+@pytest.mark.asyncio
+async def test_remote_check_tries_known_native_git_cli(monkeypatch):
+    remote = Mock()
+    remote.get_ssh_base_args.return_value = ["tester@10.0.0.8"]
+    monkeypatch.setattr(server, "_remote", remote)
+    probe = AsyncMock(
+        side_effect=[
+            {"exit_code": 1, "stdout": "", "stderr": ""},
+            {"exit_code": 0, "stdout": "/usr/bin/qltool\n", "stderr": ""},
+        ]
+    )
+    with patch("mcp_server.remote.execute_remote_command", probe):
+        result = await server.check_installed("Qiling", host="test-host")
+    assert result["installed"] is True
+    assert result["execution"]["binary"] == "qltool"
+    assert result["execution"]["ready"] is True
+
+
+def test_large_discovery_entries_keep_capabilities_compact():
+    execution = server.list_tools(query="commix")["tools"][0]["execution"]
+    assert execution["executable"] is True
+    assert "reason" not in execution and "access" not in execution
+    full = server.get_tool_info("commix")["execution"]
+    assert full["reason"] and full["access"]
+
+
+@pytest.mark.parametrize(
+    ("extra", "primary", "owner"),
+    [("icat", "fls", "sleuthkit"), ("pycdas", "pycdc", "pycdc"), ("elfls", "sstrip", "ELFkickers")],
+)
+@pytest.mark.parametrize("extra_present", [False, True])
+@pytest.mark.asyncio
+async def test_extra_binary_info_and_check_preserve_requested_launcher(extra, primary, owner, extra_present):
+    available = extra if extra_present else primary
+    with patch("shutil.which", side_effect=lambda binary: f"/usr/bin/{binary}" if binary == available else None):
+        info = server.get_tool_info(extra)
+        checked = await server.check_installed(extra)
+    assert info["name"] == checked["tool"] == owner
+    for result in (info, checked):
+        assert result["execution"]["binary"] == extra
+        assert result["execution"]["ready"] is extra_present
+        assert result["installed"] is extra_present
+    assert "--module" in info["commands"]["install"]
+
+
+@pytest.mark.parametrize(("extra", "primary"), [("icat", "fls"), ("pycdas", "pycdc"), ("elfls", "sstrip")])
+@pytest.mark.parametrize("extra_present", [False, True])
+@pytest.mark.asyncio
+async def test_remote_extra_binary_check_probes_only_requested_launcher(monkeypatch, extra, primary, extra_present):
+    remote = Mock()
+    remote.get_ssh_base_args.return_value = ["tester@10.0.0.8"]
+    monkeypatch.setattr(server, "_remote", remote)
+
+    async def probe(_ssh_args, command, **_kwargs):
+        found = command[1] == (extra if extra_present else primary)
+        return {"exit_code": 0 if found else 1, "stdout": f"/usr/bin/{command[1]}\n" if found else "", "stderr": ""}
+
+    remote_probe = AsyncMock(side_effect=probe)
+    with patch("mcp_server.remote.execute_remote_command", remote_probe):
+        result = await server.check_installed(extra, host="test-host")
+    assert result["execution"]["binary"] == extra
+    assert result["execution"]["ready"] is extra_present
+    assert result["installed"] is extra_present
+    assert [call.args[1] for call in remote_probe.call_args_list] == [["which", extra]]

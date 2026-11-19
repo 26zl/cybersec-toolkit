@@ -14,12 +14,10 @@ Pick a short module name and a SCREAMING_SNAKE prefix. Examples already used:
 
 ## 2. Create `modules/<name>.sh`
 
-Template:
-
-Mirror an existing module such as `modules/stego.sh`:
+Template (mirror an existing module such as `modules/stego.sh`):
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2034  # Arrays are consumed by scripts that source this module
 # Module: <Title>
 # <one-line description>
@@ -30,6 +28,7 @@ Mirror an existing module such as `modules/stego.sh`:
 <PREFIX>_GO_BINS=()           # binary name per <PREFIX>_GO entry
 <PREFIX>_CARGO=()
 <PREFIX>_GEMS=()
+<PREFIX>_NPM=()               # npm packages
 <PREFIX>_GIT=()               # "name=https://github.com/owner/repo.git" entries
 <PREFIX>_GIT_NAMES=()         # the names from <PREFIX>_GIT
 
@@ -46,7 +45,7 @@ install_module_<name>() {
 Binary releases go in `BINARY_RELEASES_<MODULE>` in `lib/installers.sh`, installed with
 `install_binary_releases "${BINARY_RELEASES_<MODULE>[@]}"`.
 
-Mark executable: `chmod +x modules/<name>.sh`.
+Match the permissions of the other files in `modules/`.
 
 ## 3. Register the module
 
@@ -60,7 +59,15 @@ Add a one-line description (mirrored to MCP).
 
 ### `install.sh`
 
-`install.sh` sources modules conditionally — verify the dispatcher case statement covers `<name>`. Most installers iterate `ALL_MODULES` so no change needed.
+Check how `install.sh` selects modules (`--module`, profiles) and confirm `<name>` resolves.
+
+### Other per-module places
+
+- `scripts/validate_tools_config.py`: `ALL_MODULES`, `MODULE_PREFIX`, and `BINARY_RELEASE_MODULE` if the module has binary releases (otherwise `--strict` fails).
+- `scripts/verify.sh`: add an `if should_verify "<name>"` block, as the other modules have.
+- `scripts/remove.sh` and `scripts/backup.sh`: add hooks if the module installs outside apt/pipx/git.
+- Module counts ("18 modules") in `README.md`, `AGENTS.md` and `scripts/validate_agent_docs.py`, then run `python3 scripts/validate_agent_docs.py`.
+- Test coverage in `tests/modules.bats`.
 
 ## 4. Mirror to MCP server
 

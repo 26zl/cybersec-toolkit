@@ -297,6 +297,7 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
         Dict with success, message, and optionally error details.
     """
     command = ["ssh"] + ssh_args + ["echo", "ok"]
+    timeout = max(1, min(timeout, 300))
 
     try:
         process = await asyncio.create_subprocess_exec(
@@ -324,6 +325,12 @@ async def check_ssh_connection(ssh_args: list[str], timeout: int = 15) -> dict[s
                 "success": False,
                 "message": f"SSH connection timed out after {timeout} seconds",
             }
+        except asyncio.CancelledError:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            raise
 
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
@@ -412,9 +419,13 @@ async def execute_remote_command(
         # and manage_remote_hosts call this directly, not via execute_tool_remote, so
         # a remote motd/banner or crafted output would otherwise reach the model raw.
         # sanitize_output is idempotent, so the execute_tool_remote path re-sanitizing is safe.
-        stdout = _security._finalize_stream(stdout_bytes.decode("utf-8", errors="replace"), max_output, t_read_stdout)
-        stderr = _security._finalize_stream(stderr_bytes.decode("utf-8", errors="replace"), max_output, t_read_stderr)
-        truncated = t_read_stdout or t_read_stderr
+        stdout, out_capped = _security._finalize_stream_with_status(
+            stdout_bytes.decode("utf-8", errors="replace"), max_output, t_read_stdout
+        )
+        stderr, err_capped = _security._finalize_stream_with_status(
+            stderr_bytes.decode("utf-8", errors="replace"), max_output, t_read_stderr
+        )
+        truncated = out_capped or err_capped
 
         return {
             "exit_code": process.returncode if process.returncode is not None else -1,

@@ -12,6 +12,7 @@
 #   scripts/test-distros.sh                  # all four distros, full checks
 #   scripts/test-distros.sh --quick          # skip the real install/remove steps
 #   scripts/test-distros.sh --strict         # make the package-name audit fatal
+#                                            # (combinable with --quick)
 #   scripts/test-distros.sh ubuntu arch      # a subset of distros
 #
 # Exit status is non-zero if any hard check failed. The package-name audit is
@@ -20,7 +21,7 @@ set -uo pipefail
 
 # in-container mode: run the actual checks against the copied repo.
 if [[ "${1:-}" == "--in-container" ]]; then
-    DISTRO="$2"; MODE="${3:-full}"
+    DISTRO="$2"; DEPTH="${3:-full}"; AUDIT="${4:-lenient}"
     cd "$(dirname "$0")/.." || exit 2      # repo root (mounted at /work)
 
     fails=0
@@ -42,7 +43,7 @@ if [[ "${1:-}" == "--in-container" ]]; then
     if bash scripts/validate_distro_packages.sh >/tmp/vp 2>&1; then
         pass "package names resolve"
     else
-        if [[ "$MODE" == "strict" ]]; then fail "package names resolve"; else
+        if [[ "$AUDIT" == "strict" ]]; then fail "package names resolve"; else
             printf '[%s] WARN package names resolve (non-fatal)\n' "$DISTRO"; fi
         grep -A100 'MISSING from' /tmp/vp | head -40
     fi
@@ -57,7 +58,7 @@ if [[ "${1:-}" == "--in-container" ]]; then
         printf '[%s] SKIP bats (submodules absent)\n' "$DISTRO"
     fi
 
-    if [[ "$MODE" != "quick" ]]; then
+    if [[ "$DEPTH" != "quick" ]]; then
         if bash install.sh --tool nmap --tool curl --tool tcpdump --tool socat --tool whois >/tmp/inst 2>&1; then
             miss=""; for t in nmap curl tcpdump socat whois; do command -v "$t" >/dev/null 2>&1 || miss="$miss $t"; done
             [[ -z "$miss" ]] && pass "install subset (5 tools)" || { fail "install subset —$miss"; tail -15 /tmp/inst; }
@@ -78,25 +79,32 @@ if [[ "${1:-}" == "--in-container" ]]; then
 fi
 
 # driver mode: run the checks across the distro containers.
-ENGINE=""
-for e in podman docker; do command -v "$e" >/dev/null 2>&1 && { "$e" info >/dev/null 2>&1 && ENGINE="$e" && break; }; done
-[[ -n "$ENGINE" ]] || { echo "No usable podman or docker found." >&2; exit 2; }
-
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="$(mktemp -d "${TMPDIR:-/tmp}/cybersec-distros.XXXXXX")"
 
-MODE=full
+DEPTH=full AUDIT=lenient
 declare -a WANT=()
 for arg in "$@"; do
     case "$arg" in
-        --quick)  MODE=quick ;;
-        --strict) MODE=strict ;;
+        --quick)  DEPTH=quick ;;
+        --strict) AUDIT=strict ;;
         ubuntu|fedora|arch|opensuse) WANT+=("$arg") ;;
-        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
 [[ ${#WANT[@]} -eq 0 ]] && WANT=(ubuntu fedora arch opensuse)
+
+ENGINE=""
+for e in podman docker; do command -v "$e" >/dev/null 2>&1 && { "$e" info >/dev/null 2>&1 && ENGINE="$e" && break; }; done
+[[ -n "$ENGINE" ]] || { echo "No usable podman or docker found." >&2; exit 2; }
+
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/cybersec-distros.XXXXXX")"
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE" "$OUT"' EXIT
+
+# macOS tar would add AppleDouble ._* members and xattr headers for files carrying
+# extended attributes; the containers' GNU tar unpacks those as extra files.
+export COPYFILE_DISABLE=1
 
 declare -A IMAGE=(
     [ubuntu]="docker.io/library/ubuntu:26.04"
@@ -104,36 +112,56 @@ declare -A IMAGE=(
     [arch]="docker.io/library/archlinux:latest"
     [opensuse]="registry.opensuse.org/opensuse/tumbleweed:latest"
 )
+# archlinux publishes amd64 only; ARM hosts run it under the engine's emulation.
+declare -A PLATFORM=()
+case "$(uname -m)" in
+    arm64|aarch64) PLATFORM[arch]="linux/amd64" ;;
+esac
 # Prereqs cover everything the checks need — notably openssl (backup encryption),
 # make (build-tree tests) and the bats/tar/awk tooling — so a missing tool never
 # masquerades as a failure.
 declare -A PREREQ=(
-    [ubuntu]='apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq --no-install-recommends \
-        git curl wget sudo ca-certificates python3 openssl tar gzip make >/dev/null 2>&1'
-    [fedora]='dnf install -y -q git curl wget sudo which python3 openssl tar gzip findutils gawk make >/dev/null 2>&1'
-    [arch]='pacman -Sy --noconfirm --needed git curl wget sudo which python openssl tar gzip make >/dev/null 2>&1'
-    [opensuse]='zypper --non-interactive --gpg-auto-import-keys refresh >/dev/null 2>&1
-        zypper --non-interactive install -y git curl wget sudo which python3 openssl tar gzip gawk findutils make >/dev/null 2>&1'
+    [ubuntu]='apt-get update -qq; apt-get install -y -qq --no-install-recommends \
+        git curl wget sudo ca-certificates python3 openssl tar gzip make'
+    [fedora]='dnf install -y -q git curl wget sudo which python3 openssl tar gzip findutils gawk make'
+    [arch]='pacman -Sy --noconfirm --needed git curl wget sudo which python openssl tar gzip make'
+    [opensuse]='zypper --non-interactive --gpg-auto-import-keys refresh
+        zypper --non-interactive install -y git curl wget sudo which python3 openssl tar gzip gawk findutils make'
 )
+# pacman's download sandbox cannot set up seccomp under the engine's emulation.
+if [[ -n "${PLATFORM[arch]:-}" ]]; then
+    PREREQ[arch]="${PREREQ[arch]/pacman -Sy/pacman --disable-sandbox -Sy}"
+fi
 
 # Build the staging tree once: repo working tree (minus .git and the host's
 # root-owned runtime artifacts) plus this script, streamed to every container.
-STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE" "$OUT"' EXIT
-tar --exclude=.git --exclude='*.log' --exclude='.versions*' \
+# Excludes keep git-ignored local material (writeups, env files, host-built venvs,
+# earlier logs) out of third-party containers.
+tar --no-xattrs --exclude=.git --exclude='*.log' --exclude='.versions*' \
     --exclude='.install_sessions' --exclude='cybersec_tools_backup' \
+    --exclude='./writeups' --exclude='.env' --exclude='.env.*' \
+    --exclude='.claude/settings.local.json' --exclude='.venv' \
+    --exclude='node_modules' --exclude='./.agents' \
+    --exclude='test-distros-logs' --exclude='__pycache__' --exclude='._*' \
+    --exclude='.ruff_cache' --exclude='.pytest_cache' \
     -C "$REPO" -cf - . 2>/dev/null | tar -C "$STAGE" -xf -
+# Keep the tracked placeholder so the directory layout matches a checkout.
+mkdir -p "$STAGE/writeups"
 
-echo "Engine: $ENGINE   Mode: $MODE   Distros: ${WANT[*]}"
+echo "Engine: $ENGINE   Depth: $DEPTH   Package audit: $AUDIT   Distros: ${WANT[*]}"
+CHECK_PREREQ='for t in git python3 openssl tar make; do command -v "$t" >/dev/null 2>&1 || { echo "missing prerequisite: $t"; exit 3; }; done'
+
 run_one() {
     local d="$1"
     {
         echo "===== $d (${IMAGE[$d]}) ====="
-        tar -C "$STAGE" -cf - . | "$ENGINE" run -i --rm "${IMAGE[$d]}" bash -c "
+        tar --no-xattrs -C "$STAGE" -cf - . | "$ENGINE" run -i --rm ${PLATFORM[$d]:+--platform "${PLATFORM[$d]}"} "${IMAGE[$d]}" bash -c "
             set -uo pipefail
             mkdir -p /work && tar -C /work -xf -
-            ${PREREQ[$d]}
-            bash /work/scripts/test-distros.sh --in-container $d $MODE
+            { ${PREREQ[$d]}
+            } >/tmp/prereq.log 2>&1 || { echo \"prerequisite install failed\"; tail -20 /tmp/prereq.log; exit 3; }
+            ${CHECK_PREREQ}
+            bash /work/scripts/test-distros.sh --in-container $d $DEPTH $AUDIT
         "
         echo "EXIT=$?"
     } >"$OUT/$d.log" 2>&1

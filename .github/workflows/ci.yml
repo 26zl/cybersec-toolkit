@@ -147,6 +147,16 @@ jobs:
       - name: Check release versions match
         run: bash scripts/validate_version.sh
 
+      - name: Check client MCP configs share the default-safe launch
+        run: |
+          python3 scripts/validate_client_configs.py --selftest
+          python3 scripts/validate_client_configs.py
+
+      - name: Check internal Markdown links
+        run: |
+          python3 scripts/check_doc_links.py --self-test
+          python3 scripts/check_doc_links.py --internal
+
   claude-skills-validate:
     name: Validate Claude Skills
     runs-on: ubuntu-latest
@@ -191,7 +201,7 @@ jobs:
           uv run ruff format --check .
           # Also lint the repo-root helper scripts (own ruff.toml at repo root).
           uv run ruff check ../scripts/ ../lib/
-          uv run ruff format --check ../lib/
+          uv run ruff format --check ../scripts/ ../lib/
 
   python-tests:
     name: Python Tests (pytest, ${{ matrix.python-version }})
@@ -217,6 +227,22 @@ jobs:
 
       - name: Run MCP server tests
         run: cd mcp_server && uv sync --locked --group dev --quiet && uv run pytest tests/ -v
+
+  tooling-tests:
+    name: Tooling Tests (unittest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run repository tooling tests
+        run: python3 -m unittest discover -s scripts -p "test_*.py"
 
   sandbox-tests:
     name: Sandbox Provider Tests (node)
@@ -261,6 +287,7 @@ jobs:
       - claude-skills-validate
       - python-lint
       - python-tests
+      - tooling-tests
       - profile-validate
       - sandbox-tests
     if: always()
@@ -305,6 +332,7 @@ jobs:
           uv run --no-editable python - <<'PY'
           import subprocess
           import sys
+          import threading
           import time
 
           p = subprocess.Popen(
@@ -314,13 +342,27 @@ jobs:
               stderr=subprocess.PIPE,
               text=True,
           )
-          time.sleep(2)
-          running = p.poll() is None
-          if running:
+          lines = []
+          ready = threading.Event()
+
+          def drain():
+              for line in p.stderr:
+                  lines.append(line)
+                  if "Starting MCP server" in line:
+                      ready.set()
+
+          t = threading.Thread(target=drain, daemon=True)
+          t.start()
+          deadline = time.monotonic() + 20
+          while time.monotonic() < deadline and p.poll() is None and not ready.is_set():
+              time.sleep(0.1)
+          ok = ready.is_set() and p.poll() is None
+          if p.poll() is None:
               p.terminate()
-          out, err = p.communicate(timeout=5)
-          if not running or "Starting MCP server" not in err:
-              sys.stderr.write(err)
+          p.wait(timeout=10)
+          t.join(timeout=5)
+          if not ok:
+              sys.stderr.write("".join(lines))
               sys.exit(1)
           PY
 

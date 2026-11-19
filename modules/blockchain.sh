@@ -15,9 +15,7 @@ BLOCKCHAIN_PIPX=(
     manticore
 )
 
-BLOCKCHAIN_CARGO=(
-    aderyn
-)
+BLOCKCHAIN_CARGO=()
 
 BLOCKCHAIN_GIT=()
 
@@ -28,7 +26,7 @@ BLOCKCHAIN_NPM=(surya solgraph)
 install_module_blockchain() {
     [[ ${#BLOCKCHAIN_PACKAGES[@]} -gt 0 ]] && install_apt_batch "Blockchain - Packages" "${BLOCKCHAIN_PACKAGES[@]}"
     install_pipx_batch "Blockchain - Python" "${BLOCKCHAIN_PIPX[@]}"
-    install_cargo_batch "Blockchain - Rust" "${BLOCKCHAIN_CARGO[@]}" || true
+    [[ ${#BLOCKCHAIN_CARGO[@]} -gt 0 ]] && { install_cargo_batch "Blockchain - Rust" "${BLOCKCHAIN_CARGO[@]}" || true; }
     install_npm_batch "Blockchain - npm" "${BLOCKCHAIN_NPM[@]}"
 
     [[ ${#BLOCKCHAIN_GIT[@]} -gt 0 ]] && install_git_batch "Blockchain - Git" "${BLOCKCHAIN_GIT[@]}"
@@ -79,7 +77,7 @@ install_module_blockchain() {
     # Foundry's chisel stays off PATH: it collides with jpillora/chisel (networking).
     local _foundry_dir; _foundry_dir="$(_builder_home)/.foundry/bin"
     if [[ -d "$_foundry_dir" ]]; then
-        local _linked=0
+        local _linked=0 _bin
         for _bin in foundryup forge cast anvil; do
             if [[ -f "$_foundry_dir/$_bin" ]] && [[ ! -f "$PIPX_BIN_DIR/$_bin" ]]; then
                 ln -sf "$_foundry_dir/$_bin" "$PIPX_BIN_DIR/$_bin" 2>/dev/null || true

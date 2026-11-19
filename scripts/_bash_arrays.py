@@ -16,7 +16,8 @@ def balanced_array_body(text: str, open_idx: int) -> str | None:
 
     Scans paren-balanced and quote-aware so a ``)`` inside a quoted cell or
     comment cannot close the array early (which would silently drop later
-    entries). Returns ``None`` if the array is never closed.
+    entries); a backslash escapes the next character outside single quotes.
+    Returns ``None`` if the array is never closed.
     """
     depth = 0
     quote: str | None = None
@@ -24,6 +25,9 @@ def balanced_array_body(text: str, open_idx: int) -> str | None:
     n = len(text)
     while i < n:
         ch = text[i]
+        if ch == "\\" and quote != "'":
+            i += 2  # the escaped character is literal: \) \" \# and a line continuation
+            continue
         if quote is not None:
             if ch == quote:
                 quote = None

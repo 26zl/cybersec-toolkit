@@ -1,6 +1,6 @@
 ---
 name: guided-assessment
-description: Pick and run the right MCP tools for an authorized security task. Default companion mode auto-detects the workflow/problem type, classifies target/finding input, returns triage gates, recommended skills, reporting next steps, selects from all modules/profiles, recommends the next command, and guides step-by-step; opt-in autonomous starts an auto-solver loop over the full MCP toolchain via run_tool/run_pipeline/run_script, including AI-created scoped helper scripts when tools/pipelines are not enough, under policy. Use for "what tools for this", "classify this finding", "triage this report", "run the right tools for me", "assess/triage this authorized target", or - when explicitly asked - "autonomously solve this". Clears authorization-gate once, then stays strictly in scope and never bypasses MCP policy.
+description: Pick and run the right MCP tools for an authorized security task. Default companion mode auto-detects the workflow/problem type, classifies target/finding input, returns triage gates, recommended skills, reporting next steps, selects from all modules/profiles, recommends the next command, and guides step-by-step; opt-in autonomous starts an auto-solver loop over the full MCP toolchain via run_tool/run_pipeline/run_script, including AI-created scoped helper scripts when tools/pipelines are not enough, under policy. Use for "what tools for this", "classify this finding", "triage this report", "run the right tools for me", "assess/triage this authorized target", or - when explicitly asked - "autonomously solve this". Runs authorization-gate first, then stays strictly in scope and never bypasses MCP policy.
 ---
 
 # Guided assessment
@@ -42,6 +42,32 @@ to see what it picked; pass an explicit `workflow`/`target_type` to override.
 
 If the user already has a finding summary, pass it as `finding="..."`. The MCP response
 classifies it but does not echo the raw finding text.
+
+## Parameters and result fields
+
+| Parameter | Values (default first) |
+| --- | --- |
+| `mode` | `companion`, `autonomous`; anything else returns an `error` |
+| `workflow` | `auto`, `ctf`, `bounty`, `generic` |
+| `target_type` | `auto`, a bounty type (`web_app`, `api`, `cloud`, `network`, `iot`, `mobile_app`) or a CTF category |
+| `intensity` | `low` (low-risk steps only), `medium` (adds low-volume nmap); anything else returns an `error` |
+| `max_steps` | `4`; clamped to 0-10, the cap on bootstrap steps autonomous mode runs |
+| `authorization_confirmed` | `false`; the caller's own assertion that the target is CTF/lab/owned or in written scope. The tool cannot verify it, so set it only after `authorization-gate` passes |
+
+Without `authorization_confirmed=true` a network target stays `blocked` in
+`triage_gate`, `authorization.status` is `required`, and autonomous mode returns
+`execution.reason` "authorization_confirmed=false" with the directive "AUTONOMOUS MODE NOT
+STARTED". An external target with `CYBERSEC_MCP_ALLOW_EXTERNAL=0` is blocked the same way
+(`external_policy.execution_blocked`). Companion mode never executes inside the call.
+
+`execution.status` is `not_started` for companion, blocked, or no-candidate runs, and
+`completed` once the autonomous bootstrap ran; the per-step output is in `execution.results`.
+Only steps with a supported launcher on PATH (`ready=true`) marked `auto_safe` within
+the `intensity` risk limit run, and C2/phishing
+tools (`requires_include_c2`) are never auto-executed. `triage_gate.status` is `blocked`,
+`needs_finding`, or `needs_validation`, and `report_ready` is always `false` until
+`triage-validation` passes. `run_script` also needs `CYBERSEC_MCP_ALLOW_SCRIPTS=1`; without
+it, scoped helper scripts are unavailable.
 
 ## Modes
 

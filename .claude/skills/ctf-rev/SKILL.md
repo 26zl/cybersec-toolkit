@@ -5,29 +5,30 @@ description: Use when solving a CTF reverse engineering challenge — stripped b
 
 # CTF reverse engineering methodology
 
+> **Pre-flight.** Confirm the event rules allow AI assistance (`authorization-gate`). Start with `suggest_for_ctf` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command, tell the operator; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
+
 ## 1. Triage
 
-```bash
-file ./bin
-strings ./bin | head -50
-strings ./bin | grep -i "flag\|ctf{\|password\|key"
-xxd ./bin | head -20                       # magic bytes
-checksec --file=./bin                      # protections
+```text
+run_tool("file", "./bin")
+run_pipeline([{"tool": "strings", "args": "./bin"}, {"tool": "head", "args": "-50"}])
+run_pipeline([{"tool": "strings", "args": "./bin"}, {"tool": "grep", "args": "-i -e flag -e ctf{ -e password -e key"}])
+run_pipeline([{"tool": "xxd", "args": "./bin"}, {"tool": "head", "args": "-20"}])   # magic bytes
+run_tool("checksec", "--file=./bin")                                                  # protections
 ```
 
 ## 2. Detect packing
 
-```bash
-# Entropy check (>7.5 = packed/encrypted)
-ent ./bin   # or: python3 -c "from collections import Counter; ..."
+```text
+# Entropy check (>7.5 = packed/encrypted): binwalk -E, or run_script with collections.Counter
+run_tool("binwalk", "-E ./bin")
 
 # UPX / known packers
-upx -t ./bin            # tests + identifies UPX
-detect-it-easy-cli ./bin
-diec ./bin
+run_tool("upx-ucl", "-t ./bin")                 # tests + identifies UPX
+# Detect It Easy is registry tool detect-it-easy; use it only if run_tool resolves its CLI
 ```
 
-If UPX-packed: `upx -d ./bin -o unpacked`. For custom packers: dump from memory after unpacking stub runs (gdb / x64dbg).
+If UPX-packed: `run_tool("upx-ucl", "-d ./bin -o unpacked")`. For custom packers: dump from memory after unpacking stub runs (gdb / x64dbg).
 
 ## 3. Pick the decompiler
 
@@ -49,18 +50,20 @@ If UPX-packed: `upx -d ./bin -o unpacked`. For custom packers: dump from memory 
 
 ## 4. Dynamic analysis
 
+Policy blocks `ltrace` and `strace` on a sample through `run_tool` because they launch the program. Run a sample only inside the sandbox/VM (`docs/SANDBOX.md`); `strace -p <pid>` on an already-running process is allowed.
+
 ```bash
-# Trace
+# Inside the sandbox/VM only
 ltrace ./bin
-strace ./bin
 strace -f -e trace=read,write,open ./bin
 
 # Debugger
 gdb-multiarch ./bin
-# pwndbg or gef extensions are loaded by default
 
-# Fault injection / branch flipping
-gdb> set $eax = 1     # change return value to bypass check
+# Branch flipping at a breakpoint
+gdb> set $eax = 1       # change the return value to bypass a check
+gdb> set $eflags ^= 0x40  # flip ZF to invert a jz/jnz
+# or patch the jump permanently in radare2 / Ghidra
 ```
 
 For Android: `frida` for runtime instrumentation, `objection` on top.
@@ -95,7 +98,7 @@ For challenges where input → boolean check, and check is complex but pure:
 - `manticore` — alternative.
 - `z3` directly — when constraints are explicit (e.g., "input[i] ^ key[i] == ...").
 
-Pwntools venv has `z3-solver` already.
+The `crypto` venv (`./install.sh --module crypto`) includes `z3`.
 
 ## 8. Don't waste time on
 

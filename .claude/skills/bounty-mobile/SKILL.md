@@ -5,6 +5,8 @@ description: Use when bug-bountying an Android (APK) or iOS (IPA) app. Covers st
 
 # Mobile bug bounty methodology
 
+> **Pre-flight.** Run `authorization-gate` and read the program policy first: confirm that automated scanning, brute force and rate-limit testing are allowed, and stay inside scope. Start with `suggest_for_bounty` or `guided_assessment`. Commands below are CLI notation: run them with `run_tool`/`run_pipeline` using registry names (`list_tools`), and `run_script` only for real logic. If policy blocks a command (for example `CYBERSEC_MCP_ALLOW_EXTERNAL=0`), ask the operator to fix the configuration and restart; do not fall back to the client shell. A tool that is not in the registry is a recommendation to the user (approval-gated install), not a bare command.
+
 ## 1. Get the artifact
 
 Android APK:
@@ -21,22 +23,19 @@ iOS IPA: requires jailbroken device or developer build (`frida-ios-dump`, `flexd
 
 ## 2. Static analysis (Android)
 
-```bash
-# Decompile to source
-jadx-gui base.apk          # GUI
-jadx -d ./out base.apk     # CLI
+```text
+# Decompile to source (jadx-gui is a GUI, so use the CLI)
+run_tool("jadx", "-d ./out base.apk")
 
 # Disassemble to smali
-apktool d base.apk -o ./out
+run_tool("apktool", "d base.apk -o ./out")
 
-# Manifest
-aapt2 dump badging base.apk
-aapt2 dump xmltree base.apk AndroidManifest.xml | head -100
+# Manifest (aapt2 is not a registry tool; read ./out/AndroidManifest.xml from apktool)
 
 # Quick wins
-grep -rE "https?://" ./out/sources/ | sort -u                  # endpoints
-grep -rE "(api[_-]?key|secret|token|password)" ./out/sources/   # hardcoded creds
-trufflehog filesystem ./out/
+run_pipeline([{"tool": "grep", "args": "-rhoE https?://[A-Za-z0-9./_?=&%-]+ ./out/sources/"}, {"tool": "sort", "args": "-u"}])   # endpoints
+run_tool("grep", "-rniE -e api.?key -e secret -e token -e password ./out/sources/")                            # hardcoded creds
+run_tool("trufflehog", "filesystem ./out/")
 ```
 
 Specifically check `AndroidManifest.xml` for:

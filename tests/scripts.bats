@@ -79,6 +79,67 @@ _run_guard_on() {
         bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash <<< "$json"
 }
 
+@test "agent guard derives git CLI names and native aliases from the registry" {
+    _guard_fixture
+    printf '%s\n' '{"ts":"2026-07-28T10:00:01.000Z","event":"tool_call","tool":"list_tools"}' \
+        > "$CYBERSEC_MCP_AUDIT_LOG"
+    local cmd audit_before
+    audit_before=$(cat "$CYBERSEC_MCP_AUDIT_LOG")
+    for cmd in \
+        'commix --help' \
+        '/usr/local/bin/ghauri --help' \
+        'tplmap --help' \
+        'python3 /opt/SSRFmap/ssrfmap.py --help' \
+        'jwt_tool --help' \
+        'ASRepCatcher --help' \
+        'RsaCtfTool --help' \
+        'rsacrack --help' \
+        'qltool --help' \
+        'krak2 --help' \
+        'setoolkit --help' \
+        'afl-fuzz --help' \
+        'sstrip --help'; do
+        _run_guard_on "$cmd"
+        assert_success
+        assert_output --partial '"permissionDecision":"deny"'
+    done
+    [[ "$(cat "$CYBERSEC_MCP_AUDIT_LOG")" == "$audit_before" ]]
+    [[ ! -e "$XDG_STATE_HOME/cybersec-tools-mcp/remote_hosts.json" ]]
+}
+
+@test "agent guard accepts new registry CLI aliases after the advisor call" {
+    _guard_fixture
+    printf '%s\n' '{"ts":"2026-07-28T10:00:01.000Z","event":"tool_call","tool":"guided_assessment"}' \
+        > "$CYBERSEC_MCP_AUDIT_LOG"
+    local cmd
+    for cmd in 'commix --help' 'python3 /opt/SSRFmap/ssrfmap.py --help' 'rsacrack --help' 'afl-fuzz --help'; do
+        _run_guard_on "$cmd"
+        assert_success
+        assert_output ""
+    done
+}
+
+@test "agent guard registry expansion preserves development commands and shell builtins" {
+    _guard_fixture
+    printf '%s\n' '{"ts":"2026-07-28T10:00:01.000Z","event":"tool_call","tool":"list_tools"}' \
+        > "$CYBERSEC_MCP_AUDIT_LOG"
+    local cmd
+    for cmd in \
+        'set -uo pipefail' \
+        'git diff --stat' \
+        'python3 -m pytest tests/' \
+        'gdb --version' \
+        'readelf --headers synthetic.o' \
+        'objdump -d synthetic.o' \
+        'openssl version' \
+        'node --version' \
+        'make --version'; do
+        _run_guard_on "$cmd"
+        assert_success
+        assert_output ""
+    done
+}
+
 @test "agent guard asks for a fresh advisor call once the last one is hours old" {
     _guard_fixture
     printf '%s\n' '{"ts":"2026-07-28T10:00:01.000Z","event":"tool_call","tool":"guided_assessment"}' \
@@ -371,6 +432,192 @@ _load_restore_tree() {
     assert_success
     assert_output --partial ".nmap/settings"
     refute_line --regexp '^l'
+}
+
+@test "backup skips a symlinked config directory instead of archiving its target" {
+    local test_home="$TEST_TMPDIR/home" secret="$TEST_TMPDIR/secret-target"
+    mkdir -p "$test_home" "$secret"
+    printf 'marker-content\n' > "$secret/marker-file"
+    ln -s "$secret" "$test_home/.john"
+
+    run env -u SUDO_USER \
+        HOME="$test_home" \
+        PREFIX="$TEST_TMPDIR/prefix" \
+        TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" backup
+    assert_success
+    assert_output --partial "Skipping symlinked config path: $test_home/.john"
+
+    local -a encrypted=("$test_home"/cybersec_tools_backup/backup_*.tar.gz.enc)
+    printf 'test-only-passphrase' > "$TEST_TMPDIR/pass"
+    openssl enc -chacha20 -d -pbkdf2 -iter 600000 -in "${encrypted[0]}" \
+        -out "$TEST_TMPDIR/backup.tar.gz" -pass file:"$TEST_TMPDIR/pass"
+    run tar -tzf "$TEST_TMPDIR/backup.tar.gz"
+    assert_success
+    refute_output --partial "marker-file"
+}
+
+@test "sudo restore creates a missing config parent owned by the invoking user" {
+    local test_home="$TEST_TMPDIR/home"
+    local archive_src="$TEST_TMPDIR/archive-src"
+    local archive="$TEST_TMPDIR/restore.tar.gz"
+    local mock_bin="$TEST_TMPDIR/bin"
+    local chown_log="$TEST_TMPDIR/chown.log"
+    mkdir -p "$test_home" "$archive_src/backup_fixture/web/nuclei" "$mock_bin"
+    printf 'setting\n' > "$archive_src/backup_fixture/web/nuclei/settings"
+    tar -czf "$archive" -C "$archive_src" backup_fixture
+    printf '%s\n' '#!/bin/sh' \
+        'printf "fixture-user:x:1001:1001::%s:/bin/bash\n" "$FAKE_HOME"' > "$mock_bin/getent"
+    printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$*" >> "$CHOWN_LOG"' > "$mock_bin/chown"
+    chmod +x "$mock_bin/getent" "$mock_bin/chown"
+
+    run env \
+        SUDO_USER=fixture-user FAKE_HOME="$test_home" CHOWN_LOG="$chown_log" \
+        HOME="$TEST_TMPDIR/root-home" PREFIX="$TEST_TMPDIR/prefix" \
+        TERMUX_VERSION=1 BACKUP_ALLOW_UNVERIFIED=1 PATH="$mock_bin:$PATH" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
+
+    assert_success
+    [[ -f "$test_home/.config/nuclei/settings" ]]
+    grep -Fx -- "-- fixture-user $test_home/.config" "$chown_log"
+    [[ "$(_file_mode "$test_home/.config")" == "755" ]]
+}
+
+# Back up a one-file home, then print the archive path.
+_restore_gate_backup() {
+    local test_home="$1"
+    mkdir -p "$test_home/.nmap"
+    printf 'setting\n' > "$test_home/.nmap/settings"
+    env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" backup >/dev/null 2>&1
+    local -a encrypted=("$test_home"/cybersec_tools_backup/backup_*.tar.gz.enc)
+    printf '%s' "${encrypted[0]}"
+}
+
+_restore_gate_run() {
+    local test_home="$1" archive="$2"
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_PASSPHRASE="test-only-passphrase" \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "$archive"
+}
+
+@test "restore refuses a tampered archive and leaves the home untouched" {
+    local test_home="$TEST_TMPDIR/home" archive
+    archive="$(_restore_gate_backup "$test_home")"
+    rm -rf "$test_home/.nmap"
+    python3 - "$archive" <<'PY'
+import sys
+p = sys.argv[1]
+b = bytearray(open(p, 'rb').read())
+b[-1] ^= 0x01
+open(p, 'wb').write(bytes(b))
+PY
+    _restore_gate_run "$test_home" "$archive"
+    assert_failure
+    assert_output --partial "Integrity check FAILED"
+    [[ ! -e "$test_home/.nmap" ]]
+}
+
+@test "restore refuses an encrypted archive without its integrity tag" {
+    local test_home="$TEST_TMPDIR/home" archive
+    archive="$(_restore_gate_backup "$test_home")"
+    rm -rf "$test_home/.nmap"
+    rm -f "$archive.hmac"
+    _restore_gate_run "$test_home" "$archive"
+    assert_failure
+    assert_output --partial "refusing an unauthenticated restore"
+    [[ ! -e "$test_home/.nmap" ]]
+}
+
+# Build a legacy .tar.gz holding one hostile member of the given kind.
+_craft_legacy_archive() {
+    python3 - "$1" "$2" <<'PY'
+import io, sys, tarfile
+out, kind = sys.argv[1], sys.argv[2]
+with tarfile.open(out, 'w:gz') as t:
+    def add(name, data=b'x', **kw):
+        ti = tarfile.TarInfo(name)
+        ti.size = len(data)
+        for k, v in kw.items():
+            setattr(ti, k, v)
+        t.addfile(ti, io.BytesIO(data))
+    if kind == 'dotdot':
+        add('backup_x/../escape')
+    elif kind == 'absolute':
+        add('/tmp/escape')
+    elif kind == 'symlink':
+        ti = tarfile.TarInfo('backup_x/link')
+        ti.type = tarfile.SYMTYPE
+        ti.linkname = '/etc/passwd'
+        t.addfile(ti)
+    elif kind == 'hardlink':
+        add('backup_x/a')
+        ti = tarfile.TarInfo('backup_x/b')
+        ti.type = tarfile.LNKTYPE
+        ti.linkname = 'backup_x/a'
+        t.addfile(ti)
+PY
+}
+
+@test "restore refuses unsafe member paths in a legacy archive" {
+    local test_home="$TEST_TMPDIR/home" kind
+    mkdir -p "$test_home"
+    for kind in dotdot absolute; do
+        _craft_legacy_archive "$TEST_TMPDIR/$kind.tar.gz" "$kind"
+        run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+            BACKUP_ALLOW_UNVERIFIED=1 \
+            bash "$PROJECT_ROOT/scripts/backup.sh" restore "$TEST_TMPDIR/$kind.tar.gz"
+        assert_failure
+        assert_output --partial "unsafe path"
+    done
+}
+
+@test "restore refuses symlink and hardlink members in a legacy archive" {
+    local test_home="$TEST_TMPDIR/home" kind
+    mkdir -p "$test_home"
+    for kind in symlink hardlink; do
+        _craft_legacy_archive "$TEST_TMPDIR/$kind.tar.gz" "$kind"
+        run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+            BACKUP_ALLOW_UNVERIFIED=1 \
+            bash "$PROJECT_ROOT/scripts/backup.sh" restore "$TEST_TMPDIR/$kind.tar.gz"
+        assert_failure
+        assert_output --partial "links or special members"
+    done
+}
+
+@test "restore strips setuid bits from a legacy archive" {
+    local test_home="$TEST_TMPDIR/home" src="$TEST_TMPDIR/archive-src"
+    mkdir -p "$test_home" "$src/backup_fixture/network/.nmap"
+    printf 'x\n' > "$src/backup_fixture/network/.nmap/suid"
+    chmod 4755 "$src/backup_fixture/network/.nmap/suid"
+    tar -czf "$TEST_TMPDIR/suid.tar.gz" -C "$src" backup_fixture
+
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 \
+        bash "$PROJECT_ROOT/scripts/backup.sh" restore "$TEST_TMPDIR/suid.tar.gz"
+    assert_success
+    [[ -f "$test_home/.nmap/suid" ]]
+    [[ ! -u "$test_home/.nmap/suid" ]]
+}
+
+@test "restore leaves no group or world write bits on restored files" {
+    local test_home="$TEST_TMPDIR/home" src="$TEST_TMPDIR/archive-src" f mode
+    mkdir -p "$test_home" "$src/backup_fixture/network/.nmap"
+    printf 'x\n' > "$src/backup_fixture/network/.nmap/plain"
+    printf 'x\n' > "$src/backup_fixture/network/.nmap/loose"
+    chmod 0644 "$src/backup_fixture/network/.nmap/plain"
+    chmod 0666 "$src/backup_fixture/network/.nmap/loose"
+    tar -czf "$TEST_TMPDIR/modes.tar.gz" -C "$src" backup_fixture
+
+    run env -u SUDO_USER HOME="$test_home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        BACKUP_ALLOW_UNVERIFIED=1 bash "$PROJECT_ROOT/scripts/backup.sh" restore "$TEST_TMPDIR/modes.tar.gz"
+    assert_success
+    for f in plain loose; do
+        mode=$(python3 -c 'import os, sys; print(os.stat(sys.argv[1]).st_mode & 0o7777)' "$test_home/.nmap/$f")
+        (( (mode & 8#022) == 0 && (mode & 8#600) == 8#600 )) || { printf '%s has mode %o\n' "$f" "$mode"; return 1; }
+    done
 }
 
 # Lifecycle scripts run as fake Termux against a copy of the repo with every
@@ -770,6 +1017,53 @@ _run_backup_schedule() {
     grep -q '^nmap|' "$LC_REPO/.versions"
 }
 
+@test "partial removal preserves version records and reports a failed row rewrite" {
+    _lifecycle_fixture
+    printf 'jwt_tool|git|HEAD|2026-01-01 00:00:00\nnmap|pkg|system|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+    cp "$LC_REPO/.versions" "$TEST_TMPDIR/original-versions"
+    mkdir -p "$TEST_TMPDIR/tools/jwt_tool"
+    local real_awk
+    real_awk=$(command -v awk)
+    cat > "$LC_STUBS/awk" <<EOF
+#!/bin/bash
+if [[ "\$*" == *'gone['* ]]; then
+    printf 'incomplete rewrite\n'
+    exit 1
+fi
+exec '$real_awk' "\$@"
+EOF
+    chmod +x "$LC_STUBS/awk"
+
+    _run_lifecycle remove.sh --module web --yes
+
+    assert_failure
+    assert_output --partial 'Failed to update install records'
+    cmp "$LC_REPO/.versions" "$TEST_TMPDIR/original-versions"
+    [[ ! -e "$TEST_TMPDIR/tools/jwt_tool" ]]
+}
+
+@test "Git removal cleans escaped launchers and preserves independent commands" {
+    _lifecycle_fixture
+    local tool_path="$TEST_TMPDIR/tools with spaces/enum4linux-ng"
+    mkdir -p "$tool_path"
+    printf 'enum4linux-ng|git|HEAD|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+    source_libs --installers debian apt
+    PIPX_BIN_DIR="$TEST_TMPDIR/prefix/bin"
+    _write_git_launcher "$tool_path" enum4linux-ng python3 "$tool_path/enum4linux-ng.py"
+    printf '#!/bin/sh\nprintf independent\\n\n' > "$PIPX_BIN_DIR/enum4linux_ng"
+
+    run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_ID_LIKE= DISTRO_NAME=Termux \
+        GITHUB_TOOL_DIR="$TEST_TMPDIR/tools with spaces" TMPDIR="$TEST_TMPDIR" TERM=dumb \
+        PATH="$LC_STUBS:$TEST_TMPDIR/prefix/bin:$PATH" \
+        bash "$LC_REPO/scripts/remove.sh" --module enterprise --yes
+
+    assert_success
+    [[ ! -e "$tool_path" ]]
+    [[ ! -e "$PIPX_BIN_DIR/enum4linux-ng" ]]
+    [[ -f "$PIPX_BIN_DIR/enum4linux_ng" ]]
+}
+
 @test "remove keeps the install record when a special tool survives" {
     [[ "$(id -u)" -ne 0 ]] || skip "root ignores the read-only directory"
     _lifecycle_fixture
@@ -833,7 +1127,7 @@ _run_backup_schedule() {
     local -a gitid=(-c user.email=fixture@example.invalid -c user.name=fixture)
     git init -q "$up"
     # AFLplusplus is rebuilt with its registry command (make source-only), never the default target.
-    printf 'all:\n\tmkdir -p bin && cp version.txt bin/massdns\nsource-only:\n\tcp version.txt built.txt\n' \
+    printf 'all:\n\tmkdir -p bin && cp version.txt bin/massdns && chmod +x bin/massdns\nsource-only:\n\tcp version.txt built.txt && cp version.txt afl-fuzz && chmod +x afl-fuzz\n' \
         > "$up/Makefile"
     printf 'v1\n' > "$up/version.txt"
     git -C "$up" add -A
@@ -860,6 +1154,33 @@ _run_backup_schedule() {
     [[ "$(git -C "$TEST_TMPDIR/tools/codext" log -1 --format=%s)" == "local" ]]
 }
 
+@test "Git update rebuilds a registered CLI and repairs its missing launcher" {
+    _lifecycle_fixture
+    local upstream="$TEST_TMPDIR/upstream"
+    local -a identity=(-c user.email=fixture@example.invalid -c user.name=fixture)
+    git init -q "$upstream"
+    printf 'all:\n\tcp version.sh kwp && chmod +x kwp\n' > "$upstream/Makefile"
+    printf '#!/bin/sh\nprintf "v1\\n"\n' > "$upstream/version.sh"
+    git -C "$upstream" add -A
+    git -C "$upstream" "${identity[@]}" commit -qm v1
+    git clone -q "$upstream" "$TEST_TMPDIR/tools/kwprocessor"
+    printf 'kwprocessor|git|HEAD|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+    printf '#!/bin/sh\nprintf "v2\\n"\n' > "$upstream/version.sh"
+    git -C "$upstream" "${identity[@]}" commit -qam v2
+
+    _run_lifecycle update.sh --skip-system --skip-pipx --skip-go --skip-gems \
+        --skip-cargo --skip-binary --skip-special --skip-docker
+    assert_success
+    run "$TEST_TMPDIR/prefix/bin/kwprocessor"
+    assert_success
+    assert_output v2
+    rm "$TEST_TMPDIR/prefix/bin/kwprocessor"
+    _run_lifecycle update.sh --skip-system --skip-pipx --skip-go --skip-gems \
+        --skip-cargo --skip-binary --skip-special --skip-docker
+    assert_success
+    [[ -x "$TEST_TMPDIR/prefix/bin/kwprocessor" ]]
+}
+
 @test "update rebuilds only Go tools the toolkit installed" {
     _lifecycle_fixture
     printf '#!/bin/sh\necho "go $*" >> "%s/calls.log"\n[ "$1" = version ] && echo "go version go1.23.0 linux/amd64"\nexit 0\n' \
@@ -875,6 +1196,61 @@ _run_backup_schedule() {
     run grep -F "go install" "$TEST_TMPDIR/calls.log"
     assert_output --partial "github.com/tomnomnom/gf@latest"
     refute_output --partial "ffuf"
+}
+
+@test "verify --installed-only matches tracked names literally, not as patterns" {
+    _lifecycle_fixture
+    printf 'dissectXtarget|pipx|latest|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+
+    _run_lifecycle verify.sh --installed-only --module forensics
+
+    refute_output --partial "dissect.target"
+}
+
+@test "verify reads the version record named by VERSION_FILE" {
+    _lifecycle_fixture
+    printf 'gf|go|latest|2026-01-01 00:00:00\n' > "$TEST_TMPDIR/relocated.versions"
+
+    run env -i HOME="$TEST_TMPDIR/home" PREFIX="$TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_ID_LIKE= DISTRO_NAME=Termux \
+        GITHUB_TOOL_DIR="$TEST_TMPDIR/tools" TMPDIR="$TEST_TMPDIR" TERM=dumb \
+        VERSION_FILE="$TEST_TMPDIR/relocated.versions" \
+        PATH="$LC_STUBS:$TEST_TMPDIR/prefix/bin:$PATH" \
+        bash "$LC_REPO/scripts/verify.sh" --installed-only
+
+    assert_output --partial "Filtering by $TEST_TMPDIR/relocated.versions (1 tracked tools)"
+}
+
+@test "deep clean reports a cache it could not remove and exits non-zero" {
+    [[ $EUID -ne 0 ]] || skip "root removes read-only trees"
+    _lifecycle_fixture
+    local cache="$TEST_TMPDIR/home/.cache"
+    mkdir -p "$cache/pip"
+    chmod 555 "$cache"
+
+    _run_lifecycle remove.sh --deep-clean --yes
+    chmod 755 "$cache"
+
+    assert_failure
+    assert_output --partial "Failed to remove $cache/pip"
+    refute_output --partial "Removed pip cache"
+}
+
+@test "update --skip-git leaves build-from-source trees alone" {
+    _source_outputs_fixture
+    _source_update_fixture
+    _source_tracked_clone
+    local upstream="$TEST_TMPDIR/upstream"
+    local -a git_identity=(-c user.email=fixture@example.invalid -c user.name=fixture)
+    printf 'v2\n' > "$upstream/version.txt"
+    git -C "$upstream" "${git_identity[@]}" commit -qam v2
+
+    _source_run_lifecycle update.sh --skip-git --skip-system --skip-pipx --skip-go \
+        --skip-gems --skip-cargo --skip-binary --skip-special --skip-docker
+
+    assert_success
+    assert_output --partial "Skipping build-from-source update"
+    [[ "$(< "$GITHUB_TOOL_DIR/fixture-tool/version.txt")" == "v1" ]]
 }
 
 # A pipx that lists the given "name version" lines and logs every other call.
@@ -910,7 +1286,8 @@ _lifecycle_pipx_stub() {
 
 @test "deep clean keeps pipx venvs and dangling links that are not the toolkit's" {
     _lifecycle_fixture
-    local pipx_home="$TEST_TMPDIR/home/.local/pipx" bin="$TEST_TMPDIR/prefix/bin"
+    local phys; phys="$(cd "$TEST_TMPDIR" && pwd -P)"
+    local pipx_home="$phys/home/.local/pipx" bin="$phys/prefix/bin"
     # codext's uninstall left its venv behind; the other venv was never the toolkit's.
     _lifecycle_pipx_stub
     printf 'codext|pipx|latest|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
@@ -942,6 +1319,23 @@ EOF
     assert_success
     assert_output --partial "UV_RAN:"
     assert_output --partial "server.py"
+}
+
+@test "mcp-launch.sh forwards separate host-control opt-ins and defaults both off" {
+    mkdir -p "$TEST_TMPDIR/bin"
+    cat > "$TEST_TMPDIR/bin/uv" <<'EOF'
+#!/usr/bin/env bash
+printf 'HOST_CONTROL:%s:%s\n' "$CYBERSEC_MCP_ALLOW_USBKILL" "$CYBERSEC_MCP_ALLOW_NIPE"
+EOF
+    chmod +x "$TEST_TMPDIR/bin/uv"
+    run env -u CYBERSEC_MCP_ALLOW_USBKILL -u CYBERSEC_MCP_ALLOW_NIPE \
+        PATH="$TEST_TMPDIR/bin:$PATH" bash "$PROJECT_ROOT/scripts/mcp-launch.sh" --local
+    assert_success
+    assert_output --partial 'HOST_CONTROL:0:0'
+    run env CYBERSEC_MCP_ALLOW_USBKILL=1 CYBERSEC_MCP_ALLOW_NIPE=1 \
+        PATH="$TEST_TMPDIR/bin:$PATH" bash "$PROJECT_ROOT/scripts/mcp-launch.sh" --local
+    assert_success
+    assert_output --partial 'HOST_CONTROL:1:1'
 }
 
 @test "mcp-launch.sh rejects an unknown mode" {
@@ -1292,7 +1686,7 @@ _source_update_fixture() {
     mkdir -p "$SOURCE_FIXTURE_REPO/scripts" "$SOURCE_FIXTURE_STUBS" "$TEST_TMPDIR/home" \
         "$TEST_TMPDIR/prefix/bin"
     cp -R "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" "$SOURCE_FIXTURE_REPO/"
-    cp "$PROJECT_ROOT/scripts/update.sh" "$PROJECT_ROOT/scripts/verify.sh" "$SOURCE_FIXTURE_REPO/scripts/"
+    cp "$PROJECT_ROOT/scripts/update.sh" "$PROJECT_ROOT/scripts/verify.sh" "$PROJECT_ROOT/scripts/stale_artefacts.sh" "$SOURCE_FIXTURE_REPO/scripts/"
     _source_fixture_module "$SOURCE_FIXTURE_REPO"
     local command
     for command in pkg dpkg apt-get npm gem cargo pipx docker snap go sudo rustup uv; do
@@ -1360,6 +1754,24 @@ _source_tracked_clone() {
     run "$TEST_TMPDIR/prefix/bin/fixture-companion"
     assert_success
     assert_output 'fixture-companion v2'
+}
+
+@test "source update preserves local edits when upstream changes the same file" {
+    _source_outputs_fixture
+    _source_update_fixture
+    _source_tracked_clone
+    local upstream="$TEST_TMPDIR/upstream" clone="$GITHUB_TOOL_DIR/fixture-tool"
+    local -a git_identity=(-c user.email=fixture@example.invalid -c user.name=fixture)
+    printf 'local edits\n' > "$clone/version.txt"
+    printf 'upstream v2\n' > "$upstream/version.txt"
+    git -C "$upstream" "${git_identity[@]}" commit -qam v2
+
+    _source_run_update
+
+    assert_failure
+    [[ "$(cat "$clone/version.txt")" == *'local edits'* ]]
+    [[ "$(git -C "$clone" stash show -p)" == *'local edits'* ]]
+    [[ ! -e "$TEST_TMPDIR/prefix/bin/fixture-tool" ]]
 }
 
 @test "unchanged source update repairs links and rejects missing build artifacts" {
@@ -1683,4 +2095,325 @@ _finding_evidence() {
     assert_failure 2
     run bash "$PROJECT_ROOT/scripts/update-skills.sh" --apply no-such-source
     assert_failure 2
+}
+
+@test "deep clean finds toolkit links when the tool tree sits behind a symlink" {
+    _lifecycle_fixture
+    local bin="$TEST_TMPDIR/prefix/bin"
+    rmdir "$TEST_TMPDIR/tools"
+    mkdir -p "$TEST_TMPDIR/real-tools"
+    ln -s "$TEST_TMPDIR/real-tools" "$TEST_TMPDIR/tools"
+    ln -s "$TEST_TMPDIR/real-tools/gone/gone.py" "$bin/gone"
+    ln -s "$TEST_TMPDIR/elsewhere/tool" "$bin/users-own-link"
+
+    _run_lifecycle remove.sh --deep-clean --yes
+
+    assert_success
+    [[ ! -L "$bin/gone" ]]
+    [[ -L "$bin/users-own-link" ]]
+}
+
+@test "deep clean removes the Go module cache, the tool log and keeps a failing removal visible" {
+    _lifecycle_fixture
+    mkdir -p "$TEST_TMPDIR/home/.go/pkg/mod/example"
+    : > "$LC_REPO/cybersec_tool.log"
+    : > "$LC_REPO/cybersec_install.log"
+
+    _run_lifecycle remove.sh --deep-clean --yes
+
+    assert_success
+    [[ ! -e "$TEST_TMPDIR/home/.go/pkg" ]]
+    [[ ! -e "$LC_REPO/cybersec_tool.log" && ! -e "$LC_REPO/cybersec_install.log" ]]
+}
+
+# A pipx stub that lists "commix 0.1" and removes the venv on uninstall.
+_stale_pipx_stub() {
+    {
+        printf '#!/bin/sh\n'
+        printf 'echo "pipx $*" >> "%s/calls.log"\n' "$TEST_TMPDIR"
+        printf 'if [ "$1" = list ]; then printf "%%s\\n" "commix 0.1" "man-spider 1.0"; exit 0; fi\n'
+        printf 'if [ "$1" = uninstall ]; then rm -rf "%s/home/.local/pipx/venvs/$2"; exit 0; fi\n' "$TEST_TMPDIR"
+        printf 'exit 1\n'
+    } > "$LC_STUBS/pipx"
+}
+
+@test "update keeps old-method artefacts and rows: only install.sh removes them, with a successor" {
+    _lifecycle_fixture
+    local pipx_home="$TEST_TMPDIR/home/.local/pipx" bin="$TEST_TMPDIR/prefix/bin"
+    _stale_pipx_stub
+    mkdir -p "$pipx_home/venvs/commix/bin" "$TEST_TMPDIR/tools/apktool"
+    : > "$pipx_home/venvs/commix/bin/commix"
+    ln -s "$pipx_home/venvs/commix/bin/commix" "$bin/commix"
+    printf '%s\n' 'commix|pipx|latest|2026-01-01 00:00:00' \
+        'apktool|git|HEAD|2026-01-01 00:00:00' >> "$LC_REPO/.versions"
+
+    _run_lifecycle update.sh --skip-system --skip-pipx --skip-go --skip-git --skip-gems \
+        --skip-cargo --skip-binary --skip-special --skip-docker
+
+    refute_output --partial "stale"
+    [[ -d "$pipx_home/venvs/commix" && -L "$bin/commix" && -d "$TEST_TMPDIR/tools/apktool" ]]
+    grep -q '^commix|pipx|' "$LC_REPO/.versions"
+    grep -q '^apktool|git|' "$LC_REPO/.versions"
+}
+
+@test "remove clears stale method-change artefacts and does not treat their rows as the current install" {
+    _lifecycle_fixture
+    local pipx_home="$TEST_TMPDIR/home/.local/pipx"
+    _stale_pipx_stub
+    mkdir -p "$pipx_home/venvs/commix"
+    printf '#!/bin/sh\necho "pkg $*" >> "%s/calls.log"\n' "$TEST_TMPDIR" > "$LC_STUBS/pkg"
+    printf '#!/bin/sh\ncase "$2" in apktool) echo "ii  $2 1.0 all fixture"; exit 0 ;; esac\nexit 1\n' > "$LC_STUBS/dpkg"
+    printf '%s\n' 'commix|pipx|latest|2026-01-01 00:00:00' \
+        'apktool|git|HEAD|2026-01-01 00:00:00' >> "$LC_REPO/.versions"
+
+    _run_lifecycle remove.sh --yes
+
+    assert_success
+    [[ ! -e "$pipx_home/venvs/commix" ]]
+    run grep -F "uninstall -y apktool" "$TEST_TMPDIR/calls.log"
+    assert_failure
+}
+
+_tree_state() {
+    (cd "$TEST_TMPDIR" && find . -mindepth 1 -path ./calls.log -prune -o -print | LC_ALL=C sort \
+        | while read -r p; do printf '%s %s\n' "$p" "$(stat -c '%Y' "$p" 2>/dev/null || stat -f '%m' "$p")"; done)
+}
+
+@test "remove --dry-run lists the planned removals and changes nothing" {
+    _lifecycle_fixture
+    local pipx_home="$TEST_TMPDIR/home/.local/pipx" bin="$TEST_TMPDIR/prefix/bin"
+    printf '#!/bin/sh\necho "pipx $*" >> "%s/calls.log"\n[ "$1" = list ] && echo "codext 1.0"\nexit 0\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/pipx"
+    printf '#!/bin/sh\necho "docker $*" >> "%s/calls.log"\n[ "$1" = images ] && echo abc123\nexit 0\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/docker"
+    printf '#!/bin/sh\necho "dpkg $*" >> "%s/calls.log"\ncase "$2" in dnsenum) echo "ii  $2 1.0 all fixture"; exit 0 ;; esac\nexit 1\n' \
+        "$TEST_TMPDIR" > "$LC_STUBS/dpkg"
+    mkdir -p "$pipx_home/venvs/codext" "$TEST_TMPDIR/tools/nikto" "$TEST_TMPDIR/tools/MemProcFS" \
+        "$TEST_TMPDIR/home/.go/pkg/mod"
+    printf '#!/bin/sh\n' > "$bin/gf"
+    printf '#!/bin/sh\n' > "$bin/chainsaw"
+    chmod +x "$bin/gf" "$bin/chainsaw"
+    printf '%s\n' 'codext|pipx|latest|2026-01-01 00:00:00' 'gf|go|latest|2026-01-01 00:00:00' \
+        'nikto|git|HEAD|2026-01-01 00:00:00' 'chainsaw|binary|v1|2026-01-01 00:00:00' \
+        'dnsenum|pkg|system|2026-01-01 00:00:00' 'BeEF|docker|beef|2026-01-01 00:00:00' \
+        'commix|pipx|latest|2026-01-01 00:00:00' >> "$LC_REPO/.versions"
+    : > "$LC_REPO/cybersec_tool.log"
+    local before after
+    cp "$LC_REPO/.versions" "$TEST_TMPDIR/versions.before"
+    before=$(_tree_state)
+    : > "$TEST_TMPDIR/calls.log"
+
+    _run_lifecycle remove.sh --dry-run --yes --deep-clean
+
+    assert_success
+    assert_output --partial "Would remove pipx package: codext"
+    assert_output --partial "Would remove Go binary: $bin/gf"
+    assert_output --partial "Would remove git/source tree: $TEST_TMPDIR/tools/nikto"
+    assert_output --partial "Would remove binary release: $bin/chainsaw"
+    assert_output --partial "Would remove system package: dnsenum"
+    assert_output --partial "Would remove Docker image: beefproject/beef"
+    assert_output --partial "Would remove stale pipx artefact: commix"
+    assert_output --partial "Would remove deep-clean path: $TEST_TMPDIR/home/.go/pkg"
+    assert_output --partial "nothing was changed"
+    after=$(_tree_state)
+    [[ "$before" == "$after" ]]
+    [[ "$(cksum < "$LC_REPO/.versions")" == "$(cksum < "$TEST_TMPDIR/versions.before")" ]]
+    run grep -E "uninstall|remove|rmi|clean|-rf" "$TEST_TMPDIR/calls.log"
+    assert_failure
+    [[ -e "$LC_REPO/cybersec_tool.log" && ! -e "$LC_REPO/tool_removal.log" ]]
+}
+
+@test "agent guard sees a governed tool behind shell keywords, interpreters and wrappers" {
+    _guard_fixture
+    printf '%s\n' '{"ts":"2026-07-28T10:00:01.000Z","event":"tool_call","tool":"list_tools"}' > "$CYBERSEC_MCP_AUDIT_LOG"
+    local c
+    for c in 'for h in a b; do nmap $h; done' 'if nmap x; then echo ok; fi' '{ nmap x; }' '! nmap x' 'while true; do nmap x; done' 'python3 /opt/sqlmap/sqlmap.py -u http://x' 'python3 -m sqlmap' 'python3 vol.py -f mem' 'bash -lc "nmap x"' 'bash --login -c "nmap x"' '/usr/bin/env nmap x' 'doas nmap x' 'eval "nmap x"' 'nm""ap 192.0.2.10'; do
+        _run_guard_on "$c"
+        assert_success
+        assert_output --partial '"permissionDecision":"deny"'
+    done
+    for c in 'python3 build.py' 'bash -lc ls' 'echo "do nmap"' 'git commit -m "if nmap"'; do
+        _run_guard_on "$c"
+        assert_success
+        refute_output --partial 'deny'
+    done
+}
+
+@test "agent guard honours an advisor call that rotated into audit.log.1" {
+    _guard_fixture
+    printf '%s\n' '{"ts":"2026-07-28T10:00:01.000Z","event":"tool_call","tool":"list_tools"}' > "$CYBERSEC_MCP_AUDIT_LOG"
+    printf '%s\n' '{"ts":"2026-07-28T10:00:02.000Z","event":"tool_call","tool":"guided_assessment"}' > "$CYBERSEC_MCP_AUDIT_LOG.1"
+    _run_guard_on 'nmap x'
+    assert_success
+    refute_output --partial 'deny'
+}
+
+@test "update-skills validates MIN_AGE_DAYS and documents its options" {
+    run env MIN_AGE_DAYS=abc bash "$PROJECT_ROOT/scripts/update-skills.sh" --check-pins
+    assert_failure 2
+    assert_output --partial "must be non-negative integers"
+
+    run bash "$PROJECT_ROOT/scripts/update-skills.sh" --help
+    assert_success
+    assert_output --partial "--check-pins"
+    assert_output --partial "MAX_STALE_DAYS"
+}
+
+@test "mcp-launch.sh --local reports a missing uv" {
+    mkdir -p "$TEST_TMPDIR/nouv"
+    for _c in bash sed grep cat dirname; do
+        _p="$(command -v "$_c")" && ln -sf "$_p" "$TEST_TMPDIR/nouv/$_c"
+    done
+    run env -i PATH="$TEST_TMPDIR/nouv" bash "$PROJECT_ROOT/scripts/mcp-launch.sh" --local
+    assert_failure 1
+    assert_output --partial "requires uv"
+}
+
+@test "validate_profiles.sh rejects an empty MODULES and a missing SKIP_HEAVY" {
+    local tree="$TEST_TMPDIR/profiles-tree"
+    mkdir -p "$tree/scripts" "$tree/lib" "$tree/profiles"
+    cp "$PROJECT_ROOT/scripts/validate_profiles.sh" "$tree/scripts/"
+    cp "$PROJECT_ROOT/lib/common.sh" "$tree/lib/"
+    cp "$PROJECT_ROOT"/profiles/*.conf "$tree/profiles/"
+    local -a confs=("$tree"/profiles/*.conf)
+    sed -i.bak 's/^MODULES=.*/MODULES=""/' "${confs[0]}"
+    sed -i.bak '/^SKIP_HEAVY=/d' "${confs[1]}"
+    rm -f "$tree"/profiles/*.bak
+
+    run bash "$tree/scripts/validate_profiles.sh"
+
+    assert_failure 1
+    assert_output --partial "MODULES is empty"
+    assert_output --partial "SKIP_HEAVY must be set"
+}
+
+@test "sandbox-source-hash changes when lib/common.sh changes" {
+    command -v sha256sum >/dev/null || skip "sha256sum not available"
+    local tree="$TEST_TMPDIR/hash-tree"
+    mkdir -p "$tree/scripts" "$tree/mcp_server" "$tree/lib" "$tree/modules" "$tree/profiles" "$tree/sandbox"
+    cp "$PROJECT_ROOT/scripts/sandbox-source-hash.sh" "$tree/scripts/"
+    printf 'x\n' > "$tree/mcp_server/server.py"
+    : > "$tree/mcp_server/pyproject.toml"; : > "$tree/mcp_server/uv.lock"; : > "$tree/mcp_server/README.md"
+    : > "$tree/tools_config.json"; : > "$tree/install.sh"
+    : > "$tree/sandbox/Dockerfile"; : > "$tree/sandbox/guest-mcp.json"
+    printf 'a\n' > "$tree/lib/common.sh"; : > "$tree/modules/m.sh"; : > "$tree/profiles/p.conf"
+
+    local before after
+    before=$(bash "$tree/scripts/sandbox-source-hash.sh")
+    printf 'b\n' >> "$tree/lib/common.sh"
+    after=$(bash "$tree/scripts/sandbox-source-hash.sh")
+
+    [[ -n "$before" && "$before" != "$after" ]]
+}
+
+# sync-skills.sh, sync-wsl.sh, pip-audit-lock.sh and test-distros.sh run from a copy of the
+# repository layout so the real .agents/ mirror is never touched.
+
+_skills_fixture() {
+    SK_REPO="$TEST_TMPDIR/skills-repo"
+    mkdir -p "$SK_REPO/scripts" "$SK_REPO/.claude/skills/alpha" "$SK_REPO/.claude/skills/beta"
+    cp "$PROJECT_ROOT/scripts/sync-skills.sh" "$SK_REPO/scripts/"
+    printf -- '---\nname: alpha\n---\n' > "$SK_REPO/.claude/skills/alpha/SKILL.md"
+    printf -- '---\nname: beta\n---\n' > "$SK_REPO/.claude/skills/beta/SKILL.md"
+}
+
+@test "sync-skills mirrors .claude/skills into .agents/skills" {
+    make_test_tmpdir
+    _skills_fixture
+    run bash "$SK_REPO/scripts/sync-skills.sh"
+    assert_success
+    assert_output --partial "synced 2 skill directories"
+    [[ -f "$SK_REPO/.agents/skills/alpha/SKILL.md" && -f "$SK_REPO/.agents/skills/beta/SKILL.md" ]]
+}
+
+@test "sync-skills --check reports drift and writes nothing" {
+    command -v diff >/dev/null || skip "needs diff"
+    make_test_tmpdir
+    _skills_fixture
+    run bash "$SK_REPO/scripts/sync-skills.sh" --check
+    assert_failure 1
+    [[ ! -e "$SK_REPO/.agents" ]]
+
+    bash "$SK_REPO/scripts/sync-skills.sh" >/dev/null
+    run bash "$SK_REPO/scripts/sync-skills.sh" --check
+    assert_success
+    assert_output --partial "up to date"
+
+    printf 'changed\n' >> "$SK_REPO/.claude/skills/alpha/SKILL.md"
+    run bash "$SK_REPO/scripts/sync-skills.sh" --check
+    assert_failure 1
+    assert_output --partial "out of date"
+    run grep -q changed "$SK_REPO/.agents/skills/alpha/SKILL.md"
+    assert_failure
+}
+
+@test "sync-skills --check without diff fails with a clear error, not a drift report" {
+    make_test_tmpdir
+    _skills_fixture
+    bash "$SK_REPO/scripts/sync-skills.sh" >/dev/null
+    local nodiff="$TEST_TMPDIR/nodiff" tool
+    mkdir -p "$nodiff"
+    for tool in bash dirname basename; do
+        ln -s "$(command -v "$tool")" "$nodiff/$tool"
+    done
+    run env PATH="$nodiff" bash "$SK_REPO/scripts/sync-skills.sh" --check
+    assert_failure 2
+    assert_output --partial "needs diff"
+    refute_output --partial "out of date"
+}
+
+@test "sync-skills drops mirrored skills that were removed from the source" {
+    make_test_tmpdir
+    _skills_fixture
+    bash "$SK_REPO/scripts/sync-skills.sh" >/dev/null
+    rm -rf "$SK_REPO/.claude/skills/beta"
+    run bash "$SK_REPO/scripts/sync-skills.sh"
+    assert_success
+    [[ ! -e "$SK_REPO/.agents/skills/beta" && -d "$SK_REPO/.agents/skills/alpha" ]]
+}
+
+@test "sync-skills rejects unknown arguments and fails without a source directory" {
+    make_test_tmpdir
+    _skills_fixture
+    run bash "$SK_REPO/scripts/sync-skills.sh" --bogus
+    assert_failure 2
+    run bash "$SK_REPO/scripts/sync-skills.sh" --help
+    assert_success
+    rm -rf "$SK_REPO/.claude"
+    run bash "$SK_REPO/scripts/sync-skills.sh"
+    assert_failure 1
+    assert_output --partial "source skills directory not found"
+    [[ ! -e "$SK_REPO/.agents" ]]
+}
+
+@test "sync-wsl rejects a distro name with shell metacharacters before calling wsl.exe" {
+    make_test_tmpdir
+    mkdir -p "$TEST_TMPDIR/stubs"
+    printf '#!/bin/sh\necho called >> "%s/wsl.log"\n' "$TEST_TMPDIR" > "$TEST_TMPDIR/stubs/wsl.exe"
+    chmod +x "$TEST_TMPDIR/stubs/wsl.exe"
+    run env PATH="$TEST_TMPDIR/stubs:$PATH" bash "$PROJECT_ROOT/scripts/sync-wsl.sh" 'kali;touch x'
+    assert_failure 1
+    assert_output --partial "Invalid distro name"
+    [[ ! -e "$TEST_TMPDIR/wsl.log" ]]
+}
+
+@test "pip-audit-lock fails clearly when uv is missing and touches nothing" {
+    make_test_tmpdir
+    local repo="$TEST_TMPDIR/audit-repo" bin="$TEST_TMPDIR/nobin"
+    mkdir -p "$repo/scripts" "$repo/mcp_server" "$bin"
+    cp "$PROJECT_ROOT/scripts/pip-audit-lock.sh" "$repo/scripts/"
+    ln -s "$(command -v dirname)" "$bin/dirname"
+    run env PATH="$bin" "$BASH" "$repo/scripts/pip-audit-lock.sh"
+    assert_failure 1
+    assert_output --partial "uv not found"
+    [[ -z "$(ls -A "$repo/mcp_server")" ]]
+}
+
+@test "test-distros prints usage for --help and rejects unknown arguments before any container work" {
+    run bash "$PROJECT_ROOT/scripts/test-distros.sh" --help
+    assert_success
+    assert_output --partial "Multi-distro smoke test"
+    run bash "$PROJECT_ROOT/scripts/test-distros.sh" --bogus
+    assert_failure 2
+    assert_output --partial "Unknown argument"
 }

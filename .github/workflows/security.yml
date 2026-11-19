@@ -75,18 +75,19 @@ jobs:
           echo ""
 
           for f in install.sh lib/*.sh modules/*.sh scripts/*.sh; do
-            # 1. Hardcoded IPs (allowlist: loopback, RFC 5737)
+            # 1. Hardcoded IPs (allowlist: loopback, unspecified, RFC 5737); every IP on a line is checked
             while IFS= read -r match; do
-              ip=$(echo "$match" | grep -oP '\d+\.\d+\.\d+\.\d+')
-              case "$ip" in
-                127.0.0.1|0.0.0.0) continue ;;
-                192.0.2.*|198.51.100.*|203.0.113.*) continue ;; # RFC 5737
-              esac
-              echo "::error file=$f::Hardcoded IP found: $ip"
-              errors=$((errors + 1))
+              line_number=${match%%:*}
+              while IFS= read -r ip; do
+                case "$ip" in
+                  127.0.0.1|0.0.0.0) continue ;;
+                  192.0.2.*|198.51.100.*|203.0.113.*) continue ;; # RFC 5737
+                esac
+                echo "::error file=$f,line=$line_number::Hardcoded IP found: $ip"
+                errors=$((errors + 1))
+              done < <(grep -oP '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b' <<<"${match#*:}")
             done < <(grep -nP '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b' "$f" \
-              | grep -vP '^\d+:\s*#' | grep -v '127\.0\.0\.1' | grep -v '0\.0\.0\.0' \
-              | grep -v '192\.0\.2\.' | grep -v '198\.51\.100\.' | grep -v '203\.0\.113\.' || true)
+              | grep -vP '^\d+:\s*#' || true)
 
             # 2. Potential hardcoded secrets
             while IFS= read -r match; do
@@ -108,11 +109,11 @@ jobs:
               | grep -v 'http://\$' \
               | grep -vF 'https?://' || true)
 
-            # 4. Unsafe eval usage
+            # 4. Unsafe eval commands (not parser data or quoted word lists)
             while IFS= read -r match; do
               echo "::error file=$f::Unsafe eval: $match"
               errors=$((errors + 1))
-            done < <(grep -nP '\beval\b' "$f" | grep -vP '^\d+:\s*#' || true)
+            done < <(grep -nP '(^|[;&|(){}])[ \t]*(?:(?:then|do|else|command|builtin)[ \t]+)*(?:[A-Za-z_][A-Za-z0-9_]*=[^ \t;&|]+[ \t]+)*["\x27]?eval["\x27]?(?:[ \t;]|$)' "$f" | grep -vP '^\d+:\s*#' || true)
 
             # 5. Predictable temp files (warning, not error)
             while IFS= read -r match; do
@@ -130,8 +131,16 @@ jobs:
 
             # 7. curl|bash / wget|bash patterns
             while IFS= read -r match; do
-              # Allowlist: rustup (TLS pinning), foundry (no alternative installer), uv/astral (official installer)
-              if echo "$match" | grep -qE 'rustup|foundry|paradigm\.xyz|astral\.sh'; then
+              # Allowlist by host: rustup (TLS pinning), foundry (no alternative installer), uv/astral (official installer).
+              # Every URL on the line must be an allowlisted host; a line without a literal URL is flagged.
+              allowed=0
+              while IFS= read -r host; do
+                case "$host" in
+                  https://sh.rustup.rs|https://foundry.paradigm.xyz|https://astral.sh) [[ $allowed -eq 0 ]] && allowed=1 ;;
+                  *) allowed=2 ;;
+                esac
+              done < <(grep -oP 'https?://[^/\s"\x27|]+' <<<"$match")
+              if [[ $allowed -eq 1 ]]; then
                 continue
               fi
               echo "::warning file=$f::curl-pipe-bash pattern: $match"

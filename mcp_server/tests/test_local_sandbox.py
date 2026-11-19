@@ -47,7 +47,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def socket_root() -> Iterator[Path]:
     """A directory with a short name: a socket path holds about a hundred bytes."""
-    root = Path(tempfile.mkdtemp(prefix="sbx", dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix="sbx", dir="/tmp")).resolve()
     yield root
     shutil.rmtree(root, ignore_errors=True)
 
@@ -95,6 +95,51 @@ class TestArguments:
         # Nothing else in the home directory is touched, and a path that does not exist is not created.
         assert str(home / ".cache") not in " ".join(args)
         assert str(home / ".gnupg") not in args
+
+    @pytest.mark.parametrize(
+        "relative",
+        [
+            ".bash_history", ".zsh_history", ".python_history", ".psql_history", ".mysql_history", ".pgpass",
+            ".my.cnf", ".s3cfg", ".boto", ".m2/settings.xml", ".gradle/gradle.properties", ".yarnrc",
+            ".config/containers/auth.json", ".local/share/opencode/auth.json",
+        ],
+    )  # fmt: skip
+    def test_histories_and_credential_files_are_replaced_by_empty_ones(self, home: Path, relative: str) -> None:
+        path = home / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("synthetic secret\n")
+        args = local_sandbox.build_args()
+        assert ["--dev-bind", "/dev/null", str(path)] == args[args.index(str(path)) - 2 :][:3]
+
+    @pytest.mark.parametrize(
+        "relative",
+        [".config/pip", ".pip", ".local/share/fish", ".local/share/goose", ".copilot", ".config/Code", ".vscode"],
+    )
+    def test_credential_directories_are_hidden(self, home: Path, relative: str) -> None:
+        (home / relative).mkdir(parents=True)
+        assert str(home / relative) in _pairs(local_sandbox.build_args(), "--tmpfs")
+
+    @pytest.mark.parametrize(
+        ("relative", "is_dir"),
+        [
+            (".bash_aliases", False),
+            (".vimrc", False),
+            (".tmux.conf", False),
+            (".bashrc.d", True),
+            (".config/zsh", True),
+            (".config/nvim", True),
+            (".local/lib", True),
+        ],
+    )
+    def test_files_run_at_the_next_shell_or_editor_start_are_read_only(
+        self, home: Path, relative: str, is_dir: bool
+    ) -> None:
+        path = home / relative
+        if is_dir:
+            path.mkdir(parents=True)
+        else:
+            path.write_text("# startup\n")
+        assert str(path) in _pairs(local_sandbox.build_args(), "--ro-bind")
 
     def test_the_checkout_code_and_client_settings_are_read_only(self, home: Path) -> None:
         read_only = _pairs(local_sandbox.build_args(), "--ro-bind")
@@ -474,3 +519,24 @@ class TestRealSandbox:
         # Inside its own process namespace the tool sees itself and the sandbox's init, not this test.
         assert str(os.getpid()) not in visible.strip("[]").split(", ")
         assert len(visible.strip("[]").split(", ")) <= 3
+
+
+class TestLocalSandboxSwitch:
+    @pytest.mark.parametrize("value", ["1", "true", "Yes", "ON"])
+    def test_truthy_values_enable(self, monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+        monkeypatch.setenv(local_sandbox.LOCAL_SANDBOX_ENV, value)
+        assert local_sandbox.enabled() is True
+
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "Off"])
+    def test_falsy_values_disable(self, monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+        monkeypatch.setenv(local_sandbox.LOCAL_SANDBOX_ENV, value)
+        assert local_sandbox.enabled() is False
+
+    def test_unrecognised_value_enables_and_warns_once(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        local_sandbox._warned_flags.clear()
+        monkeypatch.setenv(local_sandbox.LOCAL_SANDBOX_ENV, "ture")
+        assert local_sandbox.enabled() is True
+        assert local_sandbox.enabled() is True
+        assert capsys.readouterr().err.count(local_sandbox.LOCAL_SANDBOX_ENV) == 1

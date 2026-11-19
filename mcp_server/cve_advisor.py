@@ -192,7 +192,6 @@ def _live_lookup(cve_id: str, external_enabled: bool) -> dict:
     """Ready-to-run curl commands for live enrichment (executed via run_tool)."""
     nvd = f'run_tool("curl", "-s https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}")'
     epss = f'run_tool("curl", "-s https://api.first.org/data/v1/epss?cve={cve_id}")'
-    kev = 'run_tool("curl", "-s https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json")'
     note = (
         "External network is enabled — run these via run_tool to fetch live data."
         if external_enabled
@@ -203,7 +202,13 @@ def _live_lookup(cve_id: str, external_enabled: bool) -> dict:
         "external_enabled": external_enabled,
         "nvd_cvss_and_refs": nvd,
         "epss_exploit_probability": epss,
-        "cisa_kev_catalog": kev,
+        "kev_via_nvd": (
+            "KEV membership is carried by the nvd_cvss_and_refs response: a KEV entry has "
+            "cisaExploitAdd, cisaActionDue and cisaRequiredAction fields. "
+            "If those fields are absent, this response does not confirm KEV membership; "
+            "verify against the authoritative CISA catalog before concluding that an entry is absent. "
+            "The full CISA catalog is not fetched because it exceeds the 200KB output cap and would truncate."
+        ),
         "note": note,
     }
 

@@ -68,7 +68,7 @@ fi
 
 # --installed-only: load tracked tools from .versions file
 _INSTALLED_TOOLS=""
-_versions_file="$SCRIPT_DIR/.versions"
+_versions_file="${VERSION_FILE:-$SCRIPT_DIR/.versions}"
 # A present-but-unreadable record (root-owned after `sudo ./install.sh`) would
 # otherwise read as empty: --installed-only would verify nothing and report success.
 if [[ -f "$_versions_file" && ! -r "$_versions_file" ]]; then
@@ -81,7 +81,7 @@ fi
 if [[ "$INSTALLED_ONLY" == "true" ]]; then
     if [[ -f "$_versions_file" ]]; then
         _INSTALLED_TOOLS=$(awk -F'|' '!/^#/{print $1}' "$_versions_file")
-        log_info "Filtering by ${_versions_file} ($(echo "$_INSTALLED_TOOLS" | wc -l) tracked tools)"
+        log_info "Filtering by ${_versions_file} ($(( $(echo "$_INSTALLED_TOOLS" | wc -l) )) tracked tools)"
     else
         log_warn "No .versions file found — running full verification"
         INSTALLED_ONLY=false
@@ -91,7 +91,7 @@ fi
 # _is_tracked — returns 0 if tool is in .versions (or if --installed-only is off)
 _is_tracked() {
     [[ "$INSTALLED_ONLY" == "false" ]] && return 0
-    echo "$_INSTALLED_TOOLS" | grep -qx "$1" 2>/dev/null
+    grep -qxF -- "$1" <<<"$_INSTALLED_TOOLS" 2>/dev/null
 }
 
 # Per-tool log lines are suppressed under --summary; the wrappers keep that
@@ -175,6 +175,7 @@ check_dir() {
 # Pipx package name → binary name mapping (only for tools where they differ).
 # Most pipx packages install a binary with the same name — these are the exceptions.
 declare -A _PIPX_BIN_NAMES=(
+    [netexec]="nxc"
     [arsenal-cli]="arsenal"
     [sherlock-project]="sherlock"
     [osrframework]="usufy"
@@ -210,6 +211,7 @@ declare -A _PIPX_BIN_NAMES=(
     [principalmapper]="pmapper"
     [dissect.target]="target-query"
     [python-evtx]="evtx_dump"
+    [man-spider]="manspider"
 )
 
 check_pipx() {

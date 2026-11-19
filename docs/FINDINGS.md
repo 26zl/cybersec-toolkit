@@ -97,5 +97,9 @@ python3 scripts/validate_findings.py --markdown writeups/ctf/example/findings.js
 ```
 
 The first form reports every rule a finding breaks; the second prints the table
-for the writeup when the file holds. The check covers form and the rules above.
+for the writeup when the file holds. The check covers form and the rules above, and rejects an empty file or an empty list (`holds no findings`).
 It cannot tell whether a derivation is true, so a reviewer still reads it.
+
+## Reading an append-only file
+
+A `findings.jsonl` file is append-only. By reader convention the latest line for a target and title wins; `validate_findings.py` does not enforce this and does not record which agent wrote a line.
