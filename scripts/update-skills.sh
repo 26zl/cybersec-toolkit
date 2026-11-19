@@ -59,7 +59,7 @@ SOURCES=(
   "transilience|https://github.com/transilienceai/communitytools.git|95fdc128af4ca1ae16b3226f9430f1bad97b0656"
   "karpathy|https://github.com/multica-ai/andrej-karpathy-skills.git|2c606141936f1eeef17fa3043a72095b4765b9c2"
   "bughunter|https://github.com/awarexone/Agentic-Bug-Hunter.git|8060af0c1b0b6ecc6595ee3261f50aa613038620"
-  "claude-red|https://github.com/SnailSploit/Claude-Red.git|a8de813edc9f66f60d44cfe42d47750e89d9930b"
+  "claude-red|https://github.com/SnailSploit/Claude-Red.git|fd81441b613c7d4fab39256720a31c96859d138b"
 )
 
 # skill|source|last-upstream-commit — skills kept after upstream stopped shipping them.
