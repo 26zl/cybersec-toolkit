@@ -35,6 +35,20 @@ regexes = [
     '''Synth3ticPw''',
 ]
 
+# test_git_execution.py hands jwt_tool an unsigned token (alg "none", empty
+# signature) as its argument. It holds no key material; the jwt rule matches its
+# shape. The pattern requires the empty signature, so a signed token still fails.
+[[allowlists]]
+description = "Unsigned alg-none JWT passed to jwt_tool as a test argument"
+condition = "AND"
+regexTarget = "line"
+paths = [
+    '''mcp_server/tests/test_git_execution\.py''',
+]
+regexes = [
+    '''eyJhbGciOiJub25lIn0\.[A-Za-z0-9_-]+\."''',
+]
+
 # Literal placeholder strings used in examples and fixtures.
 [[allowlists]]
 description = "Literal placeholder API keys"

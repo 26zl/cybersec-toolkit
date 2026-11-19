@@ -317,7 +317,7 @@ __Debian/Ubuntu/Kali is the primary target__ and has the strongest test coverage
 | __ARM__ (aarch64/armv7) | Supported, with automatic skips for x86-only binary releases and x86-only build-from-source tools. No dedicated CI job. |
 | __Termux__ (Android) | Supported without sudo. Docker, snap, binary releases, and build-from-source are skipped (Bionic incompatible). No dedicated CI job. |
 | __Windows__ (native) | Not supported. Use WSL. |
-| __macOS__ | The installer is not supported; use the Docker image. The MCP server runs on macOS in host mode (`--local`). |
+| __macOS__ | The installer is not supported; use the Docker image. The MCP server runs on macOS in host mode (`--local`), and CI runs its tests and the repository tooling tests on a macOS runner. |
 | __Other Linux distros__ | Distros without `apt`/`dnf`/`pacman`/`zypper` (NixOS, Gentoo, Void, Alpine, Slackware, …) are detected and blocked with a clear error. Use the [Docker image](#docker-and-podman). |
 
 ### What the installer changes

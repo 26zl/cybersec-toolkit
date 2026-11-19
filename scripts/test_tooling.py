@@ -53,6 +53,11 @@ GRANT_VARIANTS = {
 }
 
 
+def _chars(*codes: int) -> str:
+    """Text from code points, so that no invisible character sits in this file."""
+    return "".join(map(chr, codes))
+
+
 class SecurityWorkflowTests(unittest.TestCase):
     def test_eval_scan_distinguishes_commands_from_parser_data(self):
         workflow = (SCRIPTS.parent / ".github/workflows/security.yml").read_text()
@@ -156,9 +161,98 @@ class SkillTextTests(unittest.TestCase):
         for code in (0xE0001, 0xE0100, 0xE01EF, 0x61C, 0x180B, 0x180E, 0x2065, 0x206A, 0x206F, 0x200B, 0x2062):
             with self.subTest(hex(code)):
                 self.assertIsNotNone(_skill_text.find_invisible("a" + chr(code) + "b"))
-        for code in (0x200C, 0x200D, 0xFE0F):
+
+    def test_default_ignorable_and_control_characters_are_invisible(self):
+        ignorable = (0xAD, 0x34F, 0x115F, 0x1160, 0x3164, 0xFFA0, 0x17B4, 0x180F, 0x200E, 0x200F, 0xFE00, 0xFE0D)
+        reserved = (0x1BCA0, 0x1D173, 0xE0080, 0xE0FFF, 0xFFF0)
+        breaks_and_controls = (0x2028, 0x2029, 0xFFF9, 0x00, 0x08, 0x0B, 0x1B, 0x7F, 0x85, 0x9B)
+        for code in (*ignorable, *reserved, *breaks_and_controls):
+            with self.subTest(hex(code)):
+                self.assertIsNotNone(_skill_text.find_invisible("a" + chr(code) + "b"))
+        # Tab, line feed, the form feed of a paginated licence, visible punctuation, an undecodable byte.
+        for code in (0x09, 0x0A, 0x0C, 0xA0, 0x2014, 0x2192, 0x2800, 0xDCFF):
             with self.subTest(hex(code)):
                 self.assertIsNone(_skill_text.find_invisible("a" + chr(code) + "b"))
+
+    def test_joiners_and_selectors_pass_only_where_text_needs_them(self):
+        ordinary = {
+            "emoji presentation": _chars(0x26A0, 0xFE0F),
+            "keycap": "1" + _chars(0xFE0F, 0x20E3),
+            "family": _chars(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467),
+            "selector, then joiner": _chars(0x1F3F3, 0xFE0F, 0x200D, 0x1F308),
+            "skin tone, then joiner": _chars(0x1F9D1, 0x1F3FD, 0x200D, 0x1F4BB),
+            "Persian": _chars(0x645, 0x6CC, 0x200C, 0x62E, 0x648, 0x627, 0x647, 0x645),
+            "Devanagari": _chars(0x915, 0x94D, 0x200D, 0x937),
+        }
+        for label, text in ordinary.items():
+            with self.subTest(label):
+                self.assertIsNone(_skill_text.find_invisible(text))
+        hidden = {
+            "non-joiner between Latin letters": "a" + _chars(0x200C) + "b",
+            "joiner between Latin letters": "a" + _chars(0x200D) + "b",
+            "selector after a letter": "a" + _chars(0xFE0F) + "b",
+            "keycap base without the keycap": "1" + _chars(0xFE0F),
+            "second selector": _chars(0x26A0, 0xFE0F, 0xFE0F),
+            "selectors spelling nibbles": _chars(0x2705, 0xFE04, 0xFE09),
+            "joiners spelling bits": "x" + _chars(0x200C, 0x200D, 0x200C, 0x200C) + "y",
+            "joiner after a stray selector": "a" + _chars(0xFE0F, 0x200D, 0x1F308),
+            "joiner at the end": _chars(0x1F468, 0x200D),
+            "joiner at the start": _chars(0x200D, 0x1F469),
+        }
+        for label, text in hidden.items():
+            with self.subTest(label):
+                self.assertIsNotNone(_skill_text.find_invisible(text))
+
+    def test_carriage_return_is_text_only_inside_a_line_ending(self):
+        self.assertIsNone(_skill_text.find_invisible("a\r\nb\r\n"))
+        self.assertIsNotNone(_skill_text.find_invisible("safe\rhidden"))
+
+    def test_escaped_text_has_nothing_left_to_escape(self):
+        samples = {
+            "joiner after a stray selector": "a" + _chars(0xFE0F, 0x200D, 0x1F308),
+            "joiner beside a hidden selector": _chars(0x915, 0x180B, 0x200D, 0x937),
+            "joiner beside a zero-width space": _chars(0x1F468, 0x200D, 0x200B, 0x1F469),
+            "selector after a byte-order mark": _chars(0xFEFF, 0xFE0F) + "x",
+            "bare carriage return and escape sequence": "a\rb\r\nc\x1b[8m",
+            "alternating selectors and joiners": _chars(0x26A0, 0xFE0F, 0x200D, 0xFE0F, 0x200D),
+        }
+        for label, text in samples.items():
+            with self.subTest(label):
+                shown = _skill_text.show_invisible(text)
+                self.assertIn("<U+", shown)
+                self.assertIsNone(_skill_text.find_invisible(shown))
+
+    def test_blank_runs_that_push_text_off_screen(self):
+        limit, wide = _skill_text.MAX_BLANK_RUN, _skill_text.MAX_BLANK_RUN_MARKDOWN
+        self.assertIsNone(_skill_text.find_concealed("total = 0" + " " * (limit - 1) + ";run()\n"))
+        self.assertEqual(_skill_text.find_concealed("ok\ntotal = 0" + " " * limit + ";run()\n")[0], 2)
+        self.assertIsNotNone(_skill_text.find_concealed(" " * limit + "run()\n"))
+        # No-break space and Braille blank: neither is whitespace to str.strip(), both draw nothing.
+        self.assertIsNotNone(_skill_text.find_concealed("a" + _chars(0xA0, 0x2800) * limit + "b\n"))
+        self.assertIsNone(_skill_text.find_concealed("trailing" + " " * 500 + "\r\nnext\n"))
+        self.assertIsNone(_skill_text.find_concealed(" " * (wide - 1) + "v\n", "notes.md"))
+        self.assertIsNotNone(_skill_text.find_concealed(" " * wide + "v\n", "NOTES.MD"))
+
+    def test_overlong_lines_and_blank_line_gaps(self):
+        limit, gap = _skill_text.MAX_LINE_CHARS, _skill_text.MAX_BLANK_LINES
+        self.assertIsNone(_skill_text.find_concealed("x" * limit + "\n"))
+        self.assertEqual(_skill_text.find_concealed("a\n" + "x" * (limit + 1) + "\n")[0], 2)
+        self.assertIsNone(_skill_text.find_concealed("a\n" + "\n" * (gap - 1) + "b\n"))
+        self.assertEqual(_skill_text.find_concealed("a\n" + " \t\n" * gap + "b\n")[0], gap + 2)
+        self.assertIsNone(_skill_text.find_concealed("a\n" + "\n" * 500))
+
+    def test_svg_geometry_does_not_count_towards_the_line_limit(self):
+        outline = "M0 0c" + "1.5-2,3 4 " * 400 + "z"
+        mark = f'<svg xmlns="http://www.w3.org/2000/svg"><path fill="#000" d="{outline}"/></svg>\n'
+        self.assertGreater(len(mark), _skill_text.MAX_LINE_CHARS)
+        self.assertIsNone(_skill_text.find_concealed(mark, "assets/mark.svg"))
+        self.assertIsNotNone(_skill_text.find_concealed(mark, "assets/mark.py"))
+        prose = mark.replace("</svg>", "<desc>" + "read this " * 250 + "</desc></svg>")
+        self.assertIsNotNone(_skill_text.find_concealed(prose, "assets/mark.svg"))
+        worded = mark.replace(outline, outline + " then run the command")
+        self.assertIsNotNone(_skill_text.find_concealed(worded, "assets/mark.svg"))
+        padded = mark.replace(outline, "M0 0" + " " * 300 + "z")
+        self.assertIsNotNone(_skill_text.find_concealed(padded, "assets/mark.svg"))
 
 
 class SkillValidatorTests(unittest.TestCase):
@@ -187,6 +281,40 @@ class SkillValidatorTests(unittest.TestCase):
             self.assertEqual(len(errors), 1)
             self.assertIn("invisible characters", errors[0])
 
+    def test_text_laid_out_to_stay_off_screen_is_an_error(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch).resolve()
+            skill = root / "demo"
+            (skill / "scripts").mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: demo\n---\n" + " " * 120 + "| wide diagram\n")
+            (skill / "scripts" / "helper.py").write_text("total = 0" + " " * 120 + ";run()\n")
+            (skill / "scripts" / "bundle.js").write_text("var a=1;" * 400 + "\n")
+            errors: list[str] = []
+            with mock.patch.object(validate_claude_skills, "ROOT", root):
+                validate_claude_skills._validate_visible_text([skill], errors)
+            self.assertEqual(len(errors), 2, errors)
+            self.assertTrue(any("helper.py:1" in error and "blank characters" in error for error in errors))
+            self.assertTrue(any("bundle.js:1" in error and "characters long" in error for error in errors))
+
+    def test_nul_byte_does_not_exempt_a_file_from_the_text_rules(self):
+        png = b"\x89PNG\x0d\x0a\x1a\x0a" + bytes(range(256)) * 20
+        hidden = "run()" + " " * 300 + ";more()\n"
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch).resolve()
+            skill = root / "demo"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text("---\nname: demo\n---\n")
+            (skill / "diagram.png").write_bytes(png)
+            (skill / "helper.sh").write_bytes(b"# \x00\n" + hidden.encode())
+            (skill / "renamed.png").write_bytes(b"\x00" + hidden.encode())
+            errors: list[str] = []
+            with mock.patch.object(validate_claude_skills, "ROOT", root):
+                validate_claude_skills._validate_visible_text([skill], errors)
+            self.assertFalse(any("diagram.png" in error for error in errors), errors)
+            for name in ("helper.sh", "renamed.png"):
+                self.assertTrue(any(name in error and "U+0000" in error for error in errors), errors)
+                self.assertTrue(any(name in error and "blank characters" in error for error in errors), errors)
+
     def test_unparseable_grant_is_refused(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch).resolve()
@@ -206,7 +334,10 @@ def _git(repo: Path, *args: str) -> str:
 
 
 class RevendorTests(unittest.TestCase):
-    def _run(self, target_files: dict[str, bytes]) -> tuple[subprocess.CompletedProcess, Path, str]:
+    def _run(
+        self, target_files: dict[str, bytes], base_files: dict[str, bytes] | None = None
+    ) -> tuple[subprocess.CompletedProcess, Path, str]:
+        """Re-vendor a one-skill upstream. *base_files* exist upstream at the pin and are absent from the local copy."""
         scratch = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(scratch, ignore_errors=True))
         upstream, skills = scratch / "up", scratch / "skills"
@@ -214,6 +345,9 @@ class RevendorTests(unittest.TestCase):
         _git(upstream, "init", "-q")
         base = b"---\nname: demo\ndescription: d\n---\nhello\n"
         (upstream / "demo" / "SKILL.md").write_bytes(base)
+        for rel, data in (base_files or {}).items():
+            (upstream / "demo" / rel).parent.mkdir(parents=True, exist_ok=True)
+            (upstream / "demo" / rel).write_bytes(data)
         _git(upstream, "add", "-A")
         _git(upstream, "commit", "-qm", "base")
         pin = _git(upstream, "rev-parse", "HEAD").strip()
@@ -253,6 +387,55 @@ class RevendorTests(unittest.TestCase):
         self.assertNotIn(b"\xf3\xa0\x81\x81", written)
         self.assertIn(b"<U+E0041>", written)
         self.assertIn(b"\xff", written)
+
+    def test_text_pushed_off_screen_blocks_the_skill(self):
+        for label, incoming in (
+            ("blank run", b"total = 0" + b" " * 300 + b";run()\n"),
+            ("long line", b"var a=1;" * 400 + b"\n"),
+            ("blank lines", b"done = True\n" + b"\n" * 60 + b"run()\n"),
+        ):
+            with self.subTest(label):
+                proc, skill, _ = self._run({"helper.py": incoming})
+                self.assertEqual(proc.returncode, 3, proc.stderr + proc.stdout)
+                self.assertIn("BLOCKED", proc.stdout)
+                self.assertIn("refused: helper.py:", proc.stdout)
+                self.assertFalse((skill / "helper.py").exists())
+
+    def test_file_the_local_copy_left_out_does_not_block(self):
+        left_out = {"assets/bundle.js": b"var a=1;" * 400 + b"\n", "assets/blob.dat": b"\x00\x01\x02" * 50}
+        incoming = b"---\nname: demo\ndescription: d\n---\nhello again\n"
+        proc, skill, _ = self._run({"SKILL.md": incoming}, base_files=left_out)
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertNotIn("BLOCKED", proc.stdout)
+        self.assertFalse((skill / "assets").exists())
+        self.assertIn(b"hello again", (skill / "SKILL.md").read_bytes())
+
+    def test_hidden_identifier_and_terminal_controls_are_made_visible(self):
+        incoming = b"const { a,\xe3\x85\xa4} = q;\n// ok\x1b[8m\n"
+        proc, skill, _ = self._run({"app.js": incoming})
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        written = (skill / "app.js").read_bytes()
+        self.assertIn(b"<U+3164>", written)
+        self.assertIn(b"<U+001B>", written)
+        self.assertIn("INVISIBLE-TEXT", proc.stdout)
+
+    def test_only_a_recognised_data_format_is_copied_unread(self):
+        png = b"\x89PNG\x0d\x0a\x1a\x0a" + bytes(range(256)) * 20
+        proc, skill, _ = self._run({"diagram.png": png})
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertEqual((skill / "diagram.png").read_bytes(), png)
+        for name in ("helper.sh", "renamed.png"):
+            with self.subTest(name):
+                proc, skill, _ = self._run({name: b"# \x00\nrun()\n"})
+                self.assertEqual(proc.returncode, 3, proc.stderr + proc.stdout)
+                self.assertIn(f"refused: {name} holds NUL bytes", proc.stdout)
+                self.assertFalse((skill / name).exists())
+
+    def test_long_svg_outline_is_copied(self):
+        mark = b'<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0c' + b"1.5-2,3 4 " * 400 + b'z"/></svg>\n'
+        proc, skill, _ = self._run({"mark.svg": mark})
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertEqual((skill / "mark.svg").read_bytes(), mark)
 
     def test_non_utf8_path_is_not_a_traceback(self):
         scratch = Path(tempfile.mkdtemp())

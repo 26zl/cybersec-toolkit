@@ -14,7 +14,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _skill_frontmatter import frontmatter as _frontmatter  # noqa: E402
-from _skill_text import PROMPT_FREE_TOOLS, find_invisible, granted_tools  # noqa: E402
+from _skill_text import (  # noqa: E402
+    PROMPT_FREE_TOOLS,
+    find_concealed,
+    find_invisible,
+    granted_tools,
+    is_binary,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 # SKILL.md bodies above this size load as one block; 256 KiB flags only the extreme outliers.
@@ -131,8 +137,8 @@ def _validate_visible_text(skill_dirs: list[Path], errors: list[str]) -> None:
                 raw = path.read_bytes()
             except OSError:
                 continue
-            # Binary files (NUL bytes) are skipped; an invalid UTF-8 byte in a text file must not hide a payload.
-            if b"\0" in raw and path.name != "SKILL.md":
+            # Only a recognised data format is skipped; a NUL or an invalid UTF-8 byte must not hide a payload.
+            if is_binary(path.name, raw):
                 continue
             text = raw.decode("utf-8", errors="surrogateescape")
             hidden = find_invisible(text)
@@ -142,6 +148,9 @@ def _validate_visible_text(skill_dirs: list[Path], errors: list[str]) -> None:
                 errors.append(
                     f"{path.relative_to(ROOT)}:{line}: invisible characters ({codes}); write them as <U+XXXX> escapes"
                 )
+            concealed = find_concealed(text, path.name)
+            if concealed:
+                errors.append(f"{path.relative_to(ROOT)}:{concealed[0]}: {concealed[1]}")
 
 
 def _validate_no_links(skill_dirs: list[Path], errors: list[str]) -> None:

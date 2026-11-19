@@ -2673,7 +2673,9 @@ EOF
     chmod +x "$TEST_TMPDIR/stub/perl"
 
     setup_git_repo "$repo"
-    (cd "$TEST_TMPDIR/cwd" && PATH="$TEST_TMPDIR/stub:$PATH" bash "$PIPX_BIN_DIR/$(basename "$repo")")
+    # The launcher is named after the lowercased directory.
+    local launcher; launcher="$(basename "$repo")"
+    (cd "$TEST_TMPDIR/cwd" && PATH="$TEST_TMPDIR/stub:$PATH" bash "$PIPX_BIN_DIR/${launcher,,}")
     [[ ! -e "$TEST_TMPDIR/cwd/PWNED" ]]
     [[ ! -e "$repo/PWNED" ]]
 }

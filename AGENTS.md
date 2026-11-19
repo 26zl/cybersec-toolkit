@@ -399,8 +399,15 @@ result, and opens a pull request that lists the scanner findings the update adds
 (`scripts/scan_skills.py`, NVIDIA SkillSpector static analysis, compared before and
 after); a source that needs a hand merge or whose upstream changed standing is tracked in
 a `skills-update` issue. Invisible characters in incoming files (Unicode tag characters,
-zero-width spaces, bidi controls) are written as visible `<U+XXXX>` escapes, and
-`validate_claude_skills.py` rejects any that remain. An incoming `SKILL.md` also loses
+zero-width and bidi controls, variation selectors, Hangul fillers, terminal control
+characters) are written as visible `<U+XXXX>` escapes, and `validate_claude_skills.py`
+rejects any that remain; a joiner or an emoji selector passes only beside the emoji or
+script that needs it. Text laid out to stay off screen is refused on the way in and
+rejected by the validator: a line over 2000 characters (the coordinates of an SVG outline
+are not counted), text after 80 blank characters (200 in Markdown), or text after 20
+blank lines. A file may hold NUL bytes only when its
+name and its first bytes mark it as an image, a PDF or a packet capture; any other file
+is read as text. An incoming `SKILL.md` also loses
 its `allowed-tools` key, which Claude Code reads as permission to run the named tools
 without a prompt; the validator accepts that key only for `Read`, `Grep` and `Glob`.
 

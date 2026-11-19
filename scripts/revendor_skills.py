@@ -22,8 +22,12 @@ run with --finalize.
 
 Only files are copied. Nothing from the upstream repository is executed, and a
 skill containing a symlink or submodule is refused. Invisible characters in an
-incoming file (Unicode tag characters, zero-width spaces, bidi controls) are
-written as visible <U+XXXX> escapes and listed in the report.
+incoming file (Unicode tag characters, zero-width and bidi controls, variation
+selectors, terminal control characters) are written as visible <U+XXXX> escapes
+and listed in the report. A merge is refused when it would write a file laid out
+to keep text off screen (an overlong line, text after a long run of blank
+characters or blank lines), or one that holds NUL bytes without being an image,
+a PDF or a packet capture.
 
 Usage:
     revendor_skills.py --clone DIR --pin SHA --target SHA [--skills-dir DIR]
@@ -47,7 +51,15 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _skill_text import FRONTMATTER_FENCE, FRONTMATTER_KEY, drop_tool_grant, has_unparsed_grant, show_invisible  # noqa: E402
+from _skill_text import (  # noqa: E402
+    FRONTMATTER_FENCE,
+    FRONTMATTER_KEY,
+    drop_tool_grant,
+    find_concealed,
+    has_unparsed_grant,
+    is_binary,
+    show_invisible,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
@@ -66,7 +78,7 @@ Blocks = list[tuple[str, str]]
 
 
 class UnsafeSkill(Exception):
-    """The skill holds something other than regular files."""
+    """The skill holds something that is not copied: a link, a self-granted tool, text laid out to stay unseen."""
 
 
 class Git:
@@ -297,6 +309,25 @@ def top_dirs(entries: Entries) -> set[str]:
     return {rel.split("/", 1)[0] for rel in entries if "/" in rel}
 
 
+def refuse_unreadable(git: Git, ours: Entries, merged: Entries) -> None:
+    """Refuse a merge that would write text kept out of view, or NUL bytes outside a known data format.
+
+    Only the files the merge adds or changes are read. What upstream ships and the local copy
+    leaves out is never written, so it cannot hold an update back.
+    """
+    for rel, (_mode, oid) in merged.items():
+        if ours.get(rel, ("", ""))[1] == oid:
+            continue
+        blob = git.blob(oid)
+        if is_binary(rel, blob):
+            continue
+        if b"\0" in blob:
+            raise UnsafeSkill(f"{rel} holds NUL bytes and is not an image, a PDF or a packet capture")
+        concealed = find_concealed(blob.decode("utf-8", errors="surrogateescape"), rel)
+        if concealed:
+            raise UnsafeSkill(f"{rel}:{concealed[0]}: {concealed[1]}")
+
+
 def merge_skill(
     git: Git, pin: str, path_at_pin: str, theirs_ref: str, ours: Entries
 ) -> tuple[Entries, list[str], bool, list[str], list[str]]:
@@ -315,7 +346,7 @@ def merge_skill(
             continue
         blob = git.blob(oid)
         if b"\0" in blob and rel != "SKILL.md":
-            continue  # binary; rewriting bytes that merely look like escapes would corrupt it
+            continue  # a data file is merged as it is; refuse_unreadable() decides whether it may be written
         text = blob.decode("utf-8", errors="surrogateescape")
         visible = show_invisible(text)
         # An upstream skill does not get to pre-approve tools for itself.
@@ -346,6 +377,7 @@ def merge_skill(
                     continue
         unresolved.append(rel)
     merged = {rel: entry for rel, entry in merged.items() if "/" not in rel or rel.split("/", 1)[0] not in trimmed}
+    refuse_unreadable(git, ours, merged)
     return merged, sorted(unresolved), predates_pin, edited, shown
 
 

@@ -244,6 +244,33 @@ jobs:
       - name: Run repository tooling tests
         run: python3 -m unittest discover -s scripts -p "test_*.py"
 
+  # The MCP server is supported on macOS in host mode and the tooling is developed there.
+  # The runner differs from Linux where it matters: BSD userland, bash 3.2 and a
+  # case-insensitive filesystem.
+  macos-tests:
+    name: macOS Tests (pytest, unittest)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: $/.github/actions/setup-uv
+        with:
+          python-version: "3.13"
+
+      - name: Run MCP server tests
+        run: cd mcp_server && uv sync --locked --group dev --quiet && uv run pytest tests/ -v
+
+      # The interpreter uv installed, not the image's python3, so the version is the one named above.
+      - name: Run repository tooling tests
+        run: uv run --no-project python -m unittest discover -s scripts -p "test_*.py"
+
   sandbox-tests:
     name: Sandbox Provider Tests (node)
     runs-on: ubuntu-latest
@@ -288,6 +315,7 @@ jobs:
       - python-lint
       - python-tests
       - tooling-tests
+      - macos-tests
       - profile-validate
       - sandbox-tests
     if: always()
