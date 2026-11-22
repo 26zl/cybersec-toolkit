@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import codecs
 import ipaddress
 import json
 import os
 import re
 import shlex
 import shutil
+import stat
+import struct
+import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -175,7 +179,171 @@ _FILE_EXT_CATEGORY = {
     ".crt": "crypto",
     ".der": "crypto",
     ".csr": "crypto",
+    ".eml": "forensics",
+    ".msg": "forensics",
+    ".evtx": "forensics",
+    ".log": "forensics",
+    ".e01": "forensics",
+    ".aff": "forensics",
+    ".dd": "forensics",
+    ".docm": "forensics",
+    ".xlsm": "forensics",
+    ".pptm": "forensics",
+    ".lime": "forensics",
+    ".jwt": "web",
+    ".tf": "cloud",
+    ".squashfs": "reversing",
+    ".trx": "reversing",
 }
+
+# Content signatures, checked before the extension: challenge files are often misnamed or bare.
+_MAGIC_CATEGORY: tuple[tuple[bytes, str], ...] = (
+    (b"\x7fELF", "pwn"),
+    (b"MZ", "reversing"),
+    (b"\xcf\xfa\xed\xfe", "reversing"),
+    (b"\xfe\xed\xfa\xcf", "reversing"),
+    (b"\xca\xfe\xba\xbe", "reversing"),
+    (b"dex\n", "reversing"),
+    (b"hsqs", "reversing"),
+    (b"sqsh", "reversing"),
+    (b"\x27\x05\x19\x56", "reversing"),
+    (b"HDR0", "reversing"),
+    (b"\x89PNG\r\n\x1a\n", "stego"),
+    (b"\xff\xd8\xff", "stego"),
+    (b"GIF8", "stego"),
+    (b"ID3", "stego"),
+    (b"fLaC", "stego"),
+    (b"\xd4\xc3\xb2\xa1", "forensics"),
+    (b"\xa1\xb2\xc3\xd4", "forensics"),
+    (b"\x4d\x3c\xb2\xa1", "forensics"),
+    (b"\xa1\xb2\x3c\x4d", "forensics"),
+    (b"\x0a\x0d\x0d\x0a", "forensics"),
+    (b"%PDF", "forensics"),
+    (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "forensics"),
+    (b"EVF\x09\x0d\x0a\xff\x00", "forensics"),
+    (b"ElfFile\x00", "forensics"),
+    (b"EMiL", "forensics"),
+)
+_SNIFF_BYTES = 65536
+# Member names are read only from a central directory this small; larger archives fall back to the extension.
+_ZIP_MAX_MEMBERS = 20000
+_ZIP_MAX_DIRECTORY_BYTES = 4 * 1024 * 1024
+# Patterns anchored per line use [ \t] rather than \s, which would span lines and turn
+# whitespace-only input quadratic.
+_TEXT_CATEGORY_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^[ \t]*pragma[ \t]+solidity\b", re.M), "blockchain"),
+    (
+        re.compile(
+            r"-----BEGIN (?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?(?:PUBLIC|PRIVATE) KEY-----|-----BEGIN CERTIFICATE-----"
+        ),
+        "crypto",
+    ),
+    (re.compile(r"^[ \t]*eyJ[\w-]{4,}\.eyJ[\w-]{4,}\.[\w-]*[ \t]*$", re.M), "web"),
+)
+_RSA_PARAM_RE = re.compile(r"^[ \t]*(n|e|c|p|q|d|ct|phi)[ \t]*[=:][ \t]*(?:0x[0-9a-f]+|\d{2,})[ \t]*$", re.M | re.I)
+_HASH_LINE_RE = re.compile(
+    r"(?:[0-9a-f]{32}|[0-9a-f]{40}|[0-9a-f]{56}|[0-9a-f]{64}|[0-9a-f]{96}|[0-9a-f]{128}"
+    r"|\$(?:1|2[abxy]?|5|6|y|argon2(?:id|i|d))\$\S+|[^:\s]+:\d+:[0-9a-f]{32}:[0-9a-f]{32}:::)",
+    re.I,
+)
+_EMAIL_HEADER_RE = re.compile(
+    r"^(Received|Return-Path|Message-ID|Authentication-Results|DKIM-Signature|From|To|Subject|Date):", re.M | re.I
+)
+_CLOUD_RE = re.compile(
+    r'^(?:AWSTemplateFormatVersion[ \t]*:|[ \t]*resource[ \t]+"(?:aws|azurerm|google|kubernetes)_)', re.M
+)
+_LOG_LINE_RE = re.compile(
+    r"^(?:[A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d \S+ |\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d|\S+ \S+ \S+ \[\d\d/\w{3}/\d{4}:)",
+    re.M,
+)
+_LLM_PATH_RE = re.compile(
+    r"/(?:v\d+/)?(?:chat/completions|completions|messages|responses|embeddings)(?:/|$)|/api/(?:generate|chat)(?:/|$)"
+    r"|:(?:stream)?generatecontent$"
+)
+
+
+def _text_category(text: str) -> str | None:
+    for pattern, category in _TEXT_CATEGORY_RULES:
+        if pattern.search(text):
+            return category
+    if len({name.lower() for name in _RSA_PARAM_RE.findall(text)}) >= 2:
+        return "crypto"
+    lines = [line.strip() for line in text.splitlines() if line.strip()][:500]
+    if lines and all(_HASH_LINE_RE.fullmatch(line) for line in lines):
+        return "crypto"
+    if len({name.lower() for name in _EMAIL_HEADER_RE.findall("\n".join(lines[:60]))}) >= 3:
+        return "forensics"
+    if (
+        _CLOUD_RE.search(text)
+        or (re.search(r"^apiVersion[ \t]*:", text, re.M) and re.search(r"^kind[ \t]*:", text, re.M))
+        or (re.search(r"^FROM[ \t]+\S", text, re.M) and re.search(r"^(?:RUN|CMD|ENTRYPOINT|COPY)[ \t]", text, re.M))
+    ):
+        return "cloud"
+    if len(_LOG_LINE_RE.findall(text)) >= 3:
+        return "forensics"
+    return None
+
+
+def _zip_member_names(fd: int) -> list[str] | None:
+    """Member names when the central directory is small and readable; None otherwise."""
+    try:
+        size = os.fstat(fd).st_size
+        tail = os.pread(fd, min(size, 65557), max(size - 65557, 0))
+        end = tail.rfind(b"PK\x05\x06")
+        if end < 0 or end + 22 > len(tail):
+            return None
+        members, directory_bytes = struct.unpack_from("<HI", tail, end + 10)
+        if members > _ZIP_MAX_MEMBERS or directory_bytes > _ZIP_MAX_DIRECTORY_BYTES:
+            return None
+        with os.fdopen(os.dup(fd), "rb") as handle, zipfile.ZipFile(handle) as archive:
+            return archive.namelist()
+    except Exception:  # Classification must never fail on a malformed archive.
+        return None
+
+
+def _sniff_file_category(path: str) -> str | None:
+    """CTF category from a regular file's leading bytes; None when unknown or unreadable."""
+    try:
+        # Opening a device can have side effects, so only regular files are opened.
+        if not stat.S_ISREG(os.stat(path).st_mode):
+            return None
+        # O_NONBLOCK keeps a FIFO swapped in after the stat from blocking; fstat then rejects it.
+        flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOCTTY", 0) | getattr(os, "O_CLOEXEC", 0)
+        fd = os.open(path, flags)
+    except (OSError, ValueError):
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return None
+        head = os.read(fd, _SNIFF_BYTES)
+        if head.startswith(b"PK\x03\x04"):
+            names = _zip_member_names(fd)
+            if names is None:
+                return None
+            if "AndroidManifest.xml" in names:
+                return "mobile"
+            if any(name.endswith("vbaProject.bin") for name in names):
+                return "forensics"
+            if "META-INF/MANIFEST.MF" in names or any(name.endswith(".class") for name in names):
+                return "reversing"
+            return "forensics"
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    if head.startswith(b"RIFF") and head[8:12] == b"WAVE":
+        return "stego"
+    for magic, category in _MAGIC_CATEGORY:
+        if head.startswith(magic):
+            return category
+    if b"\x00" in head:
+        return None
+    try:
+        # Incremental: a multi-byte character cut at the read boundary is not an error.
+        text = codecs.getincrementaldecoder("utf-8")().decode(head, final=False)
+    except UnicodeDecodeError:
+        return None
+    return _text_category(text)
 
 
 def _infer_workflow_type(target: str, kind: str, workflow: str | None = None) -> tuple[str, str]:
@@ -194,11 +362,11 @@ def _infer_workflow_type(target: str, kind: str, workflow: str | None = None) ->
 
     if kind == "file":
         ext = Path(target).suffix.lower()
-        category = _FILE_EXT_CATEGORY.get(ext, "misc")
+        category = _sniff_file_category(target) or _FILE_EXT_CATEGORY.get(ext, "misc")
         if explicit == "bounty":
             # Files aren't a bounty target type, so map mobile bundles to mobile_app
             # and everything else to web_app rather than degrade to the empty generic plan.
-            return "bounty", "mobile_app" if category == "mobile" else "web_app"
+            return "bounty", {"mobile": "mobile_app", "cloud": "cloud"}.get(category, "web_app")
         return "ctf", category
     if kind == "url":
         parsed = urlparse(target)
@@ -206,6 +374,8 @@ def _infer_workflow_type(target: str, kind: str, workflow: str | None = None) ->
         if scheme in ("http", "https"):
             host = (parsed.hostname or "").lower()
             path = (parsed.path or "").lower()
+            if _LLM_PATH_RE.search(path):
+                return explicit or "bounty", "llm"
             is_api = host.startswith("api.") or "/api/" in path or "graphql" in path
             if explicit == "ctf":
                 return "ctf", "web"

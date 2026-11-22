@@ -19,7 +19,7 @@ from mcp_server.tools_db import C2_TOOLS, MODULE_DESCRIPTIONS, ToolsDatabase  # 
 # Termux runs without sudo; Linux requires it.
 _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
 
-# All 14 profiles parsed from profiles/*.conf (hardcoded to avoid filesystem
+# All 15 profiles parsed from profiles/*.conf (hardcoded to avoid filesystem
 # dependency at import time — these rarely change and must match the .conf files).
 PROFILES: dict[str, dict] = {
     "full": {
@@ -61,6 +61,8 @@ PROFILES: dict[str, dict] = {
             "web",
             "mobile",
             "blockchain",
+            "networking",
+            "recon",
         ],
         "skip_heavy": True,
         "enable_docker": False,
@@ -116,7 +118,7 @@ PROFILES: dict[str, dict] = {
     },
     "mobile": {
         "description": "Android/iOS application security testing",
-        "modules": ["misc", "mobile", "web", "reversing"],
+        "modules": ["misc", "mobile", "web", "reversing", "networking"],
         "skip_heavy": True,
         "enable_docker": True,
         "include_c2": False,
@@ -133,6 +135,13 @@ PROFILES: dict[str, dict] = {
         "modules": ["misc", "blockchain", "web", "crypto"],
         "skip_heavy": True,
         "enable_docker": True,
+        "include_c2": False,
+    },
+    "iot": {
+        "description": "IoT and embedded devices: firmware, network protocols and radio",
+        "modules": ["misc", "networking", "wireless", "reversing", "pwn", "cracking"],
+        "skip_heavy": False,
+        "enable_docker": False,
         "include_c2": False,
     },
     "wireless": {
@@ -260,8 +269,20 @@ _KEYWORD_MAP: dict[str, list[tuple[str, float]]] = {
     "ethereum": [("blockchain", 2.5)],
     "defi": [("blockchain", 2.0)],
     "evm": [("blockchain", 2.5)],
-    "llm": [("full", 1.0)],
-    "ai security": [("full", 1.0)],
+    "llm": [("web", 2.5)],
+    "ai security": [("web", 2.5)],
+    "prompt injection": [("web", 2.5)],
+    "iot": [("iot", 3.0)],
+    "internet of things": [("iot", 3.0)],
+    "firmware": [("iot", 3.0)],
+    "embedded device": [("iot", 2.5)],
+    "embedded system": [("iot", 2.5)],
+    "embedded linux": [("iot", 2.5)],
+    "router": [("iot", 2.0)],
+    "mqtt": [("iot", 2.5)],
+    "zigbee": [("iot", 2.5), ("wireless", 1.5)],
+    "uart": [("iot", 2.5)],
+    "jtag": [("iot", 2.5)],
     "active directory": [("redteam", 2.5)],
     "kerberos": [("redteam", 2.5)],
     "ldap": [("redteam", 2.0)],

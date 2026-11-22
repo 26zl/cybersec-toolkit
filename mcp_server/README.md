@@ -16,7 +16,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 | `guided_assessment` | Companion-first solve assistant — classifies the target/finding, returns triage gates, recommends skills, auto-detects tools from all modules/profiles, then guides step-by-step; opt-in `autonomous` uses governed tool calls and the separately gated `run_script` capability; network steps need the caller to pass `authorization_confirmed=true`, which is only the caller's assertion and is never verified; `intensity` accepts `low` or `medium`; `execution.results` appears only when autonomous mode ran execution candidates, otherwise `execution.status` is `not_started` with a reason |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Recommend a profile, modules, or individual tools based on what you need |
-| `list_profiles` | List all 14 installation profiles with tool counts and details |
+| `list_profiles` | List all 15 installation profiles with tool counts and details |
 | `run_tool` | Execute an installed tool safely (argument sanitization + network policy). Supports remote execution via `host` parameter |
 | `run_pipeline` | Pipe tools together safely without shell (e.g. `strings binary \| grep flag`). Max 10 steps; reports every step's exit status |
 | `run_script` | Explicit Python/Bash execution opt-in outside the policy layer (isolated only by the Kata VM in sandbox mode). Optional `venv` parameter for per-script interpreter selection |
@@ -286,7 +286,7 @@ Once connected via an MCP client:
 - **CVE lookup**: `get_cve_info("log4shell")` — curated skills/tools/modules + live NVD/KEV/EPSS lookup commands (also accepts ids like `CVE-2021-44228`)
 - **What to install**: `recommend_install("I want to do CTF competitions")` — recommends ctf profile
 - **Just a few tools**: `recommend_install("I need nmap and sqlmap")` — recommends individual modules
-- **List profiles**: `list_profiles()` — all 14 profiles with tool counts
+- **List profiles**: `list_profiles()` — all 15 profiles with tool counts
 - **Run a tool**: `run_tool("nmap", "--version")` — execute with network policy enforcement
 - **Run a pipeline**: `run_pipeline([{"tool": "strings", "args": "./binary"}, {"tool": "grep", "args": "flag"}])` — pipe tools together
 - **Run a script**: `run_script("from pwn import *; print(cyclic(20))", venv="pwntools")` — write and execute scripts
@@ -305,7 +305,7 @@ mcp_server/
   ctf_advisor.py       # CTF challenge-type → tool mapping with suggestions
   bounty_advisor.py    # Bug bounty target-type → tool mapping with methodology and common vulns
   cve_advisor.py       # CVE → curated skills/tools/modules + live NVD/KEV/EPSS lookup commands
-  profiles.py          # Profile recommendation engine — 14 profiles, keyword matching
+  profiles.py          # Profile recommendation engine — 15 profiles, keyword matching
   local_sandbox.py     # Bubblewrap confinement for host mode (CYBERSEC_LOCAL_SANDBOX=1)
   security.py          # Execution validation, argument sanitization, network policy, rate limiting,
                        #   script execution with venv support, pipeline execution

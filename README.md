@@ -8,16 +8,16 @@
 [![Docker image](https://img.shields.io/badge/ghcr.io-cybersec--toolkit-2496ED?logo=docker&logoColor=white)](https://github.com/26zl/cybersec-toolkit/pkgs/container/cybersec-toolkit)
 [![Glama score](https://glama.ai/mcp/servers/26zl/cybersec-toolkit/badges/score.svg)](https://glama.ai/mcp/servers/26zl/cybersec-toolkit)
 
-![Cybersec Toolkit by 26zl: the security toolkit AI agents can drive. One command installs 670+ tools, and an MCP server runs them in a disposable Kata VM under rules you set. 18 modules, 14 profiles, 15 MCP tools, 872 agent skills.](assets/social-preview.png)
+![Cybersec Toolkit by 26zl: the security toolkit AI agents can drive. One command installs 670+ tools, and an MCP server runs them in a disposable Kata VM under rules you set. 18 modules, 15 profiles, 15 MCP tools, 880 agent skills.](assets/social-preview.png)
 
-__A security toolkit that AI agents can drive, under rules you set.__ One command installs 670+ security tools on Linux or Termux. An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets Claude Code, Codex, Gemini CLI, OpenCode, and other MCP clients discover, recommend, and run those tools through a governed execution path, inside a disposable Kata Containers VM by default. 872 Agent Skills supply the methodology for CTF, pentest, bug bounty, DFIR, and blue-team work.
+__A security toolkit that AI agents can drive, under rules you set.__ One command installs 670+ security tools on Linux or Termux. An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lets Claude Code, Codex, Gemini CLI, OpenCode, and other MCP clients discover, recommend, and run those tools through a governed execution path, inside a disposable Kata Containers VM by default. 880 Agent Skills supply the methodology for CTF, pentest, bug bounty, DFIR, and blue-team work.
 
 | Component | What you get |
 | --------- | ------------ |
-| [Installer](#installer) | 670+ tools in 18 modules, 14 profiles, and 12 install methods for Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, and Termux |
+| [Installer](#installer) | 670+ tools in 18 modules, 15 profiles, and 12 install methods for Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, and Termux |
 | [MCP server](#mcp-server) | 15 tools for discovery, advice, and governed execution; external targets and script execution are off by default |
 | [Sandbox](#sandbox-and-host-mode) | One Kata Containers VM per session by default; `--local` runs the server on the host |
-| [Agent Skills](#agent-skills) | 872 skills (31 project-authored, 841 curated), also installable as a Claude Code plugin |
+| [Agent Skills](#agent-skills) | 880 skills (31 project-authored, 849 curated), also installable as a Claude Code plugin |
 
 > __What makes it different:__ most toolkits stop at _installing_ tools. Here an AI can also _drive_ them: infer the problem type, pick tools from every module and profile, and work through the problem with you step by step. When you explicitly authorize it, the same toolchain runs an autonomous solver loop. __Companion by default; autonomous only when you ask.__ It complements Kali, Parrot, or BlackArch rather than replacing them: it runs on the machine you already have, Termux included.
 
@@ -186,16 +186,17 @@ git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
 | Profile | Modules | Docker | C2 | Description |
 | ------- | ------- | ------ | -- | ----------- |
 | `full` | All 18 | — | yes | Complete security toolkit |
-| `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | — | — | CTF competitions |
+| `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain, networking, recon | — | — | CTF competitions, including PCAP and OSINT challenges; LLM tooling is in `web` |
 | `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | yes | yes | Offensive security |
 | `web` | misc, networking, recon, web, llm | — | — | Web application testing |
 | `osint` | misc, recon | — | — | OSINT gathering |
 | `forensics` | misc, forensics, blueteam, reversing, stego, cracking | — | — | Digital forensics and incident response |
 | `pwn` | misc, pwn, reversing, crypto | — | — | Binary exploitation and reverse engineering |
-| `mobile` | misc, mobile, web, reversing | yes | — | Mobile application security testing |
+| `mobile` | misc, mobile, web, reversing, networking | yes | — | Mobile application security testing, with an intercepting proxy |
 | `cloud` | misc, cloud, containers, networking, recon | — | — | Cloud and container security auditing |
 | `blockchain` | misc, blockchain, web, crypto | yes | — | Smart contract auditing and blockchain security |
 | `wireless` | misc, wireless, networking | — | — | WiFi, Bluetooth, and SDR security |
+| `iot` | misc, networking, wireless, reversing, pwn, cracking | — | — | IoT and embedded devices: firmware, network protocols and radio |
 | `lightweight` | misc, networking, recon, web, cracking | — | — | Hobby ethical hacking essentials (HTB, THM, bug bounty) |
 | `crackstation` | misc, cracking, crypto | — | — | Hash cracking tools; no wordlist is downloaded |
 | `blueteam` | misc, blueteam, forensics, reversing, mobile, containers, networking, cloud, recon | yes | — | Defensive security, IR, malware analysis |
@@ -405,7 +406,7 @@ The server is published to the [official MCP Registry](https://registry.modelcon
 | `guided_assessment` | Companion-first solve assistant for an authorized target: classifies the target/finding, returns triage gates, recommends skills, picks tools from all modules/profiles, and guides step by step; opt-in `autonomous` starts an auto-solver loop over `run_tool`, `run_pipeline`, and the separately gated `run_script` |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
-| `list_profiles` | All 14 profiles with tool counts and install commands |
+| `list_profiles` | All 15 profiles with tool counts and install commands |
 | `run_tool` | Execute installed tools safely (sanitized args, network policy, rate limiting, audit logging); supports remote execution over SSH |
 | `run_pipeline` | Pipe tools together without a shell (`strings binary \| grep flag`) |
 | `run_script` | Explicit opt-in Python/Bash execution, with per-script venv selection |
@@ -594,7 +595,7 @@ This opens the MCP Inspector for exercising each tool interactively. [`mcp_serve
 
 ## Agent Skills
 
-872 Agent Skills live in `.claude/skills/`, the canonical tree that Claude Code discovers directly. Skills load on demand for the task at hand instead of occupying context permanently. 31 are project-authored and 841 are curated from open-source projects, each attributed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md):
+880 Agent Skills live in `.claude/skills/`, the canonical tree that Claude Code discovers directly. Skills load on demand for the task at hand instead of occupying context permanently. 31 are project-authored and 849 are curated from open-source projects, each attributed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md):
 
 - 10 project developer skills (`add-tool`, `validate-all`, `module-scaffold`, `writeup-template`, `mcp-sync-check`, `security-wordlists`, `security-payloads`, `guided-assessment`, `skill-dependency-audit`, `skill-curation-router`)
 - 4 cross-skill coordinators (`finding-triage`, `security-comms`, `authorization-gate`, `evidence-hygiene`) that route findings, communication, authorization checks, and evidence sanitization
@@ -606,6 +607,7 @@ This opens the MCP Inspector for exercising each tool interactively. [`mcp_serve
 - 10 bug bounty workflow skills from [BugHunter (Agentic-Bug-Hunter)](https://github.com/awarexone/Agentic-Bug-Hunter) (MIT)
 - 4 high-level workflows from [Transilience](https://github.com/transilienceai/communitytools) (MIT)
 - 1 coding-agent workflow skill from [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT)
+- 8 CTF solving skills from [ljagiello/ctf-skills](https://github.com/ljagiello/ctf-skills) (MIT), led by the `solve-challenge` dispatcher
 
 Source and category index: [`.claude/skills/SKILLS.md`](.claude/skills/SKILLS.md). Ranking and curation: `.claude/skills/CURATION.md` and `curation.json`, regenerated with `python3 scripts/curate_claude_skills.py --write`.
 

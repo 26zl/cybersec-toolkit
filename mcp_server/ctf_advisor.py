@@ -188,7 +188,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         ],
         "methodology": [
             "1. IDENTIFY: file for arch + linking + stripped status. strings for flag format, "
-            "error messages, decoy strings. Non-x86? Use qemu-<arch> for dynamic analysis",
+            "error messages, decoy strings. Non-x86? Run it under qemu-<arch> through run_script for dynamic analysis",
             "2. MAP STRUCTURE: Use r2/rizin via run_tool for CLI disassembly. "
             "For GUI analysis: download Ghidra from ghidra-sre.org (Java, cross-platform) "
             "and open the binary on the Windows host. "
@@ -216,14 +216,14 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
         ],
         "quick_wins": [
             "strings | grep for flag format — multiple hits may indicate decoys",
-            "Non-x86 (ARM/RISC-V/MIPS)? qemu-<arch> to run, qemu -strace for syscall trace",
-            "ltrace to see strcmp/memcmp with expected input (instant solve if not stripped)",
+            "Non-x86 (ARM/RISC-V/MIPS)? qemu-<arch> (-strace for a syscall trace) through run_script",
+            "ltrace through run_script to see strcmp/memcmp with expected input (instant solve if not stripped)",
             "CLI: r2 -A binary → afl (functions), axt (xrefs), pdf (disasm). "
             "GUI: open in Ghidra on Windows for decompiler view",
             "Check if packed: UPX (upx -d), custom packers (high entropy sections)",
             "Go binary? strings are embedded — grep for flag format directly. "
             "Java .jar? unzip + jadx. Python .pyc? uncompyle6/pycdc",
-            "frida-trace to hook specific functions at runtime without full debugger setup",
+            "frida-trace through run_script to hook specific functions at runtime without full debugger setup",
             "Custom VM: find dispatch loop (large switch or jump table), extract opcode→handler mapping, "
             "test each opcode with minimal programs to discover exact behavior before attempting exploit",
         ],
@@ -236,6 +236,7 @@ CTF_CATEGORY_MAP: dict[str, dict] = {
             ("autopsy", "Digital forensics GUI (download from sleuthkit.org, run on Windows)"),
             ("sleuthkit", "Filesystem forensics toolkit"),
             ("foremost", "File carving tool"),
+            ("tshark", "CLI packet analyzer for PCAP/PCAPNG captures"),
             ("binwalk", "Firmware and file extraction"),
             ("exiftool", "Metadata extraction"),
             ("oletools", "Microsoft Office file analysis"),

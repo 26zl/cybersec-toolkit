@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from mcp_server.profiles import (
     PROFILES,
     _count_module_tools,
@@ -71,6 +73,31 @@ class TestRecommendInstall:
         assert result["recommendation"] == "profile"
         assert result["profile"] == "ctf"
         assert "install_command" in result
+
+    @pytest.mark.parametrize(
+        ("task", "profile"),
+        [
+            ("test the firmware of an IoT camera", "iot"),
+            ("assess an embedded router over UART", "iot"),
+            ("red team an LLM chatbot for prompt injection", "web"),
+            ("intercept traffic from an android app", "mobile"),
+            ("audit an embedded linux device", "iot"),
+        ],
+    )
+    def test_task_selects_the_profile_that_covers_it(self, task, profile, tools_db: ToolsDatabase) -> None:
+        with patch("shutil.which", return_value=None):
+            result = recommend_install(task, tools_db)
+        assert result["recommendation"] == "profile"
+        assert result["profile"] == profile
+
+    @pytest.mark.parametrize(
+        "task",
+        ["find the flag embedded in this png image", "extract embedded files from a word document"],
+    )
+    def test_embedded_content_is_not_an_iot_task(self, task, tools_db: ToolsDatabase) -> None:
+        with patch("shutil.which", return_value=None):
+            result = recommend_install(task, tools_db)
+        assert result.get("profile") != "iot"
 
     def test_module_match(self, tools_db: ToolsDatabase) -> None:
         with patch("shutil.which", return_value=None):
@@ -181,7 +208,7 @@ class TestListProfiles:
     def test_returns_all_profiles(self, tools_db: ToolsDatabase) -> None:
         result = list_profiles(tools_db)
         assert result["total_profiles"] == len(PROFILES)
-        assert result["total_profiles"] == 14
+        assert result["total_profiles"] == 15
 
     def test_profile_fields(self, tools_db: ToolsDatabase) -> None:
         result = list_profiles(tools_db)
