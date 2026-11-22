@@ -1060,7 +1060,8 @@ _OPENSSL_OFFLINE_COMMANDS = frozenset(
         "x509",
     }
 )
-_URL_IN_TEXT_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s,;]+")
+# The authority of every URL inside a value: from the scheme up to the first /, ?, # or blank.
+_URL_AUTHORITY_IN_TEXT_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://([^/?#\s]*)")
 # openssl also accepts a digest or cipher name as its command (`openssl sha256 f`, `openssl aes-256-cbc -d`).
 _OPENSSL_ALGORITHM_COMMAND_RE = re.compile(
     r"md[45]|mdc2|rmd160|sm3|sha(?:1|224|256|384|512(?:-224|-256)?)|sha3-(?:224|256|384|512)|shake(?:128|256)"
@@ -3504,6 +3505,37 @@ def _frida_values(arg_list: list[str], short: str, long: str) -> list[str]:
     )
 
 
+def _address_is_this_machine(address: str) -> bool:
+    """Loopback, unspecified (both also IPv4-mapped), or an address assigned to one of this host's interfaces."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if ip.is_loopback or ip.is_unspecified:
+        return True
+    # Binding succeeds only for an address one of this host's interfaces carries.
+    family = socket.AF_INET6 if ip.version == 6 else socket.AF_INET
+    try:
+        with socket.socket(family, socket.SOCK_DGRAM) as probe:
+            probe.bind((str(ip), 0))
+    except OSError:
+        return False
+    return True
+
+
+def _names_this_machine(host: str) -> bool:
+    host = host.strip("[]").rstrip(".").lower()
+    if host == "localhost" or host.endswith(".localhost") or _address_is_this_machine(host):
+        return True
+    try:
+        resolved = socket.getaddrinfo(host, None)
+    except (OSError, UnicodeError):
+        return False
+    return any(_address_is_this_machine(str(entry[4][0]).split("%", 1)[0]) for entry in resolved)
+
+
 def _check_frida_policy(arg_list: list[str]) -> None:
     """Allow instrumentation of a USB, device-ID or remote-host target, never of this machine."""
     if arg_list in (["-h"], ["--help"], ["--version"]):
@@ -3523,14 +3555,8 @@ def _check_frida_policy(arg_list: list[str]) -> None:
     hosts = _frida_values(arg_list, "H", "--host")
     for host in hosts:
         address = _network_target_host(host)
-        if address.lower() == "localhost" or address.lower().endswith(".localhost"):
-            address = "127.0.0.1"
-        try:
-            loopback = ipaddress.ip_address(address.strip("[]")).is_loopback
-        except ValueError:
-            loopback = False
-        if loopback:
-            raise ValueError("Blocked by policy: frida: a frida-server on loopback instruments this machine")
+        if _names_this_machine(address):
+            raise ValueError("Blocked by policy: frida: a frida-server on this machine instruments its processes")
         if not _allow_external() and not _is_safe_target(address):
             raise ValueError(
                 f"Blocked by policy: frida: host '{host}' is not in a private/local range. "
@@ -3571,8 +3597,10 @@ _R2_LOCAL_SCHEMES = frozenset({"apk", "base64", "ihex", "malloc", "null", "spars
 # config (e, checked below), flags (f), info (i), print (p), quit (q), seek (s), types (t),
 # hexdump (x), search (/) and help (?).
 _R2_COMMAND_FAMILIES = frozenset("aCefipqstx/?")
-# Within those families: iO dumps or resizes, idp fetches PDBs, agw runs dot, ?t/?+/?- run a nested command.
-_R2_BLOCKED_COMMAND_PREFIXES = ("iO", "idp", "agw", "aggw", "?t", "?+", "?-")
+# Within those families: iO dumps or resizes, idp fetches PDBs, ?t/?+/?-/?? run a nested command;
+# an ag graph in the w format is rendered by running dot.
+_R2_BLOCKED_COMMAND_PREFIXES = ("iO", "idp", "?t", "?+", "?-", "??")
+_R2_GRAPH_WRITE_RE = re.compile(r"ag\S*w")
 _R2_SAFE_CONFIG_PREFIXES = ("anal.", "analysis.", "asm.", "emu.")
 _R2_SAFE_CONFIG_KEYS = frozenset(
     {"bin.cache", "bin.demangle", "bin.relocs", "bin.strings", "io.cache", "scr.color", "scr.interactive", "scr.utf8"}
@@ -3598,7 +3626,11 @@ def _check_r2_commands(binary: str, commands: str) -> None:
             if word != "e" or ("=" in setting and not _r2_config_safe(setting)):
                 raise ValueError(f"Blocked by policy: {binary}: config change '{segment}' is not permitted")
             continue
-        if segment[0] not in _R2_COMMAND_FAMILIES or segment.startswith(_R2_BLOCKED_COMMAND_PREFIXES):
+        if (
+            segment[0] not in _R2_COMMAND_FAMILIES
+            or segment.startswith(_R2_BLOCKED_COMMAND_PREFIXES)
+            or _R2_GRAPH_WRITE_RE.match(word)
+        ):
             raise ValueError(
                 f"Blocked by policy: {binary}: '{word}' is outside the read-only analysis commands "
                 "run_tool permits (a, C, f, i, p, s, t, x, /, ?) — use run_script for the rest"
@@ -4903,10 +4935,16 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
         # hosts; a URL inside any value is, since openssl loads certificates and CRLs over HTTP.
         if command in _OPENSSL_OFFLINE_COMMANDS or _OPENSSL_ALGORITHM_COMMAND_RE.fullmatch(command.lower()):
             for arg in arg_list[1:]:
-                for url in _URL_IN_TEXT_RE.findall(arg):
-                    if not _is_safe_target(_network_target_host(url)):
+                for authority in _URL_AUTHORITY_IN_TEXT_RE.findall(arg):
+                    # User information lets parsers disagree on the host (10.0.0.5,@8.8.8.8).
+                    if "@" in authority:
+                        raise ValueError("Blocked by policy: openssl: a URL with user information hides its host")
+                    # A comma or semicolon separates list entries (URI:http://a,URI:http://b); the next
+                    # URL is checked on its own.
+                    host = _network_target_host("http://" + re.split(r"[,;]", authority, maxsplit=1)[0])
+                    if not _is_safe_target(host):
                         raise ValueError(
-                            f"Blocked by policy: target '{url}' is not in a private/local network range. "
+                            f"Blocked by policy: target '{host}' is not in a private/local network range. "
                             "Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 to allow external targets."
                         )
             return

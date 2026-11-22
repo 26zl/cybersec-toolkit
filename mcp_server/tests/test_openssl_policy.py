@@ -30,6 +30,7 @@ OFFLINE = [
     "s_client -connect 10.0.0.1:443",
     "s_client -connect 10.0.0.1:443 -groups X25519:P-256 -servername lab.internal",
     "req -new -key /tmp/k -subj /CN=x -addext crlDistributionPoints=URI:http://127.0.0.1/crl.pem -out /tmp/csr",
+    "req -new -key /tmp/k -subj /CN=x -addext crlDistributionPoints=URI:http://10.0.0.1/a,URI:http://10.0.0.2/b",
 ]
 
 REFUSED = [
@@ -53,6 +54,11 @@ REFUSED = [
     "s_client -connect seed",
     "s_time -connect kdf",
     "req -new -key /tmp/k -subj /CN=x -addext crlDistributionPoints=URI:http://8.8.8.8/crl.pem -out /tmp/csr",
+    # User information and list separators must not move the host a parser fetches from.
+    "x509 -in http://10.0.0.5,@8.8.8.8/c.pem -noout",
+    "x509 -in http://10.0.0.5;@8.8.8.8/c.pem -noout",
+    "x509 -in http://user@10.0.0.5/c.pem -noout",
+    "req -new -key /tmp/k -subj /CN=x -addext crlDistributionPoints=URI:http://10.0.0.1/a,URI:http://8.8.8.8/b",
 ]
 
 
