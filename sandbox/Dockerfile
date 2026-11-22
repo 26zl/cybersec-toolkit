@@ -1,7 +1,7 @@
 # A named stage (not COPY --from=<image>) so Dependabot tracks the uv image.
 FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 AS uv
 
-FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
+FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
 
 ENV DEBIAN_FRONTEND=noninteractive
 # The base image ships an unpackaged pebble Go binary (known HIGH CVEs) that
@@ -16,12 +16,32 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /opt/cybersec-toolkit
 # Copy only runtime and installer sources; local credentials never enter layers.
-COPY mcp_server/*.py mcp_server/pyproject.toml mcp_server/uv.lock mcp_server/README.md ./mcp_server/
+# Installer sources come first, so a server-only change reuses the profile layer below.
 COPY tools_config.json install.sh ./
 COPY lib/ ./lib/
 COPY modules/ ./modules/
 COPY profiles/ ./profiles/
 COPY scripts/ ./scripts/
+
+# Additional tool profiles are installed at build time, before dropping privilege.
+# The run_script venvs go to a shared path: the build runs as root (HOME=/root,
+# mode 0700), which the unprivileged runtime user could not reach.
+# A run that finishes with some tools failed is recorded as partial and keeps the
+# rest; a run that stops before its summary fails the build. Launchers linked into
+# root's home (cargo, Foundry) are copied, since the runtime user cannot enter /root,
+# and the build and download caches (over 20 GB for ctf) leave with this layer.
+ENV CYBERSEC_MCP_VENVS_DIR=/opt/ctf-venvs
+ARG TOOLKIT_PROFILE=""
+RUN if [ -n "$TOOLKIT_PROFILE" ]; then \
+        bash install.sh --profile "$TOOLKIT_PROFILE" --production --yes \
+            || grep -qx '# Status: partial' .install_sessions/*.manifest; \
+    fi \
+    && find /usr/local/bin -maxdepth 1 -type l -lname '/root/*' \
+        -exec sh -c 'cp --remove-destination "$(readlink -f "$1")" "$1"' _ {} \; \
+    && rm -rf /root/.cache /root/.npm /root/.cargo/registry /root/.cargo/git /opt/go/pkg \
+        /var/lib/apt/lists/*
+
+COPY mcp_server/*.py mcp_server/pyproject.toml mcp_server/uv.lock mcp_server/README.md ./mcp_server/
 COPY sandbox/guest-mcp.json ./sandbox/guest-mcp.json
 RUN uv sync --directory mcp_server --frozen --no-dev --no-editable
 
@@ -29,15 +49,6 @@ RUN uv sync --directory mcp_server --frozen --no-dev --no-editable
 # `install.sh --doctor` can report an image built before a later server change.
 ARG SANDBOX_SOURCE_HASH="unknown"
 LABEL cybersec.sandbox.source_hash="${SANDBOX_SOURCE_HASH}"
-
-# Additional tool profiles are installed at build time, before dropping privilege.
-# The run_script venvs go to a shared path: the build runs as root (HOME=/root,
-# mode 0700), which the unprivileged runtime user could not reach.
-ENV CYBERSEC_MCP_VENVS_DIR=/opt/ctf-venvs
-ARG TOOLKIT_PROFILE=""
-RUN if [ -n "$TOOLKIT_PROFILE" ]; then \
-        bash install.sh --profile "$TOOLKIT_PROFILE" --production --yes; \
-    fi
 
 RUN groupadd --gid 10001 toolkit \
     && useradd --uid 10001 --gid 10001 --create-home --shell /bin/bash toolkit \

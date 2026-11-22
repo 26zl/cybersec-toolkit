@@ -118,6 +118,11 @@ These are limitations of that nesting layer, not of Kata. On macOS, prefer `--lo
    make sandbox-image TOOLKIT_PROFILE=ctf
    ```
 
+   A profile build installs hundreds of tools and takes about an hour. Tools that
+   fail to install (a release without checksums under `--production`, an upstream
+   that no longer builds) are listed in the build output and left out; the image
+   keeps the rest. A later server-only change reuses the installed-tools layer.
+
 4. Install the launcher's Node dependencies:
 
    ```bash
