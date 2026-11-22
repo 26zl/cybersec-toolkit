@@ -49,7 +49,9 @@ SHARED_BASE_PACKAGES=(
 _install_devel_basis() {
     [[ "$PKG_MANAGER" == "zypper" ]] || return 0
     _ensure_pkg_index
-    maybe_sudo zypper --non-interactive install -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
+    maybe_sudo zypper --non-interactive install -t pattern devel_basis >> "$LOG_FILE" 2>&1 && return 0
+    # Minimal images, whose awk comes from busybox, cannot take the pattern; a compiler and make still install.
+    maybe_sudo zypper --non-interactive install gcc gcc-c++ make >> "$LOG_FILE" 2>&1 || true
 }
 
 install_shared_deps() {

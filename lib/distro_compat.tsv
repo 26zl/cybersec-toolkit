@@ -19,7 +19,7 @@
 #
 # Build tools & runtimes
 #debian	dnf	pacman	zypper	pkg
-build-essential	@development-tools+@c-development	base-devel	-	clang+make
+build-essential	@development-tools+@c-development+perl	base-devel	-	clang+make
 python3		python		python
 python3-pip		python-pip		-
 python3-venv	python3	-	-	-

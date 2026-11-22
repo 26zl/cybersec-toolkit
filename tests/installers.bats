@@ -551,11 +551,33 @@ STUB
     [[ "${pkgs[0]}" == "nmap-ncat" ]]
 }
 
-@test "fixup: dnf translates build-essential to groups that include gcc and make" {
+@test "fixup: dnf translates build-essential to groups that include gcc and make, plus full perl" {
     source_libs --installers fedora dnf
     local -a pkgs=(build-essential)
     fixup_package_names pkgs
-    [[ "${pkgs[*]}" == "@development-tools @c-development" ]]
+    [[ "${pkgs[*]}" == "@development-tools @c-development perl" ]]
+}
+
+@test "openSUSE falls back to gcc and make when the devel_basis pattern cannot install" {
+    source_libs --installers opensuse zypper
+    source "$PROJECT_ROOT/lib/shared.sh"
+    make_test_tmpdir
+    LOG_FILE=/dev/null
+    _ensure_pkg_index() { :; }
+    maybe_sudo() {
+        echo "$*" >> "$TEST_TMPDIR/calls"
+        [[ "$*" != *"-t pattern devel_basis"* ]]
+    }
+    _install_devel_basis
+    run cat "$TEST_TMPDIR/calls"
+    assert_line --index 0 "zypper --non-interactive install -t pattern devel_basis"
+    assert_line --index 1 "zypper --non-interactive install gcc gcc-c++ make"
+
+    rm -f "$TEST_TMPDIR/calls"
+    maybe_sudo() { echo "$*" >> "$TEST_TMPDIR/calls"; }
+    _install_devel_basis
+    run cat "$TEST_TMPDIR/calls"
+    assert_output "zypper --non-interactive install -t pattern devel_basis"
 }
 
 @test "fixup: dnf translates dnsutils to bind-utils" {
