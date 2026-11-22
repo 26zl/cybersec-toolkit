@@ -656,7 +656,7 @@ async def recommend_install(task: str) -> dict:
 
 @mcp.tool(annotations=_ADVISORY)
 def list_profiles() -> dict:
-    """List all 14 available installation profiles with details.
+    """List every installation profile with details.
 
     Each profile is a curated set of modules targeting a specific use case.
     Shows module count, tool count, and install command for each profile.
