@@ -196,7 +196,6 @@ def test_frida_refuses_an_address_of_this_machine(offline):
         check_policy("frida-tools", ["-H", f"{address}:27042", "-n", "app"], "frida")
 
 
-def test_frida_refuses_a_name_that_resolves_to_this_machine(offline, monkeypatch):
-    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET, 0, 0, "", ("127.0.0.1", 0))])
-    with pytest.raises(ValueError, match="this machine"):
-        check_policy("frida-tools", ["-H", "lab-device.example", "-n", "app"], "frida")
+def test_frida_takes_ip_addresses_only(offline):
+    with pytest.raises(ValueError, match="IP address"):
+        check_policy("frida-tools", ["-H", "lab-device.example:27042", "-n", "app"], "frida")

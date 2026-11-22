@@ -29,7 +29,7 @@ Running a target program, a machine image or console commands is `run_script`'s 
 | `radare2`, `rizin` | Read-only analysis commands (`a`, `C`, `f`, `i`, `p`, `s`, `t`, `x`, `/`, `?` and config reads) without debugging, writing, plugins, projects, remote io backends, shell, pipes or redirection |
 | `pwntools` | Every subcommand except `debug`, `template` and `update`; `asm`, `shellcraft` and `scramble` without `--run`/`--debug`; online `libcdb` queries need `CYBERSEC_MCP_ALLOW_EXTERNAL=1` |
 | `volatility3` | Analysis without `--plugin-dirs` |
-| `frida-tools` | A USB (`-U`), device-ID (`-D`) or private remote-host (`-H`) target, never a process on the MCP host; no `--options-file` |
+| `frida-tools` | A USB (`-U`), device-ID (`-D`) or private remote-host IP address (`-H`) target, never a process on the MCP host; no `--options-file` |
 
 The optional client shell guard reads CLI names and aliases from the same registry metadata, preserving its advisor-clearance window and ordinary development commands. It does not import the MCP server or initialize operator state. This hook remains a client-side routing aid; tool execution policy and the sandbox are enforced at the server.
 

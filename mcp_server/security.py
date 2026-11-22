@@ -1060,8 +1060,8 @@ _OPENSSL_OFFLINE_COMMANDS = frozenset(
         "x509",
     }
 )
-# The authority of every URL inside a value: from the scheme up to the first /, ?, # or blank.
-_URL_AUTHORITY_IN_TEXT_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://([^/?#\s]*)")
+# Where each URL inside a value starts; every occurrence is checked, also one nested in a list.
+_URL_START_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
 # openssl also accepts a digest or cipher name as its command (`openssl sha256 f`, `openssl aes-256-cbc -d`).
 _OPENSSL_ALGORITHM_COMMAND_RE = re.compile(
     r"md[45]|mdc2|rmd160|sm3|sha(?:1|224|256|384|512(?:-224|-256)?)|sha3-(?:224|256|384|512)|shake(?:128|256)"
@@ -3392,7 +3392,7 @@ RUN_TOOL_ROUTE_NOTES: dict[str, str] = {
     "rizin": _R2_NOTE,
     "pwntools": "run_tool refuses debug, template and update, and --run/--debug of asm, shellcraft and scramble.",
     "volatility3": "run_tool refuses --plugin-dirs.",
-    "frida-tools": "run_tool instruments a USB (-U), device-ID (-D) or remote-host (-H) target only.",
+    "frida-tools": "run_tool instruments a USB (-U), device-ID (-D) or remote-host IP (-H) target only.",
 }
 
 
@@ -3525,17 +3525,6 @@ def _address_is_this_machine(address: str) -> bool:
     return True
 
 
-def _names_this_machine(host: str) -> bool:
-    host = host.strip("[]").rstrip(".").lower()
-    if host == "localhost" or host.endswith(".localhost") or _address_is_this_machine(host):
-        return True
-    try:
-        resolved = socket.getaddrinfo(host, None)
-    except (OSError, UnicodeError):
-        return False
-    return any(_address_is_this_machine(str(entry[4][0]).split("%", 1)[0]) for entry in resolved)
-
-
 def _check_frida_policy(arg_list: list[str]) -> None:
     """Allow instrumentation of a USB, device-ID or remote-host target, never of this machine."""
     if arg_list in (["-h"], ["--help"], ["--version"]):
@@ -3554,8 +3543,15 @@ def _check_frida_policy(arg_list: list[str]) -> None:
         )
     hosts = _frida_values(arg_list, "H", "--host")
     for host in hosts:
-        address = _network_target_host(host)
-        if _names_this_machine(address):
+        address = _network_target_host(host).strip("[]")
+        try:
+            ipaddress.ip_address(address)
+        except ValueError:
+            raise ValueError(
+                f"Blocked by policy: frida: -H takes an IP address, not '{host}': a name can resolve elsewhere "
+                "by the time frida connects"
+            ) from None
+        if _address_is_this_machine(address):
             raise ValueError("Blocked by policy: frida: a frida-server on this machine instruments its processes")
         if not _allow_external() and not _is_safe_target(address):
             raise ValueError(
@@ -3570,7 +3566,7 @@ def _check_frida_policy(arg_list: list[str]) -> None:
     if local_server or any(device in _FRIDA_LOCAL_DEVICES for device in devices) or not (usb or hosts or devices):
         raise ValueError(
             "Blocked by policy: frida instruments processes on this machine; run_tool permits a USB (-U), "
-            "device-ID (-D) or remote-host (-H) target only — use run_script for local instrumentation"
+            "device-ID (-D) or remote-host IP (-H) target only — use run_script for local instrumentation"
         )
 
 
@@ -4935,12 +4931,15 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
         # hosts; a URL inside any value is, since openssl loads certificates and CRLs over HTTP.
         if command in _OPENSSL_OFFLINE_COMMANDS or _OPENSSL_ALGORITHM_COMMAND_RE.fullmatch(command.lower()):
             for arg in arg_list[1:]:
-                for authority in _URL_AUTHORITY_IN_TEXT_RE.findall(arg):
-                    # User information lets parsers disagree on the host (10.0.0.5,@8.8.8.8).
-                    if "@" in authority:
+                for start in _URL_START_RE.finditer(arg):
+                    rest = re.split(r"\s", arg[start.end() :], maxsplit=1)[0]
+                    # OpenSSL takes the host after the first @ anywhere in the rest of the URL, so a
+                    # private-looking prefix (10.0.0.5/x@8.8.8.8) can hide where it connects.
+                    if "@" in rest:
                         raise ValueError("Blocked by policy: openssl: a URL with user information hides its host")
                     # A comma or semicolon separates list entries (URI:http://a,URI:http://b); the next
                     # URL is checked on its own.
+                    authority = re.split(r"[/?#]", rest, maxsplit=1)[0]
                     host = _network_target_host("http://" + re.split(r"[,;]", authority, maxsplit=1)[0])
                     if not _is_safe_target(host):
                         raise ValueError(
