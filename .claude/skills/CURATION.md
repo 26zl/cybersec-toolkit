@@ -15,9 +15,9 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | Tier | Skills |
 | --- | ---: |
 | T0-router-and-project | 14 |
-| T1-core | 81 |
+| T1-core | 83 |
 | T1-coverage-anchor | 7 |
-| T2-operational | 199 |
+| T2-operational | 205 |
 | T3-specialist | 571 |
 
 ## Domain Counts
@@ -30,7 +30,7 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | cloud_security | 84 |
 | code_audit | 14 |
 | crypto_blockchain | 17 |
-| ctf_bounty | 16 |
+| ctf_bounty | 24 |
 | detection_soc_hunting | 149 |
 | dfir_malware | 114 |
 | general_security | 13 |
@@ -178,14 +178,14 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | ---: | --- | --- | --- |
 | 91 | `bb-methodology` | T1-core | normal |
 | 91 | `ctf-rev` | T1-core | normal |
+| 91 | `ctf-reverse` | T1-core | sensitive-offensive |
 | 88 | `bounty-recon` | T1-core | sensitive-offensive |
 | 88 | `bug-bounty` | T1-core | sensitive-offensive |
+| 88 | `ctf-writeup` | T1-core | normal |
 | 83 | `bounty-api` | T2-operational | sensitive-offensive |
 | 83 | `bounty-mobile` | T2-operational | sensitive-offensive |
 | 83 | `credential-attack` | T2-operational | sensitive-offensive |
-| 83 | `ctf-crypto` | T2-operational | sensitive-offensive |
-| 83 | `ctf-forensics` | T2-operational | normal |
-| 83 | `ctf-pwn` | T2-operational | normal |
+| 83 | `ctf-ai-ml` | T2-operational | sensitive-offensive |
 
 ### detection_soc_hunting
 

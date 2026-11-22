@@ -3,7 +3,7 @@ name: security-arsenal
 description: Security payloads, bypass tables, wordlists, gf pattern names, always-rejected bug list, and conditionally-valid-with-chain table. Use when you need specific payloads for XSS/SSRF/SQLi/XXE/NoSQLi/command injection/SSTI/IDOR/path-traversal/HTTP smuggling/WebSocket/MFA bypass, bypass techniques, or to check if a finding is submittable. Also use when asked about what NOT to submit.
 source: awarexone/Agentic-Bug-Hunter
 license: MIT
-upstream_commit: 8060af0c1b0b6ecc6595ee3261f50aa613038620
+upstream_commit: 82f4512ec432765297c36e6b3ef7dc3fe5a58be2
 ---
 
 > **Vendored note (this repo).** Adapted from the standalone [Agentic-Bug-Hunter](https://github.com/awarexone/Agentic-Bug-Hunter) project (formerly `shuvonsec/claude-bug-bounty`). The upstream **executable scaffolding** — helper scripts (`bughunter/tools/*.py`, `bughunter/tools/*.sh`; `tools/…` in older upstream text), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Static deep-dive files this skill needs are vendored into this skill directory (see **See also** at the end), and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — propose them through the approval-gated `add-tool` flow. Do not fetch or run the upstream project's helper scripts.

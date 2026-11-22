@@ -6,7 +6,7 @@
     "cloud_security": 84,
     "code_audit": 14,
     "crypto_blockchain": 17,
-    "ctf_bounty": 16,
+    "ctf_bounty": 24,
     "detection_soc_hunting": 149,
     "dfir_malware": 114,
     "general_security": 13,
@@ -955,6 +955,20 @@
       "tier": "T1-core"
     },
     {
+      "domain": "ctf_bounty",
+      "name": "ctf-reverse",
+      "priority": 91,
+      "reasons": [
+        "source:ctf-skills",
+        "broad-workflow",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "ctf-skills",
+      "tier": "T1-core"
+    },
+    {
       "domain": "appsec_web_api",
       "name": "offensive-deserialization",
       "priority": 90,
@@ -1368,6 +1382,19 @@
       "tier": "T1-core"
     },
     {
+      "domain": "ctf_bounty",
+      "name": "ctf-writeup",
+      "priority": 88,
+      "reasons": [
+        "source:ctf-skills",
+        "broad-workflow",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "ctf-skills",
+      "tier": "T1-core"
+    },
+    {
       "domain": "dfir_malware",
       "name": "dfir",
       "priority": 87,
@@ -1473,6 +1500,19 @@
     },
     {
       "domain": "ctf_bounty",
+      "name": "ctf-ai-ml",
+      "priority": 83,
+      "reasons": [
+        "source:ctf-skills",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "ctf-skills",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
       "name": "ctf-crypto",
       "priority": 83,
       "reasons": [
@@ -1499,6 +1539,32 @@
     },
     {
       "domain": "ctf_bounty",
+      "name": "ctf-malware",
+      "priority": 83,
+      "reasons": [
+        "source:ctf-skills",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "ctf-skills",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "ctf-osint",
+      "priority": 83,
+      "reasons": [
+        "source:ctf-skills",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "ctf-skills",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
       "name": "ctf-pwn",
       "priority": 83,
       "reasons": [
@@ -1508,6 +1574,19 @@
       ],
       "sensitivity": "normal",
       "source": "ctf",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "ctf-similar-search",
+      "priority": 83,
+      "reasons": [
+        "source:ctf-skills",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "ctf-skills",
       "tier": "T2-operational"
     },
     {
@@ -1538,6 +1617,19 @@
     },
     {
       "domain": "ctf_bounty",
+      "name": "solve-challenge",
+      "priority": 83,
+      "reasons": [
+        "source:ctf-skills",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "ctf-skills",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
       "name": "web2-recon",
       "priority": 83,
       "reasons": [
@@ -1559,6 +1651,18 @@
       ],
       "sensitivity": "sensitive-offensive",
       "source": "bug-bounty",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "ctf_bounty",
+      "name": "ctf-misc",
+      "priority": 80,
+      "reasons": [
+        "source:ctf-skills",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "ctf-skills",
       "tier": "T2-operational"
     },
     {
@@ -12392,10 +12496,10 @@
   ],
   "tier_counts": {
     "T0-router-and-project": 14,
-    "T1-core": 81,
+    "T1-core": 83,
     "T1-coverage-anchor": 7,
-    "T2-operational": 199,
+    "T2-operational": 205,
     "T3-specialist": 571
   },
-  "total_skills": 872
+  "total_skills": 880
 }

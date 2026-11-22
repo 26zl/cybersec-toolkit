@@ -366,6 +366,33 @@ class RevendorTests(unittest.TestCase):
         )  # fmt: skip
         return proc, skills / "demo", target
 
+    def test_excluded_skill_of_the_same_name_is_left_alone(self):
+        scratch = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(scratch, ignore_errors=True))
+        upstream, skills = scratch / "up", scratch / "skills"
+        (upstream / "demo").mkdir(parents=True)
+        _git(upstream, "init", "-q")
+        (upstream / "demo" / "SKILL.md").write_bytes(b"---\nname: demo\ndescription: upstream\n---\nbase\n")
+        _git(upstream, "add", "-A")
+        _git(upstream, "commit", "-qm", "base")
+        pin = _git(upstream, "rev-parse", "HEAD").strip()
+        (upstream / "demo" / "SKILL.md").write_bytes(b"---\nname: demo\ndescription: upstream\n---\nchanged\n")
+        _git(upstream, "commit", "-qam", "target")
+        target = _git(upstream, "rev-parse", "HEAD").strip()
+        own = b"---\nname: demo\ndescription: project-authored\n---\nours\n"
+        (skills / "demo").mkdir(parents=True)
+        (skills / "demo" / "SKILL.md").write_bytes(own)
+        command = [sys.executable, str(SCRIPTS / "revendor_skills.py"), "--clone", str(upstream), "--pin", pin,
+                   "--target", target, "--skills-dir", str(skills)]  # fmt: skip
+
+        proc = subprocess.run([*command, "--exclude", "demo"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertIn("vendored: 0", proc.stdout)
+        self.assertEqual((skills / "demo" / "SKILL.md").read_bytes(), own)
+
+        proc = subprocess.run(command, capture_output=True, text=True)
+        self.assertIn("vendored: 1", proc.stdout)
+
     def test_quoted_key_grant_is_removed(self):
         incoming = b'---\nname: demo\n"allowed-tools": Bash\ndescription: d\n---\nhello\n'
         proc, skill, _ = self._run({"SKILL.md": incoming})
