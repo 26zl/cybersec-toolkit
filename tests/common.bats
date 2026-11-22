@@ -828,8 +828,12 @@ try:
     process.send_signal(signal.SIGTERM)
     stdout, stderr = process.communicate(timeout=10)
     assert process.returncode == 130, (process.returncode, stdout, stderr)
-    stat = Path(f"/proc/{pid}/stat")
-    assert not stat.exists() or stat.read_text().rsplit(") ", 1)[1].split()[0] in {"Z", "X"}
+    # Read once: the descendant can exit between an existence check and the read.
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1].split()[0]
+    except FileNotFoundError:
+        state = "gone"
+    assert state in {"Z", "X", "gone"}, state
     retry = subprocess.run(
         ["bash", "-c", 'source "$1/lib/common.sh"; SCRIPT_DIR="$2"; _acquire_run_lock',
          "fixture", str(root), str(fixture)],
