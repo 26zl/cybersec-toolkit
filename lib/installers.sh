@@ -20,6 +20,25 @@ declare -gA _COMPAT_ZYPPER=()
 declare -gA _COMPAT_PKG=()
 _COMPAT_LOADED=false
 
+# Debian names some Debian/Ubuntu releases no longer install: dropped, or turned into a
+# virtual name with several providers, which apt refuses to choose between. Applied only
+# where apt has no candidate for the name; "-" skips the package there.
+declare -gA _APT_RELEASE_FALLBACKS=(
+    [qemu-user-static]=qemu-user-binfmt  # Ubuntu 26.04, Kali
+    [outguess]=-                         # Kali
+    [scrcpy]=-                           # Debian 13
+    [sonic-visualiser]=-                 # Ubuntu 26.04
+    [wireless-tools]=-                   # Ubuntu 26.04 (iw replaces it)
+)
+
+# _apt_lacks_candidate PKG — the package lists hold nothing installable for PKG. Without
+# lists (a cleaned image, before the first apt-get update) the name is kept.
+_apt_lacks_candidate() {
+    _ensure_pkg_index
+    compgen -G '/var/lib/apt/lists/*_Packages*' >/dev/null || return 1
+    ! apt-cache policy "$1" 2>/dev/null | grep -q '^  Candidate: [^(]'
+}
+
 # Load distro_compat.tsv into the four associative arrays.
 # Called once on first use; subsequent calls are no-ops.
 _load_distro_compat() {
@@ -95,6 +114,10 @@ fixup_package_names() {
                         sentrypeer|chaosreader) continue ;;
                         outguess|sslstrip) continue ;;
                     esac
+                fi
+                if [[ -n "${_APT_RELEASE_FALLBACKS[$pkg]:-}" ]] && _apt_lacks_candidate "$pkg"; then
+                    [[ "${_APT_RELEASE_FALLBACKS[$pkg]}" == - ]] && continue
+                    pkg="${_APT_RELEASE_FALLBACKS[$pkg]}"
                 fi
                 ;;
             dnf|pacman|zypper|pkg)
@@ -845,12 +868,12 @@ declare -gA _GIT_BUILD_COMMANDS=(
     [kwprocessor]="make"
     [proxmark3]="make client"
     [Krakatau]="cargo build --release"
-    [openstego]="./gradlew jar"
+    [openstego]="sh ./gradlew jar"
     [Modlishka]="make build"
     [ruler]="make build"
     [hostapd-mana]="{ test -f hostapd/.config || cp hostapd/defconfig hostapd/.config; } && make -C hostapd"
     [yersinia]="./autogen.sh --disable-gtk && make"
-    [pp-finder]="yarn install --immutable && yarn run build"
+    [pp-finder]="npx --yes -p @yarnpkg/cli-dist@4.1.1 yarn install --immutable && npx --yes -p @yarnpkg/cli-dist@4.1.1 yarn run build"
     [ropium]="make && python3 -m venv venv && venv/bin/python -m pip install prompt_toolkit==3.0.52 ROPgadget==7.7"
 )
 declare -gA _GIT_BUILT_PATHS=(
@@ -1033,12 +1056,13 @@ setup_git_repo() {
     # 1. Python project with requirements.txt
     # Dependency builds use the same builder and venv ownership as later pulls.
     if [[ "$legacy_python" != true && -f "$dest/requirements.txt" ]]; then
-        local _dest_esc; _dest_esc="$(_escape_single_quoted "$dest")"
+        local _dest_esc _venv_new=false; _dest_esc="$(_escape_single_quoted "$dest")"
         if [[ ! -d "$dest/venv" ]]; then
             if ! _as_builder "python3 -m venv '$_dest_esc/venv'" 2>>"$LOG_FILE"; then
                 _SETUP_GIT_DEP_WARN=true
                 return 1
             fi
+            _venv_new=true
         fi
         _as_builder "'$_dest_esc/venv/bin/pip' install -q --upgrade pip" >> "$LOG_FILE" 2>&1 || true
         # Replace abandoned pycrypto with drop-in pycryptodome (Python 3.12+ compat).
@@ -1052,8 +1076,10 @@ setup_git_repo() {
         if ! _as_builder "'$_dest_esc/venv/bin/pip' install -q -r '$_dest_esc/requirements.txt'" >> "$LOG_FILE" 2>&1; then
             # Some packages fail to build against the latest Python (e.g. lxml on 3.13).
             # Try an older Python if available on the system.
+            # Both retries rebuild the venv, so a venv that predates this call is never replaced.
             local _fallback_ok=false
             for _pyver in python3.13 python3.12 python3.11 python3.10; do
+                [[ "$_venv_new" == true ]] || break
                 command -v "$_pyver" &>/dev/null || continue
                 log_info "Retrying $name with $_pyver (build failed on $(python3 --version 2>&1))..."
                 rm -rf "$dest/venv"
@@ -1068,7 +1094,7 @@ setup_git_repo() {
             # Last resort: relax pinned versions (== → >=) and retry with system Python.
             # Only triggers when strict pins exist and all older-Python fallbacks failed,
             # and never in strict mode, which must not install unpinned versions.
-            if [[ "$_fallback_ok" != "true" ]] && [[ "${REQUIRE_CHECKSUMS:-false}" != "true" ]] \
+            if [[ "$_fallback_ok" != "true" && "$_venv_new" == true ]] && [[ "${REQUIRE_CHECKSUMS:-false}" != "true" ]] \
                 && grep -qE '^[^#].*==' "$dest/requirements.txt" 2>/dev/null; then
                 log_warn "Retrying $name with relaxed version pins (== → >=): newer, unpinned dependency versions"
                 rm -rf "$dest/venv"
@@ -2881,7 +2907,8 @@ install_metasploit() {
                 rm -f "$_tmp_key"
                 return 1
             fi
-            if [[ "$_fp" != "CEC43851245B2886296060A827FF0E3B4BAE526D" ]]; then
+            # Rapid7's key since 2025-06-23, the one rapid7/metasploit-omnibus msfupdate.erb also embeds.
+            if [[ "$_fp" != "97B32012EA1176F053727A95C048F0B49DEEC457" ]]; then
                 log_error "Metasploit GPG key fingerprint mismatch (got: $_fp) — refusing to trust"
                 rm -f "$_tmp_key"
                 return 1

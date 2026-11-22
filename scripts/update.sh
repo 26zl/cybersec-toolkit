@@ -97,10 +97,13 @@ _setup_verbose
 START_TIME=$(date +%s)
 UPDATE_FAILURES=0
 
-# Refresh the version row of a tool this toolkit installed. Never create a row or
-# relabel a pre-existing one: remove.sh reads these rows to decide what is ours.
+# Refresh the version row of a tool this toolkit installed with this method. Never create
+# a row, relabel a pre-existing one or move it to another method: remove.sh reads these
+# rows to decide what is ours.
 _track_update() {
-    _version_known "$1" && ! _is_preexisting "$1" && track_version "$@"
+    [[ -f "$VERSION_FILE" ]] \
+        && awk -F'|' -v t="$1" -v m="$2" '$1==t && $2==m && $3!="existing"{f=1} END{exit !f}' "$VERSION_FILE" 2>/dev/null \
+        && track_version "$@"
     return 0
 }
 
@@ -344,9 +347,14 @@ if [[ "$SKIP_GIT" == "false" ]]; then
                     GIT_FAILED=$((GIT_FAILED + 1))
                 fi
             fi
-            if [[ "$_git_tree_ready" == true ]] && ! setup_git_repo "$dir" >> "$LOG_FILE" 2>&1; then
-                log_warn "CLI setup failed after updating $name; see the log for its build/runtime requirements"
-                GIT_FAILED=$((GIT_FAILED + 1))
+            # A registry-named clone without a git row is pulled but its venv and PATH stay the user's.
+            if [[ "$_git_tree_ready" == true ]] && _git_row_known "$name"; then
+                if ! setup_git_repo "$dir" >> "$LOG_FILE" 2>&1; then
+                    log_warn "CLI setup failed after updating $name; see the log for its build/runtime requirements"
+                    GIT_FAILED=$((GIT_FAILED + 1))
+                elif [[ "$_SETUP_GIT_DEP_WARN" == true ]]; then
+                    log_warn "Some dependencies of $name could not be installed after the update; see the log"
+                fi
             fi
         done
         log_success "Git repos: $GIT_UPDATED updated, $GIT_SKIPPED already latest, $GIT_FAILED failed ($GIT_TOTAL total)"
@@ -773,11 +781,16 @@ else
             # the same stash/reset fallback used for ordinary Git installs.
             _pull_out=""
             _src_state="failed"
+            _src_stashed=false
             if _pull_out=$(_as_builder "LC_ALL=C git $_GIT_STALL_OPTS -C '$_bdir_escaped' pull" 2>>"$LOG_FILE"); then
                 if echo "$_pull_out" | grep -q "Already up to date"; then _src_state="skip"; else _src_state="changed"; fi
             elif _git_safe_reset_to_remote "$_bdir" "$LOG_FILE"; then
                 log_debug "Updated $_bname to upstream with local edits preserved"
                 _src_state="changed"
+            elif [[ $? -eq 2 ]]; then
+                # Upstream is checked out, so rebuild it; the stashed edits still fail the run.
+                _src_state="changed"
+                _src_stashed=true
             fi
 
             if [[ "$_src_state" == "skip" ]]; then
@@ -828,6 +841,7 @@ else
                         fi
                         BUILD_FAILED=$((BUILD_FAILED + 1))
                     fi
+                    [[ "$_src_stashed" == true ]] && UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
             fi
         done
     done

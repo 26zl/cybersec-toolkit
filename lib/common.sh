@@ -1257,7 +1257,8 @@ _GIT_STALL_OPTS="-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60"
 # Callers:  git_clone_or_pull below, scripts/update.sh
 # Args:     $1 = repo path (must contain .git)
 #           $2 = log file for verbose git output
-# Returns:  0 on success, 1 on failure
+# Returns:  0 on success, 1 on failure, 2 when upstream is checked out but local
+#           changes that conflict with it stayed in the stash
 _git_safe_reset_to_remote() {
     local repo_path="$1"
     local log_file="$2"
@@ -1292,12 +1293,20 @@ _git_safe_reset_to_remote() {
 
     if ! _as_builder "git $_GIT_STALL_OPTS -C '$_repo_escaped' fetch origin" >> "$log_file" 2>&1 \
         || ! _as_builder "git -C '$_repo_escaped' reset --hard '$_branch_escaped'" >> "$log_file" 2>&1; then
-        [[ "$_stashed" == "1" ]] && log_warn "Local changes preserved in stash for $(basename "$repo_path") — run 'git -C $repo_path stash list'"
+        # HEAD has not moved, so the stash re-applies cleanly and the tree is as it was.
+        if [[ "$_stashed" == "1" ]] && ! _as_builder "git -C '$_repo_escaped' stash pop --quiet" >> "$log_file" 2>&1; then
+            log_warn "Local changes preserved in stash for $(basename "$repo_path") — run 'git -C $repo_path stash list'"
+        fi
         return 1
     fi
 
     if [[ "$_stashed" == "1" ]]; then
         if ! _as_builder "git -C '$_repo_escaped' stash pop --quiet" >> "$log_file" 2>&1; then
+            # A failed pop keeps its stash entry, so clearing the half-applied merge loses nothing.
+            if _as_builder "git -C '$_repo_escaped' reset --hard --quiet HEAD" >> "$log_file" 2>&1; then
+                log_warn "Local changes in $(basename "$repo_path") conflict with upstream; kept in the stash ('git -C $repo_path stash list')"
+                return 2
+            fi
             log_warn "Stashed local changes remain for $(basename "$repo_path") — resolve with 'git -C $repo_path stash pop'"
             return 1
         fi

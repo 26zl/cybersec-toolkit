@@ -13,7 +13,7 @@ STEGO_PIPX=(stegoveritas)
 STEGO_GEMS=(zsteg)
 
 STEGO_GO=(
-    "github.com/lukechampine/jsteg@latest"
+    "lukechampine.com/jsteg/cmd/jsteg@latest"
 )
 STEGO_GO_BINS=(jsteg)
 

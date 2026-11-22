@@ -344,6 +344,7 @@ EOF
         export LOG_FILE=/dev/null VERSION_FILE="$tmpdir/.versions"
         cargo() { :; }
         ensure_cargo() { return 0; }
+        _ensure_build_toolchain() { return 0; }
         _as_builder() { return 0; }
         _builder_home() { echo /tmp; }
         install_single_tool ropr
@@ -390,6 +391,7 @@ EOF
         export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
         source "'"$INSTALL_SH"'"
         export LOG_FILE=/dev/null
+        _ensure_build_toolchain() { return 0; }
         build_from_source() {
             echo "SOURCE=$1|$2|$3"
             return 0
@@ -406,6 +408,7 @@ EOF
         export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
         source "'"$INSTALL_SH"'"
         LOG_FILE=/dev/null
+        _ensure_build_toolchain() { return 0; }
         install_apt_batch() { shift; echo "DEPENDENCIES=$*"; }
         build_from_source() { echo "SOURCE=$1"; }
         install_single_tool pycdc
@@ -424,6 +427,7 @@ EOF
         export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
         source "'"$INSTALL_SH"'"
         LOG_FILE=/dev/null
+        _ensure_build_toolchain() { return 0; }
         install_apt_batch() { TOTAL_TOOL_FAILURES=$((TOTAL_TOOL_FAILURES + 1)); }
         build_from_source() { echo SHOULD_NOT_BUILD; }
         install_single_tool pycdc
@@ -635,16 +639,17 @@ _stale_install_fixture() {
     ln -s "$BATS_TEST_TMPDIR/pipx/venvs/commix/bin/commix" "$BATS_TEST_TMPDIR/bin/commix"
 }
 
+# _run_stale_cleanup [CODE] — run CODE (default: the install-time cleanup) in a sourced install.sh.
 _run_stale_cleanup() {
     run bash -c '
-        set --
+        stale_code="${1:-_cleanup_stale_method_artefacts}"; set --
         export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
         source "'"$STALE_COPY"'/install.sh"
         PIPX_HOME="'"$BATS_TEST_TMPDIR"'/pipx"; PIPX_BIN_DIR="'"$BATS_TEST_TMPDIR"'/bin"
         GITHUB_TOOL_DIR="'"$BATS_TEST_TMPDIR"'/tools"; LOG_FILE=/dev/null
         VERSION_FILE="'"$STALE_COPY"'/.versions"
-        _cleanup_stale_method_artefacts
-    '
+        eval "$stale_code"
+    ' _ "${1:-}"
 }
 
 @test "install removes the old pipx commix venv and link while its row still exists" {
@@ -767,7 +772,9 @@ EOF
         source "$stale_copy_path/scripts/stale_artefacts.sh"
         PIPX_HOME="$stale_test_path/pipx"; PIPX_BIN_DIR="$stale_test_path/bin"
         GITHUB_TOOL_DIR="$stale_test_path/tools"; LOG_FILE=/dev/null
+        # The cleanup runs git through _as_builder in a child shell, so the stub is exported.
         git() { return 128; }
+        export -f git
         _cleanup_stale_artefacts "$stale_copy_path/.versions"
     ' _ "$STALE_COPY" "$BATS_TEST_TMPDIR"
 
@@ -821,4 +828,237 @@ EOF
     refute_output --partial 'and dropped its install record'
     [ ! -e "$BATS_TEST_TMPDIR/pipx/venvs/commix" ]
     grep -q '^commix|pipx|' "$STALE_COPY/.versions"
+}
+
+@test "install leaves old-method artefacts alone unless this run installs their successor" {
+    _stale_install_fixture
+    printf 'commix|pipx|latest|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    _run_stale_cleanup 'MODULES_TO_INSTALL=(crypto); _cleanup_stale_method_artefacts'
+    assert_success
+    _run_stale_cleanup 'MODULES_TO_INSTALL=(web); SKIP_GIT=true; _cleanup_stale_method_artefacts'
+    assert_success
+
+    [ -d "$BATS_TEST_TMPDIR/pipx/venvs/commix" ]
+    [ -L "$BATS_TEST_TMPDIR/bin/commix" ]
+    grep -q '^commix|pipx|' "$STALE_COPY/.versions"
+}
+
+@test "install keeps the legacy manspider venv while --skip-pipx holds back its pipx successor" {
+    _stale_install_fixture
+    mkdir -p "$BATS_TEST_TMPDIR/pipx/venvs/manspider/bin"
+    printf 'manspider|pipx|latest|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    _run_stale_cleanup 'MODULES_TO_INSTALL=(enterprise); SKIP_PIPX=true; _cleanup_stale_method_artefacts'
+    assert_success
+    [ -d "$BATS_TEST_TMPDIR/pipx/venvs/manspider" ]
+    grep -q '^manspider|pipx|' "$STALE_COPY/.versions"
+
+    _run_stale_cleanup 'MODULES_TO_INSTALL=(enterprise); _cleanup_stale_method_artefacts'
+    assert_success
+    [ ! -e "$BATS_TEST_TMPDIR/pipx/venvs/manspider" ]
+    run grep -q '^manspider|pipx|' "$STALE_COPY/.versions"
+    assert_failure
+}
+
+@test "--tool with the legacy manspider name leaves its old pipx install alone" {
+    _stale_install_fixture
+    local venv="$BATS_TEST_TMPDIR/home/.local/pipx/venvs/manspider"
+    mkdir -p "$venv/bin" "$BATS_TEST_TMPDIR/stubs"
+    : > "$venv/bin/manspider"
+    ln -s "$venv/bin/manspider" "$BATS_TEST_TMPDIR/bin/manspider"
+    printf 'manspider|pipx|latest|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+    printf '#!/bin/sh\nexit 1\n' > "$BATS_TEST_TMPDIR/stubs/pipx"
+    chmod +x "$BATS_TEST_TMPDIR/stubs/pipx"
+
+    run env -i HOME="$BATS_TEST_TMPDIR/home" PREFIX="$BATS_TEST_TMPDIR" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=Termux TERM=dumb \
+        GITHUB_TOOL_DIR="$BATS_TEST_TMPDIR/tools" PATH="$BATS_TEST_TMPDIR/stubs:$PATH" \
+        bash "$STALE_COPY/install.sh" --tool manspider
+
+    assert_failure
+    assert_output --partial "not found in any module array"
+    [ -d "$venv" ]
+    [ -L "$BATS_TEST_TMPDIR/bin/manspider" ]
+    grep -q '^manspider|pipx|' "$STALE_COPY/.versions"
+}
+
+@test "install keeps the old apktool clone where the distro has no apktool package" {
+    _stale_install_fixture
+    git init -q "$BATS_TEST_TMPDIR/tools/apktool"
+    printf 'apktool|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    _run_stale_cleanup 'PKG_MANAGER=dnf; _cleanup_stale_method_artefacts; _cleanup_stale_method_artefacts apktool'
+
+    assert_success
+    [ -d "$BATS_TEST_TMPDIR/tools/apktool/.git" ]
+    grep -q '^apktool|git|' "$STALE_COPY/.versions"
+}
+
+@test "stale cleanup leaves a directory that is not a Git clone alone and drops its record" {
+    _stale_install_fixture
+    local dir="$BATS_TEST_TMPDIR/tools/apktool"
+    mkdir -p "$dir"
+    printf 'synthetic jar\n' > "$dir/apktool.jar"
+    printf '#!/bin/sh\nexec java -jar %s/apktool.jar "$@"\n' "$dir" > "$BATS_TEST_TMPDIR/bin/apktool"
+    chmod +x "$BATS_TEST_TMPDIR/bin/apktool"
+    printf 'apktool|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    _run_stale_cleanup
+
+    assert_success
+    assert_output --partial "not a Git clone"
+    [ -f "$dir/apktool.jar" ]
+    [ -f "$BATS_TEST_TMPDIR/bin/apktool" ]
+    ! grep -q '^apktool|' "$STALE_COPY/.versions"
+}
+
+@test "stale cleanup keeps a clone whose ignored files hold local data" {
+    _stale_install_fixture
+    local dir="$BATS_TEST_TMPDIR/tools/apktool"
+    local -a git_fixture=(git -c core.hooksPath=/dev/null -c commit.gpgsign=false)
+    "${git_fixture[@]}" init -q "$dir"
+    printf 'build/\n' > "$dir/.gitignore"
+    "${git_fixture[@]}" -C "$dir" add .gitignore
+    "${git_fixture[@]}" -C "$dir" -c user.email=fixture@example.invalid \
+        -c user.name=fixture commit -qm fixture
+    mkdir -p "$dir/build"
+    printf 'synthetic local build\n' > "$dir/build/apktool.jar"
+    printf 'apktool|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+    _run_stale_cleanup
+
+    assert_success
+    assert_output --partial "uncommitted changes"
+    [ -f "$dir/build/apktool.jar" ]
+    grep -q '^apktool|git|' "$STALE_COPY/.versions"
+}
+
+@test "stale cleanup keeps a clean clone whose edits sit only in the stash or in unpushed commits" {
+    local dir="$BATS_TEST_TMPDIR/tools/apktool" upstream="$BATS_TEST_TMPDIR/upstream-apktool" case
+    local -a git_fixture=(git -c core.hooksPath=/dev/null -c commit.gpgsign=false
+        -c user.email=fixture@example.invalid -c user.name=fixture)
+    _stale_install_fixture
+    for case in stash commit clean; do
+        rm -rf "$dir" "$upstream"
+        "${git_fixture[@]}" init -q "$upstream"
+        "${git_fixture[@]}" -C "$upstream" commit -q --allow-empty -m upstream
+        "${git_fixture[@]}" clone -q "$upstream" "$dir"
+        case "$case" in
+            stash)
+                printf 'synthetic edit\n' > "$dir/notes.txt"
+                "${git_fixture[@]}" -C "$dir" add notes.txt
+                "${git_fixture[@]}" -C "$dir" stash -q
+                ;;
+            commit) "${git_fixture[@]}" -C "$dir" commit -q --allow-empty -m local ;;
+        esac
+        printf 'apktool|git|HEAD|2026-01-01 00:00:00\n' > "$STALE_COPY/.versions"
+
+        _run_stale_cleanup '_cleanup_stale_method_artefacts apktool'
+
+        assert_success
+        if [[ "$case" == clean ]]; then
+            [ ! -e "$dir" ]
+        else
+            assert_output --partial "stashed edits or commits on no remote"
+            [ -d "$dir/.git" ]
+            grep -q '^apktool|git|' "$STALE_COPY/.versions"
+        fi
+    done
+}
+
+@test "rollback removes only the launchers that point into the rolled-back clone" {
+    local copy="$BATS_TEST_TMPDIR/toolkit" bin="$BATS_TEST_TMPDIR/prefix/bin"
+    local tools="$BATS_TEST_TMPDIR/tools"
+    mkdir -p "$copy/.install_sessions" "$bin" "$tools/nikto" "$tools/XSStrike" "$BATS_TEST_TMPDIR/home"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    printf '#!/bin/sh\nexec /usr/share/nikto/nikto.pl "$@"\n' > "$bin/nikto"
+    printf '#!/bin/bash\nexec python3 %s/XSStrike/xsstrike.py "$@"\n' "$tools" > "$bin/xsstrike"
+    chmod +x "$bin/nikto" "$bin/xsstrike"
+    printf '%s\n' '# Session: s1' '# Schema: 2' 'nikto|git|installed|2026-01-01 00:00:00' \
+        'XSStrike|git|installed|2026-01-01 00:00:00' > "$copy/.install_sessions/s1.manifest"
+    printf '%s\n' '# schema: 2' 'nikto|git|HEAD|2026-01-01 00:00:00' \
+        'XSStrike|git|HEAD|2026-01-01 00:00:00' > "$copy/.versions"
+
+    run env -i HOME="$BATS_TEST_TMPDIR/home" PREFIX="$BATS_TEST_TMPDIR/prefix" TERMUX_VERSION=1 \
+        PKG_MANAGER=pkg DISTRO_ID=android DISTRO_NAME=Termux TERM=dumb \
+        GITHUB_TOOL_DIR="$tools" PATH="$PATH" \
+        bash "$copy/install.sh" --rollback s1 --yes < /dev/null
+
+    assert_success
+    [ ! -e "$tools/nikto" ]
+    [ ! -e "$tools/XSStrike" ]
+    [ -f "$bin/nikto" ]
+    [ ! -e "$bin/xsstrike" ]
+}
+
+@test "single-tool cargo and source builds install a C toolchain first" {
+    local copy="$BATS_TEST_TMPDIR/toolkit"
+    mkdir -p "$copy/scripts"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    cp "$PROJECT_ROOT/scripts/stale_artefacts.sh" "$copy/scripts/"
+
+    run bash -c '
+        copy="$1" tmp="$2"; set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "$copy/install.sh"
+        LOG_FILE=/dev/null VERSION_FILE="$tmp/.versions" GITHUB_TOOL_DIR="$tmp/tools"
+        command_exists() {
+            case "$1" in
+                cc|make) [[ -f "$tmp/toolchain" ]] ;;
+                cargo) return 0 ;;
+                *) command -v "$1" >/dev/null 2>&1 ;;
+            esac
+        }
+        pkg_is_installed() { return 1; }
+        pkg_install() { echo "pkg_install $*" >> "$tmp/calls"; : > "$tmp/toolchain"; }
+        ensure_cargo() { return 0; }
+        _cargo_install() { echo "cargo_install" >> "$tmp/calls"; }
+        build_from_source() { echo "build_from_source $1" >> "$tmp/calls"; }
+        install_single_tool feroxbuster > /dev/null 2>&1 || exit 1
+        rm -f "$tmp/toolchain"
+        install_single_tool massdns > /dev/null 2>&1 || exit 1
+        cat "$tmp/calls"
+    ' _ "$copy" "$BATS_TEST_TMPDIR"
+
+    assert_success
+    assert_line --index 0 "pkg_install build-essential"
+    assert_line --index 1 "cargo_install"
+    assert_line --index 2 "pkg_install build-essential"
+    assert_line --index 3 "build_from_source massdns"
+}
+
+@test "single-tool Git install builds a toolchain only for a repository with a build step" {
+    local copy="$BATS_TEST_TMPDIR/toolkit"
+    mkdir -p "$copy/scripts"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    cp "$PROJECT_ROOT/scripts/stale_artefacts.sh" "$copy/scripts/"
+
+    run bash -c '
+        copy="$1" tmp="$2"; set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "$copy/install.sh"
+        LOG_FILE=/dev/null VERSION_FILE="$tmp/.versions" GITHUB_TOOL_DIR="$tmp/tools"
+        command_exists() {
+            case "$1" in
+                cc|make) [[ -f "$tmp/toolchain" ]] ;;
+                *) command -v "$1" >/dev/null 2>&1 ;;
+            esac
+        }
+        pkg_is_installed() { return 1; }
+        pkg_install() { echo "pkg_install $*" >> "$tmp/calls"; : > "$tmp/toolchain"; }
+        git_clone_or_pull() { echo "clone ${2##*/}" >> "$tmp/calls"; }
+        setup_git_repo() { return 0; }
+        install_single_tool linux-smart-enumeration > /dev/null 2>&1 || exit 1
+        install_single_tool pwnat > /dev/null 2>&1 || exit 1
+        cat "$tmp/calls"
+    ' _ "$copy" "$BATS_TEST_TMPDIR"
+
+    assert_success
+    assert_line --index 0 "clone linux-smart-enumeration"
+    assert_line --index 1 "pkg_install build-essential"
+    assert_line --index 2 "clone pwnat"
 }

@@ -280,6 +280,34 @@ PY
     grep -q "password usertoken456" "$_GH_NETRC_FILE"
 }
 
+@test "strict mode as root takes the distribution's Rust toolchain instead of rustup" {
+    source_libs --installers debian apt
+    source "$PROJECT_ROOT/lib/shared.sh"
+    make_test_tmpdir
+    local bin="$TEST_TMPDIR/bin"
+    mkdir -p "$bin"
+    REQUIRE_CHECKSUMS=true SUDO_USER="" SKIP_SOURCE=false SKIP_CARGO=false LOG_FILE=/dev/null
+    PATH="$bin:/usr/bin:/bin"
+    command_exists() { [[ "$1" == cargo ]] && [[ -x "$bin/cargo" ]]; }
+    curl() { echo "curl $*" >> "$TEST_TMPDIR/calls"; return 1; }
+    install_apt_batch() {
+        echo "install_apt_batch $*" >> "$TEST_TMPDIR/calls"
+        printf '#!/bin/sh\nexit 0\n' > "$bin/cargo"
+        chmod +x "$bin/cargo"
+    }
+
+    run ensure_cargo
+    assert_success
+    run cat "$TEST_TMPDIR/calls"
+    assert_output "install_apt_batch Rust toolchain cargo"
+
+    rm -f "$bin/cargo" "$TEST_TMPDIR/calls"
+    install_apt_batch() { echo "install_apt_batch $*" >> "$TEST_TMPDIR/calls"; }
+    run ensure_cargo
+    assert_failure
+    assert_output --partial "No distribution Rust toolchain"
+}
+
 # curl-pipe content validation gate
 
 @test "curl-pipe validator rejects an empty download" {
@@ -459,6 +487,34 @@ _go_installed() {
     [[ "${pkgs[*]}" == "${original[*]}" ]]
 }
 
+@test "fixup: apt release fallbacks apply only where the package lists offer no candidate" {
+    source_libs --installers debian apt
+    local stubs="$BATS_TEST_TMPDIR/stubs"
+    mkdir -p "$stubs"
+    # Synthetic policy output: qemu-user-static and wireless-tools have no candidate,
+    # sonic-visualiser is unknown, and scrcpy still installs.
+    cat > "$stubs/apt-cache" <<'STUB'
+#!/bin/sh
+case "$2" in
+    qemu-user-static|wireless-tools) printf '%s:\n  Installed: (none)\n  Candidate: (none)\n' "$2" ;;
+    scrcpy) printf '%s:\n  Installed: (none)\n  Candidate: 3.3-1\n' "$2" ;;
+esac
+STUB
+    chmod +x "$stubs/apt-cache"
+    PATH="$stubs:$PATH"
+
+    compgen() { return 0; }
+    local -a pkgs=(nmap qemu-user-static sonic-visualiser wireless-tools scrcpy)
+    fixup_package_names pkgs
+    [[ "${pkgs[*]}" == "nmap qemu-user-binfmt scrcpy" ]]
+
+    # No package lists yet: every name is kept rather than judged on missing data.
+    compgen() { return 1; }
+    pkgs=(nmap qemu-user-static sonic-visualiser wireless-tools scrcpy)
+    fixup_package_names pkgs
+    [[ "${pkgs[*]}" == "nmap qemu-user-static sonic-visualiser wireless-tools scrcpy" ]]
+}
+
 @test "fixup: x86-only packages are dropped on ARM and kept on x86" {
     source_libs --installers debian apt
     local -a pkgs=(nasm edb-debugger qemu-system-x86)
@@ -495,11 +551,11 @@ _go_installed() {
     [[ "${pkgs[0]}" == "nmap-ncat" ]]
 }
 
-@test "fixup: dnf translates build-essential to @development-tools" {
+@test "fixup: dnf translates build-essential to groups that include gcc and make" {
     source_libs --installers fedora dnf
     local -a pkgs=(build-essential)
     fixup_package_names pkgs
-    [[ "${pkgs[0]}" == "@development-tools" ]]
+    [[ "${pkgs[*]}" == "@development-tools @c-development" ]]
 }
 
 @test "fixup: dnf translates dnsutils to bind-utils" {
@@ -3334,4 +3390,28 @@ sys.exit(0 if len(hits) == 1 else 1)
 ' "$pattern" <<< "${assets[$binary]}"
         [[ "$status" -eq 0 ]] || { echo "$binary ($pattern): $output"; return 1; }
     done
+}
+
+@test "setup_git_repo keeps an existing venv when its requirements cannot be installed" {
+    source_libs --installers debian apt
+    make_test_tmpdir
+    export PIPX_BIN_DIR="$TEST_TMPDIR/bin"
+    local repo="$TEST_TMPDIR/ExampleTool" py
+    mkdir -p "$PIPX_BIN_DIR" "$repo/venv/bin" "$repo/venv/existing-deps" "$TEST_TMPDIR/stubs"
+    printf 'synthetic-dep==1.0\n' > "$repo/requirements.txt"
+    printf 'print("synthetic tool")\n' > "$repo/ExampleTool.py"
+    printf '#!/bin/sh\nexit 0\n' > "$repo/venv/bin/python"
+    chmod +x "$repo/venv/bin/python"
+    # Every interpreter the fallback could rebuild the venv with is present.
+    for py in python3.13 python3.12 python3.11 python3.10; do
+        printf '#!/bin/sh\nexit 0\n' > "$TEST_TMPDIR/stubs/$py"
+        chmod +x "$TEST_TMPDIR/stubs/$py"
+    done
+    PATH="$TEST_TMPDIR/stubs:$PATH"
+    _as_builder() { [[ "$1" != *"install -q -r"* ]]; }
+
+    setup_git_repo "$repo"
+
+    [[ -d "$repo/venv/existing-deps" ]]
+    [[ "$_SETUP_GIT_DEP_WARN" == true ]]
 }

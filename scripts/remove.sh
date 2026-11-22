@@ -375,7 +375,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
     fi
     if [[ "$_plan_full" == "true" && -f "$_VERSIONS_FILE" ]]; then
         for _entry in "${STALE_ARTEFACTS[@]}"; do
-            IFS='|' read -r _st_tool _st_method _st_artefact <<< "$_entry"
+            IFS='|' read -r _st_tool _st_method _st_artefact _ <<< "$_entry"
             awk -F'|' -v t="$_st_tool" -v m="$_st_method" '$1==t && $2==m && $3!="existing"{f=1} END{exit !f}' \
                 "$_VERSIONS_FILE" && _plan "stale $_st_method artefact" "$_st_tool ($_st_artefact)"
         done
@@ -1000,12 +1000,17 @@ if [[ "$DEEP_CLEAN" == "true" ]]; then
     # Paths under the user's home are deleted as that user: a symlinked parent
     # (e.g. ~/.cargo -> /etc) must not redirect root's rm -rf outside their files.
     _rm_user_tree() { _as_builder "rm -rf -- '$(_escape_single_quoted "$1")'" 2>/dev/null; }
+    # Go makes its module cache directories read-only, so they get write permission back first.
+    _rm_go_modcache() {
+        local _p; _p="$(_escape_single_quoted "$1")"
+        _as_builder "find '$_p' -type d ! -perm -u=w -exec chmod u+w {} + 2>/dev/null; rm -rf -- '$_p'" 2>/dev/null
+    }
 
     # Go caches
     # Go module cache (downloaded module source)
     if [[ -d "$GOPATH/pkg" ]]; then
         _sz=$(du -sm "$GOPATH/pkg" 2>/dev/null | cut -f1 || echo 0)
-        if _rm_user_tree "$GOPATH/pkg"; then
+        if _rm_go_modcache "$GOPATH/pkg"; then
             log_success "Removed Go module cache ($GOPATH/pkg — ${_sz}MB)"
             _deep_freed=$((_deep_freed + _sz))
         else

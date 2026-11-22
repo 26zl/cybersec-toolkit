@@ -118,15 +118,15 @@ case "$(uname -m)" in
     arm64|aarch64) PLATFORM[arch]="linux/amd64" ;;
 esac
 # Prereqs cover everything the checks need — notably openssl (backup encryption),
-# make (build-tree tests) and the bats/tar/awk tooling — so a missing tool never
-# masquerades as a failure.
+# make (build-tree tests), diffutils (cmp/diff in the bats suite) and the
+# bats/tar/awk tooling — so a missing tool never masquerades as a failure.
 declare -A PREREQ=(
     [ubuntu]='apt-get update -qq; apt-get install -y -qq --no-install-recommends \
-        git curl wget sudo ca-certificates python3 openssl tar gzip make'
-    [fedora]='dnf install -y -q git curl wget sudo which python3 openssl tar gzip findutils gawk make'
-    [arch]='pacman -Sy --noconfirm --needed git curl wget sudo which python openssl tar gzip make'
+        git curl wget sudo ca-certificates python3 openssl tar gzip diffutils make'
+    [fedora]='dnf install -y -q git curl wget sudo which python3 openssl tar gzip diffutils findutils gawk make'
+    [arch]='pacman -Sy --noconfirm --needed git curl wget sudo which python openssl tar gzip diffutils make'
     [opensuse]='zypper --non-interactive --gpg-auto-import-keys refresh
-        zypper --non-interactive install -y git curl wget sudo which python3 openssl tar gzip gawk findutils make'
+        zypper --non-interactive install -y git curl wget sudo which python3 openssl tar gzip diffutils gawk findutils make'
 )
 # pacman's download sandbox cannot set up seccomp under the engine's emulation.
 if [[ -n "${PLATFORM[arch]:-}" ]]; then

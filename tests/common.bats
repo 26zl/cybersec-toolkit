@@ -713,6 +713,48 @@ _bc_setup() {
     [[ "$(git -C "$repository" rev-parse refs/stash)" == "$previous_stash" ]]
 }
 
+@test "_git_safe_reset_to_remote puts local edits and untracked files back when the fetch fails" {
+    make_test_tmpdir
+    local upstream="$TEST_TMPDIR/upstream" repository="$TEST_TMPDIR/repo"
+    git init -q -b main "$upstream"
+    printf 'original\n' > "$upstream/notes"
+    git -C "$upstream" add notes
+    git -C "$upstream" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm original
+    git clone -q "$upstream" "$repository"
+    printf 'local edit\n' >> "$repository/notes"
+    mkdir -p "$repository/venv/bin"
+    : > "$repository/venv/bin/python"
+    git -C "$repository" remote set-url origin "$TEST_TMPDIR/unreachable"
+
+    run _git_safe_reset_to_remote "$repository" "$TEST_TMPDIR/git.log"
+
+    assert_failure 1
+    grep -q 'local edit' "$repository/notes"
+    [[ -f "$repository/venv/bin/python" ]]
+    [[ -z "$(git -C "$repository" stash list)" ]]
+}
+
+@test "_git_safe_reset_to_remote checks out upstream and keeps conflicting edits in the stash" {
+    make_test_tmpdir
+    local upstream="$TEST_TMPDIR/upstream" repository="$TEST_TMPDIR/repo"
+    local -a identity=(-c user.name=fixture -c user.email=fixture@example.invalid)
+    git init -q -b main "$upstream"
+    printf 'original\n' > "$upstream/notes"
+    git -C "$upstream" add notes
+    git -C "$upstream" "${identity[@]}" commit -qm original
+    git clone -q "$upstream" "$repository"
+    printf 'local edit\n' > "$repository/notes"
+    printf 'upstream edit\n' > "$upstream/notes"
+    git -C "$upstream" "${identity[@]}" commit -qam upstream
+
+    run _git_safe_reset_to_remote "$repository" "$TEST_TMPDIR/git.log"
+
+    assert_failure 2
+    [[ "$(cat "$repository/notes")" == 'upstream edit' ]]
+    [[ -z "$(git -C "$repository" status --porcelain)" ]]
+    [[ "$(git -C "$repository" stash show -p)" == *'local edit'* ]]
+}
+
 @test "_path_append appends each directory once and never reorders PATH" {
     # A builder-owned dir ahead of /usr/bin would let it shadow sha256sum/tar for root.
     # PATH is restored before asserting: bats' own cleanup needs rm, which is /bin/rm on macOS.
