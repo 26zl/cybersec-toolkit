@@ -4932,14 +4932,14 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
         if command in _OPENSSL_OFFLINE_COMMANDS or _OPENSSL_ALGORITHM_COMMAND_RE.fullmatch(command.lower()):
             for arg in arg_list[1:]:
                 for start in _URL_START_RE.finditer(arg):
-                    rest = re.split(r"\s", arg[start.end() :], maxsplit=1)[0]
-                    # OpenSSL takes the host after the first @ anywhere in the rest of the URL, so a
-                    # private-looking prefix (10.0.0.5/x@8.8.8.8) can hide where it connects.
+                    rest = arg[start.end() :]
+                    # OpenSSL takes the host after the first @ anywhere in the rest of the value, past
+                    # blanks too, so a private-looking prefix (10.0.0.5/x@8.8.8.8) can hide where it connects.
                     if "@" in rest:
                         raise ValueError("Blocked by policy: openssl: a URL with user information hides its host")
                     # A comma or semicolon separates list entries (URI:http://a,URI:http://b); the next
                     # URL is checked on its own.
-                    authority = re.split(r"[/?#]", rest, maxsplit=1)[0]
+                    authority = re.split(r"[/?#\s]", rest, maxsplit=1)[0]
                     host = _network_target_host("http://" + re.split(r"[,;]", authority, maxsplit=1)[0])
                     if not _is_safe_target(host):
                         raise ValueError(

@@ -60,6 +60,8 @@ REFUSED = [
     "x509 -in http://user@10.0.0.5/c.pem -noout",
     "x509 -in http://10.0.0.5/x@8.8.8.8/c.pem -noout",
     "x509 -in http://10.0.0.5?q=@8.8.8.8 -noout",
+    "x509 -in 'http://10.0.0.5 @8.8.8.8/c.pem' -noout",
+    "x509 -in 'http://10.0.0.5\t@8.8.8.8/c.pem' -noout",
     "req -new -key /tmp/k -subj /CN=x -addext crlDistributionPoints=URI:http://10.0.0.1/a,URI:http://8.8.8.8/b",
 ]
 
