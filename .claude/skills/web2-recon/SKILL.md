@@ -3,7 +3,7 @@ name: web2-recon
 description: Web2 recon pipeline — subdomain enumeration (subfinder, Chaos API, assetfinder), live host discovery (dnsx, httpx), URL crawling (katana, waybackurls, gau), directory fuzzing (ffuf), JS analysis (LinkFinder, SecretFinder), continuous monitoring (new subdomain alerts, JS change detection, GitHub commit watch). Use when starting recon on any web2 target or when asked about asset discovery, subdomain enum, or attack surface mapping.
 source: awarexone/Agentic-Bug-Hunter
 license: MIT
-upstream_commit: 8060af0c1b0b6ecc6595ee3261f50aa613038620
+upstream_commit: 82f4512ec432765297c36e6b3ef7dc3fe5a58be2
 ---
 
 > **Vendored note (this repo).** Adapted from the standalone [Agentic-Bug-Hunter](https://github.com/awarexone/Agentic-Bug-Hunter) project (formerly `shuvonsec/claude-bug-bounty`). The upstream **executable scaffolding** — helper scripts (`bughunter/tools/*.py`, `bughunter/tools/*.sh`; `tools/…` in older upstream text), the standalone `wordlists/` pipeline, and slash-commands (`/recon`, `/hunt`, `/validate`, `/report`, …) — is **not bundled here**: run tooling through the MCP server (`run_tool` / `run_pipeline` / `run_script`) and install via the project installer/registry. Any static deep-dive files this skill needs are vendored into its own `references/` folder, and cross-skill references resolve by skill name (e.g. the `bb-methodology` skill). Some named tools may not be in `tools_config.json` yet — propose them through the approval-gated `add-tool` flow. Do not fetch or run the upstream project's helper scripts.

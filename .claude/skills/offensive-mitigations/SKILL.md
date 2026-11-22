@@ -4,7 +4,7 @@ description: "Security mitigation reference and bypass catalog: ASLR, DEP/NX, RE
 category: exploit-dev
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: a8de813edc9f66f60d44cfe42d47750e89d9930b
+upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
 ---
 # SKILL: Modern Kernel Exploit Mitigations
 

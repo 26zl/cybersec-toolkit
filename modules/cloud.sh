@@ -15,7 +15,7 @@ CLOUD_GO=(
     "github.com/BishopFox/cloudfox@latest"
     "github.com/projectdiscovery/cloudlist/cmd/cloudlist@latest"
     "github.com/sa7mon/s3scanner@latest"
-    "github.com/DataDog/stratus-red-team/v2/cmd/stratus@latest"
+    "github.com/datadog/stratus-red-team/v2/cmd/stratus@latest"
 )
 
 CLOUD_GIT=(

@@ -12,7 +12,7 @@ setup() {
 # Profile file existence
 
 @test "all expected profile files exist" {
-    local expected=(full ctf redteam web osint crackstation lightweight blueteam forensics pwn mobile cloud blockchain wireless)
+    local expected=(full ctf redteam web osint crackstation lightweight blueteam forensics pwn mobile cloud blockchain wireless iot)
     for prof in "${expected[@]}"; do
         [[ -f "$PROFILES_DIR/${prof}.conf" ]] || { echo "Missing: ${prof}.conf"; return 1; }
     done
@@ -21,9 +21,9 @@ setup() {
 @test "no extra unexpected profile files" {
     local count
     count=$(find "$PROFILES_DIR" -maxdepth 1 -name '*.conf' | wc -l)
-    # 14 profiles: full, ctf, redteam, web, osint, crackstation, lightweight,
-    # blueteam, forensics, pwn, mobile, cloud, blockchain, wireless
-    [[ "$count" -eq 14 ]]
+    # 15 profiles: full, ctf, redteam, web, osint, crackstation, lightweight,
+    # blueteam, forensics, pwn, mobile, cloud, blockchain, wireless, iot
+    [[ "$count" -eq 15 ]]
 }
 
 # MODULES variable
@@ -181,5 +181,5 @@ _readme_profile_rows() {
         [[ -z "$c2" && "$cc2" == false || "$c2" == yes && "$cc2" == true ]] || { echo "$name: C2 column differs"; return 1; }
         checked=$((checked + 1))
     done < <(_readme_profile_rows)
-    [[ "$checked" -eq 14 ]] || { echo "expected 14 README profile rows, found $checked"; return 1; }
+    [[ "$checked" -eq 15 ]] || { echo "expected 15 README profile rows, found $checked"; return 1; }
 }

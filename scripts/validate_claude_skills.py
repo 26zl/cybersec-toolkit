@@ -44,6 +44,7 @@ _NOTICES_ROWS = {
     "bughunter": "awarexone/Agentic-Bug-Hunter",
     "transilience": "transilienceai/communitytools",
     "karpathy": "andrej-karpathy-skills",
+    "ctf-skills": "ljagiello/ctf-skills",
 }
 _NOTICES_REMAINING_BUCKETS = {"project", "coverage-anchor", "ctf", "bug-bounty"}
 

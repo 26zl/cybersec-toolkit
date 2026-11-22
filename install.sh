@@ -14,10 +14,25 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/installers.sh"
 source "$SCRIPT_DIR/lib/shared.sh"
 
-# Run before successor installs overwrite the old method's provenance row.
+# Run before successor installs overwrite the old method's provenance row, and only for a
+# successor this run installs: the named --tool, or one in a selected module and method.
 _cleanup_stale_method_artefacts() {
     source "$SCRIPT_DIR/scripts/stale_artefacts.sh"
-    _cleanup_stale_artefacts "${VERSION_FILE:-$SCRIPT_DIR/.versions}" "$@" || true
+    local entry module next
+    for entry in "${STALE_ARTEFACTS[@]}"; do
+        IFS='|' read -r _ _ _ module next <<< "$entry"
+        if [[ $# -gt 0 ]]; then
+            [[ "$1" == "${next#*:}" ]] || continue
+        else
+            [[ " ${MODULES_TO_INSTALL[*]:-} " == *" $module "* ]] || continue
+            case "${next%%:*}" in
+                git)  [[ "$SKIP_GIT" == true ]] && continue ;;
+                pipx) [[ "$SKIP_PIPX" == true ]] && continue ;;
+            esac
+        fi
+        _stale_successor_ready "$next" || continue
+        _cleanup_stale_artefacts "${VERSION_FILE:-$SCRIPT_DIR/.versions}" "${next#*:}" || true
+    done
 }
 
 # Argument parsing
@@ -562,6 +577,7 @@ install_single_tool() {
     for a in "${cargo_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
             ensure_cargo || { log_error "Cargo not available — cannot install $tool"; return 1; }
+            _ensure_build_toolchain || { log_error "No C compiler and make available — cannot build $tool"; return 1; }
             log_info "Installing $tool via cargo..."
             local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
             if _cargo_install "$(_builder_cmd cargo)" "$_tool_esc" >> "$LOG_FILE" 2>&1; then
@@ -617,6 +633,14 @@ install_single_tool() {
                 local url="${entry#*=}"
                 local dest="$GITHUB_TOOL_DIR/$gname"
                 local _gver; _gver=$(_tree_provenance "$gname" "$dest/.git")
+                if [[ -n "${_GIT_BUILD_COMMANDS[$gname]:-}" ]] && ! _ensure_build_toolchain; then
+                    log_error "No C compiler and make available — cannot build $tool"
+                    return 1
+                fi
+                if ! _ensure_build_runtimes "${_GIT_BUILD_COMMANDS[$gname]:-}"; then
+                    log_error "The build toolchain for $tool is not available"
+                    return 1
+                fi
                 log_info "Cloning $tool..."
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                     track_version "$tool" "git" "$_gver"
@@ -671,7 +695,15 @@ install_single_tool() {
                 local -n _build_urls="${prefix}_BUILD_URLS"
                 local -n _build_cmds="${prefix}_BUILD_CMDS"
                 log_info "Building $tool from source..."
+                if [[ "$PKG_MANAGER" != pkg ]] && ! _ensure_build_toolchain; then
+                    log_error "No C compiler and make available — cannot build $tool"
+                    return 1
+                fi
                 _ensure_requested_source_deps "$tool" || return 1
+                _ensure_build_runtimes "${_build_cmds[$tool]:-}" || {
+                    log_error "The build toolchain for $tool is not available"
+                    return 1
+                }
                 build_from_source "$tool" "${_build_urls[$tool]:-}" "${_build_cmds[$tool]:-}"
                 return $?
             fi
@@ -919,8 +951,10 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
             git)
                 rb_dir="$GITHUB_TOOL_DIR/$rb_tool"
                 [[ -d "$rb_dir" ]] && { rm -rf "$rb_dir" 2>/dev/null || true; }
-                rm -f "$PIPX_BIN_DIR/$rb_tool" 2>/dev/null || true
-                rm -f "$PIPX_BIN_DIR/${rb_tool,,}" 2>/dev/null || true
+                # setup_git_repo leaves a launcher of another install in place, so only ours go.
+                for rb_link in "$PIPX_BIN_DIR/$rb_tool" "$PIPX_BIN_DIR/${rb_tool,,}"; do
+                    _git_launcher_is_managed "$rb_link" "$rb_dir" && rm -f "$rb_link" 2>/dev/null
+                done
                 [[ -e "$rb_dir" ]] && _rb_ok=false
                 ;;
             binary)

@@ -707,7 +707,7 @@ if should_verify "stego"; then
     log_info "━━━━━ Module: stego ━━━━━"
     log_info "Stego (packages):"
     check_cmds steghide pngcheck
-    check_cmd_any "sonic-visualiser" sonic-visualiser sonic_visualiser || true
+    check_package_binary sonic-visualiser sonic-visualiser sonic_visualiser || true
     log_info "Stego (pipx):"
     check_pipx_arr "${STEGO_PIPX[@]}"
     log_info "Stego (Gems):"
@@ -746,7 +746,8 @@ if should_verify "mobile"; then
     echo ""
     log_info "━━━━━ Module: mobile ━━━━━"
     log_info "Mobile (packages):"
-    check_cmds adb scrcpy apksigner zipalign
+    check_cmds adb apksigner zipalign
+    check_package_binary scrcpy scrcpy || true
     [[ "$_is_kali" == "true" ]] && { check_cmd "smali" || true; }
     log_info "Mobile (pipx):"
     check_pipx_arr "${MOBILE_PIPX[@]}"

@@ -13,7 +13,7 @@ copying it: [`CLAUDE.md`](CLAUDE.md) adds Claude Code-specific guidance and
 
 Modular bash installer for 670+ cybersecurity tools on Linux and Termux (Android).
 Multi-distro (Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux).
-12 install methods, 18 modules, 14 profiles. Includes an MCP server for AI-assisted
+12 install methods, 18 modules, 15 profiles. Includes an MCP server for AI-assisted
 security work that any MCP-capable client can drive.
 
 ## How AI Integration Works Here
@@ -308,7 +308,7 @@ and an `install_module_<name>()` function. Arrays: `<PREFIX>_PACKAGES` (apt),
 
 ### Profile System
 
-14 profiles in `profiles/*.conf`. Each sets `MODULES="..."`, `SKIP_HEAVY`,
+15 profiles in `profiles/*.conf`. Each sets `MODULES="..."`, `SKIP_HEAVY`,
 `ENABLE_DOCKER`, `INCLUDE_C2`. Used via `install.sh --profile <name>`.
 
 ### MCP Server Module Layout (`mcp_server/`)
@@ -353,7 +353,7 @@ Preferred order: `apt > pipx > go > cargo > binary > gem > Docker > git clone > 
 
 ## Skills (portable via sync)
 
-`.claude/skills/` ships 872 on-demand skills (CTF/bounty methodology, offensive/defensive
+`.claude/skills/` ships 880 on-demand skills (CTF/bounty methodology, offensive/defensive
 how-tos, code-audit skills, project developer skills, and cross-skill coordinators).
 The content follows the open [Agent Skills specification](https://agentskills.io/specification)
 (`<name>/SKILL.md` with `name`/`description` frontmatter) — the same vendor-neutral format
@@ -378,7 +378,7 @@ discovery of these repository skills. A root `SKILLS.md` would be an index for m
 context, not an activation mechanism. Use client rules/prompts or selected skill content
 when native discovery is unavailable.
 
-Vendored skills are copies (not submodules) of six upstream repos, each pinned to a
+Vendored skills are copies (not submodules) of seven upstream repos, each pinned to a
 commit in `SKILLS.md`. `scripts/update-skills.sh` clones every pinned source and reports
 what an update would touch, plus the upstream's standing: moved to another repository,
 history rewritten, archived, or quiet for a long time. `update-skills.sh --apply` performs

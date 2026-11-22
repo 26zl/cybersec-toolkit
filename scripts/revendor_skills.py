@@ -421,6 +421,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target", required=True, help="upstream commit to move to")
     parser.add_argument("--skills-dir", type=Path, default=DEFAULT_SKILLS_DIR)
     parser.add_argument("--name", default="source", help="label used in the report")
+    parser.add_argument(
+        "--exclude", action="append", default=[], metavar="SKILL", help="local skill this source never claims"
+    )
     parser.add_argument("--prune", action="store_true", help="delete vendored skills that upstream removed")
     parser.add_argument("--list-local-edits", action="store_true", help="list files that match no upstream version")
     mode = parser.add_mutually_exclusive_group()
@@ -441,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     ours = sorted(p.parent.name for p in args.skills_dir.glob("*/SKILL.md"))
-    claimed = [name for name in ours if name in at_pin]
+    claimed = [name for name in ours if name in at_pin and name not in args.exclude]
     planned: dict[str, Entries] = {}
     unchanged, predated, removed, local_edits, made_visible = [], [], [], [], []
     blocked: dict[str, str] = {}
@@ -506,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:
     updated = sorted(name for name in planned if name not in blocked)
     held = bool(planned) and not writes and not args.dry_run
     # Upstream directory names end up in a pull request body, so only well-formed ones are printed.
-    candidates = set(at_target) - set(at_pin) - set(ours)
+    candidates = set(at_target) - set(at_pin) - set(ours) - set(args.exclude)
     new_upstream = sorted(name for name in candidates if SKILL_NAME.fullmatch(name))
     odd_names = len(candidates) - len(new_upstream)
     print(f"== {args.name}: {args.pin[:12]} -> {args.target[:12]}{' (dry run)' if args.dry_run else ''}")

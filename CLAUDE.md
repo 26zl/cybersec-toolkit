@@ -40,7 +40,10 @@ for four hours, after which the next security-tool invocation needs a fresh one.
 The guard is a routing aid, not a security boundary: anything running as the user can
 write that log, and the MCP policy layer is what enforces execution rules. A sandboxed
 server mirrors its records out to that same host log (`docs/SANDBOX.md`), so the gate
-behaves identically in both launch modes. Repository work is never gated.
+behaves identically in both launch modes. Repository commands are not gated: the guard's
+development set (compilers, interpreters, debuggers, binutils, git, and gitleaks and trivy,
+which this repository's CI runs) stays open, while other registry tools are gated wherever
+they point.
 Denials land in `~/.local/state/cybersec-tools-mcp/guard-denials.log`.
 Disable with `CYBERSEC_AGENT_GUARD=0`.
 `CYBERSEC_AGENT_GUARD_NOW` is a test-only clock override.

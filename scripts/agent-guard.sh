@@ -45,15 +45,16 @@ root = Path(sys.argv[1])
 sys.path.insert(0, str(root))
 from mcp_server.tools_db import GIT_BIN_NAMES, PACKAGE_EXTRA_BINARIES, binary_candidates
 
-# These remain ordinary repository-development commands, including the shell builtin set.
+# These remain ordinary repository-development commands, including the shell builtin set
+# and the two scanners this repository's own CI runs (gitleaks, trivy).
 development = {
     "ar", "as", "awk", "base64", "bash", "binutils", "bun", "cargo", "cat", "cc",
     "clang", "clang++", "cmake", "cp", "curl", "cut", "date", "dd", "diff", "du", "env",
-    "file", "find", "gcc", "g++", "gdb", "git", "go", "grep", "gzip", "head", "jq",
+    "file", "find", "gcc", "g++", "gdb", "git", "gitleaks", "go", "grep", "gzip", "head", "jq",
     "ld", "ltrace", "ls", "make", "nasm", "nm", "node", "npm", "objcopy", "objdump",
     "openssl", "perl", "php", "pip", "pip3", "pipx", "pnpm", "python", "python2", "python3",
     "readelf", "rg", "ruby", "sed", "set", "sh", "sort", "stat", "strace", "strings",
-    "strip", "tail", "tar", "tee", "test", "touch", "tr", "uniq", "unzip", "uv", "valgrind",
+    "strip", "tail", "tar", "tee", "test", "touch", "tr", "trivy", "uniq", "unzip", "uv", "valgrind",
     "wc", "wget", "xxd", "yarn", "zip", "zsh",
 }
 names = set()
@@ -353,7 +354,9 @@ session-start)
     input=""
     [[ -t 0 ]] || input=$(cat)
     mkdir -p "$STATE_DIR" 2>/dev/null || true
-    now=$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')
+    # Audit records carry milliseconds; .999 keeps a record from earlier in this second
+    # from counting as a call made after the session started.
+    now=$(date -u '+%Y-%m-%dT%H:%M:%S.999Z')
     # The shared marker serves clients that send no session id. A per-session
     # marker keeps a second concurrent session from resetting this one's window.
     sid=$(_session_id "$input")

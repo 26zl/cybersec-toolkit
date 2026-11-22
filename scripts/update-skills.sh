@@ -55,11 +55,21 @@ done
 # name|git-url|pinned-commit — canonical pin list (--check-pins validates docs + frontmatter against it).
 SOURCES=(
   "mukul975-apache|https://github.com/mukul975/Anthropic-Cybersecurity-Skills.git|54a798831d2266a3ca61ce68a7acb80b81160d57"
-  "trailofbits|https://github.com/trailofbits/skills.git|e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff"
+  "trailofbits|https://github.com/trailofbits/skills.git|149d7b21f4067765b82e67029730b42d228ef4b4"
   "transilience|https://github.com/transilienceai/communitytools.git|95fdc128af4ca1ae16b3226f9430f1bad97b0656"
   "karpathy|https://github.com/multica-ai/andrej-karpathy-skills.git|2c606141936f1eeef17fa3043a72095b4765b9c2"
-  "bughunter|https://github.com/awarexone/Agentic-Bug-Hunter.git|8060af0c1b0b6ecc6595ee3261f50aa613038620"
-  "claude-red|https://github.com/SnailSploit/Claude-Red.git|a8de813edc9f66f60d44cfe42d47750e89d9930b"
+  "bughunter|https://github.com/awarexone/Agentic-Bug-Hunter.git|82f4512ec432765297c36e6b3ef7dc3fe5a58be2"
+  "claude-red|https://github.com/SnailSploit/Claude-Red.git|fd81441b613c7d4fab39256720a31c96859d138b"
+  "ctf-skills|https://github.com/ljagiello/ctf-skills.git|20d182d9377f0467830f314bb0f843cae4dbf55e"
+)
+
+# skill|source — project-authored skills that share a name with a skill the source ships; they are
+# never merged with or claimed by that source.
+NOT_VENDORED=(
+  "ctf-crypto|ctf-skills"
+  "ctf-forensics|ctf-skills"
+  "ctf-pwn|ctf-skills"
+  "ctf-web|ctf-skills"
 )
 
 # skill|source|last-upstream-commit — skills kept after upstream stopped shipping them.
@@ -237,6 +247,10 @@ for entry in "${SOURCES[@]}"; do
   IFS='|' read -r name url pin <<<"$entry"
   is_selected "$name" || continue
   echo "== $name ($url) =="
+  excluded=()
+  for nv in ${NOT_VENDORED[@]+"${NOT_VENDORED[@]}"}; do
+    [[ "${nv#*|}" == "$name" ]] && excluded+=(--exclude "${nv%%|*}")
+  done
 
   depth=blobless
   [[ "$MODE" == apply || "$MODE" == edits ]] && depth=full
@@ -249,7 +263,7 @@ for entry in "${SOURCES[@]}"; do
 
   if [[ "$MODE" == edits ]]; then
     python3 "$SCRIPT_DIR/revendor_skills.py" --clone "$clone" --pin "$pin" --target "$pin" \
-      --skills-dir "$SKILLS" --name "$name" --dry-run --list-local-edits | grep -E 'LOCAL-EDIT|local edits' || echo "  no local edits"
+      --skills-dir "$SKILLS" --name "$name" ${excluded[@]+"${excluded[@]}"} --dry-run --list-local-edits | grep -E 'LOCAL-EDIT|local edits' || echo "  no local edits"
     echo
     continue
   fi
@@ -292,7 +306,7 @@ for entry in "${SOURCES[@]}"; do
       $FINALIZE && flags+=(--finalize)
       $PRUNE && flags+=(--prune)
       python3 "$SCRIPT_DIR/revendor_skills.py" --clone "$clone" --pin "$pin" --target "$target" \
-        --skills-dir "$SKILLS" --name "$name" ${flags[@]+"${flags[@]}"} | sed '1d'
+        --skills-dir "$SKILLS" --name "$name" ${excluded[@]+"${excluded[@]}"} ${flags[@]+"${flags[@]}"} | sed '1d'
       case "${PIPESTATUS[0]}" in
         0) [[ "$target" != "$pin" ]] && bumps+=("$pin|$target") ;;
         3) manual=1
@@ -313,6 +327,7 @@ for entry in "${SOURCES[@]}"; do
   vendored=0 not_vendored=0
   removed=() newup=()
   for sk in ${at_pin[@]+"${at_pin[@]}"}; do
+    [[ " ${excluded[*]-} " == *" $sk "* ]] && continue
     in_pin["$sk"]=1
     if [[ -d "$SKILLS/$sk" ]]; then
       vendored=$((vendored + 1))

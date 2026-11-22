@@ -497,7 +497,8 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
     # zip/exiftool/openssl are allowlisted for legitimate archive/metadata/crypto
     # use, but each has an option that shells out or evaluates code — block those.
     "zip": [
-        (re.compile(r"^-TT$"), "zip: -TT unzip test command (command execution)"),
+        # -TT inside an option group (-qTTcmd, -X-TTcmd) is found by _check_zip_policy.
+        (re.compile(r"^-TT"), "zip: -TT unzip test command (command execution)"),
         (re.compile(r"^--unzip-command(?:$|=)"), "zip: --unzip-command (command execution)"),
     ],
     "exiftool": [
@@ -508,9 +509,15 @@ TOOL_BLOCKED_FLAGS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^-geotag$"), "exiftool: -geotag can run external helpers"),
     ],
     "openssl": [
-        (re.compile(r"^-engine(?:_impl)?$"), "openssl: -engine loads an arbitrary shared object"),
-        (re.compile(r"^-provider(?:-path)?$"), "openssl: -provider loads an arbitrary shared object"),
-        (re.compile(r"^-conf(?:ig)?$"), "openssl: -config loads an arbitrary configuration (engines, providers)"),
+        # openssl reads options with one or two dashes and with "=value" attached.
+        (re.compile(r"^(?:engine|fipsinstall)$"), "openssl: engine and fipsinstall load an arbitrary shared object"),
+        (re.compile(r"^--?engine(?:_impl)?(?:=|$)"), "openssl: -engine loads an arbitrary shared object"),
+        (re.compile(r"^--?provider(?:-path)?(?:=|$)"), "openssl: -provider loads an arbitrary shared object"),
+        (re.compile(r"^--?module(?:=|$)"), "openssl: -module loads an arbitrary shared object"),
+        (
+            re.compile(r"^--?conf(?:ig)?(?:=|$)"),
+            "openssl: -config loads an arbitrary configuration (engines, providers)",
+        ),
     ],
     "ssh-keygen": [
         (re.compile(r"^-[A-Za-z]*[DwK]"), "ssh-keygen: -D/-w/-K load a PKCS#11 or FIDO provider library"),
@@ -769,7 +776,19 @@ _TARGET_FLAG_EXEMPTIONS: dict[str, set[str]] = {
     "dig": {"-t", "-c"},
     "host": {"-t", "-c"},
     "nikto": {"-Tuning", "-Format", "-evasion"},
-    "openssl": {"-starttls", "-alpn", "-proto", "-cipher"},
+    "openssl": {
+        "-starttls",
+        "-alpn",
+        "-proto",
+        "-cipher",
+        "-ciphersuites",
+        "-groups",
+        "-curves",
+        "-named_curve",
+        "-sigalgs",
+        "-client_sigalgs",
+        "-servername",
+    },
     "tshark": {
         "-r",
         "-Y",
@@ -931,32 +950,6 @@ _NON_TARGET_POSITIONALS: dict[str, set[str]] = {
         "http-get-form",
         "http-post-form",
     },
-    "openssl": {
-        "asn1parse",
-        "base64",
-        "cms",
-        "crl",
-        "dgst",
-        "enc",
-        "genpkey",
-        "list",
-        "passwd",
-        "pkcs7",
-        "pkcs12",
-        "pkey",
-        "pkeyutl",
-        "prime",
-        "rand",
-        "req",
-        "rsa",
-        "rsautl",
-        "s_client",
-        "s_server",
-        "speed",
-        "verify",
-        "version",
-        "x509",
-    },
 }
 
 
@@ -1015,6 +1008,66 @@ def _validate_exempt_remote_resource(tool_name: str, binary: str, flag: str | No
             f"Blocked by policy: remote resource '{value}' for {tool_name} {flag} is not in a private/local range. "
             "Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 for authorized external resource URLs."
         )
+
+
+_OPENSSL_NETWORK_COMMANDS = frozenset({"s_client", "s_server", "s_time", "ocsp", "cmp"})
+# Commands that work on local files only. openssl resolves a command by its hash and first eight
+# characters, so a name that is not listed exactly gets the network command's full target check.
+_OPENSSL_OFFLINE_COMMANDS = frozenset(
+    {
+        "asn1parse",
+        "base64",
+        "ciphers",
+        "cms",
+        "crl",
+        "crl2pkcs7",
+        "dgst",
+        "dhparam",
+        "dsa",
+        "dsaparam",
+        "ec",
+        "ecparam",
+        "enc",
+        "errstr",
+        "gendsa",
+        "genpkey",
+        "genrsa",
+        "help",
+        "info",
+        "kdf",
+        "list",
+        "mac",
+        "nseq",
+        "passwd",
+        "pkcs7",
+        "pkcs8",
+        "pkcs12",
+        "pkey",
+        "pkeyparam",
+        "pkeyutl",
+        "prime",
+        "rand",
+        "req",
+        "rsa",
+        "rsautl",
+        "sess_id",
+        "skeyutl",
+        "smime",
+        "speed",
+        "spkac",
+        "verify",
+        "version",
+        "x509",
+    }
+)
+# Where each URL inside a value starts; every occurrence is checked, also one nested in a list.
+_URL_START_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+# openssl also accepts a digest or cipher name as its command (`openssl sha256 f`, `openssl aes-256-cbc -d`).
+_OPENSSL_ALGORITHM_COMMAND_RE = re.compile(
+    r"md[45]|mdc2|rmd160|sm3|sha(?:1|224|256|384|512(?:-224|-256)?)|sha3-(?:224|256|384|512)|shake(?:128|256)"
+    r"|blake2[bs](?:256|512)|(?:aes|aria|camellia)-(?:128|192|256)-[a-z0-9]+|des(?:3|-[a-z0-9-]+)?"
+    r"|(?:bf|cast5?|rc2|rc4|seed|sm4|idea)(?:-[a-z0-9]+)?"
+)
 
 
 def _is_non_target_positional(tool_name: str, binary: str, arg: str) -> bool:
@@ -2176,6 +2229,121 @@ _CURL_ALL_VALUE_SHORTS = _CURL_VALUE_SHORTS + "oDc"
 _WGET_ALL_VALUE_SHORTS = _WGET_VALUE_SHORTS + "OoaP"
 # unzip reads -x in the option bundle as "extract"; the exclusion list it also names follows the archive.
 _UNZIP_VALUE_SHORTS = "P"
+# zip options that take a value (the "req" rows of `zip -so`); the value is never the archive operand.
+_ZIP_VALUE_SHORTS = frozenset({"-b", "-ds", "-lf", "-n", "-O", "-P", "-s", "-t", "-tt", "-TT", "-UN", "-Z"})
+_ZIP_VALUE_LONGS = frozenset(
+    {
+        "--temp-path",
+        "--dot-size",
+        "--logfile-path",
+        "--suffixes",
+        "--output-file",
+        "--password",
+        "--split-size",
+        "--from-date",
+        "--before-date",
+        "--unzip-command",
+        "--unicode",
+        "--compression-method",
+    }
+)
+
+
+# Two-letter short options of zip 3.0 (`zip -so`); zip matches them before one-letter ones.
+_ZIP_TWO_LETTER_OPTIONS = frozenset(
+    "db dc dd dg ds du dv DF FF FI FS fd fz h2 ll lf la li mm MM nw RE sp sv sb sc sd sf so su sU tt TT UN ws".split()
+)
+
+
+def _zip_group(arg: str) -> list[tuple[str, str | None, bool]]:
+    """Split a zip short-option group the way zip 3.0 reads it, longest option first.
+
+    Returns (option, value, value_is_next_word) triples; value is the attached text, which
+    "=" may leave empty. A "-" after an option negates it and the group goes on; other
+    unknown text ends the group.
+    """
+    options: list[tuple[str, str | None, bool]] = []
+    rest = arg[1:]
+    while rest:
+        if rest[0] == "-":
+            rest = rest[1:]
+            continue
+        if rest[:2] in _ZIP_TWO_LETTER_OPTIONS:
+            option = rest[:2]
+        elif rest[0].isalnum() or rest[0] in "@$":
+            option = rest[0]
+        else:
+            break
+        rest = rest[len(option) :]
+        if f"-{option}" in _ZIP_VALUE_SHORTS:
+            if rest:
+                options.append((option, rest[1:] if rest.startswith("=") else rest, False))
+            else:
+                options.append((option, None, True))
+            break
+        options.append((option, None, False))
+    return options
+
+
+def _check_zip_policy(arg_list: list[str]) -> None:
+    for arg in arg_list:
+        if arg == "--":
+            return
+        if arg.startswith("-") and not arg.startswith("--"):
+            if any(option == "TT" for option, _, _ in _zip_group(arg)):
+                raise ValueError("Blocked by policy: zip: -TT unzip test command (command execution)")
+
+
+def _zip_write_targets(arg_list: list[str]) -> list[str]:
+    """Paths a zip invocation creates, overwrites or (with -m) deletes.
+
+    An -x/-i pattern list runs until the next option, so the archive is the first operand
+    after the start or after an option; the first operand of every such run counts.
+    """
+    operands: list[str] = []
+    targets: list[str] = []
+    moving = False
+    run_start = True
+    options_ended = False
+    i = 0
+    while i < len(arg_list):
+        arg = arg_list[i]
+        if options_ended or not arg.startswith("-") or len(arg) < 2:
+            if run_start:
+                targets.append(arg)
+                run_start = False
+            operands.append(arg)
+            i += 1
+            continue
+        if arg == "--":
+            options_ended = True
+            i += 1
+            continue
+        run_start = True
+        following = arg_list[i + 1] if i + 1 < len(arg_list) else None
+        if arg.startswith("--"):
+            flag, has_value, value = arg.partition("=")
+            matches = [option for option in _ZIP_VALUE_LONGS if len(flag) > 2 and option.startswith(flag)]
+            moving = moving or (len(flag) > 3 and "--move".startswith(flag))
+            if matches and not has_value:
+                value = following or ""
+                i += 1
+            if any(option in {"--output-file", "--logfile-path"} for option in matches) and value:
+                targets.append(value)
+            i += 1
+            continue
+        for option, value, value_is_next_word in _zip_group(arg):
+            if option == "m":
+                moving = True
+            if value_is_next_word:
+                value = following
+                i += 1
+            if option in {"O", "lf"} and value:
+                targets.append(value)
+        i += 1
+    if moving:
+        targets += operands
+    return targets
 
 
 def _tar_short_flag_values(arg_list: list[str], flag: str) -> list[str]:
@@ -2903,10 +3071,9 @@ def _check_write_destinations(tool_name: str, binary: str, arg_list: list[str]) 
         return
 
     if name == "zip":
-        for arg in arg_list:
-            if not arg.startswith("-"):
-                _raise_sensitive_write(name, arg)
-                break
+        for target in _zip_write_targets(arg_list):
+            _raise_sensitive_write(name, target)
+        return
 
     if name in {"gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz"}:
         # Without stdout mode these tools replace or create files beside each input.
@@ -3162,6 +3329,337 @@ def _check_tracer_attach_only(binary: str, arg_list: list[str]) -> None:
                 raise ValueError("Blocked by policy: strace output command executes a shell")
     if not attached:
         raise ValueError(launch_error)
+
+
+def _getopt_flag_given(
+    arg_list: list[str], *, shorts: str, longs: frozenset[str] = frozenset(), value_shorts: str = ""
+) -> bool:
+    """Whether one of the named options appears, as getopt_long or argparse reads it.
+
+    A short option counts inside a bundle (``-nr``) until a value-taking option starts its
+    value, and a long option through any prefix of its name (``--ru``).
+    """
+    for arg in arg_list:
+        if arg == "--":
+            break
+        if arg.startswith("--"):
+            name = arg[2:].partition("=")[0]
+            if name and any(flag[2:].startswith(name) for flag in longs):
+                return True
+        elif arg.startswith("-") and len(arg) > 1:
+            for char in arg[1:]:
+                if char in shorts:
+                    return True
+                if char in value_shorts:
+                    break
+    return False
+
+
+_RUNNER_HELP_FLAGS = frozenset({"-h", "-help", "--help"})
+_QEMU_INFO_FLAGS = _RUNNER_HELP_FLAGS | {"-version", "--version"}
+# Each runs the program, machine image or console commands named on its command line,
+# which is run_script's job: through run_tool it gives help and version output only.
+# Values: (flags accepted as the only argument, options accepted with the single value
+# "help", names it is reached by).
+_INFO_ONLY_RUNNERS: dict[str, tuple[frozenset[str], frozenset[str], tuple[str, ...]]] = {
+    "valgrind": (_RUNNER_HELP_FLAGS | {"--help-debug", "--help-dyn-options", "--version"}, frozenset(), ()),
+    "qemu-user-static": (_QEMU_INFO_FLAGS, frozenset({"-cpu", "-d", "-trace"}), ("qemu-x86_64-static", "qemu-x86_64")),
+    "qemu-system-x86": (
+        _QEMU_INFO_FLAGS,
+        frozenset({"-accel", "-cpu", "-d", "-device", "-M", "-machine", "-trace"}),
+        ("qemu-system-x86_64",),
+    ),
+    "proxychains4": (_RUNNER_HELP_FLAGS, frozenset(), ()),
+    "honggfuzz": (_RUNNER_HELP_FLAGS, frozenset(), ()),
+    "aflplusplus": (_RUNNER_HELP_FLAGS, frozenset(), ("afl-fuzz",)),
+    "metasploit": (_RUNNER_HELP_FLAGS | {"-v", "-V", "--version"}, frozenset(), ("msfconsole",)),
+}
+
+
+# What run_tool leaves each restricted tool, keyed by casefolded registry name, for the
+# access guidance get_tool_info and the advisors return.
+_ATTACH_ONLY_NOTE = "run_tool attaches to a running process (-p PID) only; trace a new program through run_script."
+_R2_NOTE = (
+    "run_tool permits read-only analysis commands; debugging, writes, plugins, projects, shell and remote io "
+    "are refused."
+)
+RUN_TOOL_ROUTE_NOTES: dict[str, str] = {
+    "strace": _ATTACH_ONLY_NOTE,
+    "ltrace": _ATTACH_ONLY_NOTE,
+    "gdb": "run_tool permits static inspection; running the inferior, calls, scripts and file writes are refused.",
+    "rr": "run_tool inspects recorded traces (ps, dump, sources, traceinfo); record and replay through run_script.",
+    "radare2": _R2_NOTE,
+    "rizin": _R2_NOTE,
+    "pwntools": "run_tool refuses debug, template and update, and --run/--debug of asm, shellcraft and scramble.",
+    "volatility3": "run_tool refuses --plugin-dirs.",
+    "frida-tools": "run_tool instruments a USB (-U), device-ID (-D) or remote-host IP (-H) target only.",
+}
+
+
+def _check_info_only_runner(name: str, arg_list: list[str]) -> None:
+    flags, help_options, _ = _INFO_ONLY_RUNNERS[name]
+    if (len(arg_list) == 1 and arg_list[0] in flags) or (
+        len(arg_list) == 2 and arg_list[0] in help_options and arg_list[1] == "help"
+    ):
+        return
+    raise ValueError(
+        f"Blocked by policy: {name} runs the program, image or console commands given on its command line; "
+        "run_tool permits its help and version output only — use run_script (CYBERSEC_MCP_ALLOW_SCRIPTS=1)"
+    )
+
+
+# rr subcommands that read a recorded trace. record, replay and rerun execute it, and a first
+# word rr does not know as a command is recorded as a program.
+_RR_INSPECTION_COMMANDS = frozenset({"buildid", "cpufeatures", "dump", "help", "ls", "ps", "sources", "traceinfo"})
+
+
+def _check_rr_policy(arg_list: list[str]) -> None:
+    if arg_list in (["-h"], ["--help"], ["-V"], ["--version"]) or (arg_list and arg_list[0] in _RR_INSPECTION_COMMANDS):
+        return
+    raise ValueError(
+        "Blocked by policy: rr records or replays the program on its command line; run_tool permits "
+        "trace inspection (ps, dump, sources, traceinfo, ...) only — use run_script to record or replay"
+    )
+
+
+# pwn subcommands refused outright. template also renders ~/.config/pwntools/templates/pwnup.mako
+# when that file exists, so it runs Python code even without --template.
+_PWN_BLOCKED_COMMANDS = {
+    "debug": "starts gdb on a program or process",
+    "template": "renders a Mako template, which runs Python code",
+    "update": "installs packages from the network",
+}
+# Subcommands whose -r/--run or -d/--debug executes the shellcode they build, with their
+# value-taking short options and their output option.
+_PWN_SHELLCODE_COMMANDS = {
+    "asm": ("fovcei", "--output"),
+    "scramble": ("fovc", "--output"),
+    "shellcraft": ("ofv", "--out"),
+}
+
+
+def _check_pwntools_policy(arg_list: list[str]) -> None:
+    command_index = next((i for i, arg in enumerate(arg_list) if not arg.startswith("-")), None)
+    if command_index is None:
+        return
+    command, rest = arg_list[command_index], arg_list[command_index + 1 :]
+    if command in _PWN_BLOCKED_COMMANDS:
+        raise ValueError(f"Blocked by policy: pwn {command} {_PWN_BLOCKED_COMMANDS[command]}")
+    if command in _PWN_SHELLCODE_COMMANDS:
+        value_shorts, output = _PWN_SHELLCODE_COMMANDS[command]
+        if _getopt_flag_given(rest, shorts="rd", longs=frozenset({"--run", "--debug"}), value_shorts=value_shorts):
+            raise ValueError(f"Blocked by policy: pwn {command} --run/--debug executes the shellcode")
+        for destination in _getopt_values(
+            rest, shorts="o", longs=frozenset({output}), value_shorts=value_shorts.replace("o", "")
+        ):
+            _raise_sensitive_write(f"pwn {command}", destination)
+    elif command == "pwnstrip":
+        for destination in _getopt_values(rest, shorts="o", longs=frozenset({"--output"}), value_shorts="p"):
+            _raise_sensitive_write("pwn pwnstrip", destination)
+    elif command == "disablenx":
+        for operand in rest:
+            if not operand.startswith("-"):
+                _raise_sensitive_write("pwn disablenx", operand)
+    elif command == "libcdb" and not _allow_external():
+        subcommand = next((arg for arg in rest if not arg.startswith("-")), None)
+        offline = any(_git_option_matches(arg, "--offline-only") for arg in rest)
+        download = _getopt_flag_given(rest, shorts="d", longs=frozenset({"--download-libc"}), value_shorts="tso")
+        if subcommand != "file" and not (subcommand in {"lookup", "hash"} and offline and not download):
+            raise ValueError(
+                "Blocked by policy: pwn libcdb queries online libc databases; use 'libcdb file', "
+                "--offline-only, or set CYBERSEC_MCP_ALLOW_EXTERNAL=1 for authorized lookups"
+            )
+
+
+# volatility3 options that take a value; -p/--plugin-dirs imports Python from the directory named.
+_VOL_VALUE_SHORTS = "cepslofur"
+
+
+def _check_volatility_policy(arg_list: list[str]) -> None:
+    if _getopt_flag_given(arg_list, shorts="p", longs=frozenset({"--plugin-dirs"}), value_shorts=_VOL_VALUE_SHORTS):
+        raise ValueError("Blocked by policy: volatility3: --plugin-dirs imports Python plugins from a chosen directory")
+    for destination in _getopt_values(
+        arg_list,
+        shorts="lo",
+        longs=frozenset({"--log", "--output-dir", "--save-config", "--cache-path"}),
+        value_shorts="cepsfur",
+    ):
+        _raise_sensitive_write("volatility3", destination)
+    if not _allow_external():
+        for url in _getopt_values(arg_list, shorts="u", longs=frozenset({"--remote-isf-url"}), value_shorts="cepslofr"):
+            if not _is_safe_target(_network_target_host(url)):
+                raise ValueError(
+                    f"Blocked by policy: volatility3: remote ISF URL '{url}' is not in a private/local range. "
+                    "Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 for authorized external resource URLs."
+                )
+
+
+_FRIDA_VALUE_SHORTS = "ODHfnNpWlPCcteo"
+# Device IDs that name this machine (socket is the frida-server on 127.0.0.1); barebone drives a local GDB stub.
+_FRIDA_LOCAL_DEVICES = frozenset({"local", "socket", "barebone"})
+
+
+def _frida_values(arg_list: list[str], short: str, long: str) -> list[str]:
+    return _getopt_values(
+        arg_list, shorts=short, longs=frozenset({long}), value_shorts=_FRIDA_VALUE_SHORTS.replace(short, "")
+    )
+
+
+def _address_is_this_machine(address: str) -> bool:
+    """Loopback, unspecified (both also IPv4-mapped), or an address assigned to one of this host's interfaces."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if ip.is_loopback or ip.is_unspecified:
+        return True
+    # Binding succeeds only for an address one of this host's interfaces carries.
+    family = socket.AF_INET6 if ip.version == 6 else socket.AF_INET
+    try:
+        with socket.socket(family, socket.SOCK_DGRAM) as probe:
+            probe.bind((str(ip), 0))
+    except OSError:
+        return False
+    return True
+
+
+def _check_frida_policy(arg_list: list[str]) -> None:
+    """Allow instrumentation of a USB, device-ID or remote-host target, never of this machine."""
+    if arg_list in (["-h"], ["--help"], ["--version"]):
+        return
+    if _getopt_flag_given(arg_list, shorts="O", longs=frozenset({"--options-file"}), value_shorts=_FRIDA_VALUE_SHORTS):
+        raise ValueError("Blocked by policy: frida: --options-file adds options the policy cannot inspect")
+    for destination in _frida_values(arg_list, "o", "--output"):
+        _raise_sensitive_write("frida", destination)
+    if not _allow_external() and (
+        _frida_values(arg_list, "c", "--codeshare")
+        or _getopt_flag_given(arg_list, shorts="", longs=frozenset({"--p2p", "--relay", "--stun-server"}))
+    ):
+        raise ValueError(
+            "Blocked by policy: frida: codeshare scripts and peer-to-peer relays reach external services; "
+            "set CYBERSEC_MCP_ALLOW_EXTERNAL=1 for authorized use"
+        )
+    hosts = _frida_values(arg_list, "H", "--host")
+    for host in hosts:
+        address = _network_target_host(host).strip("[]")
+        try:
+            ipaddress.ip_address(address)
+        except ValueError:
+            raise ValueError(
+                f"Blocked by policy: frida: -H takes an IP address, not '{host}': a name can resolve elsewhere "
+                "by the time frida connects"
+            ) from None
+        if _address_is_this_machine(address):
+            raise ValueError("Blocked by policy: frida: a frida-server on this machine instruments its processes")
+        if not _allow_external() and not _is_safe_target(address):
+            raise ValueError(
+                f"Blocked by policy: frida: host '{host}' is not in a private/local range. "
+                "Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 for authorized external targets."
+            )
+    devices = _frida_values(arg_list, "D", "--device")
+    usb = _getopt_flag_given(arg_list, shorts="U", longs=frozenset({"--usb"}), value_shorts=_FRIDA_VALUE_SHORTS)
+    local_server = _getopt_flag_given(
+        arg_list, shorts="R", longs=frozenset({"--remote"}), value_shorts=_FRIDA_VALUE_SHORTS
+    )
+    if local_server or any(device in _FRIDA_LOCAL_DEVICES for device in devices) or not (usb or hosts or devices):
+        raise ValueError(
+            "Blocked by policy: frida instruments processes on this machine; run_tool permits a USB (-U), "
+            "device-ID (-D) or remote-host IP (-H) target only — use run_script for local instrumentation"
+        )
+
+
+# radare2/rizin short options that take a value. Options whose argument-taking is version
+# dependent (-H, -p) are read as flags, so the argument after them is still checked.
+_R2_VALUE_SHORTS = "abBcDeFiIklmPrRs"
+_R2_BLOCKED_SHORTS = {
+    "d": "debugs (starts or attaches to) a program",
+    "D": "debugs (starts or attaches to) a program",
+    "r": "loads a run profile, which starts a program",
+    "R": "applies a run directive, which starts a program",
+    "w": "opens the file for writing",
+    "l": "loads a plugin library",
+    "p": "loads a project, which replays saved commands",
+    "P": "applies a patch file to the binary",
+    "C": "connects to a remote server",
+    "=": "runs commands on a remote server",
+    "i": "runs a script file",
+    "I": "runs a script file",
+}
+# io backends that are local buffers or containers; others (rap, gdb, http, tcp, winedbg, ...) reach out.
+_R2_LOCAL_SCHEMES = frozenset({"apk", "base64", "ihex", "malloc", "null", "sparse", "srec", "zip"})
+# First characters of the read-only analysis commands run_tool permits: analysis (a), metadata (C),
+# config (e, checked below), flags (f), info (i), print (p), quit (q), seek (s), types (t),
+# hexdump (x), search (/) and help (?).
+_R2_COMMAND_FAMILIES = frozenset("aCefipqstx/?")
+# Within those families: iO dumps or resizes, idp fetches PDBs, ?t/?+/?-/?? run a nested command;
+# an ag graph in the w format is rendered by running dot.
+_R2_BLOCKED_COMMAND_PREFIXES = ("iO", "idp", "?t", "?+", "?-", "??")
+_R2_GRAPH_WRITE_RE = re.compile(r"ag\S*w")
+_R2_SAFE_CONFIG_PREFIXES = ("anal.", "analysis.", "asm.", "emu.")
+_R2_SAFE_CONFIG_KEYS = frozenset(
+    {"bin.cache", "bin.demangle", "bin.relocs", "bin.strings", "io.cache", "scr.color", "scr.interactive", "scr.utf8"}
+)
+
+
+def _r2_config_safe(setting: str) -> bool:
+    key = setting.partition("=")[0].strip()
+    return key.startswith(_R2_SAFE_CONFIG_PREFIXES) or key in _R2_SAFE_CONFIG_KEYS
+
+
+def _check_r2_commands(binary: str, commands: str) -> None:
+    for segment in re.split(r"[;\r\n]", commands):
+        segment = segment.strip()
+        if not segment:
+            continue
+        # Shell escapes and pipes (!, |), file redirection (>), command substitution (`, $(),
+        # iteration over a command's output (@@c) and temporary config (@e:).
+        if re.search(r"[!|>`]|\$\(|@@c|@e:", segment, re.IGNORECASE):
+            raise ValueError(f"Blocked by policy: {binary}: shell, redirection or nested commands in '{segment}'")
+        word, _, setting = segment.partition(" ")
+        if segment[0] == "e":
+            if word != "e" or ("=" in setting and not _r2_config_safe(setting)):
+                raise ValueError(f"Blocked by policy: {binary}: config change '{segment}' is not permitted")
+            continue
+        if (
+            segment[0] not in _R2_COMMAND_FAMILIES
+            or segment.startswith(_R2_BLOCKED_COMMAND_PREFIXES)
+            or _R2_GRAPH_WRITE_RE.match(word)
+        ):
+            raise ValueError(
+                f"Blocked by policy: {binary}: '{word}' is outside the read-only analysis commands "
+                "run_tool permits (a, C, f, i, p, s, t, x, /, ?) — use run_script for the rest"
+            )
+
+
+def _check_r2_policy(binary: str, arg_list: list[str]) -> None:
+    for arg in arg_list:
+        for scheme in re.findall(r"([A-Za-z][A-Za-z0-9+.-]*)://", arg):
+            if scheme.lower() not in _R2_LOCAL_SCHEMES:
+                raise ValueError(f"Blocked by policy: {binary}: {scheme}:// opens a remote or debugger backend")
+    i = 0
+    while i < len(arg_list):
+        arg = arg_list[i]
+        i += 1
+        if arg == "--":
+            break
+        if not arg.startswith("-") or arg == "-":
+            continue
+        cluster = arg[1:]
+        for pos, char in enumerate(cluster):
+            if char in _R2_BLOCKED_SHORTS:
+                raise ValueError(f"Blocked by policy: {binary}: -{char} {_R2_BLOCKED_SHORTS[char]}")
+            if char in _R2_VALUE_SHORTS:
+                value = cluster[pos + 1 :]
+                if not value and i < len(arg_list):
+                    value = arg_list[i]
+                    i += 1
+                if char == "c":
+                    _check_r2_commands(binary, value)
+                elif char == "e" and not _r2_config_safe(value):
+                    raise ValueError(f"Blocked by policy: {binary}: config change '{value}' is not permitted")
+                break
 
 
 def _gdb_is(token: str, full: str, minimum: int) -> bool:
@@ -3669,6 +4167,7 @@ _ARGUMENT_POLICIES: dict[str, Callable[[list[str]], None]] = {
     "gdb": _check_gdb_execution_commands,
     "sed": _check_sed_policy,
     "tar": _check_tar_policy,
+    "zip": _check_zip_policy,
     "wget": _check_wget_policy,
     "nc": _check_nc_policy,
     "ncat": _check_nc_policy,
@@ -3685,6 +4184,21 @@ _ARGUMENT_POLICIES: dict[str, Callable[[list[str]], None]] = {
     "openscap-scanner": _check_openscap_policy,
     "vt": _check_vt_policy,
     "vt-cli": _check_vt_policy,
+    "rr": _check_rr_policy,
+    "pwntools": _check_pwntools_policy,
+    "pwn": _check_pwntools_policy,
+    "volatility3": _check_volatility_policy,
+    "vol": _check_volatility_policy,
+    "frida-tools": _check_frida_policy,
+    "frida": _check_frida_policy,
+    "radare2": partial(_check_r2_policy, "radare2"),
+    "r2": partial(_check_r2_policy, "radare2"),
+    "rizin": partial(_check_r2_policy, "rizin"),
+    **{
+        name: partial(_check_info_only_runner, runner)
+        for runner, (_, _, aliases) in _INFO_ONLY_RUNNERS.items()
+        for name in (runner, *aliases)
+    },
 }
 
 
@@ -3730,19 +4244,41 @@ _GIT_BLOCKED_OPTIONS: dict[str, frozenset[str]] = {
             "--tamper",
             "--alter-shell",
             "--auth-file",
+            # -c loads an INI file that may set any option, the blocked ones included.
+            "-c",
         }
     ),
     "bettercap": frozenset({"-eval", "-caplet", "-script", "-env-file"}),
     "recon-ng": frozenset({"-r", "-x"}),
-    "PhpSploit": frozenset({"-c", "-s", "-e"}),
+    "PhpSploit": frozenset({"-c", "-s", "-e", "-l", "--source", "--load"}),
     "phpggc": frozenset({"--test-payload", "--wrapper", "-w"}),
     "tplmap": frozenset(
         {"--os-shell", "--os-cmd", "--bind-shell", "--reverse-shell", "--upload", "--download", "--force-overwrite"}
     ),
-    "smuggler": frozenset({"-c"}),
+    "smuggler": frozenset({"-c", "--configfile"}),
     "testssl.sh": frozenset({"--openssl"}),
-    "cupp": frozenset({"-a", "--alecto"}),
-    "deepce": frozenset({"--exploit", "--install", "--command", "--listen", "--shadow", "--password"}),
+    "cupp": frozenset({"-a", "--alecto", "-l"}),
+    # deepce reads its options from a bash case statement: these short spellings are separate entries.
+    "deepce": frozenset(
+        {
+            "--exploit",
+            "-e",
+            "--install",
+            "--command",
+            "-cmd",
+            "--payload",
+            "-x",
+            "--listen",
+            "-l",
+            "--shadow",
+            "-s",
+            "--username",
+            "--password",
+            "-doc",
+        }
+    ),
+    "CMSmap": frozenset({"-U"}),
+    "crowbar": frozenset({"-m"}),
     "NoSQLMap": frozenset({"--load", "--save", "--shell"}),
     "Qiling": frozenset({"--env", "--profile", "--qdb", "--gdb", "-g"}),
     "firefox_decrypt": frozenset({"--pass-cmd", "-m"}),
@@ -3846,6 +4382,8 @@ _GIT_OUTPUT_LONG_OPTIONS = frozenset(
         "--jsonfile-pretty",
         "--csvfile",
         "--htmlfile",
+        "--outfile",
+        "--outFile",
     }
 )
 _GIT_OUTPUT_SHORT_OPTIONS: dict[str, frozenset[str]] = {
@@ -3857,7 +4395,7 @@ _GIT_OUTPUT_SHORT_OPTIONS: dict[str, frozenset[str]] = {
     "jwt_tool": frozenset({"-o"}),
     "smuggler": frozenset({"-l"}),
     "CMSmap": frozenset({"-o"}),
-    "testssl.sh": frozenset(),
+    "testssl.sh": frozenset({"-oL", "-oj", "-oJ", "-oC", "-oH", "-oa", "-oA"}),
     "RsaCtfTool": frozenset(),
     "rsatool": frozenset({"-o"}),
     "pyinstxtractor": frozenset(),
@@ -3929,6 +4467,34 @@ _TARGET_FLAG_EXEMPTIONS.setdefault("jwt_tool", set()).update(
     {"-S", "-p", "-k", "-kf", "-pk", "-jw", "-hc", "-pc", "-hv", "-pv", "-H", "-rh", "-rc", "-pd"}
 )
 _TARGET_FLAG_EXEMPTIONS.setdefault("enum4linux-ng", set()).update({"-u", "-p", "-w", "-oA", "-oJ", "-oY"})
+
+
+# rip.pl reads options with Getopt::Long (prefix "-", "--" or "/", any case, unique prefixes) and
+# loads <plugins dir>/<value>.pl for -p and the plugin list <plugins dir>/<value> for -f.
+_REGRIPPER_OPTION_RE = re.compile(r"(?:--?|/)([A-Za-z]+)(?:=(.*))?", re.S)
+
+
+def _check_regripper_options(arg_list: list[str]) -> None:
+    i = 0
+    while i < len(arg_list):
+        match = _REGRIPPER_OPTION_RE.fullmatch(arg_list[i])
+        i += 1
+        if not match:
+            continue
+        name, value = match.group(1).lower(), match.group(2)
+        if name == "up" or (len(name) > 2 and "update".startswith(name)):
+            raise ValueError("Blocked by policy: RegRipper: update replaces its plugins from the network")
+        loads = "plugin".startswith(name) or "file".startswith(name)
+        if not (loads or name in {"r", "u", "s"} or any(option.startswith(name) for option in ("reg", "user", "sys"))):
+            continue
+        if value is None and i < len(arg_list):
+            value = arg_list[i]
+            i += 1
+        if loads and (value is None or ".." in value or not re.fullmatch(r"[A-Za-z0-9_.-]+", value)):
+            raise ValueError(
+                "Blocked by policy: RegRipper: -p and -f take a plugin or plugin-list name from its "
+                "plugins directory, not a path"
+            )
 
 
 def _git_option_matches(arg: str, option: str) -> bool:
@@ -4005,6 +4571,11 @@ def _check_git_policy(tool_name: str, binary: str, arg_list: list[str]) -> None:
         for option in blocked:
             if _git_option_matches(arg, option):
                 raise ValueError(f"Blocked by policy: {name}: {option} can execute code, modify files or disclose data")
+    # searchsploit joins every single-dash group into one getopts string, so a u anywhere is -u (--update).
+    if name == "exploitdb" and any(arg.startswith("-") and not arg.startswith("--") and "u" in arg for arg in arg_list):
+        raise ValueError("Blocked by policy: exploitdb: -u updates the installation over the network")
+    if name == "RegRipper":
+        _check_regripper_options(arg_list)
     for destination in _flag_values(
         arg_list,
         short_flags=_GIT_OUTPUT_SHORT_OPTIONS.get(name, frozenset({"-o"})),
@@ -4055,10 +4626,10 @@ def _check_git_policy(tool_name: str, binary: str, arg_list: list[str]) -> None:
         attacks: list[str] = []
         collecting = False
         for arg in arg_list:
-            if arg.startswith("--attack="):
-                attacks.extend(arg.split("=", 1)[1].split(","))
-                collecting = True
-            elif arg == "--attack":
+            # argparse also accepts an unambiguous prefix (--att, --atta=...) for --attack.
+            if _git_option_matches(arg, "--attack"):
+                if "=" in arg:
+                    attacks.extend(arg.split("=", 1)[1].split(","))
                 collecting = True
             elif arg.startswith("-"):
                 collecting = False
@@ -4073,8 +4644,16 @@ def _check_git_policy(tool_name: str, binary: str, arg_list: list[str]) -> None:
             "boneh_durfee",
             "pollard_rho",
         }
-        inspection = {"--createpub", "--dumpkey", "--isroca", "--convert_idrsa_pub"}
-        if not any(arg in inspection for arg in arg_list) and (not attacks or not set(attacks) <= local_attacks):
+
+        def given(option: str) -> bool:
+            return any(_git_option_matches(arg, option) for arg in arg_list)
+
+        # Mirrors upstream's early exits: these modes return before any attack runs.
+        decrypting = given("--decrypt") or given("--decryptfile")
+        inspecting = any(arg in {"--createpub", "--isroca", "--convert_idrsa_pub"} for arg in arg_list) or (
+            "--dumpkey" in arg_list and (given("--key") or (given("--publickey") and not decrypting))
+        )
+        if not inspecting and (not attacks or not set(attacks) <= local_attacks):
             raise ValueError(
                 "Blocked by policy: RsaCtfTool: default/all attacks can contact external databases; "
                 "select a reviewed offline --attack (for example wiener or fermat), "
@@ -4340,6 +4919,37 @@ def check_policy(tool_name: str, arg_list: list[str], binary: str | None = None)
 
     if binary not in _NETWORK_TOOLS | GIT_NETWORK_TOOLS and tool_name not in _NETWORK_TOOLS | GIT_NETWORK_TOOLS:
         return
+
+    if "openssl" in {tool_name, binary}:
+        if any(re.fullmatch(r"--?crl_download", arg) for arg in arg_list):
+            raise ValueError(
+                "Blocked by policy: openssl: -crl_download fetches the CRLs a certificate names; "
+                "requires CYBERSEC_MCP_ALLOW_EXTERNAL=1"
+            )
+        command = arg_list[0] if arg_list else ""
+        # Offline commands read local files, so words such as rsa:2048 or pass:secret are not
+        # hosts; a URL inside any value is, since openssl loads certificates and CRLs over HTTP.
+        if command in _OPENSSL_OFFLINE_COMMANDS or _OPENSSL_ALGORITHM_COMMAND_RE.fullmatch(command.lower()):
+            for arg in arg_list[1:]:
+                for start in _URL_START_RE.finditer(arg):
+                    rest = arg[start.end() :]
+                    # OpenSSL takes the host after the first @ anywhere in the rest of the value, past
+                    # blanks too, so a private-looking prefix (10.0.0.5/x@8.8.8.8) can hide where it connects.
+                    if "@" in rest:
+                        raise ValueError("Blocked by policy: openssl: a URL with user information hides its host")
+                    # A comma or semicolon separates list entries (URI:http://a,URI:http://b); the next
+                    # URL is checked on its own.
+                    authority = re.split(r"[/?#\s]", rest, maxsplit=1)[0]
+                    host = _network_target_host("http://" + re.split(r"[,;]", authority, maxsplit=1)[0])
+                    if not _is_safe_target(host):
+                        raise ValueError(
+                            f"Blocked by policy: target '{host}' is not in a private/local network range. "
+                            "Set CYBERSEC_MCP_ALLOW_EXTERNAL=1 to allow external targets."
+                        )
+            return
+        # The command word of a network command is not a host; everything after it is checked.
+        if command in _OPENSSL_NETWORK_COMMANDS:
+            arg_list = arg_list[1:]
 
     # Reading a capture file connects nowhere; its filter words are not hosts. A remote
     # capture interface given alongside still connects out, so it is validated first.

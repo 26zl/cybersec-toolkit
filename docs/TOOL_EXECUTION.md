@@ -16,6 +16,21 @@ Network classification drives preflight target checks, alongside each tool's arg
 
 A registered CLI route can require a separate opt-in. `usbkill` and `nipe` expose their complete functionality after their individual host-control switches are enabled; listing either CLI never enables that switch.
 
+## Tools that run other programs
+
+Running a target program, a machine image or console commands is `run_script`'s job, which `CYBERSEC_MCP_ALLOW_SCRIPTS=1` enables. Tools whose purpose is to start one keep to inspection through `run_tool`:
+
+| Tool | Through `run_tool` |
+| --- | --- |
+| `valgrind`, `qemu-user-static`, `qemu-system-x86`, `proxychains4`, `honggfuzz`, `AFLplusplus`, `metasploit` | Help and version output only; QEMU also lists `-cpu`, `-machine` and `-device` values with `help` |
+| `strace`, `ltrace` | Attaching to a running process (`-p PID`) |
+| `gdb` | Static inspection; commands that run the inferior, call functions, run scripts, connect out or write files are refused |
+| `rr` | Trace inspection (`ps`, `dump`, `sources`, `traceinfo`, ...); `record`, `replay` and `rerun` are refused |
+| `radare2`, `rizin` | Read-only analysis commands (`a`, `C`, `f`, `i`, `p`, `s`, `t`, `x`, `/`, `?` and config reads) without debugging, writing, plugins, projects, remote io backends, shell, pipes or redirection |
+| `pwntools` | Every subcommand except `debug`, `template` and `update`; `asm`, `shellcraft` and `scramble` without `--run`/`--debug`; online `libcdb` queries need `CYBERSEC_MCP_ALLOW_EXTERNAL=1` |
+| `volatility3` | Analysis without `--plugin-dirs` |
+| `frida-tools` | A USB (`-U`), device-ID (`-D`) or private remote-host IP address (`-H`) target, never a process on the MCP host; no `--options-file` |
+
 The optional client shell guard reads CLI names and aliases from the same registry metadata, preserving its advisor-clearance window and ordinary development commands. It does not import the MCP server or initialize operator state. This hook remains a client-side routing aid; tool execution policy and the sandbox are enforced at the server.
 
 ## Host-control functionality

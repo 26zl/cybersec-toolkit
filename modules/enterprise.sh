@@ -87,7 +87,7 @@ declare -gA ENTERPRISE_BUILD_CMDS=(
     [gosecretsdump]="go build"
     [GoExec]="go build -o GoExec ."
     [GoMapEnum]="go build -o GoMapEnum ./src"
-    [rusthound]="cargo build --release"
+    [rusthound]="cargo update -p time && cargo build --release"
     [rusthound-ce]="cargo build --release"
 )
 declare -gA ENTERPRISE_BUILD_BINS=(

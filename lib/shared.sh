@@ -19,11 +19,14 @@ SHARED_BASE_PACKAGES=(
 
     # Dev libraries — needed by build-from-source tools and Python native extensions
     libpcap-dev libssl-dev libffi-dev
-    zlib1g-dev libxml2-dev libxslt1-dev
+    zlib1g-dev libjpeg-dev libxml2-dev libxslt1-dev
     libglib2.0-dev libreadline-dev libsqlite3-dev libcurl4-openssl-dev
     # libzstd-dev pairs with binutils-dev: Fedora's static libbfd.a pulls in zstd
     libseccomp-dev binutils-dev libedit-dev liblzma-dev libzstd-dev
     libkrb5-dev libsctp-dev libnfnetlink-dev
+    # bettercap (libusb, netfilter queue), yersinia (libnet), hostapd-mana (libnl) and
+    # proxmark3 (lz4, bzip2) build against these
+    libusb-1.0-0-dev libnetfilter-queue-dev libnet1-dev libnl-3-dev libnl-genl-3-dev liblz4-dev libbz2-dev
     libcapstone-dev libgmp-dev libecm-dev
     libldap2-dev libsasl2-dev
     libpixman-1-dev libunwind-dev libini-config-dev
@@ -41,15 +44,21 @@ SHARED_BASE_PACKAGES=(
     dos2unix rlwrap imagemagick
 )
 
+# openSUSE: install devel_basis pattern (equivalent of build-essential)
+# This is handled here instead of fixup_package_names() to avoid side effects
+# in the name-translation function (which is also called during removal).
+_install_devel_basis() {
+    [[ "$PKG_MANAGER" == "zypper" ]] || return 0
+    _ensure_pkg_index
+    maybe_sudo zypper --non-interactive install -t pattern devel_basis >> "$LOG_FILE" 2>&1 && return 0
+    # Minimal images, whose awk comes from busybox, cannot take the pattern; a compiler and make still install.
+    maybe_sudo zypper --non-interactive install gcc gcc-c++ make >> "$LOG_FILE" 2>&1 || true
+}
+
 install_shared_deps() {
     log_info "Installing core utilities, compilers, runtimes (Python, Go, Ruby, Java), and dev libraries..."
 
-    # openSUSE: install devel_basis pattern (equivalent of build-essential)
-    # This is handled here instead of fixup_package_names() to avoid side effects
-    # in the name-translation function (which is also called during removal).
-    if [[ "$PKG_MANAGER" == "zypper" ]]; then
-        maybe_sudo zypper --non-interactive install -t pattern devel_basis >> "$LOG_FILE" 2>&1 || true
-    fi
+    _install_devel_basis
 
     install_apt_batch "Shared base dependencies" "${SHARED_BASE_PACKAGES[@]}"
 
@@ -69,6 +78,29 @@ install_shared_deps() {
             log_success "Runtime available: $_rt"
         fi
     done
+}
+
+# _ensure_build_toolchain — a C compiler and make for `install.sh --tool`, which skips
+# install_shared_deps; cargo links through cc and source builds run make.
+# _ensure_build_runtimes CMD — cargo and Go for a build command that calls them; `install.sh --tool`
+# skips the up-front runtime setup a module install does.
+_ensure_build_runtimes() {
+    local cmd="$1"
+    if [[ "$cmd" =~ (^|[^[:alnum:]_-])cargo[[:space:]] ]]; then
+        ensure_cargo || return 1
+    fi
+    if [[ "$cmd" =~ (^|[^[:alnum:]_-])go[[:space:]] ]]; then
+        ensure_go || return 1
+    fi
+    return 0
+}
+
+_ensure_build_toolchain() {
+    command_exists cc && command_exists make && return 0
+    log_info "Installing a C compiler and make..."
+    _install_devel_basis
+    install_apt_batch "Build toolchain" build-essential
+    command_exists cc && command_exists make
 }
 
 # _version_ge — compare two major.minor version strings.
@@ -196,19 +228,18 @@ if data:
     fi
     # The version is later written into a URL and a Python snippet.
     [[ "$GO_INSTALL_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || GO_INSTALL_VERSION=""
-    # Fallback to a known-good version if API fails
-    # 1.26.4 carries CVE-2026-39822 (os.Root symlink following), fixed in 1.26.5.
-    local _GO_FALLBACK_VERSION="1.26.5"
+    # Fallback to a known-good version if API fails; older patch releases carry fixed CVEs.
+    local _GO_FALLBACK_VERSION="1.27.4"
     GO_INSTALL_VERSION="${GO_INSTALL_VERSION:-$_GO_FALLBACK_VERSION}"
     # Embedded linux SHA256 checksums for the fallback version, so the offline
     # path (go.dev API unreachable) STILL verifies the tarball. Keyed by the
     # go.dev arch name (matches _go_arch below). MUST be bumped together with
     # _GO_FALLBACK_VERSION above — stale hashes would fail an otherwise-good DL.
     local -A _GO_FALLBACK_SHA256=(
-        [amd64]=5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053
-        [arm64]=fe4789e92b1f33358680864bbe8704289e7bb5fc207d80623c308935bd696d49
-        [armv6l]=6dae9edab81c13bccf962dec15f1fd2ec26c14a6821b4d2c92dab4130c289d7a
-        [386]=88c162b204e6eefcc32499453b492e80209f4a4c78c33092636901c540fb0d05
+        [amd64]=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
+        [arm64]=3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
+        [armv6l]=e50964c41c6e187375387939e2f380de7250eba44e2259dfeb75c540d9d585c3
+        [386]=6ecb45737d2315acb0dbbc97ea8e13e7c19d4c796abe8d68907c40bce6f50bf7
     )
 
     # The toolkit's own SDK is off root's PATH on a later run, so the check above
@@ -367,7 +398,15 @@ ensure_cargo() {
         log_warn "Skipping Rust toolchain install (${_why}) — Cargo tools will not be available"
         return 1
     fi
-    _strict_refuses_root_bootstrap "rustup" && return 1
+    if _strict_refuses_root_bootstrap "rustup"; then
+        # The distribution's signed toolchain needs no installer script; it can trail upstream stable.
+        log_info "Installing the distribution's Rust toolchain instead..."
+        install_apt_batch "Rust toolchain" cargo
+        _BUILDER_CMD_CACHE=()
+        command_exists cargo && return 0
+        log_error "No distribution Rust toolchain — Cargo tools will not be available"
+        return 1
+    fi
 
     log_info "Installing Rust toolchain via rustup..."
 

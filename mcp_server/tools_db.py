@@ -177,7 +177,11 @@ BINARY_BIN_NAMES: dict[str, str] = {
     "osquery": "osqueryi",
     "heimdall-rs": "heimdall",
 }
-PRIMARY_NATIVE_BINARIES: dict[str, tuple[str, ...]] = {"netexec": ("netexec", "NetExec")}
+# qemu-user-static is a virtual package on Ubuntu 26.04 and Kali; its provider ships qemu-x86_64.
+PRIMARY_NATIVE_BINARIES: dict[str, tuple[str, ...]] = {
+    "netexec": ("netexec", "NetExec"),
+    "qemu-user-static": ("qemu-x86_64",),
+}
 NON_CLI_TOOLS: dict[str, tuple[str, str, str]] = {
     "forensics-extra": (
         "metapackage",
@@ -625,7 +629,7 @@ def execution_metadata(tool: dict) -> dict:
     """Describe supported invocation separately from installation state."""
     name, method = tool["name"], tool["method"]
     # Imported lazily because the policy engine consumes this metadata too.
-    from mcp_server.security import _NETWORK_TOOLS
+    from mcp_server.security import _INFO_ONLY_RUNNERS, _NETWORK_TOOLS, RUN_TOOL_ROUTE_NOTES
 
     binary = resolve_binary_name(method, name)
     kind, executable = "cli", True
@@ -672,6 +676,13 @@ def execution_metadata(tool: dict) -> dict:
         executable, binary, kind = False, None, "environment"
         reason = "Python environment for script execution; not a standalone executable."
         access = 'Use run_script(venv="crypto") only after scripts are explicitly enabled.'
+    if executable and name.casefold() in _INFO_ONLY_RUNNERS:
+        access = (
+            f'run_tool(tool_name="{name}", args="--help") gives help and version output only; '
+            "run the tool through run_script once scripts are explicitly enabled."
+        )
+    elif executable and name.casefold() in RUN_TOOL_ROUTE_NOTES:
+        access = f"{access} {RUN_TOOL_ROUTE_NOTES[name.casefold()]}"
     result = {
         "executable": executable,
         "binary": binary,

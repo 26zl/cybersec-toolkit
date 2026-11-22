@@ -5,8 +5,8 @@ from third-party open-source projects. Each retains its original license. This
 file is the centralized index; full license texts are vendored under
 [`.claude/skills/`](.claude/skills/). The table below is the authoritative
 per-source attribution. Per-skill provenance is also recorded in each vendored
-skill's `SKILL.md` frontmatter: the SnailSploit, BugHunter, and Karpathy skills
-carry `source` + `upstream_commit` + `license`; the Trail of Bits and Transilience
+skill's `SKILL.md` frontmatter: the SnailSploit, BugHunter, Karpathy and ctf-skills
+skills carry `source` + `upstream_commit` + `license`; the Trail of Bits and Transilience
 skills carry `source` + `license` (their upstream commits are recorded in the table
 below, not pinned per-skill); and the Anthropic-Cybersecurity skills carry a
 `license` field (and a vendored upstream `LICENSE` file). The curation manifest
@@ -19,11 +19,12 @@ table's counts against the live inventory.
 | Source | Skills | License | License text | Upstream |
 | --- | ---: | --- | --- | --- |
 | [mukul975/Anthropic-Cybersecurity-Skills (community project)](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) | 754 | Apache-2.0 | [`LICENSE-Apache-2.0`](.claude/skills/LICENSE-Apache-2.0) | operational how-tos; commit `54a798831d2266a3ca61ce68a7acb80b81160d57` |
-| [SnailSploit Claude-Red](https://github.com/SnailSploit/Claude-Red) | 58 | MIT | [`LICENSE-Claude-Red-MIT`](.claude/skills/LICENSE-Claude-Red-MIT) | commit `a8de813edc9f66f60d44cfe42d47750e89d9930b` |
-| [Trail of Bits skills](https://github.com/trailofbits/skills) | 14 | CC-BY-SA-4.0 | [`LICENSE-CC-BY-SA-4.0`](.claude/skills/LICENSE-CC-BY-SA-4.0) | commit `e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff`; code audit & vuln research; `insecure-defaults` is kept at commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`, the last upstream version that shipped it as a skill; `constant-time-analysis` ships the upstream `ct_analyzer/` (commit `c070b9b`) and `zeroize-audit` its `tools/` |
-| [BugHunter (awarexone/Agentic-Bug-Hunter, formerly shuvonsec/claude-bug-bounty)](https://github.com/awarexone/Agentic-Bug-Hunter) | 10 | MIT | [`LICENSE-BugHunter-MIT`](.claude/skills/LICENSE-BugHunter-MIT) | commit `8060af0c1b0b6ecc6595ee3261f50aa613038620` |
+| [SnailSploit Claude-Red](https://github.com/SnailSploit/Claude-Red) | 58 | MIT | [`LICENSE-Claude-Red-MIT`](.claude/skills/LICENSE-Claude-Red-MIT) | commit `fd81441b613c7d4fab39256720a31c96859d138b` |
+| [Trail of Bits skills](https://github.com/trailofbits/skills) | 14 | CC-BY-SA-4.0 | [`LICENSE-CC-BY-SA-4.0`](.claude/skills/LICENSE-CC-BY-SA-4.0) | commit `149d7b21f4067765b82e67029730b42d228ef4b4`; code audit & vuln research; `insecure-defaults` is kept at commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`, the last upstream version that shipped it as a skill; `constant-time-analysis` ships the upstream `ct_analyzer/` (commit `c070b9b`) and `zeroize-audit` its `tools/` |
+| [BugHunter (awarexone/Agentic-Bug-Hunter, formerly shuvonsec/claude-bug-bounty)](https://github.com/awarexone/Agentic-Bug-Hunter) | 10 | MIT | [`LICENSE-BugHunter-MIT`](.claude/skills/LICENSE-BugHunter-MIT) | commit `82f4512ec432765297c36e6b3ef7dc3fe5a58be2` |
 | [Transilience community tools](https://github.com/transilienceai/communitytools) | 4 | MIT | [`LICENSE-Transilience-MIT`](.claude/skills/LICENSE-Transilience-MIT) | high-level workflows; commit `95fdc128af4ca1ae16b3226f9430f1bad97b0656` |
 | [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | 1 | MIT | [`LICENSE-Karpathy-MIT`](.claude/skills/LICENSE-Karpathy-MIT) (upstream declares MIT in README/frontmatter but ships no LICENSE file) | coding-agent workflow; commit `2c606141936f1eeef17fa3043a72095b4765b9c2` |
+| [ljagiello/ctf-skills](https://github.com/ljagiello/ctf-skills) | 8 | MIT | [`LICENSE-ctf-skills-MIT`](.claude/skills/LICENSE-ctf-skills-MIT) | CTF solving workflow; commit `20d182d9377f0467830f314bb0f843cae4dbf55e`; the `allowed-tools` grants and the `ctf-similar-search` helper scripts are not vendored, each `SKILL.md` carries a vendored note, and upstream `ctf-crypto`, `ctf-forensics`, `ctf-pwn` and `ctf-web` are not vendored because the project-authored skills of those names stay |
 
 Changes to the Apache-2.0 skills (§4(b)): repository copies may add `source`/`license` frontmatter and a full per-skill `LICENSE`; content changes are listed here. `scripts/update-skills.sh --local-edits` lists every vendored file that differs from all upstream versions, so this list can be checked against the tree.
 

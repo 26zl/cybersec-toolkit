@@ -1,6 +1,6 @@
 # Claude Code Skills
 
-This directory contains 872 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
+This directory contains 880 skills that activate on demand based on what you're working on. Skills extend Claude Code without permanently consuming context.
 
 Every skill follows the open [Agent Skills specification](https://agentskills.io/specification) — a `<name>/SKILL.md` file with `name`/`description` frontmatter — so the same directory is portable across Claude Code, Codex, and OpenCode (mirrored to `.agents/skills/` by `scripts/sync-skills.sh`). Conformance is enforced in CI by `scripts/validate_claude_skills.py`.
 
@@ -65,6 +65,23 @@ Per-category decision trees + tool ordering.
 | `ctf-forensics` | PCAP, memory, disk, MFT, log |
 | `ctf-stego` | LSB, audio spectrogram, polyglots |
 
+## ljagiello/ctf-skills — CTF solving workflow (8)
+
+MIT — see `LICENSE-ctf-skills-MIT`. Source: <https://github.com/ljagiello/ctf-skills>, commit `20d182d9377f0467830f314bb0f843cae4dbf55e`.
+
+Upstream also ships `ctf-crypto`, `ctf-forensics`, `ctf-pwn` and `ctf-web`; those names stay the project's own CTF methodology skills above, and `scripts/update-skills.sh` keeps them out of this source.
+
+| Skill | What it does |
+| --- | --- |
+| `solve-challenge` | Dispatcher: first-pass triage, category routing, stop-loss rules |
+| `ctf-reverse` | Binaries, APKs, WASM, firmware, custom VMs, anti-debug |
+| `ctf-malware` | Obfuscated scripts, C2 traffic, malware configs, anti-analysis |
+| `ctf-misc` | Encodings, jails, esoteric languages, RF/SDR, puzzles |
+| `ctf-osint` | Geolocation, usernames, DNS, archives, public records |
+| `ctf-ai-ml` | Prompt injection, adversarial examples, model extraction |
+| `ctf-similar-search` | Finding writeups of similar challenges |
+| `ctf-writeup` | Submission-style writeup after a solve |
+
 ## Bug bounty methodology (4)
 
 | Skill | Phase |
@@ -76,7 +93,7 @@ Per-category decision trees + tool ordering.
 
 ## BugHunter — bug bounty workflow (10)
 
-MIT — see `LICENSE-BugHunter-MIT`. Source: <https://github.com/awarexone/Agentic-Bug-Hunter> (formerly `shuvonsec/claude-bug-bounty`), commit `8060af0c1b0b6ecc6595ee3261f50aa613038620`.
+MIT — see `LICENSE-BugHunter-MIT`. Source: <https://github.com/awarexone/Agentic-Bug-Hunter> (formerly `shuvonsec/claude-bug-bounty`), commit `82f4512ec432765297c36e6b3ef7dc3fe5a58be2`.
 
 Use these only for authorized security research, training, CTF/lab work, or testing within an approved bug bounty program scope.
 
@@ -95,7 +112,7 @@ Use these only for authorized security research, training, CTF/lab work, or test
 
 ## SnailSploit Claude-Red — offensive methodology (58)
 
-MIT — see `LICENSE-Claude-Red-MIT`. Source: <https://github.com/SnailSploit/Claude-Red>, commit `a8de813edc9f66f60d44cfe42d47750e89d9930b`.
+MIT — see `LICENSE-Claude-Red-MIT`. Source: <https://github.com/SnailSploit/Claude-Red>, commit `fd81441b613c7d4fab39256720a31c96859d138b`.
 
 Use these only for authorized security research, training, CTF/lab work, or scoped assessments.
 
@@ -117,7 +134,7 @@ Use these only for authorized security research, training, CTF/lab work, or scop
 
 ## Trail of Bits — code audit & vulnerability research (14)
 
-CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailofbits/skills>, commit `e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff`. `insecure-defaults` is kept at commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`: upstream has since replaced the skill with a plugin command.
+CC-BY-SA 4.0 — see `LICENSE-CC-BY-SA-4.0`. Source: <https://github.com/trailofbits/skills>, commit `149d7b21f4067765b82e67029730b42d228ef4b4`. `insecure-defaults` is kept at commit `cfe5d7b1619e47fb5b38b7e2561dad7e5f1e89af`: upstream has since replaced the skill with a plugin command.
 
 | Skill | What it does |
 | --- | --- |

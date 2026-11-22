@@ -165,6 +165,19 @@ BUGHUNTER_SKILLS = {
     "web3-audit",
 }
 
+# ljagiello/ctf-skills; its ctf-crypto, ctf-forensics, ctf-pwn and ctf-web are not vendored, the
+# project-authored skills of those names stay.
+CTF_SKILLS_SKILLS = {
+    "ctf-ai-ml",
+    "ctf-malware",
+    "ctf-misc",
+    "ctf-osint",
+    "ctf-reverse",
+    "ctf-similar-search",
+    "ctf-writeup",
+    "solve-challenge",
+}
+
 BUGHUNTER_DOMAIN_OVERRIDES = {
     "ctf_bounty": {
         "bb-methodology",
@@ -514,6 +527,8 @@ def source_for(name: str) -> str:
         return "project"
     if name in COVERAGE_ANCHORS:
         return "coverage-anchor"
+    if name in CTF_SKILLS_SKILLS:
+        return "ctf-skills"
     if name.startswith("ctf-"):
         return "ctf"
     if name.startswith("bounty-"):
@@ -540,7 +555,7 @@ def has_term(text: str, term: str) -> bool:
 def domain_for(name: str, description: str) -> str:
     if name in PROJECT_DOMAINS:
         return PROJECT_DOMAINS[name]
-    if name.startswith(("ctf-", "bounty-")):
+    if name.startswith(("ctf-", "bounty-")) or name in CTF_SKILLS_SKILLS:
         return "ctf_bounty"
     if name in TRAIL_OF_BITS_SKILLS:
         return "code_audit"
@@ -587,6 +602,7 @@ def score_skill(name: str, description: str, source: str) -> tuple[int, list[str
         "karpathy": 84,
         "claude-red": 80,
         "ctf": 78,
+        "ctf-skills": 78,
         "bug-bounty": 78,
         "bughunter": 78,
         "anthropic": 58,

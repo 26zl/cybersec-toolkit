@@ -58,6 +58,15 @@ resolve_bulk() {
     esac
 }
 
+# apt_installable — apt-get would install this name. apt-cache policy prints a stanza for
+# any name apt has heard of, so a candidate is required; a virtual name counts only with a
+# single provider, the one case apt-get resolves on its own.
+apt_installable() {
+    apt-cache policy "$1" 2>/dev/null | grep -q '^  Candidate: [^(]' && return 0
+    [[ $(apt-cache showpkg "$1" 2>/dev/null | sed -n '/^Reverse Provides:/,$p' \
+        | tail -n +2 | awk 'NF {print $1}' | sort -u | wc -l) -eq 1 ]]
+}
+
 # pkg_exists — does the package manager know this name? Accepts virtual provides
 # and groups, which are legitimate entries in the arrays (java-devel,
 # @development-tools, base-devel).
@@ -65,7 +74,7 @@ pkg_exists() {
     local p="$1"
     case "$PKG_MANAGER" in
         apt)
-            [[ -n "$(apt-cache policy "$p" 2>/dev/null)" ]] ;;
+            apt_installable "$p" ;;
         dnf)
             if [[ "$p" == @* ]]; then
                 dnf -q group info "${p#@}" &>/dev/null
@@ -84,8 +93,7 @@ pkg_exists() {
             zypper --non-interactive --quiet search --match-exact "$p" &>/dev/null \
                 || zypper --non-interactive --quiet search --provides --match-exact "$p" &>/dev/null ;;
         pkg)
-            # apt-cache policy exits 0 even for unknown names, so test its output as for apt.
-            pkg show "$p" &>/dev/null || [[ -n "$(apt-cache policy "$p" 2>/dev/null)" ]] ;;
+            pkg show "$p" &>/dev/null || apt_installable "$p" ;;
         *)
             return 0 ;;   # unknown manager: nothing to assert
     esac
@@ -154,8 +162,13 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     echo "MISSING from ${PKG_MANAGER} repositories (${#missing[@]}):"
     printf '  %s\n' "${missing[@]}"
     echo ""
-    echo "Fix the ${PKG_MANAGER} column in lib/distro_compat.tsv — map to the current"
-    echo "name, or to '-' when the package is genuinely unavailable on this distro."
+    if [[ "$PKG_MANAGER" == apt ]]; then
+        echo "Rename it in its module, or add it to _APT_RELEASE_FALLBACKS in lib/installers.sh"
+        echo "when only some Debian/Ubuntu releases lack it."
+    else
+        echo "Fix the ${PKG_MANAGER} column in lib/distro_compat.tsv — map to the current"
+        echo "name, or to '-' when the package is genuinely unavailable on this distro."
+    fi
 fi
 
 echo "Errors: ${#missing[@]}"
