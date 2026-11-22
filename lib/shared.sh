@@ -24,8 +24,9 @@ SHARED_BASE_PACKAGES=(
     # libzstd-dev pairs with binutils-dev: Fedora's static libbfd.a pulls in zstd
     libseccomp-dev binutils-dev libedit-dev liblzma-dev libzstd-dev
     libkrb5-dev libsctp-dev libnfnetlink-dev
-    # bettercap (libusb, netfilter queue) and yersinia (libnet) build against these
-    libusb-1.0-0-dev libnetfilter-queue-dev libnet1-dev
+    # bettercap (libusb, netfilter queue), yersinia (libnet), hostapd-mana (libnl) and
+    # proxmark3 (lz4, bzip2) build against these
+    libusb-1.0-0-dev libnetfilter-queue-dev libnet1-dev libnl-3-dev libnl-genl-3-dev liblz4-dev libbz2-dev
     libcapstone-dev libgmp-dev libecm-dev
     libldap2-dev libsasl2-dev
     libpixman-1-dev libunwind-dev libini-config-dev
@@ -81,6 +82,19 @@ install_shared_deps() {
 
 # _ensure_build_toolchain — a C compiler and make for `install.sh --tool`, which skips
 # install_shared_deps; cargo links through cc and source builds run make.
+# _ensure_build_runtimes CMD — cargo and Go for a build command that calls them; `install.sh --tool`
+# skips the up-front runtime setup a module install does.
+_ensure_build_runtimes() {
+    local cmd="$1"
+    if [[ "$cmd" =~ (^|[^[:alnum:]_-])cargo[[:space:]] ]]; then
+        ensure_cargo || return 1
+    fi
+    if [[ "$cmd" =~ (^|[^[:alnum:]_-])go[[:space:]] ]]; then
+        ensure_go || return 1
+    fi
+    return 0
+}
+
 _ensure_build_toolchain() {
     command_exists cc && command_exists make && return 0
     log_info "Installing a C compiler and make..."

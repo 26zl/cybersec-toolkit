@@ -1030,6 +1030,35 @@ EOF
     assert_line --index 3 "build_from_source massdns"
 }
 
+@test "single-tool source builds set up the cargo or Go toolchain their build command calls" {
+    local copy="$BATS_TEST_TMPDIR/toolkit"
+    mkdir -p "$copy/scripts"
+    cp -R "$PROJECT_ROOT/install.sh" "$PROJECT_ROOT/lib" "$PROJECT_ROOT/modules" \
+        "$PROJECT_ROOT/profiles" "$PROJECT_ROOT/VERSION" "$copy/"
+    cp "$PROJECT_ROOT/scripts/stale_artefacts.sh" "$copy/scripts/"
+
+    run bash -c '
+        copy="$1" tmp="$2"; set --
+        export PKG_MANAGER=apt DISTRO_ID=debian DISTRO_NAME=debian
+        source "$copy/install.sh"
+        LOG_FILE=/dev/null VERSION_FILE="$tmp/.versions" GITHUB_TOOL_DIR="$tmp/tools"
+        _ensure_build_toolchain() { return 0; }
+        _ensure_requested_source_deps() { return 0; }
+        ensure_cargo() { echo "ensure_cargo" >> "$tmp/calls"; }
+        ensure_go() { echo "ensure_go" >> "$tmp/calls"; }
+        build_from_source() { echo "build_from_source $1" >> "$tmp/calls"; }
+        install_single_tool rusthound > /dev/null 2>&1 || exit 1
+        install_single_tool azurehound > /dev/null 2>&1 || exit 1
+        cat "$tmp/calls"
+    ' _ "$copy" "$BATS_TEST_TMPDIR"
+
+    assert_success
+    assert_line --index 0 "ensure_cargo"
+    assert_line --index 1 "build_from_source rusthound"
+    assert_line --index 2 "ensure_go"
+    assert_line --index 3 "build_from_source azurehound"
+}
+
 @test "single-tool Git install builds a toolchain only for a repository with a build step" {
     local copy="$BATS_TEST_TMPDIR/toolkit"
     mkdir -p "$copy/scripts"

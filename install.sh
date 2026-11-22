@@ -637,6 +637,10 @@ install_single_tool() {
                     log_error "No C compiler and make available — cannot build $tool"
                     return 1
                 fi
+                if ! _ensure_build_runtimes "${_GIT_BUILD_COMMANDS[$gname]:-}"; then
+                    log_error "The build toolchain for $tool is not available"
+                    return 1
+                fi
                 log_info "Cloning $tool..."
                 if git_clone_or_pull "$url" "$dest" >> "$LOG_FILE" 2>&1; then
                     track_version "$tool" "git" "$_gver"
@@ -696,6 +700,10 @@ install_single_tool() {
                     return 1
                 fi
                 _ensure_requested_source_deps "$tool" || return 1
+                _ensure_build_runtimes "${_build_cmds[$tool]:-}" || {
+                    log_error "The build toolchain for $tool is not available"
+                    return 1
+                }
                 build_from_source "$tool" "${_build_urls[$tool]:-}" "${_build_cmds[$tool]:-}"
                 return $?
             fi

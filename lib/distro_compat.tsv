@@ -53,6 +53,10 @@ libjpeg-dev	libjpeg-turbo-devel	libjpeg-turbo	libjpeg62-devel	libjpeg-turbo
 libusb-1.0-0-dev	libusb1-devel	libusb	libusb-1_0-devel	libusb
 libnetfilter-queue-dev	libnetfilter_queue-devel	libnetfilter_queue	libnetfilter_queue-devel	-
 libnet1-dev	libnet-devel	libnet	libnet-devel	-
+libnl-3-dev	libnl3-devel	libnl	libnl3-devel	libnl
+libnl-genl-3-dev	libnl3-devel	libnl	libnl3-devel	libnl
+liblz4-dev	lz4-devel	lz4	liblz4-devel	liblz4
+libbz2-dev	bzip2-devel	bzip2	libbz2-devel	libbz2
 libcapstone-dev	capstone-devel	capstone	libcapstone-devel	
 libseccomp-dev	libseccomp-devel	libseccomp	libseccomp-devel	-
 binutils-dev	binutils-devel	binutils	binutils-devel	-
