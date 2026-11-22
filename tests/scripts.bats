@@ -29,6 +29,23 @@ _run_guarded_nmap() {
         <<< '{"tool_input":{"command":"nmap 192.0.2.10"}}'
 }
 
+@test "an advisor call earlier in the same second does not clear a session that starts after it" {
+    export XDG_STATE_HOME="$TEST_TMPDIR/state" CYBERSEC_MCP_AUDIT_LOG="$TEST_TMPDIR/audit.log"
+    mkdir -p "$XDG_STATE_HOME/cybersec-tools-mcp"
+    : > "$CYBERSEC_MCP_AUDIT_LOG"
+    run env -u CYBERSEC_AGENT_GUARD bash "$PROJECT_ROOT/scripts/agent-guard.sh" session-start \
+        <<< '{"session_id":"same-second"}'
+    assert_success
+    local marker
+    marker=$(cat "$XDG_STATE_HOME/cybersec-tools-mcp/guard-session.same-second")
+    printf '{"ts":"%s.500Z","event":"tool_call","tool":"suggest_for_ctf"}\n' "${marker%.*}" \
+        > "$CYBERSEC_MCP_AUDIT_LOG"
+    run env -u CYBERSEC_AGENT_GUARD bash "$PROJECT_ROOT/scripts/agent-guard.sh" pre-bash \
+        <<< '{"session_id":"same-second","tool_input":{"command":"nmap 192.0.2.10"}}'
+    assert_success
+    assert_output --partial '"permissionDecision":"deny"'
+}
+
 @test "agent guard is not unlocked by an unrelated MCP call" {
     _guard_fixture
     printf '%s\n' \
@@ -1181,6 +1198,47 @@ EOF
     [[ -x "$TEST_TMPDIR/prefix/bin/kwprocessor" ]]
 }
 
+# _registry_clone NAME FILE — a clone of a synthetic upstream under a registry Git name,
+# with one upstream commit the clone has not pulled yet.
+_registry_clone() {
+    local upstream="$TEST_TMPDIR/upstream-$1"
+    local -a gitid=(-c user.email=fixture@example.invalid -c user.name=fixture)
+    git init -q "$upstream"
+    printf 'print("synthetic %s")\n' "$1" > "$upstream/$2"
+    git -C "$upstream" add "$2"
+    git -C "$upstream" "${gitid[@]}" commit -qm v1
+    git clone -q "$upstream" "$TEST_TMPDIR/tools/$1"
+    printf '# v2\n' >> "$upstream/$2"
+    git -C "$upstream" "${gitid[@]}" commit -qam v2
+}
+
+@test "update keeps another method's row on a registry-named clone, so remove leaves the clone" {
+    _lifecycle_fixture
+    _registry_clone commix commix.py
+    printf 'commix|pipx|latest|2026-01-01 00:00:00\n' >> "$LC_REPO/.versions"
+
+    _run_lifecycle update.sh --skip-system --skip-pipx --skip-go --skip-gems \
+        --skip-cargo --skip-binary --skip-special --skip-docker
+    assert_success
+    grep -q '^commix|pipx|latest|' "$LC_REPO/.versions"
+
+    _run_lifecycle remove.sh --module web --yes
+    assert_success
+    [[ -d "$TEST_TMPDIR/tools/commix/.git" ]]
+}
+
+@test "update does not add a launcher for a registry-named clone the toolkit never recorded" {
+    _lifecycle_fixture
+    _registry_clone XSStrike XSStrike.py
+
+    _run_lifecycle update.sh --skip-system --skip-pipx --skip-go --skip-gems \
+        --skip-cargo --skip-binary --skip-special --skip-docker
+
+    assert_success
+    [[ "$(git -C "$TEST_TMPDIR/tools/XSStrike" log -1 --format=%s)" == "v2" ]]
+    [[ ! -e "$TEST_TMPDIR/prefix/bin/xsstrike" ]]
+}
+
 @test "update rebuilds only Go tools the toolkit installed" {
     _lifecycle_fixture
     printf '#!/bin/sh\necho "go $*" >> "%s/calls.log"\n[ "$1" = version ] && echo "go version go1.23.0 linux/amd64"\nexit 0\n' \
@@ -1756,7 +1814,7 @@ _source_tracked_clone() {
     assert_output 'fixture-companion v2'
 }
 
-@test "source update preserves local edits when upstream changes the same file" {
+@test "source update keeps conflicting local edits in the stash and rebuilds from upstream" {
     _source_outputs_fixture
     _source_update_fixture
     _source_tracked_clone
@@ -1769,9 +1827,15 @@ _source_tracked_clone() {
     _source_run_update
 
     assert_failure
-    [[ "$(cat "$clone/version.txt")" == *'local edits'* ]]
+    assert_output --partial "kept in the stash"
     [[ "$(git -C "$clone" stash show -p)" == *'local edits'* ]]
-    [[ ! -e "$TEST_TMPDIR/prefix/bin/fixture-tool" ]]
+    [[ -z "$(git -C "$clone" diff --name-only --diff-filter=U)" ]]
+    [[ "$(cat "$clone/version.txt")" == 'upstream v2' ]]
+    run "$TEST_TMPDIR/prefix/bin/fixture-tool"
+    assert_output 'fixture-tool upstream v2'
+
+    _source_run_update
+    assert_success
 }
 
 @test "unchanged source update repairs links and rejects missing build artifacts" {
@@ -2115,11 +2179,16 @@ _finding_evidence() {
 
 @test "deep clean removes the Go module cache, the tool log and keeps a failing removal visible" {
     _lifecycle_fixture
-    mkdir -p "$TEST_TMPDIR/home/.go/pkg/mod/example"
+    local module="$TEST_TMPDIR/home/.go/pkg/mod/example.invalid/m@v1.0.0"
+    mkdir -p "$module"
+    printf 'package m\n' > "$module/m.go"
+    # Go leaves its module cache read-only.
+    chmod -R a-w "$TEST_TMPDIR/home/.go/pkg/mod/example.invalid"
     : > "$LC_REPO/cybersec_tool.log"
     : > "$LC_REPO/cybersec_install.log"
 
     _run_lifecycle remove.sh --deep-clean --yes
+    chmod -R u+w "$TEST_TMPDIR/home/.go" 2>/dev/null || true
 
     assert_success
     [[ ! -e "$TEST_TMPDIR/home/.go/pkg" ]]
