@@ -72,7 +72,11 @@ def test_resources_and_services_have_explicit_non_cli_reason(name, git_db):
         ("enum4linux-ng", "-A 10.0.0.5 -u synthetic -p synthetic -oA /tmp/enum"),
         ("jwt_tool", "eyJhbGciOiJub25lIn0.eyJzdWIiOiJzeW50aGV0aWMifQ."),
         ("RsaCtfTool", "--publickey /tmp/synthetic.pub --attack wiener --private"),
+        ("RsaCtfTool", "--publickey /tmp/synthetic.pub --att wiener fermat --private"),
         ("RsaCtfTool", "--createpub -n 3233 -e 17"),
+        ("RsaCtfTool", "--dumpkey --publickey /tmp/synthetic.pub"),
+        ("RsaCtfTool", "--dumpkey --key /tmp/synthetic.pem"),
+        ("searchsploit", "-j apache"),
         ("Gopherus", "--exploit mysql"),
         ("gopherus", "--exploit=redis"),
         ("USB-HID-decoders", "/tmp/keyboard.txt --mode raw"),
@@ -131,6 +135,15 @@ def test_commix_dangerous_options_blocked_with_external_opt_in(args, external, m
         ("RsaCtfTool", "--publickey /tmp/synthetic.pub --private"),
         ("RsaCtfTool", "--publickey /tmp/synthetic.pub --attack all --private"),
         ("RsaCtfTool", "--sendtofdb --publickey /tmp/synthetic.pub --attack wiener"),
+        ("RsaCtfTool", "--publickey /tmp/synthetic.pub --attack wiener --atta=factordb"),
+        ("RsaCtfTool", "--publickey /tmp/synthetic.pub --attack wiener --att factordb"),
+        ("RsaCtfTool", "--dumpkey --decrypt 1234 --publickey /tmp/synthetic.pub"),
+        ("RsaCtfTool", "--dumpkey -n 3233 -e 17 --attack factordb"),
+        ("RsaCtfTool", "--dumpkey -n 3233 -e 17"),
+        ("RsaCtfTool", "--tests --dumpkey"),
+        ("exploitdb", "-u"),
+        ("searchsploit", "-u"),
+        ("searchsploit", "-ju apache"),
     ],
 )
 def test_git_targets_and_implicit_external_access_are_checked(tool, args, monkeypatch):
@@ -361,3 +374,54 @@ async def test_pipeline_console_stdin_is_rejected_before_any_process(tool, git_d
     assert result["exit_code"] == -1
     assert "piped stdin" in result["stderr"]
     spawn.assert_not_called()
+
+
+@pytest.mark.parametrize("external", ["0", "1"])
+@pytest.mark.parametrize(
+    "tool,args",
+    [
+        ("commix", "-u http://127.0.0.1/?id=1 -c /tmp/synthetic.ini"),
+        ("smuggler", "-u http://127.0.0.1/ --configfile ../../../../tmp/synthetic.py"),
+        ("smuggler", "-u http://127.0.0.1/ --conf ../synthetic.py"),
+        ("deepce", "-cmd id"),
+        ("deepce", "-x /tmp/synthetic"),
+        ("deepce", "--payload /tmp/synthetic"),
+        ("deepce", "-ex SOCK"),
+        ("deepce", "-l"),
+        ("deepce", "-s"),
+        ("deepce", "-doc"),
+        ("RegRipper", "-r /tmp/hive -p ../../../../tmp/synthetic"),
+        ("RegRipper", "-r /tmp/hive /plugin ../synthetic"),
+        ("RegRipper", "-r /tmp/hive -PLUG=../synthetic"),
+        ("RegRipper", "-r /tmp/hive -f ../../tmp/list"),
+        ("RegRipper", "-uP"),
+        ("PhpSploit", "--source /tmp/synthetic"),
+        ("PhpSploit", "-l /tmp/synthetic"),
+        ("cupp", "-l"),
+        ("testssl.sh", "-oL /etc/cron.d/synthetic 127.0.0.1"),
+        ("testssl.sh", "--outfile /etc/cron.d/synthetic 127.0.0.1"),
+        ("CMSmap", "-U PC"),
+        ("crowbar", "-b openvpn -s 127.0.0.1 -u u -C p -m /tmp/synthetic.ovpn"),
+    ],
+)
+def test_short_and_alternate_spellings_of_blocked_options_are_refused(tool, args, external, monkeypatch):
+    monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", external)
+    with pytest.raises(ValueError, match="Blocked by policy"):
+        check_policy(tool, sanitize_args(args), GIT_BIN_NAMES.get(tool, tool))
+
+
+@pytest.mark.parametrize(
+    "tool,args",
+    [
+        ("RegRipper", "-r /tmp/NTUSER.DAT -p userassist"),
+        ("RegRipper", "-r /p/hive -p run"),
+        ("RegRipper", "-r /tmp/SOFTWARE -f software"),
+        ("RegRipper", "-l"),
+        ("smuggler", "-u http://127.0.0.1/ -l /tmp/synthetic.log"),
+        ("testssl.sh", "-oL /tmp/synthetic.log 127.0.0.1"),
+        ("deepce", "-nn"),
+    ],
+)
+def test_ordinary_spellings_next_to_the_blocked_ones_still_pass(tool, args, monkeypatch):
+    monkeypatch.setenv("CYBERSEC_MCP_ALLOW_EXTERNAL", "0")
+    check_policy(tool, sanitize_args(args), GIT_BIN_NAMES.get(tool, tool))
