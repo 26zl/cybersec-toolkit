@@ -15,9 +15,9 @@ Edit the script rules, then regenerate this file when skill inventory changes.
 | Tier | Skills |
 | --- | ---: |
 | T0-router-and-project | 14 |
-| T1-core | 83 |
+| T1-core | 61 |
 | T1-coverage-anchor | 7 |
-| T2-operational | 205 |
+| T2-operational | 227 |
 | T3-specialist | 571 |
 
 ## Domain Counts
@@ -102,8 +102,8 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 100 | `ai-llm-security-review` | T1-coverage-anchor | normal |
-| 93 | `offensive-ai-security` | T1-core | sensitive-offensive |
 | 92 | `ai-threat-testing` | T1-core | sensitive-offensive |
+| 85 | `offensive-ai-security` | T2-operational | sensitive-offensive |
 | 71 | `implementing-llm-guardrails-for-security` | T2-operational | advisory-verify-current-sources |
 | 68 | `implementing-diamond-model-analysis` | T2-operational | normal |
 | 63 | `detecting-ai-model-prompt-injection-attacks` | T3-specialist | sensitive-offensive |
@@ -117,15 +117,15 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
 | 93 | `offensive-business-logic` | T1-core | sensitive-offensive |
-| 93 | `offensive-parameter-pollution` | T1-core | sensitive-offensive |
-| 93 | `offensive-request-smuggling` | T1-core | sensitive-offensive |
 | 93 | `offensive-sqli` | T1-core | sensitive-offensive |
-| 93 | `offensive-waf-bypass` | T1-core | sensitive-offensive |
 | 90 | `offensive-deserialization` | T1-core | sensitive-offensive |
-| 90 | `offensive-file-upload` | T1-core | sensitive-offensive |
 | 90 | `offensive-graphql` | T1-core | sensitive-offensive |
-| 90 | `offensive-idor` | T1-core | normal |
-| 90 | `offensive-open-redirect` | T1-core | sensitive-offensive |
+| 85 | `offensive-parameter-pollution` | T2-operational | sensitive-offensive |
+| 85 | `offensive-request-smuggling` | T2-operational | sensitive-offensive |
+| 85 | `offensive-ssti` | T2-operational | sensitive-offensive |
+| 85 | `offensive-waf-bypass` | T2-operational | sensitive-offensive |
+| 83 | `security-arsenal` | T2-operational | sensitive-offensive |
+| 83 | `web2-vuln-classes` | T2-operational | sensitive-offensive |
 
 ### cloud_security
 
@@ -253,7 +253,7 @@ Top skills per domain. Use these as the first candidates before searching the lo
 | ---: | --- | --- | --- |
 | 93 | `offensive-active-directory` | T1-core | sensitive-offensive |
 | 93 | `offensive-jwt` | T1-core | sensitive-offensive |
-| 93 | `offensive-oauth` | T1-core | sensitive-offensive |
+| 85 | `offensive-oauth` | T2-operational | sensitive-offensive |
 | 71 | `building-role-mining-for-rbac-optimization` | T2-operational | normal |
 | 71 | `building-threat-intelligence-platform` | T2-operational | normal |
 | 71 | `implementing-google-workspace-admin-security` | T2-operational | sensitive-offensive |
@@ -340,16 +340,16 @@ Top skills per domain. Use these as the first candidates before searching the lo
 
 | Priority | Skill | Tier | Sensitivity |
 | ---: | --- | --- | --- |
-| 93 | `offensive-basic-exploitation` | T1-core | sensitive-offensive |
 | 93 | `offensive-crash-analysis` | T1-core | normal |
-| 93 | `offensive-edr-evasion` | T1-core | sensitive-offensive |
 | 93 | `offensive-exploit-development` | T1-core | normal |
 | 93 | `offensive-fuzzing` | T1-core | normal |
-| 93 | `offensive-fuzzing-course` | T1-core | normal |
-| 93 | `offensive-initial-access` | T1-core | sensitive-offensive |
 | 93 | `offensive-mitigations` | T1-core | sensitive-offensive |
 | 93 | `offensive-osint` | T1-core | sensitive-offensive |
 | 93 | `offensive-shellcode` | T1-core | normal |
+| 93 | `offensive-toctou` | T1-core | sensitive-offensive |
+| 90 | `offensive-advanced-redteam` | T1-core | sensitive-offensive |
+| 90 | `offensive-bug-identification` | T1-core | normal |
+| 90 | `offensive-fast-checking` | T1-core | normal |
 
 ### security_coordination
 

@@ -59,7 +59,7 @@ SOURCES=(
   "transilience|https://github.com/transilienceai/communitytools.git|95fdc128af4ca1ae16b3226f9430f1bad97b0656"
   "karpathy|https://github.com/multica-ai/andrej-karpathy-skills.git|2c606141936f1eeef17fa3043a72095b4765b9c2"
   "bughunter|https://github.com/awarexone/Agentic-Bug-Hunter.git|82f4512ec432765297c36e6b3ef7dc3fe5a58be2"
-  "claude-red|https://github.com/SnailSploit/Claude-Red.git|fd81441b613c7d4fab39256720a31c96859d138b"
+  "claude-red|https://github.com/SnailSploit/Claude-Red.git|6196ba7464662de34e8744d359f175d1a7bca530"
   "ctf-skills|https://github.com/ljagiello/ctf-skills.git|20d182d9377f0467830f314bb0f843cae4dbf55e"
 )
 
