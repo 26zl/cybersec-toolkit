@@ -1,11 +1,12 @@
 ---
 name: offensive-rce
-description: "Remote Code Execution testing checklist: OS command injection, SSTI-to-RCE, deserialization RCE, file upload RCE, XXE with SSRF to RCE, RCE via dependency confusion, and CVE-based RCE patterns. Use for web app pentests and bug bounty RCE discovery. Use only for authorized security research, training, or assessment."
+description: "Remote Code Execution testing checklist: OS command injection, SSTI-to-RCE, deserialization RCE, file upload RCE, XXE with SSRF to RCE, RCE via dependency confusion, and CVE-based RCE patterns. Use for web app pentests and bug bounty RCE discovery."
 category: web
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
+upstream_commit: 6196ba7464662de34e8744d359f175d1a7bca530
 ---
+
 # SKILL: Remote Code Execution
 
 ## Metadata

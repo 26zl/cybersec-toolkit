@@ -440,20 +440,6 @@
       "tier": "T0-router-and-project"
     },
     {
-      "domain": "ai_llm_security",
-      "name": "offensive-ai-security",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
       "domain": "appsec_web_api",
       "name": "offensive-business-logic",
       "priority": 93,
@@ -469,49 +455,7 @@
     },
     {
       "domain": "appsec_web_api",
-      "name": "offensive-parameter-pollution",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-request-smuggling",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
       "name": "offensive-sqli",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-waf-bypass",
       "priority": 93,
       "reasons": [
         "source:claude-red",
@@ -554,20 +498,6 @@
     {
       "domain": "identity_access",
       "name": "offensive-jwt",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "identity_access",
-      "name": "offensive-oauth",
       "priority": 93,
       "reasons": [
         "source:claude-red",
@@ -693,20 +623,6 @@
     },
     {
       "domain": "redteam_pentest",
-      "name": "offensive-basic-exploitation",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
       "name": "offensive-crash-analysis",
       "priority": 93,
       "reasons": [
@@ -716,20 +632,6 @@
         "descriptive"
       ],
       "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
-      "name": "offensive-edr-evasion",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
       "source": "claude-red",
       "tier": "T1-core"
     },
@@ -758,34 +660,6 @@
         "descriptive"
       ],
       "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
-      "name": "offensive-fuzzing-course",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
-      "name": "offensive-initial-access",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
       "source": "claude-red",
       "tier": "T1-core"
     },
@@ -834,48 +708,6 @@
     {
       "domain": "redteam_pentest",
       "name": "offensive-toctou",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
-      "name": "offensive-vuln-classes",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
-      "name": "offensive-windows-boundaries",
-      "priority": 93,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "clear-trigger",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
-      "name": "offensive-windows-mitigations",
       "priority": 93,
       "reasons": [
         "source:claude-red",
@@ -983,111 +815,7 @@
     },
     {
       "domain": "appsec_web_api",
-      "name": "offensive-file-upload",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
       "name": "offensive-graphql",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-idor",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-open-redirect",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-race-condition",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-rce",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-ssrf",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-xss",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "sensitive-offensive",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "appsec_web_api",
-      "name": "offensive-xxe",
       "priority": 90,
       "reasons": [
         "source:claude-red",
@@ -1230,33 +958,7 @@
     },
     {
       "domain": "redteam_pentest",
-      "name": "offensive-exploit-dev-course",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
       "name": "offensive-fast-checking",
-      "priority": 90,
-      "reasons": [
-        "source:claude-red",
-        "broad-workflow",
-        "descriptive"
-      ],
-      "sensitivity": "normal",
-      "source": "claude-red",
-      "tier": "T1-core"
-    },
-    {
-      "domain": "redteam_pentest",
-      "name": "offensive-keylogger-arch",
       "priority": 90,
       "reasons": [
         "source:claude-red",
@@ -1421,8 +1123,164 @@
       "tier": "T1-core"
     },
     {
+      "domain": "ai_llm_security",
+      "name": "offensive-ai-security",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-parameter-pollution",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-request-smuggling",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
       "domain": "appsec_web_api",
       "name": "offensive-ssti",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-waf-bypass",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "identity_access",
+      "name": "offensive-oauth",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-basic-exploitation",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-edr-evasion",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-fuzzing-course",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-initial-access",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-vuln-classes",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-windows-boundaries",
+      "priority": 85,
+      "reasons": [
+        "source:claude-red",
+        "clear-trigger",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-windows-mitigations",
       "priority": 85,
       "reasons": [
         "source:claude-red",
@@ -1639,6 +1497,126 @@
       ],
       "sensitivity": "sensitive-offensive",
       "source": "bughunter",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-file-upload",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-idor",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-open-redirect",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-race-condition",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-rce",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-ssrf",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-xss",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "appsec_web_api",
+      "name": "offensive-xxe",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "sensitive-offensive",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-exploit-dev-course",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
+      "tier": "T2-operational"
+    },
+    {
+      "domain": "redteam_pentest",
+      "name": "offensive-keylogger-arch",
+      "priority": 82,
+      "reasons": [
+        "source:claude-red",
+        "descriptive"
+      ],
+      "sensitivity": "normal",
+      "source": "claude-red",
       "tier": "T2-operational"
     },
     {
@@ -12496,9 +12474,9 @@
   ],
   "tier_counts": {
     "T0-router-and-project": 14,
-    "T1-core": 83,
+    "T1-core": 61,
     "T1-coverage-anchor": 7,
-    "T2-operational": 205,
+    "T2-operational": 227,
     "T3-specialist": 571
   },
   "total_skills": 880

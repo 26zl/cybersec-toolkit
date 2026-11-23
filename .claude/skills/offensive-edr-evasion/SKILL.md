@@ -1,11 +1,12 @@
 ---
 name: offensive-edr-evasion
-description: "EDR evasion offensive checklist: hook unhooking (user/kernel), direct syscalls, PPID spoofing, process injection variants, AMSI bypass, ETW patching, memory encryption, and behavior-based evasion. Use when planning EDR bypass during red team engagements or researching AV/EDR evasion techniques. Use only for authorized security research, training, or assessment."
+description: "EDR evasion offensive checklist: hook unhooking (user/kernel), direct syscalls, PPID spoofing, process injection variants, AMSI bypass, ETW patching, memory encryption, and behavior-based evasion. Use when planning EDR bypass during red team engagements or researching AV/EDR evasion techniques."
 category: infrastructure
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
+upstream_commit: 6196ba7464662de34e8744d359f175d1a7bca530
 ---
+
 # SKILL: Endpoint Detection and Response
 
 ## Metadata

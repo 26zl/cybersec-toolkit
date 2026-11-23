@@ -1,11 +1,12 @@
 ---
 name: offensive-windows-mitigations
-description: "Deep-dive on Windows exploit mitigations: ASLR, DEP/NX, CFG, CET/Shadow Stack, SEHOP, Heap Guard, ACG, Arbitrary Code Guard. Covers both the protection mechanism and known bypass techniques. Use when researching Windows exploit mitigations, planning bypass strategies, or understanding protection depth. Use only for authorized security research, training, or assessment."
+description: "Deep-dive on Windows exploit mitigations: ASLR, DEP/NX, CFG, CET/Shadow Stack, SEHOP, Heap Guard, ACG, Arbitrary Code Guard. Covers both the protection mechanism and known bypass techniques. Use when researching Windows exploit mitigations, planning bypass strategies, or understanding protection depth."
 category: infrastructure
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
+upstream_commit: 6196ba7464662de34e8744d359f175d1a7bca530
 ---
+
 # SKILL: Week 6: Understanding Windows Mitigations
 
 ## Metadata

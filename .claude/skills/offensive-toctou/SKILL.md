@@ -4,7 +4,7 @@ description: "Time-of-Check / Time-of-Use (TOCTOU) race condition exploitation m
 category: exploit-dev
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
+upstream_commit: 6196ba7464662de34e8744d359f175d1a7bca530
 ---
 # TOCTOU — Time-of-Check / Time-of-Use Exploitation
 

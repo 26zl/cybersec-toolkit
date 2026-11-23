@@ -4,7 +4,7 @@ description: "WPS (Wi-Fi Protected Setup) PIN attack methodology \u2014 Pixie Du
 category: wireless
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
+upstream_commit: 6196ba7464662de34e8744d359f175d1a7bca530
 ---
 # WPS PIN Attacks
 

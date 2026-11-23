@@ -4,7 +4,7 @@ description: "LoRaWAN and sub-GHz (433 / 868 / 915 MHz) attack methodology \u201
 category: wireless
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
+upstream_commit: 6196ba7464662de34e8744d359f175d1a7bca530
 ---
 # LoRaWAN & Sub-GHz Attacks
 

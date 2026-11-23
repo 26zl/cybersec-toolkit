@@ -1,11 +1,12 @@
 ---
 name: offensive-fast-checking
-description: "Speed-optimized offensive checklist for rapid assessment: quick-win vulnerability patterns, fast recon shortcuts, automated scanner configurations, and triage shortcuts. Use for time-boxed assessments, CTF-speed engagements, or initial rapid surface mapping. Use only for authorized security research, training, or assessment."
+description: "Speed-optimized offensive checklist for rapid assessment: quick-win vulnerability patterns, fast recon shortcuts, automated scanner configurations, and triage shortcuts. Use for time-boxed assessments, CTF-speed engagements, or initial rapid surface mapping."
 category: utility
 source: SnailSploit/Claude-Red
 license: MIT
-upstream_commit: fd81441b613c7d4fab39256720a31c96859d138b
+upstream_commit: 6196ba7464662de34e8744d359f175d1a7bca530
 ---
+
 # SKILL: Fast Testing Checklist
 
 ## Metadata
